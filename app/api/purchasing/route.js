@@ -34,10 +34,9 @@ export async function POST(request) {
       supplierId: parseInt(data.supplierId),
       purchaseDate: data.purchaseDate,
       paymentTerms: data.paymentTerms || '月結',
-      taxType: data.taxType || 'tax-excluded',
-      amount: data.amount || 0, // 稅前金額
-      tax: data.tax || 0,
-      totalAmount: data.totalAmount || (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)), // 總金額
+      amount: data.amount || 0, // 金額
+      tax: 0, // 稅額固定為 0
+      totalAmount: data.totalAmount || parseFloat(data.amount || 0), // 總金額
       status: data.status || '待入庫',
       items: data.items || [],
       createdAt: new Date().toISOString(),

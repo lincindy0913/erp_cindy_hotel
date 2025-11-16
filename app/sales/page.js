@@ -166,6 +166,7 @@ export default function InvoicePage() {
           purchaseId: item.purchaseId,
           purchaseNo: item.purchaseNo,
           purchaseDate: item.purchaseDate, // 記錄進貨日期，用於區分不同時間進貨的相同產品
+          supplierId: item.supplierId, // 記錄廠商ID
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -262,7 +263,6 @@ export default function InvoicePage() {
               <Link href="/finance" className="hover:text-blue-600">付款</Link>
               <Link href="/inventory" className="hover:text-blue-600">庫存</Link>
               <Link href="/analytics" className="hover:text-blue-600">分析</Link>
-              <Link href="/payment-voucher" className="text-green-600 hover:text-green-700 font-medium">🖨️ 列印傳票</Link>
             </div>
           </div>
         </div>
@@ -380,6 +380,7 @@ export default function InvoicePage() {
                           </th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨日期</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
@@ -402,6 +403,7 @@ export default function InvoicePage() {
                               </td>
                               <td className="px-3 py-2 text-sm font-medium">{item.purchaseNo}</td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
+                              <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
                               <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
@@ -445,6 +447,7 @@ export default function InvoicePage() {
                         <tr>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨日期</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
@@ -456,6 +459,7 @@ export default function InvoicePage() {
                           <tr key={item.id}>
                             <td className="px-3 py-2 text-sm">{item.purchaseNo}</td>
                             <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
+                            <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
                             <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                             <td className="px-3 py-2 text-sm">{item.quantity}</td>
                             <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
@@ -708,6 +712,7 @@ export default function InvoicePage() {
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">序號</th>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">進貨單號</th>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">進貨日期</th>
+                                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">廠商</th>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">產品</th>
                                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">數量</th>
                                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-700">單價</th>
@@ -724,6 +729,7 @@ export default function InvoicePage() {
                                               <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
                                               <td className="px-3 py-2 font-medium">{item.purchaseNo || '-'}</td>
                                               <td className="px-3 py-2 text-gray-600">{item.purchaseDate || '-'}</td>
+                                              <td className="px-3 py-2">{item.supplierId ? getSupplierName(item.supplierId) : '未知廠商'}</td>
                                               <td className="px-3 py-2">{product ? product.name : '未知商品'}</td>
                                               <td className="px-3 py-2 text-right">{item.quantity || 0}</td>
                                               <td className="px-3 py-2 text-right">NT$ {parseFloat(item.unitPrice || 0).toFixed(2)}</td>

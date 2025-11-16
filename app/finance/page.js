@@ -13,6 +13,7 @@ export default function PaymentPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState(new Set());
   const [expandedPayments, setExpandedPayments] = useState(new Set()); // 追蹤展開的付款ID
+  const [editingPaymentStatus, setEditingPaymentStatus] = useState(null); // 追蹤正在編輯狀態的付款ID
   
   // 篩選條件
   const [filterData, setFilterData] = useState({
@@ -262,6 +263,28 @@ export default function PaymentPage() {
     setExpandedPayments(newExpanded);
   }
 
+  async function handleUpdatePaymentStatus(paymentId, newStatus) {
+    try {
+      const response = await fetch(`/api/payments/${paymentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (response.ok) {
+        alert('付款狀態更新成功！');
+        setEditingPaymentStatus(null);
+        fetchPayments();
+      } else {
+        const error = await response.json();
+        alert('更新失敗：' + (error.error || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('更新付款狀態失敗:', error);
+      alert('更新付款狀態失敗，請稍後再試');
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
@@ -277,7 +300,6 @@ export default function PaymentPage() {
               <Link href="/finance" className="font-medium text-blue-600">付款</Link>
               <Link href="/inventory" className="hover:text-blue-600">庫存</Link>
               <Link href="/analytics" className="hover:text-blue-600">分析</Link>
-              <Link href="/payment-voucher" className="text-green-600 hover:text-green-700 font-medium">🖨️ 列印傳票</Link>
             </div>
           </div>
         </div>
@@ -605,6 +627,7 @@ export default function PaymentPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款方式</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票數量</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">金額</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款狀態</th>
                 {payments.some(p => p.checkNo) && (
                   <>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">支票號碼</th>
@@ -617,16 +640,18 @@ export default function PaymentPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={payments.some(p => p.checkNo) ? 8 : 6} className="px-4 py-8 text-center text-gray-500">載入中...</td>
+                  <td colSpan={payments.some(p => p.checkNo) ? 9 : 7} className="px-4 py-8 text-center text-gray-500">載入中...</td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={payments.some(p => p.checkNo) ? 8 : 6} className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
+                  <td colSpan={payments.some(p => p.checkNo) ? 9 : 7} className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
                 </tr>
               ) : (
                 payments.map((payment, index) => {
                   const invoiceIds = getInvoicesForPayment(payment);
                   const isExpanded = expandedPayments.has(payment.id);
+                  const isEditingStatus = editingPaymentStatus === payment.id;
+                  const paymentStatus = payment.status || '未完成';
                   return (
                     <Fragment key={payment.id}>
                       <tr className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -635,6 +660,30 @@ export default function PaymentPage() {
                         <td className="px-4 py-3 text-sm">{payment.paymentMethod}</td>
                         <td className="px-4 py-3 text-sm">{invoiceIds.length} 張</td>
                         <td className="px-4 py-3 text-sm font-semibold">NT$ {parseFloat(payment.amount).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {isEditingStatus ? (
+                            <select
+                              value={paymentStatus}
+                              onChange={(e) => handleUpdatePaymentStatus(payment.id, e.target.value)}
+                              onBlur={() => setEditingPaymentStatus(null)}
+                              className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              autoFocus
+                            >
+                              <option value="未完成">未完成</option>
+                              <option value="已完成">已完成</option>
+                            </select>
+                          ) : (
+                            <span 
+                              className={`px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 ${
+                                paymentStatus === '已完成' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                              onClick={() => setEditingPaymentStatus(payment.id)}
+                              title="點擊編輯"
+                            >
+                              {paymentStatus}
+                            </span>
+                          )}
+                        </td>
                         {payments.some(p => p.checkNo) && (
                           <>
                             <td className="px-4 py-3 text-sm">{payment.checkNo || '-'}</td>
@@ -670,10 +719,10 @@ export default function PaymentPage() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan={payments.some(p => p.checkNo) ? 8 : 6} className="px-4 py-4">
+                          <td colSpan={payments.some(p => p.checkNo) ? 9 : 7} className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 付款基本資訊 */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4 border-b border-gray-300">
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4 border-b border-gray-300">
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">付款單號</div>
                                   <div className="text-sm font-semibold">{payment.paymentNo}</div>
@@ -689,6 +738,33 @@ export default function PaymentPage() {
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">發票數量</div>
                                   <div className="text-sm font-semibold">{invoiceIds.length} 張</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-gray-500 mb-1">付款狀態</div>
+                                  <div className="text-sm">
+                                    {editingPaymentStatus === payment.id ? (
+                                      <select
+                                        value={paymentStatus}
+                                        onChange={(e) => handleUpdatePaymentStatus(payment.id, e.target.value)}
+                                        onBlur={() => setEditingPaymentStatus(null)}
+                                        className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        autoFocus
+                                      >
+                                        <option value="未完成">未完成</option>
+                                        <option value="已完成">已完成</option>
+                                      </select>
+                                    ) : (
+                                      <span 
+                                        className={`px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 inline-block ${
+                                          paymentStatus === '已完成' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                        }`}
+                                        onClick={() => setEditingPaymentStatus(payment.id)}
+                                        title="點擊編輯"
+                                      >
+                                        {paymentStatus}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
@@ -785,15 +861,29 @@ export default function PaymentPage() {
                                           const tax = parseFloat(invoice.tax || 0);
                                           const totalAmount = parseFloat(invoice.totalAmount || amount + tax);
                                           
-                                          // 從進貨單取得廠商和管別資訊（從發票的 items 中第一個 purchaseId）
-                                          let supplierName = '未知廠商';
+                                          // 從發票的 items 中取得廠商和管別資訊
+                                          let supplierId = null;
                                           let warehouse = '-';
-                                          if (invoice.items && invoice.items.length > 0) {
-                                            const firstPurchaseId = invoice.items[0].purchaseId;
-                                            // 需要從 purchases 中取得資訊，這裡先顯示從發票本身取得的資訊
-                                            supplierName = invoice.supplierName || '未知廠商';
-                                            warehouse = invoice.warehouse || '-';
+                                          
+                                          // 優先從發票本身取得（如果有的話）
+                                          if (invoice.supplierId) {
+                                            supplierId = invoice.supplierId;
+                                          } else if (invoice.items && invoice.items.length > 0) {
+                                            // 從第一個 item 取得 supplierId
+                                            supplierId = invoice.items[0].supplierId;
                                           }
+                                          
+                                          // 取得管別資訊
+                                          if (invoice.warehouse) {
+                                            warehouse = invoice.warehouse;
+                                          } else if (invoice.items && invoice.items.length > 0) {
+                                            // 從第一個 item 的 purchaseId 查找進貨單取得管別
+                                            const firstPurchaseId = invoice.items[0].purchaseId;
+                                            // 這裡需要從 purchases 中查找，但我們先使用發票本身的資訊
+                                            // 如果沒有，則顯示 '-'
+                                          }
+                                          
+                                          const supplierName = supplierId ? getSupplierName(supplierId) : '未知廠商';
 
                                           return (
                                             <tr key={idx} className="hover:bg-gray-50">

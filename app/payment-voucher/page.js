@@ -98,7 +98,6 @@ export default function PaymentVoucherListPage() {
               <Link href="/finance" className="hover:text-blue-600">付款</Link>
               <Link href="/inventory" className="hover:text-blue-600">庫存</Link>
               <Link href="/analytics" className="hover:text-blue-600">分析</Link>
-              <Link href="/payment-voucher" className="font-medium text-green-600">🖨️ 列印傳票</Link>
             </div>
           </div>
         </div>

@@ -22,11 +22,10 @@ export async function PUT(request, { params }) {
       supplierId: parseInt(data.supplierId),
       purchaseDate: data.purchaseDate,
       paymentTerms: data.paymentTerms || '月結',
-      taxType: data.taxType || 'tax-excluded',
       status: data.status,
-      amount: parseFloat(data.amount || 0), // 稅前金額
-      tax: parseFloat(data.tax || 0),
-      totalAmount: data.totalAmount || (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)), // 總金額
+      amount: parseFloat(data.amount || 0), // 金額
+      tax: 0, // 稅額固定為 0
+      totalAmount: data.totalAmount || parseFloat(data.amount || 0), // 總金額
       items: data.items || [],
       updatedAt: new Date().toISOString()
     };

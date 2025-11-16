@@ -96,7 +96,6 @@ export default function AnalyticsPage() {
               <Link href="/finance" className="hover:text-blue-600">付款</Link>
               <Link href="/inventory" className="hover:text-blue-600">庫存</Link>
               <Link href="/analytics" className="font-medium text-blue-600">分析</Link>
-              <Link href="/payment-voucher" className="text-green-600 hover:text-green-700 font-medium">🖨️ 列印傳票</Link>
             </div>
           </div>
         </div>

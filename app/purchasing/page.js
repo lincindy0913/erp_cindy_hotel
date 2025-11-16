@@ -12,6 +12,7 @@ export default function PurchasingPage() {
   const [purchases, setPurchases] = useState([]);
   const [allPurchases, setAllPurchases] = useState([]); // 所有進貨單（未篩選）
   const [loading, setLoading] = useState(true);
+  const [expandedPurchaseId, setExpandedPurchaseId] = useState(null); // 展開的進貨單 ID
   const [filterData, setFilterData] = useState({
     supplierId: '',
     startDate: '',
@@ -30,7 +31,6 @@ export default function PurchasingPage() {
     supplierId: '',
     purchaseDate: new Date().toISOString().split('T')[0],
     paymentTerms: '月結',
-    taxType: 'tax-excluded', // 稅務類型：tax-excluded(應稅-外加), tax-included(應稅-內含), tax-free(免稅)
     status: '待入庫'
   });
   const [newItem, setNewItem] = useState({
@@ -105,32 +105,13 @@ export default function PurchasingPage() {
     return supplier ? supplier.name : '未知廠商';
   }
 
-  function handleViewDetails(purchase) {
-    const taxTypeText = {
-      'tax-excluded': '應稅-外加',
-      'tax-included': '應稅-內含',
-      'tax-free': '免稅'
-    };
-    const totalAmount = purchase.totalAmount || (parseFloat(purchase.amount || 0) + parseFloat(purchase.tax || 0));
-    let message = `進貨單詳情：\n\n單號：${purchase.purchaseNo}\n館別：${purchase.warehouse || '未指定'}\n部門：${purchase.department || '未指定'}\n廠商：${getSupplierName(purchase.supplierId)}\n日期：${purchase.purchaseDate}\n稅務類型：${taxTypeText[purchase.taxType] || '應稅-外加'}\n`;
-    
-    if (purchase.taxType === 'tax-included') {
-      message += `稅前金額：NT$ ${parseFloat(purchase.amount || 0).toFixed(2)}\n稅額：NT$ ${parseFloat(purchase.tax || 0).toFixed(2)}\n`;
+  function handleViewDetails(purchaseId) {
+    // 切換展開/收回狀態
+    if (expandedPurchaseId === purchaseId) {
+      setExpandedPurchaseId(null);
     } else {
-      message += `金額：NT$ ${parseFloat(purchase.amount || 0).toFixed(2)}\n`;
-      if (purchase.taxType !== 'tax-free') {
-        message += `稅額：NT$ ${parseFloat(purchase.tax || 0).toFixed(2)}\n`;
-      }
+      setExpandedPurchaseId(purchaseId);
     }
-    message += `總金額：NT$ ${totalAmount.toFixed(2)}\n狀態：${purchase.status}\n\n商品明細：\n`;
-    
-    purchase.items.forEach((item, idx) => {
-      const product = products.find(p => p.id === item.productId);
-      const note = item.note ? `，備註：${item.note}` : '';
-      message += `${idx + 1}. ${product ? product.name : '未知商品'} - 數量：${item.quantity}，單價：NT$ ${item.unitPrice}${note}\n`;
-    });
-    
-    alert(message);
   }
 
   function handleEdit(purchase) {
@@ -142,7 +123,6 @@ export default function PurchasingPage() {
       supplierId: purchase.supplierId.toString(),
       purchaseDate: purchase.purchaseDate,
       paymentTerms: purchase.paymentTerms || '月結',
-      taxType: purchase.taxType || 'tax-excluded',
       status: purchase.status
     });
     
@@ -258,39 +238,9 @@ export default function PurchasingPage() {
   function calculateTotal() {
     const subtotal = items.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     
-    let tax = 0;
-    let total = subtotal;
-    let beforeTaxAmount = subtotal;
-    
-    const taxRate = 0.05; // 5% 稅率
-    
-    switch (formData.taxType) {
-      case 'tax-excluded': // 應稅-外加：金額+5%稅
-        beforeTaxAmount = subtotal;
-        tax = subtotal * taxRate;
-        total = subtotal + tax;
-        break;
-      case 'tax-included': // 應稅-內含：反推稅前金額（金額/1.05）
-        total = subtotal;
-        beforeTaxAmount = subtotal / (1 + taxRate);
-        tax = total - beforeTaxAmount;
-        break;
-      case 'tax-free': // 免稅：稅=0，總金額=金額
-        beforeTaxAmount = subtotal;
-        tax = 0;
-        total = subtotal;
-        break;
-      default:
-        beforeTaxAmount = subtotal;
-        tax = subtotal * taxRate;
-        total = subtotal + tax;
-    }
-    
     return {
-      beforeTaxAmount: beforeTaxAmount.toFixed(2),
-      subtotal: beforeTaxAmount.toFixed(2),
-      tax: tax.toFixed(2),
-      total: total.toFixed(2)
+      subtotal: subtotal.toFixed(2),
+      total: subtotal.toFixed(2)
     };
   }
 
@@ -322,10 +272,9 @@ export default function PurchasingPage() {
           unitPrice: parseFloat(item.unitPrice),
           note: item.note || ''
         })),
-        amount: parseFloat(totals.beforeTaxAmount), // 稅前金額
-        tax: parseFloat(totals.tax),
-        totalAmount: parseFloat(totals.total), // 總金額
-        taxType: formData.taxType
+        amount: parseFloat(totals.total), // 金額
+        tax: 0, // 稅額設為 0
+        totalAmount: parseFloat(totals.total) // 總金額
       };
 
       const isEditing = !!editingPurchase;
@@ -349,7 +298,6 @@ export default function PurchasingPage() {
           supplierId: '',
           purchaseDate: new Date().toISOString().split('T')[0],
           paymentTerms: '月結',
-          taxType: 'tax-excluded',
           status: '待入庫'
         });
         fetchPurchases();
@@ -369,7 +317,7 @@ export default function PurchasingPage() {
     }
   }
 
-  const totals = items.length > 0 ? calculateTotal() : { subtotal: '0', tax: '0', total: '0' };
+  const totals = items.length > 0 ? calculateTotal() : { subtotal: '0', total: '0' };
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -387,7 +335,6 @@ export default function PurchasingPage() {
               <Link href="/finance" className="hover:text-blue-600">付款</Link>
               <Link href="/inventory" className="hover:text-blue-600">庫存</Link>
               <Link href="/analytics" className="hover:text-blue-600">分析</Link>
-              <Link href="/payment-voucher" className="text-green-600 hover:text-green-700 font-medium">🖨️ 列印傳票</Link>
             </div>
           </div>
         </div>
@@ -488,21 +435,6 @@ export default function PurchasingPage() {
                     <option>月結</option>
                     <option>現金</option>
                     <option>支票</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    稅務類型 *
-                  </label>
-                  <select
-                    required
-                    value={formData.taxType}
-                    onChange={(e) => setFormData({ ...formData, taxType: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="tax-excluded">應稅-外加</option>
-                    <option value="tax-included">應稅-內含</option>
-                    <option value="tax-free">免稅</option>
                   </select>
                 </div>
                 <div>
@@ -623,25 +555,7 @@ export default function PurchasingPage() {
               {/* 金額計算 */}
               <div className="border-t pt-4 mb-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <div className="text-sm text-blue-800 mb-3 font-medium">
-                    {formData.taxType === 'tax-excluded' && '稅務類型：應稅-外加（未稅金額 + 5%稅）'}
-                    {formData.taxType === 'tax-included' && '稅務類型：應稅-內含（已含稅金額，系統自動反推稅前金額）'}
-                    {formData.taxType === 'tax-free' && '稅務類型：免稅（無稅額）'}
-                  </div>
                   <div className="flex flex-wrap justify-end gap-6">
-                    <div className="text-right">
-                      <div className="text-xs text-gray-500 mb-1">
-                        {formData.taxType === 'tax-excluded' ? '未稅金額' : 
-                         formData.taxType === 'tax-included' ? '稅前金額（反推）' : '金額'}
-                      </div>
-                      <div className="text-lg font-semibold">NT$ {totals.beforeTaxAmount}</div>
-                    </div>
-                    {formData.taxType !== 'tax-free' && (
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500 mb-1">稅額 (5%)</div>
-                        <div className="text-lg font-semibold">NT$ {totals.tax}</div>
-                      </div>
-                    )}
                     <div className="text-right border-l-2 border-blue-300 pl-6">
                       <div className="text-xs text-blue-600 mb-1 font-medium">總金額</div>
                       <div className="text-2xl font-bold text-blue-600">NT$ {totals.total}</div>
@@ -746,8 +660,6 @@ export default function PurchasingPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">部門</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">日期</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">金額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">稅額</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">總金額</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
@@ -756,61 +668,144 @@ export default function PurchasingPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
                     載入中...
                   </td>
                 </tr>
               ) : purchases.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
                     尚無進貨資料
                   </td>
                 </tr>
               ) : (
                 purchases.map((purchase, index) => {
-                  const totalAmount = purchase.totalAmount || (parseFloat(purchase.amount || 0) + parseFloat(purchase.tax || 0));
+                  const totalAmount = purchase.totalAmount || parseFloat(purchase.amount || 0);
+                  const isExpanded = expandedPurchaseId === purchase.id;
                   return (
-                  <tr key={purchase.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-4 py-3 text-sm">{purchase.purchaseNo}</td>
-                    <td className="px-4 py-3 text-sm">{purchase.warehouse || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{purchase.department || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{getSupplierName(purchase.supplierId)}</td>
-                    <td className="px-4 py-3 text-sm">{purchase.purchaseDate}</td>
-                    <td className="px-4 py-3 text-sm">NT$ {parseFloat(purchase.amount || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm">NT$ {parseFloat(purchase.tax || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm font-semibold text-blue-600">NT$ {totalAmount.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
-                        purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {purchase.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleViewDetails(purchase)}
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          查看
-                        </button>
-                        <button
-                          onClick={() => handleEdit(purchase)}
-                          className="text-green-600 hover:underline text-sm"
-                        >
-                          編輯
-                        </button>
-                        <button
-                          onClick={() => handleDelete(purchase.id)}
-                          className="text-red-600 hover:underline text-sm"
-                        >
-                          刪除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                    <>
+                      <tr key={purchase.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-4 py-3 text-sm">{purchase.purchaseNo}</td>
+                        <td className="px-4 py-3 text-sm">{purchase.warehouse || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{purchase.department || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{getSupplierName(purchase.supplierId)}</td>
+                        <td className="px-4 py-3 text-sm">{purchase.purchaseDate}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-blue-600">NT$ {totalAmount.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
+                            purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {purchase.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleViewDetails(purchase.id)}
+                              className="text-blue-600 hover:underline text-sm"
+                            >
+                              {isExpanded ? '收起' : '查看'}
+                            </button>
+                            <button
+                              onClick={() => handleEdit(purchase)}
+                              className="text-green-600 hover:underline text-sm"
+                            >
+                              編輯
+                            </button>
+                            <button
+                              onClick={() => handleDelete(purchase.id)}
+                              className="text-red-600 hover:underline text-sm"
+                            >
+                              刪除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${purchase.id}-details`}>
+                          <td colSpan="8" className="px-4 py-4 bg-gray-50">
+                            <div className="bg-white rounded-lg border border-gray-200 p-4">
+                              <h4 className="text-lg font-semibold mb-4 text-gray-800">進貨單詳情</h4>
+                              <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">單號：</span>
+                                  <span className="text-sm text-gray-800">{purchase.purchaseNo}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">館別：</span>
+                                  <span className="text-sm text-gray-800">{purchase.warehouse || '未指定'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">部門：</span>
+                                  <span className="text-sm text-gray-800">{purchase.department || '未指定'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">廠商：</span>
+                                  <span className="text-sm text-gray-800">{getSupplierName(purchase.supplierId)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">日期：</span>
+                                  <span className="text-sm text-gray-800">{purchase.purchaseDate}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">付款條件：</span>
+                                  <span className="text-sm text-gray-800">{purchase.paymentTerms || '月結'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">總金額：</span>
+                                  <span className="text-sm font-semibold text-blue-600">NT$ {totalAmount.toFixed(2)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-gray-600">狀態：</span>
+                                  <span className={`px-2 py-1 rounded text-xs ${
+                                    purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
+                                    purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                  }`}>
+                                    {purchase.status}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="mt-4">
+                                <h5 className="text-md font-semibold mb-2 text-gray-800">商品明細</h5>
+                                {purchase.items && purchase.items.length > 0 ? (
+                                  <table className="w-full border-collapse">
+                                    <thead>
+                                      <tr className="bg-gray-100">
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">產品</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">數量</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">單價</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">小計</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">備註</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {purchase.items.map((item, idx) => {
+                                        const product = products.find(p => p.id === item.productId);
+                                        const itemSubtotal = item.quantity * item.unitPrice;
+                                        return (
+                                          <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                            <td className="px-3 py-2 text-sm border border-gray-300">{product ? product.name : '未知商品'}</td>
+                                            <td className="px-3 py-2 text-sm border border-gray-300">{item.quantity}</td>
+                                            <td className="px-3 py-2 text-sm border border-gray-300">NT$ {item.unitPrice.toFixed(2)}</td>
+                                            <td className="px-3 py-2 text-sm border border-gray-300">NT$ {itemSubtotal.toFixed(2)}</td>
+                                            <td className="px-3 py-2 text-sm text-gray-600 border border-gray-300">{item.note || '-'}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                ) : (
+                                  <p className="text-gray-500 text-sm">尚無商品明細</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })
               )}

@@ -90,17 +90,86 @@ export async function POST(request) {
       paymentDate: data.paymentDate, // 付款日期
       paymentMethod: data.paymentMethod || '支票',
       amount: paymentAmount,
+      status: '未完成', // 付款狀態，預設為未完成
       // 支票相關欄位
       checkIssueDate: data.checkIssueDate || '', // 開票日期
       checkDate: data.checkDate || '', // 支票日期
       checkNo: data.checkNo || '', // 支票號碼
       checkAccount: data.checkAccount || '', // 開票賬戶
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       // 保留舊格式兼容性（使用第一張發票ID）
       salesId: invoiceIds[0]
     };
 
     store.payments.push(newPayment);
+    
+    // 同步更新發票狀態為「已核銷」
+    invoiceIds.forEach(invoiceId => {
+      const salesIndex = store.sales.findIndex(s => s.id === invoiceId);
+      if (salesIndex !== -1) {
+        store.sales[salesIndex] = {
+          ...store.sales[salesIndex],
+          status: '已核銷',
+          updatedAt: new Date().toISOString()
+        };
+        
+        // 為每張發票創建支出記錄
+        const invoice = store.sales[salesIndex];
+        if (!store.expenses) {
+          store.expenses = [];
+        }
+        
+        // 檢查是否已存在該發票的支出記錄
+        const existingExpense = store.expenses.find(e => e.invoiceId === invoiceId);
+        if (!existingExpense) {
+          // 從發票的 items 中取得廠商資訊
+          let supplierId = null;
+          let supplierName = '未知廠商';
+          let warehouse = '';
+          
+          if (invoice.supplierId) {
+            supplierId = invoice.supplierId;
+            const supplier = store.suppliers.find(s => s.id === supplierId);
+            supplierName = supplier ? supplier.name : '未知廠商';
+          } else if (invoice.items && invoice.items.length > 0 && invoice.items[0].supplierId) {
+            supplierId = invoice.items[0].supplierId;
+            const supplier = store.suppliers.find(s => s.id === supplierId);
+            supplierName = supplier ? supplier.name : '未知廠商';
+          }
+          
+          if (invoice.warehouse) {
+            warehouse = invoice.warehouse;
+          } else if (invoice.items && invoice.items.length > 0) {
+            // 從 purchaseId 查找進貨單取得 warehouse
+            const firstPurchaseId = invoice.items[0].purchaseId;
+            const purchase = store.purchases.find(p => p.id === firstPurchaseId);
+            if (purchase && purchase.warehouse) {
+              warehouse = purchase.warehouse;
+            }
+          }
+          
+          const newExpense = {
+            id: store.counters.expense++,
+            invoiceId: invoiceId,
+            invoiceNo: invoice.invoiceNo || invoice.salesNo || '',
+            invoiceDate: invoice.invoiceDate || invoice.salesDate || '',
+            amount: parseFloat(invoice.totalAmount || (invoice.amount || 0) + (invoice.tax || 0)),
+            actualPaymentDate: '',
+            actualPaymentAmount: 0,
+            status: '未完成',
+            supplierId: supplierId,
+            supplierName: supplierName,
+            warehouse: warehouse,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          
+          store.expenses.push(newExpense);
+        }
+      }
+    });
+    
     return NextResponse.json(newPayment, { status: 201 });
   } catch (error) {
     console.error('建立付款紀錄錯誤:', error);
