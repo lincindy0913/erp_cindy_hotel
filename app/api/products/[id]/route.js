@@ -27,9 +27,19 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: '產品不存在' }, { status: 404 });
     }
 
+    // 驗證：如果 isInStock 為 true，warehouseLocation 必須填寫
+    if (data.isInStock === true && !data.warehouseLocation) {
+      return NextResponse.json({ error: '列入庫存時必須填寫倉庫位置' }, { status: 400 });
+    }
+
+    // 處理 isInStock 的轉換
+    const isInStock = data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是';
+    
     store.products[productIndex] = { 
       ...store.products[productIndex], 
       ...data,
+      isInStock: isInStock,
+      warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
       updatedAt: new Date().toISOString()
     };
     return NextResponse.json(store.products[productIndex]);

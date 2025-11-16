@@ -15,19 +15,21 @@ export async function GET(request) {
     // 從現有資料計算庫存
     const inventoryMap = new Map();
     
-    // 初始化所有產品的庫存
-    store.products.forEach(product => {
-      inventoryMap.set(product.id, {
-        id: inventoryMap.size + 1,
-        productId: product.id,
-        beginningQty: 0,
-        purchaseQty: 0,
-        salesQty: 0,
-        currentQty: 0,
-        product: product,
-        status: '正常'
+    // 只初始化「列入庫存」的產品
+    store.products
+      .filter(product => product.isInStock === true)
+      .forEach(product => {
+        inventoryMap.set(product.id, {
+          id: inventoryMap.size + 1,
+          productId: product.id,
+          beginningQty: 0,
+          purchaseQty: 0,
+          salesQty: 0,
+          currentQty: 0,
+          product: product,
+          status: '正常'
+        });
       });
-    });
     
     // 計算進貨數量
     store.purchases.forEach(purchase => {

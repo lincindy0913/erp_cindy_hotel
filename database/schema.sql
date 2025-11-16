@@ -14,8 +14,14 @@ CREATE TABLE products (
     unit VARCHAR(20),
     cost_price DECIMAL(10, 2) NOT NULL CHECK (cost_price >= 0),
     sales_price DECIMAL(10, 2) NOT NULL CHECK (sales_price >= 0),
+    is_in_stock BOOLEAN DEFAULT FALSE,
+    warehouse_location VARCHAR(50) CHECK (warehouse_location IN ('麗格', '麗軒', '民宿')),
+    accounting_subject VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_warehouse_when_in_stock CHECK (
+        (is_in_stock = FALSE) OR (is_in_stock = TRUE AND warehouse_location IS NOT NULL)
+    )
 );
 
 -- 廠商資料
@@ -182,6 +188,7 @@ CREATE TABLE dashboard_data (
 
 -- 主資料層索引
 CREATE INDEX idx_products_code ON products(code);
+CREATE INDEX idx_products_is_in_stock ON products(is_in_stock);
 CREATE INDEX idx_suppliers_code ON suppliers(code);
 CREATE INDEX idx_customers_code ON customers(code);
 

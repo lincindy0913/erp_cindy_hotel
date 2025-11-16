@@ -19,7 +19,10 @@ export const ProductsSchema = {
     Category: { type: 'string', required: true },
     Unit: { type: 'string', required: true },
     CostPrice: { type: 'number', required: true, min: 0 },
-    SalesPrice: { type: 'number', required: true, min: 0 }
+    SalesPrice: { type: 'number', required: true, min: 0 },
+    IsInStock: { type: 'boolean', required: true, default: false },
+    WarehouseLocation: { type: 'string', required: false, enum: ['麗格', '麗軒', '民宿'] },
+    AccountingSubject: { type: 'string', required: false }
   }
 };
 

@@ -99,6 +99,7 @@ export default function InventoryPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ID</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">產品</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫位置</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">期初量</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">進貨</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">銷貨</th>
@@ -109,7 +110,7 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-gray-200">
               {inventory.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
                     尚無庫存資料
                   </td>
                 </tr>
@@ -119,6 +120,9 @@ export default function InventoryPage() {
                     <td className="px-4 py-3 text-sm">{item.id}</td>
                     <td className="px-4 py-3 text-sm">
                       {item.product ? item.product.name : '未知產品'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {item.product ? (item.product.warehouseLocation || '-') : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm">{item.beginningQty}</td>
                     <td className="px-4 py-3 text-sm">{item.purchaseQty}</td>

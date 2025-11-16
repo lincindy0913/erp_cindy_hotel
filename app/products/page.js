@@ -16,7 +16,10 @@ export default function ProductsPage() {
     category: '',
     unit: '',
     costPrice: '',
-    salesPrice: ''
+    salesPrice: '',
+    isInStock: false,
+    warehouseLocation: '',
+    accountingSubject: ''
   });
 
   useEffect(() => {
@@ -41,15 +44,28 @@ export default function ProductsPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    
+    // 前端驗證：如果列入庫存為「是」，倉庫位置必須填寫
+    if (formData.isInStock && !formData.warehouseLocation) {
+      alert('列入庫存時必須填寫倉庫位置');
+      return;
+    }
+    
     try {
       const isEditing = !!editingProduct;
       const method = isEditing ? 'PUT' : 'POST';
       const url = isEditing ? `/api/products/${editingProduct.id}` : '/api/products';
       
+      // 轉換 isInStock 為布林值
+      const submitData = {
+        ...formData,
+        isInStock: formData.isInStock === true || formData.isInStock === '是'
+      };
+      
       const response = await fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submitData)
       });
 
       if (response.ok) {
@@ -62,7 +78,10 @@ export default function ProductsPage() {
           category: '',
           unit: '',
           costPrice: '',
-          salesPrice: ''
+          salesPrice: '',
+          isInStock: false,
+          warehouseLocation: '',
+          accountingSubject: ''
         });
         const productsList = await fetchProducts();
         // 新增產品後跳到最後一頁
@@ -89,7 +108,10 @@ export default function ProductsPage() {
       category: product.category || '',
       unit: product.unit || '',
       costPrice: product.costPrice,
-      salesPrice: product.salesPrice
+      salesPrice: product.salesPrice,
+      isInStock: product.isInStock || false,
+      warehouseLocation: product.warehouseLocation || '',
+      accountingSubject: product.accountingSubject || ''
     });
   }
 
@@ -115,13 +137,13 @@ export default function ProductsPage() {
   }
 
   function handleViewDetails(product) {
-    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n售價：NT$ ${product.salesPrice}`);
+    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n售價：NT$ ${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}`);
   }
 
   function handleExport() {
     try {
       // 轉換為 CSV 格式
-      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '售價'];
+      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '售價', '列入庫存', '倉庫位置', '會計科目'];
       const rows = products.map(p => [
         p.id,
         p.code,
@@ -129,7 +151,10 @@ export default function ProductsPage() {
         p.category || '',
         p.unit || '',
         p.costPrice,
-        p.salesPrice
+        p.salesPrice,
+        p.isInStock ? '是' : '否',
+        p.warehouseLocation || '',
+        p.accountingSubject || ''
       ]);
 
       const csv = [
@@ -181,13 +206,17 @@ export default function ProductsPage() {
           
           const values = line.split(',');
           if (values.length >= 7) {
+            const isInStock = values[7] === '是' || values[7] === 'true' || values[7] === '1';
             importedProducts.push({
               code: values[1],
               name: values[2],
               category: values[3] || '',
               unit: values[4] || '',
               costPrice: parseFloat(values[5]) || 0,
-              salesPrice: parseFloat(values[6]) || 0
+              salesPrice: parseFloat(values[6]) || 0,
+              isInStock: isInStock,
+              warehouseLocation: isInStock ? (values[8] || '') : '',
+              accountingSubject: values[9] || ''
             });
           }
         }
@@ -385,6 +414,57 @@ export default function ProductsPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  是否列入庫存 *
+                </label>
+                <select
+                  required
+                  value={formData.isInStock ? '是' : '否'}
+                  onChange={(e) => {
+                    const isInStock = e.target.value === '是';
+                    setFormData({ 
+                      ...formData, 
+                      isInStock: isInStock,
+                      warehouseLocation: isInStock ? formData.warehouseLocation : ''
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="否">否</option>
+                  <option value="是">是</option>
+                </select>
+              </div>
+              {formData.isInStock && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    倉庫位置 *
+                  </label>
+                  <select
+                    required
+                    value={formData.warehouseLocation}
+                    onChange={(e) => setFormData({ ...formData, warehouseLocation: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">請選擇</option>
+                    <option value="麗格">麗格</option>
+                    <option value="麗軒">麗軒</option>
+                    <option value="民宿">民宿</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  會計科目
+                </label>
+                <input
+                  type="text"
+                  value={formData.accountingSubject}
+                  onChange={(e) => setFormData({ ...formData, accountingSubject: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="例如：存貨、費用等"
+                />
+              </div>
               <div className="col-span-2 flex justify-end gap-3">
                 <button
                   type="button"
@@ -453,13 +533,16 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">單位</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">成本價</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">售價</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">列入庫存</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫位置</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {currentProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
                     {products.length === 0 ? '尚無產品資料' : '此頁無資料'}
                   </td>
                 </tr>
@@ -473,6 +556,9 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 text-sm">{product.unit}</td>
                     <td className="px-4 py-3 text-sm">NT$ {product.costPrice}</td>
                     <td className="px-4 py-3 text-sm">NT$ {product.salesPrice}</td>
+                    <td className="px-4 py-3 text-sm">{product.isInStock ? '是' : '否'}</td>
+                    <td className="px-4 py-3 text-sm">{product.warehouseLocation || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{product.accountingSubject || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button

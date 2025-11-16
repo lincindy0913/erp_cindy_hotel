@@ -15,15 +15,18 @@ datasource db {
 // ============================================
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique @db.VarChar(50)
-  name        String   @db.VarChar(255)
-  category    String?  @db.VarChar(100)
-  unit        String?  @db.VarChar(20)
-  costPrice   Decimal  @map("cost_price") @db.Decimal(10, 2)
-  salesPrice  Decimal  @map("sales_price") @db.Decimal(10, 2)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                Int      @id @default(autoincrement())
+  code              String   @unique @db.VarChar(50)
+  name              String   @db.VarChar(255)
+  category          String?  @db.VarChar(100)
+  unit              String?  @db.VarChar(20)
+  costPrice         Decimal  @map("cost_price") @db.Decimal(10, 2)
+  salesPrice        Decimal  @map("sales_price") @db.Decimal(10, 2)
+  isInStock         Boolean  @default(false) @map("is_in_stock")
+  warehouseLocation String?  @map("warehouse_location") @db.VarChar(50)
+  accountingSubject String?  @map("accounting_subject") @db.VarChar(100)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
   
   purchaseDetails PurchaseDetail[]
   salesDetails    SalesDetail[]
@@ -32,6 +35,7 @@ model Product {
   priceComparisons PriceComparison[]
   
   @@index([code])
+  @@index([isInStock])
   @@map("products")
 }
 
