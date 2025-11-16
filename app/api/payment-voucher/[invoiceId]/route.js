@@ -32,21 +32,42 @@ export async function GET(request, { params }) {
           const supplier = store.suppliers.find(s => s.id === purchase.supplierId);
           const product = store.products.find(p => p.id === item.productId);
           
-          // 取得該產品的歷史最低價（從價格歷史記錄中）
-          const productPriceHistory = store.priceHistory.filter(
+          // 取得該產品的所有歷史價格記錄
+          const allProductPriceHistory = store.priceHistory.filter(
             ph => ph.productId === item.productId
           );
           
-          let minHistoricalPrice = null;
-          if (productPriceHistory.length > 0) {
-            minHistoricalPrice = Math.min(...productPriceHistory.map(ph => parseFloat(ph.unitPrice)));
-          }
-
           // 當前價格 = 發票中的單價（也就是進貨時的價格）
           const currentPrice = parseFloat(item.unitPrice || 0);
           
-          // 判斷是否異常：當前價格 > 歷史最低價
+          // 計算歷史最低價（排除當前這筆進貨的價格）
+          // 方法：找出所有不等於當前價格的歷史記錄中的最低價
+          // 如果所有歷史記錄的價格都等於當前價格，則無法比較
+          let minHistoricalPrice = null;
+          if (allProductPriceHistory.length > 0) {
+            // 取得所有不等於當前價格的歷史價格
+            const historicalPrices = allProductPriceHistory
+              .map(ph => parseFloat(ph.unitPrice))
+              .filter(price => price !== currentPrice);
+            
+            if (historicalPrices.length > 0) {
+              // 有歷史價格（不等於當前價格），使用歷史最低價
+              minHistoricalPrice = Math.min(...historicalPrices);
+            } else if (allProductPriceHistory.length > 1) {
+              // 所有歷史價格都等於當前價格，但有多筆記錄，使用所有記錄中的最低價
+              minHistoricalPrice = Math.min(...allProductPriceHistory.map(ph => parseFloat(ph.unitPrice)));
+            }
+            // 如果只有一筆記錄，minHistoricalPrice 保持為 null
+          }
+          
+          // 判斷是否異常：當前價格 > 歷史最低價（需要有歷史價格才能比較）
           const isPriceHigher = minHistoricalPrice !== null && currentPrice > minHistoricalPrice;
+          
+          // 調試信息
+          console.log(`[付款傳票] 產品ID: ${item.productId}, 產品名稱: ${product?.name || '未知'}`);
+          console.log(`[付款傳票] 當前價格: ${currentPrice}, 歷史最低價: ${minHistoricalPrice}, 是否異常: ${isPriceHigher}`);
+          console.log(`[付款傳票] 價格歷史記錄數量: ${allProductPriceHistory.length}`);
+          console.log(`[付款傳票] 價格歷史記錄:`, allProductPriceHistory.map(ph => ({ date: ph.purchaseDate, price: ph.unitPrice })));
 
           itemsWithPurchaseInfo.push({
             ...item,

@@ -491,11 +491,12 @@ export default function PaymentPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">付款單號</label>
                   <input
                     type="text"
-                    value={formData.paymentNo}
-                    onChange={(e) => setFormData({ ...formData, paymentNo: e.target.value })}
-                    placeholder="自動產生"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.paymentNo || '自動產生'}
+                    readOnly
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
                   />
+                  <p className="text-xs text-gray-500 mt-1">系統自動產生</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">付款日期 *</label>

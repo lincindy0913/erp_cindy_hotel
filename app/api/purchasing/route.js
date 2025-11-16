@@ -44,6 +44,23 @@ export async function POST(request) {
     };
 
     store.purchases.push(newPurchase);
+
+    // 記錄價格歷史
+    if (data.items && Array.isArray(data.items)) {
+      data.items.forEach(item => {
+        if (item.productId && item.unitPrice) {
+          const priceHistoryEntry = {
+            id: store.counters.priceHistory++,
+            supplierId: parseInt(data.supplierId),
+            productId: parseInt(item.productId),
+            purchaseDate: data.purchaseDate,
+            unitPrice: parseFloat(item.unitPrice)
+          };
+          store.priceHistory.push(priceHistoryEntry);
+        }
+      });
+    }
+
     return NextResponse.json(newPurchase, { status: 201 });
   } catch (error) {
     console.error('建立進貨單錯誤:', error);

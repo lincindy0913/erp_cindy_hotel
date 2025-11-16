@@ -122,21 +122,65 @@ export default function InvoicePage() {
     if (isSelected) {
       setSelectedItems(selectedItems.filter(selected => selected.id !== item.id));
     } else {
-      setSelectedItems([...selectedItems, item]);
+      // 新增項目時，初始化銷售金額和營業稅欄位
+      const salesAmount = item.subtotal || 0;
+      const taxType = '應稅'; // 預設為應稅
+      const taxAmount = salesAmount * 0.05; // 預設營業稅為銷售金額的 5%
+      setSelectedItems([...selectedItems, {
+        ...item,
+        salesAmount: salesAmount,
+        taxType: taxType,
+        taxAmount: taxAmount
+      }]);
     }
+  }
+
+  function updateSelectedItem(itemId, field, value) {
+    setSelectedItems(selectedItems.map(item => {
+      if (item.id === itemId) {
+        const updated = { ...item, [field]: value };
+        // 如果更新的是銷售金額或營業稅類型，重新計算營業稅金額
+        if (field === 'salesAmount' || field === 'taxType') {
+          const salesAmount = field === 'salesAmount' ? parseFloat(value) || 0 : parseFloat(item.salesAmount || 0);
+          const taxType = field === 'taxType' ? value : item.taxType;
+          
+          let taxAmount = 0;
+          if (taxType === '應稅') {
+            taxAmount = salesAmount * 0.05; // 5% 營業稅
+          } else if (taxType === '零稅率' || taxType === '免稅') {
+            taxAmount = 0;
+          }
+          
+          updated.taxAmount = taxAmount;
+        }
+        return updated;
+      }
+      return item;
+    }));
   }
 
   function handleSelectAll() {
     if (selectedItems.length === availableItems.length) {
       setSelectedItems([]);
     } else {
-      setSelectedItems([...availableItems]);
+      // 全選時，為每個項目初始化銷售金額和營業稅欄位
+      setSelectedItems(availableItems.map(item => ({
+        ...item,
+        salesAmount: item.subtotal || 0, // 預設銷售金額為小計
+        taxType: '應稅', // 預設為應稅
+        taxAmount: (item.subtotal || 0) * 0.05 // 預設營業稅為銷售金額的 5%
+      })));
     }
   }
 
   function calculateTotal() {
-    const subtotal = selectedItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
-    const tax = subtotal * 0.05;
+    // 使用新的銷售金額和營業稅金額計算
+    const subtotal = selectedItems.reduce((sum, item) => {
+      return sum + parseFloat(item.salesAmount || item.subtotal || 0);
+    }, 0);
+    const tax = selectedItems.reduce((sum, item) => {
+      return sum + parseFloat(item.taxAmount || 0);
+    }, 0);
     return {
       subtotal: subtotal.toFixed(2),
       tax: tax.toFixed(2),
@@ -170,6 +214,9 @@ export default function InvoicePage() {
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
+          salesAmount: parseFloat(item.salesAmount || item.subtotal || 0), // 銷售金額
+          taxType: item.taxType || '應稅', // 營業稅類型
+          taxAmount: parseFloat(item.taxAmount || 0), // 營業稅金額
           note: item.note || ''
         })),
         amount: parseFloat(totals.subtotal),
@@ -451,22 +498,74 @@ export default function InvoicePage() {
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">小計</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">銷售金額</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">營業稅類型</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">營業稅金額</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">加總金額</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {selectedItems.map((item) => (
-                          <tr key={item.id}>
-                            <td className="px-3 py-2 text-sm">{item.purchaseNo}</td>
-                            <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
-                            <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
-                            <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
-                            <td className="px-3 py-2 text-sm">{item.quantity}</td>
-                            <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
-                            <td className="px-3 py-2 text-sm">NT$ {item.subtotal.toFixed(2)}</td>
-                          </tr>
-                        ))}
+                        {selectedItems.map((item) => {
+                          const salesAmount = parseFloat(item.salesAmount || item.subtotal || 0);
+                          const taxAmount = parseFloat(item.taxAmount || 0);
+                          const totalAmount = salesAmount + taxAmount;
+                          return (
+                            <tr key={item.id}>
+                              <td className="px-3 py-2 text-sm">{item.purchaseNo}</td>
+                              <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
+                              <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
+                              <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
+                              <td className="px-3 py-2 text-sm">{item.quantity}</td>
+                              <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.salesAmount !== undefined ? item.salesAmount : item.subtotal}
+                                  onChange={(e) => updateSelectedItem(item.id, 'salesAmount', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <select
+                                  value={item.taxType || '應稅'}
+                                  onChange={(e) => updateSelectedItem(item.id, 'taxType', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="應稅">應稅</option>
+                                  <option value="零稅率">零稅率</option>
+                                  <option value="免稅">免稅</option>
+                                </select>
+                              </td>
+                              <td className="px-3 py-2 text-sm">
+                                NT$ {taxAmount.toFixed(2)}
+                              </td>
+                              <td className="px-3 py-2 text-sm font-semibold text-blue-600">
+                                NT$ {totalAmount.toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan="6" className="px-3 py-2 text-sm font-semibold text-right">總計：</td>
+                          <td className="px-3 py-2 text-sm font-semibold">
+                            NT$ {selectedItems.reduce((sum, item) => sum + parseFloat(item.salesAmount || item.subtotal || 0), 0).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-sm"></td>
+                          <td className="px-3 py-2 text-sm font-semibold">
+                            NT$ {selectedItems.reduce((sum, item) => sum + parseFloat(item.taxAmount || 0), 0).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-sm font-bold text-blue-600">
+                            NT$ {selectedItems.reduce((sum, item) => {
+                              const salesAmount = parseFloat(item.salesAmount || item.subtotal || 0);
+                              const taxAmount = parseFloat(item.taxAmount || 0);
+                              return sum + salesAmount + taxAmount;
+                            }, 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>
@@ -630,13 +729,6 @@ export default function InvoicePage() {
                             >
                               {isExpanded ? '收起' : '查看'}
                             </button>
-                            <Link
-                              href={`/payment-voucher/${invoice.id}`}
-                              target="_blank"
-                              className="text-green-600 hover:underline text-sm"
-                            >
-                              🖨️ 列印傳票
-                            </Link>
                             <button
                               onClick={() => handleDelete(invoice.id)}
                               className="text-red-600 hover:underline text-sm"
