@@ -8,7 +8,9 @@ import { getStore } from '@/lib/mockDataStore';
 export async function GET(request) {
   try {
     const store = getStore();
-    return NextResponse.json(store.suppliers);
+    // 依照廠商序號（ID）排序
+    const sortedSuppliers = [...store.suppliers].sort((a, b) => (a.id || 0) - (b.id || 0));
+    return NextResponse.json(sortedSuppliers);
   } catch (error) {
     console.error('查詢廠商錯誤:', error);
     return NextResponse.json([]);
@@ -20,16 +22,25 @@ export async function POST(request) {
     const store = getStore();
     const data = await request.json();
 
-    if (!data.code || !data.name) {
-      return NextResponse.json({ error: '缺少必填欄位' }, { status: 400 });
+    // 驗證必填欄位：廠商名稱、聯絡人、聯絡電話
+    if (!data.name || !data.contact || !data.phone) {
+      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、聯絡人、聯絡電話' }, { status: 400 });
     }
 
-    const existing = store.suppliers.find(s => s.code === data.code);
-    if (existing) {
-      return NextResponse.json({ error: '廠商代碼已存在' }, { status: 409 });
-    }
-
-    const newSupplier = { id: store.counters.supplier++, ...data };
+    // 產生新的廠商序號（ID）
+    const newSupplier = { 
+      id: store.counters.supplier++, 
+      name: data.name,
+      taxId: data.taxId || null,
+      contact: data.contact,
+      phone: data.phone,
+      address: data.address || null,
+      email: data.email || null,
+      paymentTerms: data.paymentTerms || '月結',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
     store.suppliers.push(newSupplier);
     
     return NextResponse.json(newSupplier, { status: 201 });

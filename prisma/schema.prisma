@@ -41,11 +41,15 @@ model Product {
 
 model Supplier {
   id            Int      @id @default(autoincrement())
-  code          String   @unique @db.VarChar(50)
+  code          String?  @unique @db.VarChar(50)
   name          String   @db.VarChar(255)
   taxId         String?  @map("tax_id") @db.VarChar(50)
   contact       String?  @db.VarChar(255)
+  phone         String?  @db.VarChar(50)
+  address       String?  @db.VarChar(500)
+  email         String?  @db.VarChar(255)
   paymentTerms  String?  @map("payment_terms") @db.VarChar(100)
+  sortOrder     Int?     @map("sort_order")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
   
@@ -54,6 +58,7 @@ model Supplier {
   priceComparisons PriceComparison[]
   
   @@index([code])
+  @@index([sortOrder])
   @@map("suppliers")
 }
 

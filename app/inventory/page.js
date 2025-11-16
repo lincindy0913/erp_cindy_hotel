@@ -59,12 +59,12 @@ export default function InventoryPage() {
               <Link href="/" className="hover:text-blue-600">儀表板</Link>
               <Link href="/products" className="hover:text-blue-600">主資料</Link>
               <Link href="/suppliers" className="hover:text-blue-600">廠商</Link>
-              <Link href="/customers" className="hover:text-blue-600">客戶</Link>
               <Link href="/purchasing" className="hover:text-blue-600">進貨</Link>
-              <Link href="/sales" className="hover:text-blue-600">銷貨</Link>
-              <Link href="/finance" className="hover:text-blue-600">財務</Link>
+              <Link href="/sales" className="hover:text-blue-600">發票登錄/核銷</Link>
+              <Link href="/finance" className="hover:text-blue-600">付款</Link>
               <Link href="/inventory" className="font-medium text-blue-600">庫存</Link>
               <Link href="/analytics" className="hover:text-blue-600">分析</Link>
+              <Link href="/payment-voucher" className="text-green-600 hover:text-green-700 font-medium">🖨️ 列印傳票</Link>
             </div>
           </div>
         </div>

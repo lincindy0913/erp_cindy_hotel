@@ -17,12 +17,17 @@ export async function PUT(request, { params }) {
     // 更新進貨單
     store.purchases[purchaseIndex] = {
       ...existingPurchase,
+      warehouse: data.warehouse || '',
+      department: data.department || '',
       supplierId: parseInt(data.supplierId),
       purchaseDate: data.purchaseDate,
+      paymentTerms: data.paymentTerms || '月結',
+      taxType: data.taxType || 'tax-excluded',
       status: data.status,
-      amount: parseFloat(data.amount),
-      tax: parseFloat(data.tax),
-      items: data.items,
+      amount: parseFloat(data.amount || 0), // 稅前金額
+      tax: parseFloat(data.tax || 0),
+      totalAmount: data.totalAmount || (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)), // 總金額
+      items: data.items || [],
       updatedAt: new Date().toISOString()
     };
     

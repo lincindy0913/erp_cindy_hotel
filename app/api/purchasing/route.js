@@ -4,11 +4,13 @@ import { getStore } from '@/lib/mockDataStore';
 export async function GET(request) {
   try {
     const store = getStore();
-    return NextResponse.json(store.purchases);
+    console.log('API: 取得進貨單資料, store.purchases.length =', store.purchases?.length || 0);
+    console.log('API: store.purchases =', JSON.stringify(store.purchases, null, 2));
+    return NextResponse.json(store.purchases || []);
   } catch (error) {
     console.error('查詢進貨單錯誤:', error);
     const store = getStore();
-    return NextResponse.json(store.purchases);
+    return NextResponse.json(store.purchases || []);
   }
 }
 
@@ -27,10 +29,15 @@ export async function POST(request) {
     const newPurchase = {
       id: store.counters.purchase++,
       purchaseNo,
+      warehouse: data.warehouse || '',
+      department: data.department || '',
       supplierId: parseInt(data.supplierId),
       purchaseDate: data.purchaseDate,
-      amount: data.amount || 0,
+      paymentTerms: data.paymentTerms || '月結',
+      taxType: data.taxType || 'tax-excluded',
+      amount: data.amount || 0, // 稅前金額
       tax: data.tax || 0,
+      totalAmount: data.totalAmount || (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)), // 總金額
       status: data.status || '待入庫',
       items: data.items || [],
       createdAt: new Date().toISOString(),

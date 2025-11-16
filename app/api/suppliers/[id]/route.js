@@ -27,7 +27,25 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
     }
 
-    store.suppliers[supplierIndex] = { ...store.suppliers[supplierIndex], ...data };
+    // 驗證必填欄位：廠商名稱、聯絡人、聯絡電話
+    if (!data.name || !data.contact || !data.phone) {
+      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、聯絡人、聯絡電話' }, { status: 400 });
+    }
+
+    // 更新廠商資料，保留原有的ID和時間戳記
+    const existingSupplier = store.suppliers[supplierIndex];
+    store.suppliers[supplierIndex] = { 
+      ...existingSupplier,
+      name: data.name,
+      taxId: data.taxId || null,
+      contact: data.contact,
+      phone: data.phone,
+      address: data.address || null,
+      email: data.email || null,
+      paymentTerms: data.paymentTerms || '月結',
+      updatedAt: new Date().toISOString()
+    };
+    
     return NextResponse.json(store.suppliers[supplierIndex]);
   } catch (error) {
     return NextResponse.json({ error: '更新廠商失敗' }, { status: 500 });

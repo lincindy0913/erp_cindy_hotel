@@ -27,14 +27,20 @@ CREATE TABLE products (
 -- 廠商資料
 CREATE TABLE suppliers (
     id SERIAL PRIMARY KEY,
-    code VARCHAR(50) UNIQUE NOT NULL,
+    code VARCHAR(50) UNIQUE,
     name VARCHAR(255) NOT NULL,
     tax_id VARCHAR(50),
     contact VARCHAR(255),
+    phone VARCHAR(50),
+    address VARCHAR(500),
+    email VARCHAR(255),
     payment_terms VARCHAR(100),
+    sort_order INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_suppliers_sort_order ON suppliers(sort_order);
 
 -- 客戶資料
 CREATE TABLE customers (

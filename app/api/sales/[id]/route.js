@@ -9,29 +9,28 @@ export async function PUT(request, { params }) {
     const salesIndex = store.sales.findIndex(s => s.id === id);
     
     if (salesIndex === -1) {
-      return NextResponse.json({ error: '銷貨單不存在' }, { status: 404 });
+      return NextResponse.json({ error: '發票不存在' }, { status: 404 });
     }
 
-    const existingSale = store.sales[salesIndex];
+    const existingInvoice = store.sales[salesIndex];
     
-    // 更新銷貨單
+    // 更新發票
     store.sales[salesIndex] = {
-      ...existingSale,
-      customerId: parseInt(data.customerId),
-      salesDate: data.salesDate,
-      invoiceNo: data.invoiceNo || '',
-      invoiceDate: data.invoiceDate,
-      status: data.status,
-      amount: parseFloat(data.amount),
-      tax: parseFloat(data.tax),
-      items: data.items,
+      ...existingInvoice,
+      invoiceNo: data.invoiceNo || existingInvoice.invoiceNo,
+      invoiceDate: data.invoiceDate || existingInvoice.invoiceDate,
+      status: data.status || existingInvoice.status,
+      amount: parseFloat(data.amount || 0),
+      tax: parseFloat(data.tax || 0),
+      totalAmount: data.totalAmount || (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)),
+      items: data.items || existingInvoice.items,
       updatedAt: new Date().toISOString()
     };
     
     return NextResponse.json(store.sales[salesIndex]);
   } catch (error) {
-    console.error('更新銷貨單錯誤:', error);
-    return NextResponse.json({ error: '更新銷貨單失敗' }, { status: 500 });
+    console.error('更新發票錯誤:', error);
+    return NextResponse.json({ error: '更新發票失敗' }, { status: 500 });
   }
 }
 
@@ -42,14 +41,15 @@ export async function DELETE(request, { params }) {
     const salesIndex = store.sales.findIndex(s => s.id === id);
     
     if (salesIndex === -1) {
-      return NextResponse.json({ error: '銷貨單不存在' }, { status: 404 });
+      return NextResponse.json({ error: '發票不存在' }, { status: 404 });
     }
 
+    // 刪除發票後，相關的進貨單品項將可重新核銷
     store.sales.splice(salesIndex, 1);
-    return NextResponse.json({ message: '銷貨單已刪除' });
+    return NextResponse.json({ message: '發票已刪除，相關進貨單品項已可重新核銷' });
   } catch (error) {
-    console.error('刪除銷貨單錯誤:', error);
-    return NextResponse.json({ error: '刪除銷貨單失敗' }, { status: 500 });
+    console.error('刪除發票錯誤:', error);
+    return NextResponse.json({ error: '刪除發票失敗' }, { status: 500 });
   }
 }
 
