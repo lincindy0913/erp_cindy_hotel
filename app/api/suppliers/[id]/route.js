@@ -34,15 +34,19 @@ export async function PUT(request, { params }) {
 
     // 更新廠商資料，保留原有的ID和時間戳記
     const existingSupplier = store.suppliers[supplierIndex];
-    store.suppliers[supplierIndex] = { 
+    store.suppliers[supplierIndex] = {
       ...existingSupplier,
       name: data.name,
       taxId: data.taxId || null,
       contact: data.contact,
+      personInCharge: data.personInCharge || null,
       phone: data.phone,
       address: data.address || null,
       email: data.email || null,
       paymentTerms: data.paymentTerms || '月結',
+      contractDate: data.contractDate || null,
+      paymentStatus: data.paymentStatus || '未付款',
+      remarks: data.remarks || null,
       updatedAt: new Date().toISOString()
     };
     

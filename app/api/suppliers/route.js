@@ -28,15 +28,19 @@ export async function POST(request) {
     }
 
     // 產生新的廠商序號（ID）
-    const newSupplier = { 
-      id: store.counters.supplier++, 
+    const newSupplier = {
+      id: store.counters.supplier++,
       name: data.name,
       taxId: data.taxId || null,
       contact: data.contact,
+      personInCharge: data.personInCharge || null,
       phone: data.phone,
       address: data.address || null,
       email: data.email || null,
       paymentTerms: data.paymentTerms || '月結',
+      contractDate: data.contractDate || null,
+      paymentStatus: data.paymentStatus || '未付款',
+      remarks: data.remarks || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
