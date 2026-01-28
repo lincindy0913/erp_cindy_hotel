@@ -49,7 +49,7 @@ export default function PaymentVoucherPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen page-bg-finance flex items-center justify-center">
         <p className="text-gray-600">載入中...</p>
       </div>
     );
@@ -57,14 +57,14 @@ export default function PaymentVoucherPage() {
 
   if (error || !voucherData) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen page-bg-finance flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error || '找不到傳票資料'}</p>
           <div className="flex gap-4 justify-center">
-            <Link href="/sales" className="text-blue-600 hover:underline">
+            <Link href="/sales" className="link-sales">
               返回發票列表
             </Link>
-            <Link href="/finance" className="text-blue-600 hover:underline">
+            <Link href="/finance" className="link-finance">
               返回付款頁面
             </Link>
           </div>
@@ -76,20 +76,20 @@ export default function PaymentVoucherPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* 導航欄（列印時隱藏） */}
-      <nav className="bg-white shadow-sm print:hidden">
+      <nav className="bg-white shadow-lg border-b-4 border-indigo-500 print:hidden">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-blue-800">📦 進銷存系統</h1>
+            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
             <div className="flex gap-4">
               <button
                 onClick={handlePrint}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
               >
                 🖨️ 列印
               </button>
               <Link
                 href="/sales"
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="link-sales"
               >
                 返回發票列表
               </Link>

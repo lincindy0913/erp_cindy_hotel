@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  /* Legacy colors */
   --primary-blue: #2196F3;
   --primary-dark: #1976D2;
   --success-green: #4CAF50;
@@ -11,6 +12,43 @@
   --text-primary: #212121;
   --text-secondary: #757575;
   --background: #F5F5F5;
+
+  /* Section Colors - Primary */
+  --dashboard-primary: #2563EB;
+  --dashboard-light: #DBEAFE;
+  --dashboard-dark: #1D4ED8;
+
+  --products-primary: #7C3AED;
+  --products-light: #EDE9FE;
+  --products-dark: #6D28D9;
+
+  --suppliers-primary: #0D9488;
+  --suppliers-light: #CCFBF1;
+  --suppliers-dark: #0F766E;
+
+  --purchasing-primary: #EA580C;
+  --purchasing-light: #FFEDD5;
+  --purchasing-dark: #C2410C;
+
+  --sales-primary: #16A34A;
+  --sales-light: #DCFCE7;
+  --sales-dark: #15803D;
+
+  --finance-primary: #4F46E5;
+  --finance-light: #E0E7FF;
+  --finance-dark: #4338CA;
+
+  --inventory-primary: #D97706;
+  --inventory-light: #FEF3C7;
+  --inventory-dark: #B45309;
+
+  --expenses-primary: #E11D48;
+  --expenses-light: #FFE4E6;
+  --expenses-dark: #BE123C;
+
+  --analytics-primary: #0891B2;
+  --analytics-light: #CFFAFE;
+  --analytics-dark: #0E7490;
 }
 
 body {
@@ -18,4 +56,118 @@ body {
   background: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
+
+/* Section-specific navigation styles */
+.nav-dashboard { background: linear-gradient(135deg, var(--dashboard-primary), var(--dashboard-dark)); }
+.nav-products { background: linear-gradient(135deg, var(--products-primary), var(--products-dark)); }
+.nav-suppliers { background: linear-gradient(135deg, var(--suppliers-primary), var(--suppliers-dark)); }
+.nav-purchasing { background: linear-gradient(135deg, var(--purchasing-primary), var(--purchasing-dark)); }
+.nav-sales { background: linear-gradient(135deg, var(--sales-primary), var(--sales-dark)); }
+.nav-finance { background: linear-gradient(135deg, var(--finance-primary), var(--finance-dark)); }
+.nav-inventory { background: linear-gradient(135deg, var(--inventory-primary), var(--inventory-dark)); }
+.nav-expenses { background: linear-gradient(135deg, var(--expenses-primary), var(--expenses-dark)); }
+.nav-analytics { background: linear-gradient(135deg, var(--analytics-primary), var(--analytics-dark)); }
+
+/* Section header accent bars */
+.accent-dashboard { border-left: 4px solid var(--dashboard-primary); }
+.accent-products { border-left: 4px solid var(--products-primary); }
+.accent-suppliers { border-left: 4px solid var(--suppliers-primary); }
+.accent-purchasing { border-left: 4px solid var(--purchasing-primary); }
+.accent-sales { border-left: 4px solid var(--sales-primary); }
+.accent-finance { border-left: 4px solid var(--finance-primary); }
+.accent-inventory { border-left: 4px solid var(--inventory-primary); }
+.accent-expenses { border-left: 4px solid var(--expenses-primary); }
+.accent-analytics { border-left: 4px solid var(--analytics-primary); }
+
+/* Navigation link colors */
+.link-dashboard {
+  color: var(--dashboard-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(37, 99, 235, 0.1);
+  transition: all 0.2s;
+}
+.link-dashboard:hover { background: rgba(37, 99, 235, 0.2); }
+.link-dashboard.active { background: var(--dashboard-primary); color: white; }
+
+.link-products {
+  color: var(--products-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(124, 58, 237, 0.1);
+  transition: all 0.2s;
+}
+.link-products:hover { background: rgba(124, 58, 237, 0.2); }
+.link-products.active { background: var(--products-primary); color: white; }
+
+.link-suppliers {
+  color: var(--suppliers-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(13, 148, 136, 0.1);
+  transition: all 0.2s;
+}
+.link-suppliers:hover { background: rgba(13, 148, 136, 0.2); }
+.link-suppliers.active { background: var(--suppliers-primary); color: white; }
+
+.link-purchasing {
+  color: var(--purchasing-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(234, 88, 12, 0.1);
+  transition: all 0.2s;
+}
+.link-purchasing:hover { background: rgba(234, 88, 12, 0.2); }
+.link-purchasing.active { background: var(--purchasing-primary); color: white; }
+
+.link-sales {
+  color: var(--sales-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(22, 163, 74, 0.1);
+  transition: all 0.2s;
+}
+.link-sales:hover { background: rgba(22, 163, 74, 0.2); }
+.link-sales.active { background: var(--sales-primary); color: white; }
+
+.link-finance {
+  color: var(--finance-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(79, 70, 229, 0.1);
+  transition: all 0.2s;
+}
+.link-finance:hover { background: rgba(79, 70, 229, 0.2); }
+.link-finance.active { background: var(--finance-primary); color: white; }
+
+.link-inventory {
+  color: var(--inventory-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(217, 119, 6, 0.1);
+  transition: all 0.2s;
+}
+.link-inventory:hover { background: rgba(217, 119, 6, 0.2); }
+.link-inventory.active { background: var(--inventory-primary); color: white; }
+
+.link-analytics {
+  color: var(--analytics-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(8, 145, 178, 0.1);
+  transition: all 0.2s;
+}
+.link-analytics:hover { background: rgba(8, 145, 178, 0.2); }
+.link-analytics.active { background: var(--analytics-primary); color: white; }
+
+/* Page background colors with 60% transparency (smooth, subtle tint) */
+.page-bg-dashboard { background: linear-gradient(180deg, rgba(37, 99, 235, 0.08) 0%, rgba(37, 99, 235, 0.15) 100%); }
+.page-bg-products { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
+.page-bg-suppliers { background: linear-gradient(180deg, rgba(13, 148, 136, 0.08) 0%, rgba(13, 148, 136, 0.15) 100%); }
+.page-bg-purchasing { background: linear-gradient(180deg, rgba(234, 88, 12, 0.08) 0%, rgba(234, 88, 12, 0.15) 100%); }
+.page-bg-sales { background: linear-gradient(180deg, rgba(22, 163, 74, 0.08) 0%, rgba(22, 163, 74, 0.15) 100%); }
+.page-bg-finance { background: linear-gradient(180deg, rgba(79, 70, 229, 0.08) 0%, rgba(79, 70, 229, 0.15) 100%); }
+.page-bg-inventory { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
+.page-bg-expenses { background: linear-gradient(180deg, rgba(225, 29, 72, 0.08) 0%, rgba(225, 29, 72, 0.15) 100%); }
+.page-bg-analytics { background: linear-gradient(180deg, rgba(8, 145, 178, 0.08) 0%, rgba(8, 145, 178, 0.15) 100%); }
 

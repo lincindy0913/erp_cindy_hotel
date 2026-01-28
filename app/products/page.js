@@ -297,28 +297,28 @@ export default function ProductsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen page-bg-products flex items-center justify-center">
         <p className="text-gray-600">載入中...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen page-bg-products">
       {/* 導航欄 */}
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white shadow-lg border-b-4 border-purple-500">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-blue-800">📦 進銷存系統</h1>
-            <div className="flex gap-6 text-sm flex-wrap">
-              <Link href="/" className="hover:text-blue-600">儀表板</Link>
-              <Link href="/products" className="font-medium text-blue-600">主資料</Link>
-              <Link href="/suppliers" className="hover:text-blue-600">廠商</Link>
-              <Link href="/purchasing" className="hover:text-blue-600">進貨</Link>
-              <Link href="/sales" className="hover:text-blue-600">發票登錄/核銷</Link>
-              <Link href="/finance" className="hover:text-blue-600">付款</Link>
-              <Link href="/inventory" className="hover:text-blue-600">庫存</Link>
-              <Link href="/analytics" className="hover:text-blue-600">分析</Link>
+            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
+            <div className="flex gap-2 text-sm flex-wrap">
+              <Link href="/" className="link-dashboard">儀表板</Link>
+              <Link href="/products" className="link-products active font-medium">主資料</Link>
+              <Link href="/suppliers" className="link-suppliers">廠商</Link>
+              <Link href="/purchasing" className="link-purchasing">進貨</Link>
+              <Link href="/sales" className="link-sales">發票登錄/核銷</Link>
+              <Link href="/finance" className="link-finance">付款</Link>
+              <Link href="/inventory" className="link-inventory">庫存</Link>
+              <Link href="/analytics" className="link-analytics">分析</Link>
             </div>
           </div>
         </div>
