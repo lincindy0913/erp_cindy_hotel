@@ -2,8 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import Navigation from '@/components/Navigation';
 
 export default function SuppliersPage() {
+  const { data: session } = useSession();
+  const isLoggedIn = !!session;
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -310,24 +314,7 @@ export default function SuppliersPage() {
 
   return (
     <div className="min-h-screen page-bg-suppliers">
-      {/* 導航欄 */}
-      <nav className="bg-white shadow-lg border-b-4 border-teal-500">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
-            <div className="flex gap-2 text-sm flex-wrap">
-              <Link href="/" className="link-dashboard">儀表板</Link>
-              <Link href="/products" className="link-products">主資料</Link>
-              <Link href="/suppliers" className="link-suppliers active font-medium">廠商</Link>
-              <Link href="/purchasing" className="link-purchasing">進貨</Link>
-              <Link href="/sales" className="link-sales">發票登錄/核銷</Link>
-              <Link href="/finance" className="link-finance">付款</Link>
-              <Link href="/inventory" className="link-inventory">庫存</Link>
-              <Link href="/analytics" className="link-analytics">分析</Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navigation borderColor="border-teal-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* 頁面標題 */}
@@ -442,12 +429,14 @@ export default function SuppliersPage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              ➕ 新增廠商
-            </button>
+            {isLoggedIn && (
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+              >
+                ➕ 新增廠商
+              </button>
+            )}
           </div>
         </div>
 
@@ -794,20 +783,22 @@ export default function SuppliersPage() {
                       {supplier.remarks || '-'}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEdit(supplier)}
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          編輯
-                        </button>
-                        <button
-                          onClick={() => handleDelete(supplier.id)}
-                          className="text-red-600 hover:underline text-sm"
-                        >
-                          刪除
-                        </button>
-                      </div>
+                      {isLoggedIn && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEdit(supplier)}
+                            className="text-blue-600 hover:underline text-sm"
+                          >
+                            編輯
+                          </button>
+                          <button
+                            onClick={() => handleDelete(supplier.id)}
+                            className="text-red-600 hover:underline text-sm"
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

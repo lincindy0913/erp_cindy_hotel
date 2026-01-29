@@ -2,8 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import Navigation from '@/components/Navigation';
 
 export default function ProductsPage() {
+  const { data: session } = useSession();
+  const isLoggedIn = !!session;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -305,35 +309,20 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen page-bg-products">
-      {/* 導航欄 */}
-      <nav className="bg-white shadow-lg border-b-4 border-purple-500">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
-            <div className="flex gap-2 text-sm flex-wrap">
-              <Link href="/" className="link-dashboard">儀表板</Link>
-              <Link href="/products" className="link-products active font-medium">主資料</Link>
-              <Link href="/suppliers" className="link-suppliers">廠商</Link>
-              <Link href="/purchasing" className="link-purchasing">進貨</Link>
-              <Link href="/sales" className="link-sales">發票登錄/核銷</Link>
-              <Link href="/finance" className="link-finance">付款</Link>
-              <Link href="/inventory" className="link-inventory">庫存</Link>
-              <Link href="/analytics" className="link-analytics">分析</Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navigation borderColor="border-purple-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* 頁面標題 */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">產品主檔管理</h2>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            ➕ 新增產品
-          </button>
+          {isLoggedIn && (
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              ➕ 新增產品
+            </button>
+          )}
         </div>
 
         {/* 新增/編輯產品表單 */}
@@ -511,12 +500,14 @@ export default function ProductsPage() {
             >
               匯出
             </button>
-            <button
-              onClick={handleImport}
-              className="px-4 py-2 text-blue-600 hover:underline"
-            >
-              匯入
-            </button>
+            {isLoggedIn && (
+              <button
+                onClick={handleImport}
+                className="px-4 py-2 text-blue-600 hover:underline"
+              >
+                匯入
+              </button>
+            )}
           </div>
         </div>
 
@@ -560,18 +551,22 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 text-sm">{product.accountingSubject || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEdit(product)}
-                          className="text-blue-600 hover:underline text-sm"
-                        >
-                          編輯
-                        </button>
-                        <button
-                          onClick={() => handleDelete(product.id)}
-                          className="text-red-600 hover:underline text-sm"
-                        >
-                          刪除
-                        </button>
+                        {isLoggedIn && (
+                          <>
+                            <button
+                              onClick={() => handleEdit(product)}
+                              className="text-blue-600 hover:underline text-sm"
+                            >
+                              編輯
+                            </button>
+                            <button
+                              onClick={() => handleDelete(product.id)}
+                              className="text-red-600 hover:underline text-sm"
+                            >
+                              刪除
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => handleViewDetails(product)}
                           className="text-blue-600 hover:underline text-sm"

@@ -2,8 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
+import Navigation from '@/components/Navigation';
 
 export default function PurchasingPage() {
+  const { data: session } = useSession();
+  const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -321,35 +325,20 @@ export default function PurchasingPage() {
 
   return (
     <div className="min-h-screen page-bg-purchasing">
-      {/* 導航欄 */}
-      <nav className="bg-white shadow-lg border-b-4 border-orange-500">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
-            <div className="flex gap-2 text-sm flex-wrap">
-              <Link href="/" className="link-dashboard">儀表板</Link>
-              <Link href="/products" className="link-products">主資料</Link>
-              <Link href="/suppliers" className="link-suppliers">廠商</Link>
-              <Link href="/purchasing" className="link-purchasing active font-medium">進貨</Link>
-              <Link href="/sales" className="link-sales">發票登錄/核銷</Link>
-              <Link href="/finance" className="link-finance">付款</Link>
-              <Link href="/inventory" className="link-inventory">庫存</Link>
-              <Link href="/analytics" className="link-analytics">分析</Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navigation borderColor="border-orange-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* 標題與操作 */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">進貨單管理</h2>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            ➕ 新增進貨單
-          </button>
+          {isLoggedIn && (
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            >
+              ➕ 新增進貨單
+            </button>
+          )}
         </div>
 
         {/* 新增進貨單表單 */}
@@ -708,18 +697,22 @@ export default function PurchasingPage() {
                             >
                               {isExpanded ? '收起' : '查看'}
                             </button>
-                            <button
-                              onClick={() => handleEdit(purchase)}
-                              className="text-green-600 hover:underline text-sm"
-                            >
-                              編輯
-                            </button>
-                            <button
-                              onClick={() => handleDelete(purchase.id)}
-                              className="text-red-600 hover:underline text-sm"
-                            >
-                              刪除
-                            </button>
+                            {isLoggedIn && (
+                              <>
+                                <button
+                                  onClick={() => handleEdit(purchase)}
+                                  className="text-green-600 hover:underline text-sm"
+                                >
+                                  編輯
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(purchase.id)}
+                                  className="text-red-600 hover:underline text-sm"
+                                >
+                                  刪除
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

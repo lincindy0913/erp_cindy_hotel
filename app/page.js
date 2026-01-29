@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Navigation from '@/components/Navigation';
 
 export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState({
@@ -35,23 +36,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen page-bg-dashboard">
-      <nav className="bg-white shadow-lg border-b-4 border-blue-500">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">📦 進銷存系統</h1>
-            <div className="flex gap-2 text-sm flex-wrap">
-              <Link href="/" className="link-dashboard active font-medium">儀表板</Link>
-              <Link href="/products" className="link-products">主資料</Link>
-              <Link href="/suppliers" className="link-suppliers">廠商</Link>
-              <Link href="/purchasing" className="link-purchasing">進貨</Link>
-              <Link href="/sales" className="link-sales">發票登錄/核銷</Link>
-              <Link href="/finance" className="link-finance">付款</Link>
-              <Link href="/inventory" className="link-inventory">庫存</Link>
-              <Link href="/analytics" className="link-analytics">分析</Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navigation borderColor="border-blue-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-4 gap-6 mb-8">
