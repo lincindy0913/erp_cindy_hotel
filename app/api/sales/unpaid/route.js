@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getStore } from '@/lib/mockDataStore';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * 取得未付款的發票
  * 查詢參數：

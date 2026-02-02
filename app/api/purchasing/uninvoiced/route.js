@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getStore } from '@/lib/mockDataStore';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * 取得未核銷的進貨單品項
  * 查詢參數：
