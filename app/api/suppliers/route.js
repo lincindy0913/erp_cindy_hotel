@@ -22,9 +22,9 @@ export async function POST(request) {
     const store = getStore();
     const data = await request.json();
 
-    // 驗證必填欄位：廠商名稱、聯絡人、聯絡電話
-    if (!data.name || !data.contact || !data.phone) {
-      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、聯絡人、聯絡電話' }, { status: 400 });
+    // 驗證必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話
+    if (!data.name || !data.taxId || !data.contact || !data.personInCharge || !data.phone) {
+      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話' }, { status: 400 });
     }
 
     // 產生新的廠商序號（ID）
@@ -39,6 +39,7 @@ export async function POST(request) {
       email: data.email || null,
       paymentTerms: data.paymentTerms || '月結',
       contractDate: data.contractDate || null,
+      contractEndDate: data.contractEndDate || null,
       paymentStatus: data.paymentStatus || '未付款',
       remarks: data.remarks || null,
       createdAt: new Date().toISOString(),

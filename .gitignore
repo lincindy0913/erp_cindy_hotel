@@ -41,4 +41,5 @@ prisma/migrations/
 # misc
 *.xlsx
 .cursor/
+.vscode/mcp.json
 

@@ -22,16 +22,21 @@ export default function SuppliersPage() {
     email: '',
     paymentTerms: '月結',
     contractDate: '',
+    contractEndDate: '',
     paymentStatus: '未付款',
     remarks: ''
   });
+  const [contracts, setContracts] = useState([]);
+  const [uploadingContract, setUploadingContract] = useState(false);
   const [allSuppliers, setAllSuppliers] = useState([]);
-  const [sortType, setSortType] = useState('id-asc'); // id-asc, id-desc, name-asc, name-desc, filter
+  const [sortType, setSortType] = useState('id-asc');
   const [filterKeyword, setFilterKeyword] = useState('');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showDateFilterMenu, setShowDateFilterMenu] = useState(false);
-  const [dateFilterType, setDateFilterType] = useState('all'); // all, 1month, 3months, 6months, 1year, custom
+  const [dateFilterType, setDateFilterType] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+
+  const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '' };
 
   useEffect(() => {
     fetchSuppliers();
@@ -75,6 +80,19 @@ export default function SuppliersPage() {
     }
   }
 
+  // 判斷合約到期狀態
+  function getExpiryStatus(contractEndDate) {
+    if (!contractEndDate) return null;
+    const now = new Date();
+    const endDate = new Date(contractEndDate);
+    const diffMs = endDate - now;
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return 'expired';       // 已過期
+    if (diffDays <= 60) return 'warning';      // 2個月內到期
+    return 'ok';
+  }
+
   // 計算日期範圍
   function getDateRange(filterType, customRange) {
     const now = new Date();
@@ -104,7 +122,7 @@ export default function SuppliersPage() {
         }
         break;
       default:
-        return null; // 'all' - no date filter
+        return null;
     }
 
     return { startDate, endDate };
@@ -113,7 +131,6 @@ export default function SuppliersPage() {
   function applySortAndFilter(data, sort, keyword, dateFilter = dateFilterType, customRange = customDateRange) {
     let result = [...data];
 
-    // 先進行關鍵字篩選
     if (keyword && keyword.trim() !== '') {
       const lowerKeyword = keyword.toLowerCase().trim();
       result = result.filter(supplier => {
@@ -128,7 +145,6 @@ export default function SuppliersPage() {
       });
     }
 
-    // 進行合約日期篩選
     const dateRange = getDateRange(dateFilter, customRange);
     if (dateRange) {
       result = result.filter(supplier => {
@@ -140,7 +156,6 @@ export default function SuppliersPage() {
       });
     }
 
-    // 再進行排序
     switch (sort) {
       case 'id-asc':
         result.sort((a, b) => (a.id || 0) - (b.id || 0));
@@ -149,18 +164,10 @@ export default function SuppliersPage() {
         result.sort((a, b) => (b.id || 0) - (a.id || 0));
         break;
       case 'name-asc':
-        result.sort((a, b) => {
-          const nameA = (a.name || '').toLowerCase();
-          const nameB = (b.name || '').toLowerCase();
-          return nameA.localeCompare(nameB, 'zh-TW');
-        });
+        result.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-TW'));
         break;
       case 'name-desc':
-        result.sort((a, b) => {
-          const nameA = (a.name || '').toLowerCase();
-          const nameB = (b.name || '').toLowerCase();
-          return nameB.localeCompare(nameA, 'zh-TW');
-        });
+        result.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'zh-TW'));
         break;
       case 'date-asc':
         result.sort((a, b) => {
@@ -186,20 +193,13 @@ export default function SuppliersPage() {
   function handleSortChange(newSortType) {
     setSortType(newSortType);
     setShowSortMenu(false);
-    if (newSortType === 'filter') {
-      // 如果是篩選模式，顯示輸入框但不關閉選單
-      return;
-    }
+    if (newSortType === 'filter') return;
     applySortAndFilter(allSuppliers, newSortType, filterKeyword);
   }
 
   function handleFilterChange(keyword) {
     setFilterKeyword(keyword);
-    if (sortType === 'filter') {
-      applySortAndFilter(allSuppliers, 'id-asc', keyword);
-    } else {
-      applySortAndFilter(allSuppliers, sortType, keyword);
-    }
+    applySortAndFilter(allSuppliers, sortType === 'filter' ? 'id-asc' : sortType, keyword);
   }
 
   function handleDateFilterChange(newDateFilter) {
@@ -242,7 +242,7 @@ export default function SuppliersPage() {
       const isEditing = !!editingSupplier;
       const url = isEditing ? `/api/suppliers/${editingSupplier.id}` : '/api/suppliers';
       const method = isEditing ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
@@ -253,7 +253,8 @@ export default function SuppliersPage() {
         alert(`廠商${isEditing ? '更新' : '新增'}成功！`);
         setShowAddForm(false);
         setEditingSupplier(null);
-        setFormData({ name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', paymentStatus: '未付款', remarks: '' });
+        setFormData(emptyForm);
+        setContracts([]);
         await fetchSuppliers();
       } else {
         const error = await response.json();
@@ -278,14 +279,16 @@ export default function SuppliersPage() {
       email: supplier.email || '',
       paymentTerms: supplier.paymentTerms || '月結',
       contractDate: supplier.contractDate ? supplier.contractDate.split('T')[0] : '',
+      contractEndDate: supplier.contractEndDate ? supplier.contractEndDate.split('T')[0] : '',
       paymentStatus: supplier.paymentStatus || '未付款',
       remarks: supplier.remarks || ''
     });
+    fetchContracts(supplier.id);
   }
 
   async function handleDelete(supplierId) {
     if (!confirm('確定要刪除這個廠商嗎？')) return;
-    
+
     try {
       const response = await fetch(`/api/suppliers/${supplierId}`, {
         method: 'DELETE'
@@ -304,6 +307,76 @@ export default function SuppliersPage() {
     }
   }
 
+  // 合約相關功能
+  async function fetchContracts(supplierId) {
+    try {
+      const response = await fetch(`/api/suppliers/${supplierId}/contracts`);
+      if (response.ok) {
+        const data = await response.json();
+        setContracts(data);
+      }
+    } catch (error) {
+      console.error('取得合約清單失敗:', error);
+    }
+  }
+
+  async function handleUploadContract(e) {
+    const file = e.target.files[0];
+    if (!file || !editingSupplier) return;
+
+    setUploadingContract(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`/api/suppliers/${editingSupplier.id}/contracts`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        alert('合約上傳成功！');
+        await fetchContracts(editingSupplier.id);
+      } else {
+        const error = await response.json();
+        alert('上傳失敗：' + (error.error || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('上傳合約失敗:', error);
+      alert('上傳合約失敗，請稍後再試');
+    } finally {
+      setUploadingContract(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleDeleteContract(contractId) {
+    if (!confirm('確定要刪除這份合約嗎？')) return;
+
+    try {
+      const response = await fetch(`/api/suppliers/${editingSupplier.id}/contracts/${contractId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        alert('合約已刪除');
+        await fetchContracts(editingSupplier.id);
+      } else {
+        const error = await response.json();
+        alert('刪除失敗：' + (error.error || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('刪除合約失敗:', error);
+      alert('刪除合約失敗，請稍後再試');
+    }
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen page-bg-suppliers flex items-center justify-center">
@@ -316,7 +389,7 @@ export default function SuppliersPage() {
     <div className="min-h-screen page-bg-suppliers">
       <Navigation borderColor="border-teal-500" />
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-full mx-auto px-4 py-8">
         {/* 頁面標題 */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">廠商管理</h2>
@@ -325,13 +398,13 @@ export default function SuppliersPage() {
             <div className="relative date-filter-menu-container">
               <button
                 onClick={() => setShowDateFilterMenu(!showDateFilterMenu)}
-                className={`px-4 py-2 rounded-lg border ${
+                className={`px-4 py-2 rounded-lg border text-sm ${
                   dateFilterType !== 'all'
                     ? 'bg-blue-100 border-blue-400 text-blue-700'
                     : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                📅 {dateFilterType !== 'all' ? getDateFilterLabel() : '日期區間篩選'}
+                {dateFilterType !== 'all' ? getDateFilterLabel() : '日期篩選'}
               </button>
               {showDateFilterMenu && (
                 <div
@@ -341,38 +414,17 @@ export default function SuppliersPage() {
                   <div className="p-4">
                     <div className="text-sm font-semibold text-gray-700 mb-3">選擇合約日期區間</div>
                     <div className="grid grid-cols-2 gap-2 mb-3">
-                      <button
-                        onClick={() => handleDateFilterChange('all')}
-                        className={`px-3 py-2 text-sm rounded-lg border ${
-                          dateFilterType === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        全部
-                      </button>
-                      <button
-                        onClick={() => handleDateFilterChange('1month')}
-                        className={`px-3 py-2 text-sm rounded-lg border ${
-                          dateFilterType === '1month' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        近1個月
-                      </button>
-                      <button
-                        onClick={() => handleDateFilterChange('3months')}
-                        className={`px-3 py-2 text-sm rounded-lg border ${
-                          dateFilterType === '3months' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        近3個月
-                      </button>
-                      <button
-                        onClick={() => handleDateFilterChange('6months')}
-                        className={`px-3 py-2 text-sm rounded-lg border ${
-                          dateFilterType === '6months' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        近6個月
-                      </button>
+                      {['all', '1month', '3months', '6months'].map(type => (
+                        <button
+                          key={type}
+                          onClick={() => handleDateFilterChange(type)}
+                          className={`px-3 py-2 text-sm rounded-lg border ${
+                            dateFilterType === type ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {type === 'all' ? '全部' : type === '1month' ? '近1個月' : type === '3months' ? '近3個月' : '近6個月'}
+                        </button>
+                      ))}
                       <button
                         onClick={() => handleDateFilterChange('1year')}
                         className={`px-3 py-2 text-sm rounded-lg border col-span-2 ${
@@ -429,14 +481,12 @@ export default function SuppliersPage() {
                 </div>
               )}
             </div>
-            {isLoggedIn && (
-              <button
-                onClick={() => setShowAddForm(!showAddForm)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                ➕ 新增廠商
-              </button>
-            )}
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
+            >
+              + 新增廠商
+            </button>
           </div>
         </div>
 
@@ -446,98 +496,56 @@ export default function SuppliersPage() {
             <h3 className="text-lg font-semibold mb-4">{editingSupplier ? '編輯廠商' : '新增廠商'}</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  廠商名稱 *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
+                <label className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
+                <input type="text" required value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  統一編號
-                </label>
-                <input
-                  type="text"
-                  value={formData.taxId}
+                <label className="block text-sm font-medium text-gray-700 mb-1">統一編號 *</label>
+                <input type="text" required value={formData.taxId}
                   onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  聯絡人 *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.contact}
+                <label className="block text-sm font-medium text-gray-700 mb-1">聯絡人 *</label>
+                <input type="text" required value={formData.contact}
                   onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  負責人
-                </label>
-                <input
-                  type="text"
-                  value={formData.personInCharge}
+                <label className="block text-sm font-medium text-gray-700 mb-1">負責人 *</label>
+                <input type="text" required value={formData.personInCharge}
                   onChange={(e) => setFormData({ ...formData, personInCharge: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：王經理"
-                />
+                  placeholder="例如：王經理" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  聯絡電話 *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.phone}
+                <label className="block text-sm font-medium text-gray-700 mb-1">聯絡電話 *</label>
+                <input type="text" required value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：02-1234-5678"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  地址
-                </label>
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：台北市信義區信義路五段7號"
-                />
+                  placeholder="例如：02-1234-5678" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：contact@example.com"
-                />
+                  placeholder="例如：contact@example.com" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">地址</label>
+                <input type="text" value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="例如：台北市信義區信義路五段7號" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  付款條件
-                </label>
-                <select
-                  value={formData.paymentTerms}
+                <label className="block text-sm font-medium text-gray-700 mb-1">付款條件</label>
+                <select value={formData.paymentTerms}
                   onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option>月結</option>
                   <option>現金</option>
                   <option>支票</option>
@@ -545,58 +553,125 @@ export default function SuppliersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  合約日期
-                </label>
-                <input
-                  type="date"
-                  value={formData.contractDate}
-                  onChange={(e) => setFormData({ ...formData, contractDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  付款狀態
-                </label>
-                <select
-                  value={formData.paymentStatus}
+                <label className="block text-sm font-medium text-gray-700 mb-1">付款狀態</label>
+                <select value={formData.paymentStatus}
                   onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="未付款">未付款</option>
                   <option value="已付款">已付款</option>
                   <option value="部分付款">部分付款</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">合約日期</label>
+                <input type="date" value={formData.contractDate}
+                  onChange={(e) => setFormData({ ...formData, contractDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">合約到期日期</label>
+                <input type="date" value={formData.contractEndDate}
+                  onChange={(e) => setFormData({ ...formData, contractEndDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              {/* 合約檔案上傳區域 */}
+              <div className="col-span-2 border-t border-gray-200 pt-4 mt-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">合約檔案</label>
+                {editingSupplier ? (
+                  <div>
+                    {/* 上傳按鈕 */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm cursor-pointer ${
+                        uploadingContract ? 'bg-gray-300 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}>
+                        <span>{uploadingContract ? '上傳中...' : '+ 上傳合約'}</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
+                          onChange={handleUploadContract}
+                          disabled={uploadingContract}
+                        />
+                      </label>
+                      <span className="text-xs text-gray-500">支援 PDF、Word、Excel、圖片，上限 10MB</span>
+                    </div>
+
+                    {/* 合約清單 */}
+                    {contracts.length > 0 ? (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">檔案名稱</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">大小</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">上傳日期</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {contracts.map((contract) => (
+                              <tr key={contract.id} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 text-xs">
+                                  <a
+                                    href={`/api/suppliers/${editingSupplier.id}/contracts/${contract.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                    title={contract.fileName}
+                                  >
+                                    {contract.fileName}
+                                  </a>
+                                </td>
+                                <td className="px-3 py-2 text-xs text-gray-500">{formatFileSize(contract.fileSize)}</td>
+                                <td className="px-3 py-2 text-xs text-gray-500">
+                                  {new Date(contract.uploadDate).toLocaleDateString('zh-TW')}
+                                </td>
+                                <td className="px-3 py-2 text-xs">
+                                  <div className="flex gap-2">
+                                    <a
+                                      href={`/api/suppliers/${editingSupplier.id}/contracts/${contract.id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:underline"
+                                    >
+                                      下載
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteContract(contract.id)}
+                                      className="text-red-600 hover:underline"
+                                    >
+                                      刪除
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 py-2">尚無合約檔案</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 py-2">請先儲存廠商資料後，再編輯此廠商即可上傳合約</p>
+                )}
+              </div>
+
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  備註
-                </label>
-                <textarea
-                  value={formData.remarks}
+                <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                <textarea value={formData.remarks}
                   onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows="3"
-                  placeholder="輸入備註事項..."
-                />
+                  rows="3" placeholder="輸入備註事項..." />
               </div>
               <div className="col-span-2 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setEditingSupplier(null);
-                    setFormData({ name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', paymentStatus: '未付款', remarks: '' });
-                  }}
-                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
+                <button type="button" onClick={() => { setShowAddForm(false); setEditingSupplier(null); setFormData(emptyForm); setContracts([]); }}
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                   取消
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
+                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                   {editingSupplier ? '更新' : '儲存'}
                 </button>
               </div>
@@ -605,203 +680,143 @@ export default function SuppliersPage() {
         )}
 
         {/* 廠商列表 */}
-        <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-          <table className="w-full min-w-[1400px]">
+        <div className="bg-white rounded-lg shadow-sm">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                <th className="w-[4%] px-2 py-3 text-left text-xs font-medium text-gray-700">
                   <div className="relative sort-menu-container">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowSortMenu(!showSortMenu);
-                      }}
-                      className="flex items-center gap-2 hover:text-blue-600 cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); setShowSortMenu(!showSortMenu); }}
+                      className="flex items-center gap-1 hover:text-blue-600 cursor-pointer"
                     >
-                      <span>廠商序號</span>
+                      <span>序號</span>
                       <span className="text-xs">▼</span>
                     </button>
                     {showSortMenu && (
-                      <div 
-                        className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[200px]"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[200px]"
+                        onClick={(e) => e.stopPropagation()}>
                         <div className="py-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSortChange('id-asc');
-                            }}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                              sortType === 'id-asc' ? 'bg-blue-50 text-blue-600' : ''
-                            }`}
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); handleSortChange('id-asc'); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'id-asc' ? 'bg-blue-50 text-blue-600' : ''}`}>
                             由小到大 (1→9)
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSortChange('id-desc');
-                            }}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                              sortType === 'id-desc' ? 'bg-blue-50 text-blue-600' : ''
-                            }`}
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); handleSortChange('id-desc'); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'id-desc' ? 'bg-blue-50 text-blue-600' : ''}`}>
                             由大到小 (9→1)
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSortChange('name-asc');
-                            }}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                              sortType === 'name-asc' ? 'bg-blue-50 text-blue-600' : ''
-                            }`}
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); handleSortChange('name-asc'); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'name-asc' ? 'bg-blue-50 text-blue-600' : ''}`}>
                             A到Z (名稱排序)
                           </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSortChange('name-desc');
-                            }}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                              sortType === 'name-desc' ? 'bg-blue-50 text-blue-600' : ''
-                            }`}
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); handleSortChange('name-desc'); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'name-desc' ? 'bg-blue-50 text-blue-600' : ''}`}>
                             Z到A (名稱排序)
                           </button>
                           <div className="border-t border-gray-200 my-1"></div>
                           <div className="px-4 py-2">
                             <label className="block text-xs text-gray-600 mb-1">關鍵字篩選</label>
-                            <input
-                              type="text"
-                              value={filterKeyword}
-                              onChange={(e) => {
-                                handleFilterChange(e.target.value);
-                                setSortType('filter');
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              onFocus={(e) => e.stopPropagation()}
+                            <input type="text" value={filterKeyword}
+                              onChange={(e) => { handleFilterChange(e.target.value); setSortType('filter'); }}
+                              onClick={(e) => e.stopPropagation()} onFocus={(e) => e.stopPropagation()}
                               placeholder="搜尋序號、名稱、聯絡人等..."
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFilterKeyword('');
-                              setSortType('id-asc');
-                              setShowSortMenu(false);
-                              applySortAndFilter(allSuppliers, 'id-asc', '');
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-500"
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); setFilterKeyword(''); setSortType('id-asc'); setShowSortMenu(false); applySortAndFilter(allSuppliers, 'id-asc', ''); }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-500">
                             清除篩選
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
-                  {filterKeyword && (
-                    <div className="mt-1 text-xs text-blue-600">
-                      篩選中: {filterKeyword}
-                    </div>
-                  )}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">聯絡人</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">負責人</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">聯絡電話</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商名稱</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">統一編號</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">地址</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款條件</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                  <div className="relative date-sort-menu-container">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Toggle between date sort options
-                        if (sortType === 'date-asc') {
-                          handleSortChange('date-desc');
-                        } else if (sortType === 'date-desc') {
-                          handleSortChange('id-asc');
-                        } else {
-                          handleSortChange('date-asc');
-                        }
-                      }}
-                      className="flex items-center gap-2 hover:text-blue-600 cursor-pointer"
-                    >
-                      <span>合約日期</span>
-                      {sortType === 'date-asc' && <span className="text-xs">↑</span>}
-                      {sortType === 'date-desc' && <span className="text-xs">↓</span>}
-                      {sortType !== 'date-asc' && sortType !== 'date-desc' && <span className="text-xs text-gray-400">⇅</span>}
-                    </button>
-                  </div>
-                  {(sortType === 'date-asc' || sortType === 'date-desc') && (
-                    <div className="mt-1 text-xs text-blue-600">
-                      {sortType === 'date-asc' ? '由舊到新' : '由新到舊'}
-                    </div>
-                  )}
+                <th className="w-[8%] px-2 py-3 text-left text-xs font-medium text-gray-700">廠商名稱</th>
+                <th className="w-[7%] px-2 py-3 text-left text-xs font-medium text-gray-700">統一編號</th>
+                <th className="w-[6%] px-2 py-3 text-left text-xs font-medium text-gray-700">聯絡人</th>
+                <th className="w-[6%] px-2 py-3 text-left text-xs font-medium text-gray-700">負責人</th>
+                <th className="w-[8%] px-2 py-3 text-left text-xs font-medium text-gray-700">聯絡電話</th>
+                <th className="w-[12%] px-2 py-3 text-left text-xs font-medium text-gray-700">地址</th>
+                <th className="w-[5%] px-2 py-3 text-left text-xs font-medium text-gray-700">付款</th>
+                <th className="w-[7%] px-2 py-3 text-left text-xs font-medium text-gray-700">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (sortType === 'date-asc') handleSortChange('date-desc');
+                      else if (sortType === 'date-desc') handleSortChange('id-asc');
+                      else handleSortChange('date-asc');
+                    }}
+                    className="flex items-center gap-1 hover:text-blue-600 cursor-pointer"
+                  >
+                    <span>合約日期</span>
+                    {sortType === 'date-asc' && <span className="text-xs">↑</span>}
+                    {sortType === 'date-desc' && <span className="text-xs">↓</span>}
+                    {sortType !== 'date-asc' && sortType !== 'date-desc' && <span className="text-xs text-gray-400">⇅</span>}
+                  </button>
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 whitespace-nowrap min-w-[100px]">付款狀態</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 min-w-[150px]">備註</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 whitespace-nowrap min-w-[80px]">操作</th>
+                <th className="w-[9%] px-2 py-3 text-left text-xs font-medium text-gray-700">合約到期</th>
+                <th className="w-[6%] px-2 py-3 text-left text-xs font-medium text-gray-700">付款狀態</th>
+                <th className="w-[12%] px-2 py-3 text-left text-xs font-medium text-gray-700">備註</th>
+                <th className="w-[6%] px-2 py-3 text-left text-xs font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {suppliers.length === 0 ? (
                 <tr>
-                  <td colSpan="13" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="13" className="px-2 py-8 text-center text-gray-500">
                     尚無廠商資料
                   </td>
                 </tr>
               ) : (
-                suppliers.map((supplier, index) => (
-                  <tr key={supplier.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-4 py-3 text-sm font-medium">{supplier.id}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.contact || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.personInCharge || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.phone || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.name}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.taxId || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.address || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.email || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.paymentTerms || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{supplier.contractDate ? supplier.contractDate.split('T')[0] : '-'}</td>
-                    <td className="px-4 py-3 text-sm whitespace-nowrap">
-                      <span className={`inline-flex items-center justify-center px-3 py-1.5 rounded-full text-xs font-medium min-w-[70px] ${
-                        supplier.paymentStatus === '已付款' ? 'bg-green-100 text-green-700 border border-green-200' :
-                        supplier.paymentStatus === '部分付款' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                        'bg-red-100 text-red-700 border border-red-200'
-                      }`}>
-                        {supplier.paymentStatus || '未付款'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm min-w-[150px] max-w-[200px] truncate" title={supplier.remarks || ''}>
-                      {supplier.remarks || '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isLoggedIn && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEdit(supplier)}
-                            className="text-blue-600 hover:underline text-sm"
-                          >
+                suppliers.map((supplier, index) => {
+                  const expiryStatus = getExpiryStatus(supplier.contractEndDate);
+                  return (
+                    <tr key={supplier.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${expiryStatus === 'expired' ? 'bg-red-50' : expiryStatus === 'warning' ? 'bg-yellow-50' : ''}`}>
+                      <td className="px-2 py-2 text-xs font-medium">{supplier.id}</td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.name}>{supplier.name}</td>
+                      <td className="px-2 py-2 text-xs">{supplier.taxId || '-'}</td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.contact}>{supplier.contact || '-'}</td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.personInCharge}>{supplier.personInCharge || '-'}</td>
+                      <td className="px-2 py-2 text-xs">{supplier.phone || '-'}</td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.address || ''}>{supplier.address || '-'}</td>
+                      <td className="px-2 py-2 text-xs">{supplier.paymentTerms || '-'}</td>
+                      <td className="px-2 py-2 text-xs">{supplier.contractDate ? supplier.contractDate.split('T')[0] : '-'}</td>
+                      <td className="px-2 py-2 text-xs">
+                        <div className="flex items-center gap-1">
+                          <span>{supplier.contractEndDate ? supplier.contractEndDate.split('T')[0] : '-'}</span>
+                          {expiryStatus === 'expired' && (
+                            <span className="text-red-600 font-bold" title="合約已過期">!!</span>
+                          )}
+                          {expiryStatus === 'warning' && (
+                            <span className="text-yellow-600 font-bold" title="合約即將到期（2個月內）">!</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-xs">
+                        <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-medium ${
+                          supplier.paymentStatus === '已付款' ? 'bg-green-100 text-green-700' :
+                          supplier.paymentStatus === '部分付款' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {supplier.paymentStatus || '未付款'}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.remarks || ''}>
+                        {supplier.remarks || '-'}
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex gap-1">
+                          <button onClick={() => handleEdit(supplier)} className="text-blue-600 hover:underline text-xs">
                             編輯
                           </button>
-                          <button
-                            onClick={() => handleDelete(supplier.id)}
-                            className="text-red-600 hover:underline text-sm"
-                          >
+                          <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:underline text-xs">
                             刪除
                           </button>
                         </div>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -810,4 +825,3 @@ export default function SuppliersPage() {
     </div>
   );
 }
-

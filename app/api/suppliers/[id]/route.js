@@ -27,9 +27,9 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
     }
 
-    // 驗證必填欄位：廠商名稱、聯絡人、聯絡電話
-    if (!data.name || !data.contact || !data.phone) {
-      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、聯絡人、聯絡電話' }, { status: 400 });
+    // 驗證必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話
+    if (!data.name || !data.taxId || !data.contact || !data.personInCharge || !data.phone) {
+      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話' }, { status: 400 });
     }
 
     // 更新廠商資料，保留原有的ID和時間戳記
@@ -45,6 +45,7 @@ export async function PUT(request, { params }) {
       email: data.email || null,
       paymentTerms: data.paymentTerms || '月結',
       contractDate: data.contractDate || null,
+      contractEndDate: data.contractEndDate || null,
       paymentStatus: data.paymentStatus || '未付款',
       remarks: data.remarks || null,
       updatedAt: new Date().toISOString()

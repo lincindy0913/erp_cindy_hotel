@@ -43,12 +43,39 @@ export default function PurchasingPage() {
     unitPrice: '',
     note: '' // 備註
   });
+  const [productSearch, setProductSearch] = useState('');
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
 
   useEffect(() => {
     fetchSuppliers();
     fetchProducts();
     fetchPurchases();
   }, []);
+
+  // 產品搜尋過濾
+  const filteredProducts = products.filter(p => {
+    if (!productSearch.trim()) return true;
+    const keyword = productSearch.toLowerCase().trim();
+    return (
+      (p.name && p.name.toLowerCase().includes(keyword)) ||
+      (p.code && p.code.toLowerCase().includes(keyword)) ||
+      (p.category && p.category.toLowerCase().includes(keyword))
+    );
+  });
+
+  // 點擊外部關閉產品下拉選單
+  useEffect(() => {
+    function handleClickOutside(event) {
+      const dropdown = document.querySelector('.product-search-container');
+      if (dropdown && !dropdown.contains(event.target)) {
+        setShowProductDropdown(false);
+      }
+    }
+    if (showProductDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showProductDropdown]);
 
   async function fetchPurchases() {
     try {
@@ -233,6 +260,7 @@ export default function PurchasingPage() {
       unitPrice: '',
       note: ''
     });
+    setProductSearch('');
   }
 
   function removeItem(index) {
@@ -487,17 +515,47 @@ export default function PurchasingPage() {
                 {/* 新增商品 */}
                 <div className="border rounded-lg p-4 bg-gray-50">
                   <div className="grid grid-cols-5 gap-3 mb-3">
-                    <div>
-                      <select
-                        value={newItem.productId}
-                        onChange={(e) => setNewItem({ ...newItem, productId: e.target.value })}
+                    <div className="relative product-search-container">
+                      <input
+                        type="text"
+                        placeholder="輸入關鍵字搜尋產品..."
+                        value={productSearch}
+                        onChange={(e) => {
+                          setProductSearch(e.target.value);
+                          setShowProductDropdown(true);
+                          if (!e.target.value.trim()) {
+                            setNewItem({ ...newItem, productId: '' });
+                          }
+                        }}
+                        onFocus={() => setShowProductDropdown(true)}
                         className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">選擇產品...</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                      />
+                      {showProductDropdown && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {filteredProducts.length > 0 ? (
+                            filteredProducts.map(p => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setNewItem({ ...newItem, productId: p.id.toString() });
+                                  setProductSearch(p.name);
+                                  setShowProductDropdown(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                                  newItem.productId === p.id.toString() ? 'bg-blue-50 text-blue-700' : ''
+                                }`}
+                              >
+                                <span className="font-medium">{p.name}</span>
+                                <span className="text-gray-400 ml-2 text-xs">{p.code}</span>
+                                {p.category && <span className="text-gray-400 ml-2 text-xs">({p.category})</span>}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-sm text-gray-500">找不到符合的產品</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <input

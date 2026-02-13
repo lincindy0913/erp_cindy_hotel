@@ -14,6 +14,16 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [warehouseOptions, setWarehouseOptions] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('warehouseOptions');
+      return saved ? JSON.parse(saved) : ['麗格', '麗軒', '民宿'];
+    }
+    return ['麗格', '麗軒', '民宿'];
+  });
+  const [newWarehouse, setNewWarehouse] = useState('');
+  const [showWarehouseManager, setShowWarehouseManager] = useState(false);
   const [formData, setFormData] = useState({
     code: '',
     name: '',
@@ -29,6 +39,29 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('warehouseOptions', JSON.stringify(warehouseOptions));
+  }, [warehouseOptions]);
+
+  function addWarehouseOption() {
+    const trimmed = newWarehouse.trim();
+    if (!trimmed) return;
+    if (warehouseOptions.includes(trimmed)) {
+      alert('此倉庫位置已存在');
+      return;
+    }
+    setWarehouseOptions([...warehouseOptions, trimmed]);
+    setNewWarehouse('');
+  }
+
+  function removeWarehouseOption(option) {
+    if (!confirm(`確定要刪除倉庫位置「${option}」嗎？`)) return;
+    setWarehouseOptions(warehouseOptions.filter(o => o !== option));
+    if (formData.warehouseLocation === option) {
+      setFormData({ ...formData, warehouseLocation: '' });
+    }
+  }
 
   async function fetchProducts() {
     try {
@@ -141,13 +174,13 @@ export default function ProductsPage() {
   }
 
   function handleViewDetails(product) {
-    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n售價：NT$ ${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}`);
+    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n數量：${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}`);
   }
 
   function handleExport() {
     try {
       // 轉換為 CSV 格式
-      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '售價', '列入庫存', '倉庫位置', '會計科目'];
+      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '數量', '列入庫存', '倉庫位置', '會計科目'];
       const rows = products.map(p => [
         p.id,
         p.code,
@@ -266,11 +299,20 @@ export default function ProductsPage() {
     input.click();
   }
 
+  // 搜尋過濾
+  const filteredProducts = searchKeyword
+    ? products.filter(p =>
+        p.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        p.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+        (p.category && p.category.toLowerCase().includes(searchKeyword.toLowerCase()))
+      )
+    : products;
+
   // 計算分頁
-  const totalPages = Math.ceil(products.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentProducts = products.slice(startIndex, endIndex);
+  const currentProducts = filteredProducts.slice(startIndex, endIndex);
 
   // 生成頁碼陣列
   const getPageNumbers = () => {
@@ -391,11 +433,11 @@ export default function ProductsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  售價 *
+                  數量 *
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="1"
                   required
                   value={formData.salesPrice}
                   onChange={(e) => setFormData({ ...formData, salesPrice: e.target.value })}
@@ -427,6 +469,13 @@ export default function ProductsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     倉庫位置 *
+                    <button
+                      type="button"
+                      onClick={() => setShowWarehouseManager(!showWarehouseManager)}
+                      className="ml-2 text-xs text-blue-600 hover:underline"
+                    >
+                      {showWarehouseManager ? '收起管理' : '管理選項'}
+                    </button>
                   </label>
                   <select
                     required
@@ -435,10 +484,45 @@ export default function ProductsPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">請選擇</option>
-                    <option value="麗格">麗格</option>
-                    <option value="麗軒">麗軒</option>
-                    <option value="民宿">民宿</option>
+                    {warehouseOptions.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
                   </select>
+                  {showWarehouseManager && (
+                    <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          placeholder="輸入新倉庫名稱..."
+                          value={newWarehouse}
+                          onChange={(e) => setNewWarehouse(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addWarehouseOption(); } }}
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={addWarehouseOption}
+                          className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                        >
+                          新增
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {warehouseOptions.map(opt => (
+                          <span key={opt} className="inline-flex items-center gap-1 px-2 py-1 text-sm bg-white border rounded">
+                            {opt}
+                            <button
+                              type="button"
+                              onClick={() => removeWarehouseOption(opt)}
+                              className="text-red-500 hover:text-red-700 font-bold"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div>
@@ -488,11 +572,27 @@ export default function ProductsPage() {
           <div className="flex gap-4">
             <input
               type="text"
-              placeholder="搜尋產品..."
+              placeholder="搜尋產品（代碼、名稱、類別）..."
+              value={searchKeyword}
+              onChange={(e) => {
+                setSearchKeyword(e.target.value);
+                setCurrentPage(1);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setCurrentPage(1);
+                }
+              }}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <button className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50">
-              搜尋
+            <button
+              onClick={() => {
+                setSearchKeyword('');
+                setCurrentPage(1);
+              }}
+              className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
+            >
+              {searchKeyword ? '清除' : '搜尋'}
             </button>
             <button
               onClick={handleExport}
@@ -522,7 +622,7 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">類別</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">單位</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">成本價</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">售價</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">數量</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">列入庫存</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫位置</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
@@ -533,7 +633,7 @@ export default function ProductsPage() {
               {currentProducts.length === 0 ? (
                 <tr>
                   <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
-                    {products.length === 0 ? '尚無產品資料' : '此頁無資料'}
+                    {products.length === 0 ? '尚無產品資料' : searchKeyword ? '找不到符合條件的產品' : '此頁無資料'}
                   </td>
                 </tr>
               ) : (
@@ -545,7 +645,7 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 text-sm">{product.category}</td>
                     <td className="px-4 py-3 text-sm">{product.unit}</td>
                     <td className="px-4 py-3 text-sm">NT$ {product.costPrice}</td>
-                    <td className="px-4 py-3 text-sm">NT$ {product.salesPrice}</td>
+                    <td className="px-4 py-3 text-sm">{product.salesPrice}</td>
                     <td className="px-4 py-3 text-sm">{product.isInStock ? '是' : '否'}</td>
                     <td className="px-4 py-3 text-sm">{product.warehouseLocation || '-'}</td>
                     <td className="px-4 py-3 text-sm">{product.accountingSubject || '-'}</td>
@@ -567,12 +667,14 @@ export default function ProductsPage() {
                             </button>
                           </>
                         )}
-                        <button
-                          onClick={() => handleViewDetails(product)}
+                        <a
+                          href={`/products/${product.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           className="text-blue-600 hover:underline text-sm"
                         >
                           詳情
-                        </button>
+                        </a>
                       </div>
                     </td>
                   </tr>
@@ -654,7 +756,7 @@ export default function ProductsPage() {
             </select>
             <span className="text-sm text-gray-600">筆</span>
             <span className="ml-2 text-sm text-gray-600">
-              (共 {products.length} 筆，第 {currentPage} / {totalPages} 頁)
+              (共 {filteredProducts.length} 筆{searchKeyword ? `，搜尋 "${searchKeyword}"` : ''}，第 {currentPage} / {totalPages} 頁)
             </span>
           </div>
         )}
