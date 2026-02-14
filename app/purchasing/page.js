@@ -22,12 +22,12 @@ export default function PurchasingPage() {
     startDate: '',
     endDate: ''
   });
-  // 館別和部門的對應關係
-  const warehouseDepartments = {
-    '麗格': ['總務部', '行銷部', '財務部'],
-    '麗軒': ['總務部', '行銷部', '財務部'],
-    '民宿': ['總務部', '行銷部', '財務部']
-  };
+  // 館別和部門的對應關係（從 API 載入）
+  const [warehouseDepartments, setWarehouseDepartments] = useState({});
+  const [showWarehouseManager, setShowWarehouseManager] = useState(false);
+  const [newWarehouseName, setNewWarehouseName] = useState('');
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptWarehouse, setNewDeptWarehouse] = useState('');
 
   const [formData, setFormData] = useState({
     warehouse: '', // 館別
@@ -54,7 +54,100 @@ export default function PurchasingPage() {
     fetchSuppliers();
     fetchProducts();
     fetchPurchases();
+    fetchWarehouseDepartments();
   }, []);
+
+  async function fetchWarehouseDepartments() {
+    try {
+      const response = await fetch('/api/warehouse-departments');
+      const data = await response.json();
+      setWarehouseDepartments(data || {});
+    } catch (error) {
+      console.error('取得館別部門失敗:', error);
+    }
+  }
+
+  async function handleAddWarehouse() {
+    if (!newWarehouseName.trim()) return;
+    try {
+      const response = await fetch('/api/warehouse-departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'addWarehouse', name: newWarehouseName.trim() })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWarehouseDepartments(data);
+        setNewWarehouseName('');
+      } else {
+        const error = await response.json();
+        alert(error.error || '新增失敗');
+      }
+    } catch (error) {
+      alert('新增館別失敗');
+    }
+  }
+
+  async function handleDeleteWarehouse(name) {
+    if (!confirm(`確定要刪除館別「${name}」及其所有部門嗎？`)) return;
+    try {
+      const response = await fetch('/api/warehouse-departments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteWarehouse', name })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWarehouseDepartments(data);
+        if (formData.warehouse === name) {
+          setFormData({ ...formData, warehouse: '', department: '' });
+        }
+      }
+    } catch (error) {
+      alert('刪除館別失敗');
+    }
+  }
+
+  async function handleAddDepartment() {
+    if (!newDeptWarehouse || !newDeptName.trim()) return;
+    try {
+      const response = await fetch('/api/warehouse-departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'addDepartment', warehouse: newDeptWarehouse, name: newDeptName.trim() })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWarehouseDepartments(data);
+        setNewDeptName('');
+      } else {
+        const error = await response.json();
+        alert(error.error || '新增失敗');
+      }
+    } catch (error) {
+      alert('新增部門失敗');
+    }
+  }
+
+  async function handleDeleteDepartment(warehouse, deptName) {
+    if (!confirm(`確定要刪除「${warehouse}」的部門「${deptName}」嗎？`)) return;
+    try {
+      const response = await fetch('/api/warehouse-departments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteDepartment', warehouse, name: deptName })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWarehouseDepartments(data);
+        if (formData.warehouse === warehouse && formData.department === deptName) {
+          setFormData({ ...formData, department: '' });
+        }
+      }
+    } catch (error) {
+      alert('刪除部門失敗');
+    }
+  }
 
   // 產品搜尋過濾
   const filteredProducts = products.filter(p => {
@@ -417,9 +510,18 @@ export default function PurchasingPage() {
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    館別 *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      館別 *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowWarehouseManager(!showWarehouseManager)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      管理選項
+                    </button>
+                  </div>
                   <select
                     required
                     value={formData.warehouse}
@@ -427,9 +529,9 @@ export default function PurchasingPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">請先選擇館別...</option>
-                    <option value="麗格">麗格</option>
-                    <option value="麗軒">麗軒</option>
-                    <option value="民宿">民宿</option>
+                    {Object.keys(warehouseDepartments).map(w => (
+                      <option key={w} value={w}>{w}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -453,6 +555,108 @@ export default function PurchasingPage() {
                     ))}
                   </select>
                 </div>
+
+                {/* 館別/部門管理面板 */}
+                {showWarehouseManager && (
+                  <div className="col-span-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-sm font-semibold text-gray-700">館別 / 部門管理</h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowWarehouseManager(false)}
+                        className="text-gray-400 hover:text-gray-600 text-sm"
+                      >
+                        收起
+                      </button>
+                    </div>
+
+                    {/* 新增館別 */}
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        placeholder="輸入新館別名稱..."
+                        value={newWarehouseName}
+                        onChange={(e) => setNewWarehouseName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddWarehouse())}
+                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddWarehouse}
+                        className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        新增館別
+                      </button>
+                    </div>
+
+                    {/* 新增部門 */}
+                    <div className="flex gap-2 mb-4">
+                      <select
+                        value={newDeptWarehouse}
+                        onChange={(e) => setNewDeptWarehouse(e.target.value)}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">選擇館別</option>
+                        {Object.keys(warehouseDepartments).map(w => (
+                          <option key={w} value={w}>{w}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="輸入新部門名稱..."
+                        value={newDeptName}
+                        onChange={(e) => setNewDeptName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddDepartment())}
+                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddDepartment}
+                        disabled={!newDeptWarehouse}
+                        className={`px-4 py-1.5 text-sm rounded-lg ${newDeptWarehouse ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                      >
+                        新增部門
+                      </button>
+                    </div>
+
+                    {/* 現有選項列表 */}
+                    <div className="space-y-2">
+                      {Object.entries(warehouseDepartments).map(([warehouse, departments]) => (
+                        <div key={warehouse} className="bg-white rounded-lg border border-gray-200 p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-gray-800">{warehouse}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWarehouse(warehouse)}
+                              className="text-xs text-red-500 hover:text-red-700"
+                            >
+                              刪除館別
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {departments.length > 0 ? departments.map(dept => (
+                              <span key={dept} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
+                                {dept}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDepartment(warehouse, dept)}
+                                  className="text-blue-400 hover:text-red-500 font-bold ml-0.5"
+                                >
+                                  x
+                                </button>
+                              </span>
+                            )) : (
+                              <span className="text-xs text-gray-400">尚無部門</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {Object.keys(warehouseDepartments).length === 0 && (
+                        <p className="text-xs text-gray-400 text-center py-2">尚無館別資料</p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="relative supplier-search-container">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     廠商 *
