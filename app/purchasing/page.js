@@ -48,6 +48,7 @@ export default function PurchasingPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [editingItemIndex, setEditingItemIndex] = useState(null);
 
   useEffect(() => {
     fetchSuppliers();
@@ -685,7 +686,7 @@ export default function PurchasingPage() {
                             key={s.id}
                             type="button"
                             onClick={() => {
-                              setFormData({ ...formData, supplierId: s.id.toString() });
+                              setFormData({ ...formData, supplierId: s.id.toString(), paymentTerms: s.paymentTerms || '月結' });
                               setSupplierSearch(s.name);
                               setShowSupplierDropdown(false);
                             }}
@@ -753,8 +754,38 @@ export default function PurchasingPage() {
                         {items.map((item, index) => (
                           <tr key={index}>
                             <td className="px-3 py-2 text-sm">{item.productName}</td>
-                            <td className="px-3 py-2 text-sm">{item.quantity}</td>
-                            <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
+                            <td className="px-3 py-2 text-sm">
+                              {editingItemIndex === index ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.quantity}
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    const qty = e.target.value;
+                                    newItems[index] = { ...newItems[index], quantity: qty, subtotal: parseFloat(qty || 0) * parseFloat(item.unitPrice || 0) };
+                                    setItems(newItems);
+                                  }}
+                                  className="w-20 px-2 py-1 border border-blue-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              ) : item.quantity}
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              {editingItemIndex === index ? (
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.unitPrice}
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    const price = e.target.value;
+                                    newItems[index] = { ...newItems[index], unitPrice: price, subtotal: parseFloat(item.quantity || 0) * parseFloat(price || 0) };
+                                    setItems(newItems);
+                                  }}
+                                  className="w-24 px-2 py-1 border border-blue-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              ) : <>NT$ {item.unitPrice}</>}
+                            </td>
                             <td className="px-3 py-2 text-sm">NT$ {item.subtotal.toFixed(2)}</td>
                             <td className="px-3 py-2 text-sm text-gray-600">{item.note || '-'}</td>
                             <td className="px-3 py-2">
@@ -777,13 +808,35 @@ export default function PurchasingPage() {
                               </select>
                             </td>
                             <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                onClick={() => removeItem(index)}
-                                className="text-red-600 hover:underline text-sm"
-                              >
-                                刪除
-                              </button>
+                              <div className="flex gap-2">
+                                {editingItemIndex === index ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingItemIndex(null)}
+                                    className="text-blue-600 hover:underline text-sm"
+                                  >
+                                    完成
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingItemIndex(index)}
+                                    className="text-green-600 hover:underline text-sm"
+                                  >
+                                    編輯
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    removeItem(index);
+                                    if (editingItemIndex === index) setEditingItemIndex(null);
+                                  }}
+                                  className="text-red-600 hover:underline text-sm"
+                                >
+                                  刪除
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
