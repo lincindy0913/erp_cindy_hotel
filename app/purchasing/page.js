@@ -672,7 +672,7 @@ export default function PurchasingPage() {
                       setSupplierSearch(e.target.value);
                       setShowSupplierDropdown(true);
                       if (!e.target.value.trim()) {
-                        setFormData({ ...formData, supplierId: '' });
+                        setFormData(prev => ({ ...prev, supplierId: '', paymentTerms: '月結' }));
                       }
                     }}
                     onFocus={() => setShowSupplierDropdown(true)}
@@ -686,7 +686,7 @@ export default function PurchasingPage() {
                             key={s.id}
                             type="button"
                             onClick={() => {
-                              setFormData({ ...formData, supplierId: s.id.toString(), paymentTerms: s.paymentTerms || '月結' });
+                              setFormData(prev => ({ ...prev, supplierId: s.id.toString(), paymentTerms: s.paymentTerms || '月結' }));
                               setSupplierSearch(s.name);
                               setShowSupplierDropdown(false);
                             }}
