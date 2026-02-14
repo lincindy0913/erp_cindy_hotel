@@ -47,6 +47,8 @@ export default function PurchasingPage() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [recentPurchases, setRecentPurchases] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
 
   useEffect(() => {
     fetchSuppliers();
@@ -65,19 +67,34 @@ export default function PurchasingPage() {
     );
   });
 
-  // 點擊外部關閉產品下拉選單
+  // 廠商搜尋過濾
+  const filteredSuppliers = suppliers.filter(s => {
+    if (!supplierSearch.trim()) return true;
+    const keyword = supplierSearch.toLowerCase().trim();
+    return (
+      (s.name && s.name.toLowerCase().includes(keyword)) ||
+      (s.taxId && s.taxId.includes(keyword)) ||
+      (s.contact && s.contact.toLowerCase().includes(keyword))
+    );
+  });
+
+  // 點擊外部關閉下拉選單
   useEffect(() => {
     function handleClickOutside(event) {
-      const dropdown = document.querySelector('.product-search-container');
-      if (dropdown && !dropdown.contains(event.target)) {
+      const productDropdown = document.querySelector('.product-search-container');
+      if (productDropdown && !productDropdown.contains(event.target)) {
         setShowProductDropdown(false);
       }
+      const supplierDropdown = document.querySelector('.supplier-search-container');
+      if (supplierDropdown && !supplierDropdown.contains(event.target)) {
+        setShowSupplierDropdown(false);
+      }
     }
-    if (showProductDropdown) {
+    if (showProductDropdown || showSupplierDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showProductDropdown]);
+  }, [showProductDropdown, showSupplierDropdown]);
 
   async function fetchPurchases() {
     try {
@@ -158,6 +175,8 @@ export default function PurchasingPage() {
       paymentTerms: purchase.paymentTerms || '月結',
       status: purchase.status
     });
+    const supplier = suppliers.find(s => s.id === purchase.supplierId);
+    setSupplierSearch(supplier ? supplier.name : '');
     
     // 載入現有明細
     const purchaseItems = purchase.items.map(item => {
@@ -353,6 +372,7 @@ export default function PurchasingPage() {
           paymentTerms: '月結',
           status: '待入庫'
         });
+        setSupplierSearch('');
         fetchPurchases();
         // 重新應用篩選條件
         setTimeout(() => {
@@ -433,21 +453,50 @@ export default function PurchasingPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="relative supplier-search-container">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     廠商 *
                   </label>
-                  <select
-                    required
-                    value={formData.supplierId}
-                    onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                  <input
+                    type="text"
+                    placeholder="輸入關鍵字搜尋廠商..."
+                    value={supplierSearch}
+                    onChange={(e) => {
+                      setSupplierSearch(e.target.value);
+                      setShowSupplierDropdown(true);
+                      if (!e.target.value.trim()) {
+                        setFormData({ ...formData, supplierId: '' });
+                      }
+                    }}
+                    onFocus={() => setShowSupplierDropdown(true)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">選擇廠商...</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                  />
+                  {showSupplierDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {filteredSuppliers.length > 0 ? (
+                        filteredSuppliers.map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, supplierId: s.id.toString() });
+                              setSupplierSearch(s.name);
+                              setShowSupplierDropdown(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                              formData.supplierId === s.id.toString() ? 'bg-blue-50 text-blue-700' : ''
+                            }`}
+                          >
+                            <span className="font-medium">{s.name}</span>
+                            {s.taxId && <span className="text-gray-400 ml-2 text-xs">{s.taxId}</span>}
+                            {s.contact && <span className="text-gray-400 ml-2 text-xs">({s.contact})</span>}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-gray-500">找不到符合的廠商</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -682,6 +731,7 @@ export default function PurchasingPage() {
                     setShowAddForm(false);
                     setEditingPurchase(null);
                     setItems([]);
+                    setSupplierSearch('');
                     setFormData({
                       warehouse: '',
                       department: '',
