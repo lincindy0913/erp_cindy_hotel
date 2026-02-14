@@ -34,8 +34,7 @@ export default function PurchasingPage() {
     department: '', // 部門
     supplierId: '',
     purchaseDate: new Date().toISOString().split('T')[0],
-    paymentTerms: '月結',
-    status: '待入庫'
+    paymentTerms: '月結'
   });
   const [newItem, setNewItem] = useState({
     productId: '',
@@ -265,22 +264,23 @@ export default function PurchasingPage() {
       department: purchase.department || '',
       supplierId: purchase.supplierId.toString(),
       purchaseDate: purchase.purchaseDate,
-      paymentTerms: purchase.paymentTerms || '月結',
-      status: purchase.status
+      paymentTerms: purchase.paymentTerms || '月結'
     });
     const supplier = suppliers.find(s => s.id === purchase.supplierId);
     setSupplierSearch(supplier ? supplier.name : '');
-    
+
     // 載入現有明細
     const purchaseItems = purchase.items.map(item => {
       const product = products.find(p => p.id === item.productId);
+      const itemStatus = item.status || (product ? (product.isInStock ? '待入庫' : '不需入庫') : '不需入庫');
       return {
         productId: item.productId.toString(),
         quantity: item.quantity.toString(),
         unitPrice: item.unitPrice.toString(),
         note: item.note || '',
         productName: product ? product.name : '未知商品',
-        subtotal: item.quantity * item.unitPrice
+        subtotal: item.quantity * item.unitPrice,
+        status: itemStatus
       };
     });
     setItems(purchaseItems);
@@ -379,11 +379,13 @@ export default function PurchasingPage() {
     const quantity = parseFloat(newItem.quantity);
     const unitPrice = parseFloat(newItem.unitPrice);
     const subtotal = quantity * unitPrice;
+    const itemStatus = product.isInStock ? '待入庫' : '不需入庫';
 
     setItems([...items, {
       ...newItem,
       productName: product.name,
-      subtotal
+      subtotal,
+      status: itemStatus
     }]);
 
     setNewItem({
@@ -435,7 +437,8 @@ export default function PurchasingPage() {
           productId: parseInt(item.productId),
           quantity: parseFloat(item.quantity),
           unitPrice: parseFloat(item.unitPrice),
-          note: item.note || ''
+          note: item.note || '',
+          status: item.status || '不需入庫'
         })),
         amount: parseFloat(totals.total), // 金額
         tax: 0, // 稅額設為 0
@@ -462,8 +465,7 @@ export default function PurchasingPage() {
           department: '',
           supplierId: '',
           purchaseDate: new Date().toISOString().split('T')[0],
-          paymentTerms: '月結',
-          status: '待入庫'
+          paymentTerms: '月結'
         });
         setSupplierSearch('');
         fetchPurchases();
@@ -728,20 +730,6 @@ export default function PurchasingPage() {
                     <option>支票</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    狀態
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option>待入庫</option>
-                    <option>已入庫</option>
-                    <option>已取消</option>
-                  </select>
-                </div>
               </div>
 
               {/* 進貨明細 */}
@@ -757,6 +745,7 @@ export default function PurchasingPage() {
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">小計</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">備註</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">狀態</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">操作</th>
                         </tr>
                       </thead>
@@ -768,6 +757,25 @@ export default function PurchasingPage() {
                             <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
                             <td className="px-3 py-2 text-sm">NT$ {item.subtotal.toFixed(2)}</td>
                             <td className="px-3 py-2 text-sm text-gray-600">{item.note || '-'}</td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={item.status}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  newItems[index] = { ...newItems[index], status: e.target.value };
+                                  setItems(newItems);
+                                }}
+                                className={`px-2 py-1 rounded text-xs border ${
+                                  item.status === '已入庫' ? 'bg-green-100 text-green-800 border-green-300' :
+                                  item.status === '待入庫' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                  'bg-gray-100 text-gray-800 border-gray-300'
+                                }`}
+                              >
+                                <option value="待入庫">待入庫</option>
+                                <option value="已入庫">已入庫</option>
+                                <option value="不需入庫">不需入庫</option>
+                              </select>
+                            </td>
                             <td className="px-3 py-2">
                               <button
                                 type="button"
@@ -941,8 +949,7 @@ export default function PurchasingPage() {
                       department: '',
                       supplierId: '',
                       purchaseDate: new Date().toISOString().split('T')[0],
-                      paymentTerms: '月結',
-                      status: '待入庫'
+                      paymentTerms: '月結'
                     });
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1056,13 +1063,34 @@ export default function PurchasingPage() {
                         <td className="px-4 py-3 text-sm">{purchase.purchaseDate}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-blue-600">NT$ {totalAmount.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
-                            purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {purchase.status}
-                          </span>
+                          {purchase.items && purchase.items.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(() => {
+                                const statusCounts = {};
+                                purchase.items.forEach(item => {
+                                  const s = item.status || purchase.status || '待入庫';
+                                  statusCounts[s] = (statusCounts[s] || 0) + 1;
+                                });
+                                return Object.entries(statusCounts).map(([status, count]) => (
+                                  <span key={status} className={`px-2 py-0.5 rounded text-xs ${
+                                    status === '已入庫' ? 'bg-green-100 text-green-800' :
+                                    status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {status}{count > 1 ? ` x${count}` : ''}
+                                  </span>
+                                ));
+                              })()}
+                            </div>
+                          ) : (
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
+                              purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {purchase.status}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
@@ -1125,16 +1153,6 @@ export default function PurchasingPage() {
                                   <span className="text-sm font-medium text-gray-600">總金額：</span>
                                   <span className="text-sm font-semibold text-blue-600">NT$ {totalAmount.toFixed(2)}</span>
                                 </div>
-                                <div>
-                                  <span className="text-sm font-medium text-gray-600">狀態：</span>
-                                  <span className={`px-2 py-1 rounded text-xs ${
-                                    purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
-                                    purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {purchase.status}
-                                  </span>
-                                </div>
                               </div>
                               <div className="mt-4">
                                 <h5 className="text-md font-semibold mb-2 text-gray-800">商品明細</h5>
@@ -1147,6 +1165,7 @@ export default function PurchasingPage() {
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">單價</th>
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">小計</th>
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">備註</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">狀態</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1160,6 +1179,15 @@ export default function PurchasingPage() {
                                             <td className="px-3 py-2 text-sm border border-gray-300">NT$ {item.unitPrice.toFixed(2)}</td>
                                             <td className="px-3 py-2 text-sm border border-gray-300">NT$ {itemSubtotal.toFixed(2)}</td>
                                             <td className="px-3 py-2 text-sm text-gray-600 border border-gray-300">{item.note || '-'}</td>
+                                            <td className="px-3 py-2 text-sm border border-gray-300">
+                                              <span className={`px-2 py-0.5 rounded text-xs ${
+                                                item.status === '已入庫' ? 'bg-green-100 text-green-800' :
+                                                item.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-gray-100 text-gray-800'
+                                              }`}>
+                                                {item.status || purchase.status || '待入庫'}
+                                              </span>
+                                            </td>
                                           </tr>
                                         );
                                       })}
