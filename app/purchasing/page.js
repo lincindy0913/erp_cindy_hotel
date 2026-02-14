@@ -45,6 +45,8 @@ export default function PurchasingPage() {
   });
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [recentPurchases, setRecentPurchases] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchSuppliers();
@@ -232,6 +234,24 @@ export default function PurchasingPage() {
     }
   }
 
+  async function fetchRecentPurchases(productId) {
+    setLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/products/${productId}/purchases`);
+      if (response.ok) {
+        const data = await response.json();
+        setRecentPurchases((data.purchases || []).slice(0, 3));
+      } else {
+        setRecentPurchases([]);
+      }
+    } catch (error) {
+      console.error('取得產品歷史採購記錄失敗:', error);
+      setRecentPurchases([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
   function addItem() {
     if (!newItem.productId || !newItem.quantity || !newItem.unitPrice) {
       alert('請填寫完整的商品資訊');
@@ -261,6 +281,7 @@ export default function PurchasingPage() {
       note: ''
     });
     setProductSearch('');
+    setRecentPurchases([]);
   }
 
   function removeItem(index) {
@@ -525,6 +546,7 @@ export default function PurchasingPage() {
                           setShowProductDropdown(true);
                           if (!e.target.value.trim()) {
                             setNewItem({ ...newItem, productId: '' });
+                            setRecentPurchases([]);
                           }
                         }}
                         onFocus={() => setShowProductDropdown(true)}
@@ -541,6 +563,7 @@ export default function PurchasingPage() {
                                   setNewItem({ ...newItem, productId: p.id.toString() });
                                   setProductSearch(p.name);
                                   setShowProductDropdown(false);
+                                  fetchRecentPurchases(p.id);
                                 }}
                                 className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
                                   newItem.productId === p.id.toString() ? 'bg-blue-50 text-blue-700' : ''
@@ -596,6 +619,46 @@ export default function PurchasingPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* 最近三次採購記錄 */}
+                  {newItem.productId && (
+                    <div className="mt-3 border border-blue-200 rounded-lg bg-blue-50 p-3">
+                      <h5 className="text-sm font-semibold text-blue-700 mb-2">
+                        最近採購記錄（{productSearch}）
+                      </h5>
+                      {loadingHistory ? (
+                        <p className="text-xs text-gray-500">載入中...</p>
+                      ) : recentPurchases.length > 0 ? (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-blue-100">
+                              <th className="px-3 py-1.5 text-left text-xs font-medium text-blue-800">日期</th>
+                              <th className="px-3 py-1.5 text-left text-xs font-medium text-blue-800">單價</th>
+                              <th className="px-3 py-1.5 text-left text-xs font-medium text-blue-800">數量</th>
+                              <th className="px-3 py-1.5 text-left text-xs font-medium text-blue-800">廠商</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-blue-200">
+                            {(() => {
+                              const minPrice = Math.min(...recentPurchases.map(r => r.unitPrice));
+                              return recentPurchases.map((record, idx) => (
+                                <tr key={idx} className="bg-white">
+                                  <td className="px-3 py-1.5 text-xs">{record.purchaseDate}</td>
+                                  <td className={`px-3 py-1.5 text-xs font-semibold ${record.unitPrice === minPrice ? 'text-red-600' : ''}`}>
+                                    NT$ {record.unitPrice.toFixed(2)}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-xs">{record.quantity}</td>
+                                  <td className="px-3 py-1.5 text-xs">{record.supplierName}</td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="text-xs text-gray-500">此產品尚無採購記錄</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
