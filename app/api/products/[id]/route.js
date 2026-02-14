@@ -35,11 +35,12 @@ export async function PUT(request, { params }) {
     // 處理 isInStock 的轉換
     const isInStock = data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是';
     
-    store.products[productIndex] = { 
-      ...store.products[productIndex], 
+    store.products[productIndex] = {
+      ...store.products[productIndex],
       ...data,
       isInStock: isInStock,
       warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
+      supplierId: data.supplierId ? parseInt(data.supplierId) : null,
       updatedAt: new Date().toISOString()
     };
     return NextResponse.json(store.products[productIndex]);

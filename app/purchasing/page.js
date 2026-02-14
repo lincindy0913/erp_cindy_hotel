@@ -729,6 +729,7 @@ export default function PurchasingPage() {
                     <option>月結</option>
                     <option>現金</option>
                     <option>支票</option>
+                    <option>轉帳</option>
                   </select>
                 </div>
               </div>

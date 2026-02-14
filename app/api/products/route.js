@@ -55,6 +55,7 @@ export async function POST(request) {
       isInStock: data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是',
       warehouseLocation: data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是' ? (data.warehouseLocation || null) : null,
       accountingSubject: data.accountingSubject || '',
+      supplierId: data.supplierId ? parseInt(data.supplierId) : null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

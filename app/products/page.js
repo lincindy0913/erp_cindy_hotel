@@ -9,9 +9,12 @@ export default function ProductsPage() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -33,16 +36,57 @@ export default function ProductsPage() {
     salesPrice: '',
     isInStock: false,
     warehouseLocation: '',
-    accountingSubject: ''
+    accountingSubject: '',
+    supplierId: ''
   });
 
   useEffect(() => {
     fetchProducts();
+    fetchSuppliers();
   }, []);
 
   useEffect(() => {
     localStorage.setItem('warehouseOptions', JSON.stringify(warehouseOptions));
   }, [warehouseOptions]);
+
+  // 點擊外部關閉廠商下拉選單
+  useEffect(() => {
+    function handleClickOutside(event) {
+      const dropdown = document.querySelector('.product-supplier-search');
+      if (dropdown && !dropdown.contains(event.target)) {
+        setShowSupplierDropdown(false);
+      }
+    }
+    if (showSupplierDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSupplierDropdown]);
+
+  async function fetchSuppliers() {
+    try {
+      const response = await fetch('/api/suppliers');
+      const data = await response.json();
+      setSuppliers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('取得廠商列表失敗:', error);
+      setSuppliers([]);
+    }
+  }
+
+  const filteredSuppliers = suppliers.filter(s => {
+    if (!supplierSearch.trim()) return true;
+    const keyword = supplierSearch.toLowerCase().trim();
+    return (
+      (s.name && s.name.toLowerCase().includes(keyword)) ||
+      (s.taxId && s.taxId.includes(keyword))
+    );
+  });
+
+  function getSupplierName(supplierId) {
+    const supplier = suppliers.find(s => s.id === parseInt(supplierId));
+    return supplier ? supplier.name : '-';
+  }
 
   function addWarehouseOption() {
     const trimmed = newWarehouse.trim();
@@ -118,8 +162,10 @@ export default function ProductsPage() {
           salesPrice: '',
           isInStock: false,
           warehouseLocation: '',
-          accountingSubject: ''
+          accountingSubject: '',
+          supplierId: ''
         });
+        setSupplierSearch('');
         const productsList = await fetchProducts();
         // 新增產品後跳到最後一頁
         if (!isEditing) {
@@ -148,8 +194,15 @@ export default function ProductsPage() {
       salesPrice: product.salesPrice,
       isInStock: product.isInStock || false,
       warehouseLocation: product.warehouseLocation || '',
-      accountingSubject: product.accountingSubject || ''
+      accountingSubject: product.accountingSubject || '',
+      supplierId: product.supplierId ? product.supplierId.toString() : ''
     });
+    if (product.supplierId) {
+      const supplier = suppliers.find(s => s.id === product.supplierId);
+      setSupplierSearch(supplier ? supplier.name : '');
+    } else {
+      setSupplierSearch('');
+    }
   }
 
   async function handleDelete(productId) {
@@ -174,13 +227,13 @@ export default function ProductsPage() {
   }
 
   function handleViewDetails(product) {
-    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n數量：${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}`);
+    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n數量：${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}\n廠商：${product.supplierId ? getSupplierName(product.supplierId) : '未設定'}`);
   }
 
   function handleExport() {
     try {
       // 轉換為 CSV 格式
-      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '數量', '列入庫存', '倉庫位置', '會計科目'];
+      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '數量', '列入庫存', '倉庫位置', '會計科目', '廠商'];
       const rows = products.map(p => [
         p.id,
         p.code,
@@ -191,7 +244,8 @@ export default function ProductsPage() {
         p.salesPrice,
         p.isInStock ? '是' : '否',
         p.warehouseLocation || '',
-        p.accountingSubject || ''
+        p.accountingSubject || '',
+        p.supplierId ? getSupplierName(p.supplierId) : ''
       ]);
 
       const csv = [
@@ -537,19 +591,68 @@ export default function ProductsPage() {
                   placeholder="例如：存貨、費用等"
                 />
               </div>
+              <div className="relative product-supplier-search">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  廠商
+                </label>
+                <input
+                  type="text"
+                  placeholder="輸入關鍵字搜尋廠商..."
+                  value={supplierSearch}
+                  onChange={(e) => {
+                    setSupplierSearch(e.target.value);
+                    setShowSupplierDropdown(true);
+                    if (!e.target.value.trim()) {
+                      setFormData(prev => ({ ...prev, supplierId: '' }));
+                    }
+                  }}
+                  onFocus={() => setShowSupplierDropdown(true)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showSupplierDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredSuppliers.length > 0 ? (
+                      filteredSuppliers.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, supplierId: s.id.toString() }));
+                            setSupplierSearch(s.name);
+                            setShowSupplierDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                            formData.supplierId === s.id.toString() ? 'bg-blue-50 text-blue-700' : ''
+                          }`}
+                        >
+                          <span className="font-medium">{s.name}</span>
+                          {s.taxId && <span className="text-gray-400 ml-2 text-xs">{s.taxId}</span>}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-gray-500">找不到符合的廠商</div>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="col-span-2 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddForm(false);
                     setEditingProduct(null);
+                    setSupplierSearch('');
                     setFormData({
                       code: '',
                       name: '',
                       category: '',
                       unit: '',
                       costPrice: '',
-                      salesPrice: ''
+                      salesPrice: '',
+                      isInStock: false,
+                      warehouseLocation: '',
+                      accountingSubject: '',
+                      supplierId: ''
                     });
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -626,13 +729,14 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">列入庫存</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫位置</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {currentProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="12" className="px-4 py-8 text-center text-gray-500">
                     {products.length === 0 ? '尚無產品資料' : searchKeyword ? '找不到符合條件的產品' : '此頁無資料'}
                   </td>
                 </tr>
@@ -649,6 +753,7 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 text-sm">{product.isInStock ? '是' : '否'}</td>
                     <td className="px-4 py-3 text-sm">{product.warehouseLocation || '-'}</td>
                     <td className="px-4 py-3 text-sm">{product.accountingSubject || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{product.supplierId ? getSupplierName(product.supplierId) : '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         {isLoggedIn && (
