@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 
 export default function PurchasingPage() {
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
@@ -56,6 +58,19 @@ export default function PurchasingPage() {
     fetchPurchases();
     fetchWarehouseDepartments();
   }, []);
+
+  // 從 URL 參數自動開啟編輯（從發票頁面跳轉過來）
+  useEffect(() => {
+    const editPurchaseNo = searchParams.get('editPurchaseNo');
+    if (editPurchaseNo && allPurchases.length > 0 && suppliers.length > 0 && products.length > 0) {
+      const purchase = allPurchases.find(p => p.purchaseNo === editPurchaseNo);
+      if (purchase) {
+        handleEdit(purchase);
+        // 清除 URL 參數，避免重複觸發
+        window.history.replaceState({}, '', '/purchasing');
+      }
+    }
+  }, [allPurchases, suppliers, products, searchParams]);
 
   async function fetchWarehouseDepartments() {
     try {

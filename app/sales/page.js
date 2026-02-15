@@ -2,10 +2,12 @@
 
 import { useState, useEffect, Fragment } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 
 export default function InvoicePage() {
+  const router = useRouter();
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
@@ -437,7 +439,15 @@ export default function InvoicePage() {
                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                               </td>
-                              <td className="px-3 py-2 text-sm font-medium">{item.purchaseNo}</td>
+                              <td className="px-3 py-2 text-sm font-medium">
+                                <button
+                                  type="button"
+                                  onClick={() => router.push(`/purchasing?editPurchaseNo=${encodeURIComponent(item.purchaseNo)}`)}
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  {item.purchaseNo}
+                                </button>
+                              </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
@@ -500,20 +510,23 @@ export default function InvoicePage() {
                           const totalAmount = salesAmount + taxAmount;
                           return (
                             <tr key={item.id}>
-                              <td className="px-3 py-2 text-sm">{item.purchaseNo}</td>
+                              <td className="px-3 py-2 text-sm">
+                                <button
+                                  type="button"
+                                  onClick={() => router.push(`/purchasing?editPurchaseNo=${encodeURIComponent(item.purchaseNo)}`)}
+                                  className="text-blue-600 hover:underline font-medium"
+                                >
+                                  {item.purchaseNo}
+                                </button>
+                              </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
                               <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
-                              <td className="px-3 py-2">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={item.salesAmount !== undefined ? item.salesAmount : item.subtotal}
-                                  onChange={(e) => updateSelectedItem(item.id, 'salesAmount', e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
+                              <td className="px-3 py-2 text-sm">
+                                NT$ {parseFloat(item.salesAmount !== undefined ? item.salesAmount : item.subtotal).toFixed(2)}
+                              </td>
                               </td>
                               <td className="px-3 py-2">
                                 <select
@@ -810,7 +823,17 @@ export default function InvoicePage() {
                                           return (
                                             <tr key={idx} className="hover:bg-gray-50">
                                               <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
-                                              <td className="px-3 py-2 font-medium">{item.purchaseNo || '-'}</td>
+                                              <td className="px-3 py-2 font-medium">
+                                                {item.purchaseNo ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => router.push(`/purchasing?editPurchaseNo=${encodeURIComponent(item.purchaseNo)}`)}
+                                                    className="text-blue-600 hover:underline"
+                                                  >
+                                                    {item.purchaseNo}
+                                                  </button>
+                                                ) : '-'}
+                                              </td>
                                               <td className="px-3 py-2 text-gray-600">{item.purchaseDate || '-'}</td>
                                               <td className="px-3 py-2">{item.supplierId ? getSupplierName(item.supplierId) : '未知廠商'}</td>
                                               <td className="px-3 py-2">{product ? product.name : '未知商品'}</td>
