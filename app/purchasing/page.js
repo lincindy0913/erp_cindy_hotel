@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 
 export default function PurchasingPage() {
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
@@ -61,7 +59,8 @@ export default function PurchasingPage() {
 
   // 從 URL 參數自動開啟編輯（從發票頁面跳轉過來）
   useEffect(() => {
-    const editPurchaseNo = searchParams.get('editPurchaseNo');
+    const params = new URLSearchParams(window.location.search);
+    const editPurchaseNo = params.get('editPurchaseNo');
     if (editPurchaseNo && allPurchases.length > 0 && suppliers.length > 0 && products.length > 0) {
       const purchase = allPurchases.find(p => p.purchaseNo === editPurchaseNo);
       if (purchase) {
@@ -70,7 +69,7 @@ export default function PurchasingPage() {
         window.history.replaceState({}, '', '/purchasing');
       }
     }
-  }, [allPurchases, suppliers, products, searchParams]);
+  }, [allPurchases, suppliers, products]);
 
   async function fetchWarehouseDepartments() {
     try {
