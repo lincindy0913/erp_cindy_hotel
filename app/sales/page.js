@@ -527,7 +527,6 @@ export default function InvoicePage() {
                               <td className="px-3 py-2 text-sm">
                                 NT$ {parseFloat(item.salesAmount !== undefined ? item.salesAmount : item.subtotal).toFixed(2)}
                               </td>
-                              </td>
                               <td className="px-3 py-2">
                                 <select
                                   value={item.taxType || '應稅'}
