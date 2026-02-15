@@ -149,8 +149,12 @@ export default function PurchasingPage() {
     }
   }
 
-  // 產品搜尋過濾
+  // 產品搜尋過濾（選擇廠商後只顯示該廠商的產品）
   const filteredProducts = products.filter(p => {
+    // 如果已選擇廠商，只顯示該廠商的產品
+    if (formData.supplierId) {
+      if (p.supplierId !== parseInt(formData.supplierId)) return false;
+    }
     if (!productSearch.trim()) return true;
     const keyword = productSearch.toLowerCase().trim();
     return (
@@ -689,6 +693,10 @@ export default function PurchasingPage() {
                               setFormData(prev => ({ ...prev, supplierId: s.id.toString(), paymentTerms: s.paymentTerms || '月結' }));
                               setSupplierSearch(s.name);
                               setShowSupplierDropdown(false);
+                              // 切換廠商時清空已選的產品搜尋
+                              setProductSearch('');
+                              setNewItem({ productId: '', quantity: '', unitPrice: '', note: '' });
+                              setRecentPurchases([]);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
                               formData.supplierId === s.id.toString() ? 'bg-blue-50 text-blue-700' : ''
