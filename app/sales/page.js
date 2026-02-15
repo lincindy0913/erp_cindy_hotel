@@ -439,6 +439,7 @@ export default function InvoicePage() {
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨日期</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
@@ -470,6 +471,7 @@ export default function InvoicePage() {
                               </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
+                              <td className="px-3 py-2 text-sm">{item.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
                               <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
@@ -514,6 +516,7 @@ export default function InvoicePage() {
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨日期</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
@@ -534,6 +537,7 @@ export default function InvoicePage() {
                               </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
+                              <td className="px-3 py-2 text-sm">{item.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
                               <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
@@ -545,7 +549,7 @@ export default function InvoicePage() {
                       </tbody>
                       <tfoot className="bg-gray-50">
                         <tr>
-                          <td colSpan="6" className="px-3 py-2 text-sm font-semibold text-right">銷售金額合計：</td>
+                          <td colSpan="7" className="px-3 py-2 text-sm font-semibold text-right">銷售金額合計：</td>
                           <td className="px-3 py-2 text-sm font-bold text-blue-600">
                             NT$ {selectedItems.reduce((sum, item) => sum + parseFloat(item.salesAmount || item.subtotal || 0), 0).toFixed(2)}
                           </td>
