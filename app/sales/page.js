@@ -20,20 +20,36 @@ export default function InvoicePage() {
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState(new Set()); // 追蹤展開的發票ID
-  
+
+  // 發票抬頭選項管理
+  const [invoiceTitles, setInvoiceTitles] = useState(['麗格大飯店', '麗軒國際大飯店']);
+  const [showTitleManager, setShowTitleManager] = useState(false);
+  const [newTitleName, setNewTitleName] = useState('');
+
   // 篩選條件
   const [filterData, setFilterData] = useState({
     yearMonth: '', // YYYY-MM
     supplierId: '',
     warehouse: ''
   });
-  
+
   // 表單資料
   const [formData, setFormData] = useState({
     invoiceNo: '',
     invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceTitle: '', // 發票抬頭
+    taxType: '應稅', // 營業稅類型
+    invoiceAmount: '', // 發票金額（手動輸入）
+    supplierDiscount: '', // 廠商折讓金額
     status: '待核銷'
   });
+
+  // 營業稅金額自動計算
+  const taxAmount = (() => {
+    const amount = parseFloat(formData.invoiceAmount) || 0;
+    if (formData.taxType === '應稅') return amount * 0.05;
+    return 0;
+  })();
 
   useEffect(() => {
     fetchProducts();
@@ -128,70 +144,49 @@ export default function InvoicePage() {
     if (isSelected) {
       setSelectedItems(selectedItems.filter(selected => selected.id !== item.id));
     } else {
-      // 新增項目時，初始化銷售金額和營業稅欄位
-      const salesAmount = item.subtotal || 0;
-      const taxType = '應稅'; // 預設為應稅
-      const taxAmount = salesAmount * 0.05; // 預設營業稅為銷售金額的 5%
       setSelectedItems([...selectedItems, {
         ...item,
-        salesAmount: salesAmount,
-        taxType: taxType,
-        taxAmount: taxAmount
+        salesAmount: item.subtotal || 0
       }]);
     }
-  }
-
-  function updateSelectedItem(itemId, field, value) {
-    setSelectedItems(selectedItems.map(item => {
-      if (item.id === itemId) {
-        const updated = { ...item, [field]: value };
-        // 如果更新的是銷售金額或營業稅類型，重新計算營業稅金額
-        if (field === 'salesAmount' || field === 'taxType') {
-          const salesAmount = field === 'salesAmount' ? parseFloat(value) || 0 : parseFloat(item.salesAmount || 0);
-          const taxType = field === 'taxType' ? value : item.taxType;
-          
-          let taxAmount = 0;
-          if (taxType === '應稅') {
-            taxAmount = salesAmount * 0.05; // 5% 營業稅
-          } else if (taxType === '零稅率' || taxType === '免稅') {
-            taxAmount = 0;
-          }
-          
-          updated.taxAmount = taxAmount;
-        }
-        return updated;
-      }
-      return item;
-    }));
   }
 
   function handleSelectAll() {
     if (selectedItems.length === availableItems.length) {
       setSelectedItems([]);
     } else {
-      // 全選時，為每個項目初始化銷售金額和營業稅欄位
       setSelectedItems(availableItems.map(item => ({
         ...item,
-        salesAmount: item.subtotal || 0, // 預設銷售金額為小計
-        taxType: '應稅', // 預設為應稅
-        taxAmount: (item.subtotal || 0) * 0.05 // 預設營業稅為銷售金額的 5%
+        salesAmount: item.subtotal || 0
       })));
     }
   }
 
   function calculateTotal() {
-    // 使用新的銷售金額和營業稅金額計算
     const subtotal = selectedItems.reduce((sum, item) => {
       return sum + parseFloat(item.salesAmount || item.subtotal || 0);
     }, 0);
-    const tax = selectedItems.reduce((sum, item) => {
-      return sum + parseFloat(item.taxAmount || 0);
-    }, 0);
     return {
-      subtotal: subtotal.toFixed(2),
-      tax: tax.toFixed(2),
-      total: (subtotal + tax).toFixed(2)
+      subtotal: subtotal.toFixed(2)
     };
+  }
+
+  function handleAddTitle() {
+    if (!newTitleName.trim()) return;
+    if (invoiceTitles.includes(newTitleName.trim())) {
+      alert('此抬頭已存在');
+      return;
+    }
+    setInvoiceTitles([...invoiceTitles, newTitleName.trim()]);
+    setNewTitleName('');
+  }
+
+  function handleDeleteTitle(title) {
+    if (!confirm(`確定要刪除「${title}」嗎？`)) return;
+    setInvoiceTitles(invoiceTitles.filter(t => t !== title));
+    if (formData.invoiceTitle === title) {
+      setFormData(prev => ({ ...prev, invoiceTitle: '' }));
+    }
   }
 
   async function handleSubmit(e) {
@@ -209,25 +204,27 @@ export default function InvoicePage() {
 
     try {
       const totals = calculateTotal();
+      const invoiceAmountVal = parseFloat(formData.invoiceAmount) || 0;
+      const discountVal = parseFloat(formData.supplierDiscount) || 0;
       const invoiceData = {
         ...formData,
         items: selectedItems.map(item => ({
-          purchaseItemId: item.purchaseItemId, // 記錄進貨單品項ID
+          purchaseItemId: item.purchaseItemId,
           purchaseId: item.purchaseId,
           purchaseNo: item.purchaseNo,
-          purchaseDate: item.purchaseDate, // 記錄進貨日期，用於區分不同時間進貨的相同產品
-          supplierId: item.supplierId, // 記錄廠商ID
+          purchaseDate: item.purchaseDate,
+          supplierId: item.supplierId,
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
-          salesAmount: parseFloat(item.salesAmount || item.subtotal || 0), // 銷售金額
-          taxType: item.taxType || '應稅', // 營業稅類型
-          taxAmount: parseFloat(item.taxAmount || 0), // 營業稅金額
+          salesAmount: parseFloat(item.salesAmount || item.subtotal || 0),
           note: item.note || ''
         })),
         amount: parseFloat(totals.subtotal),
-        tax: parseFloat(totals.tax),
-        totalAmount: parseFloat(totals.total)
+        invoiceAmount: invoiceAmountVal,
+        tax: taxAmount,
+        supplierDiscount: discountVal,
+        totalAmount: invoiceAmountVal + taxAmount - discountVal
       };
 
       const isEditing = !!editingInvoice;
@@ -254,6 +251,10 @@ export default function InvoicePage() {
         setFormData({
           invoiceNo: '',
           invoiceDate: new Date().toISOString().split('T')[0],
+          invoiceTitle: '',
+          taxType: '應稅',
+          invoiceAmount: '',
+          supplierDiscount: '',
           status: '待核銷'
         });
         fetchInvoices();
@@ -298,7 +299,7 @@ export default function InvoicePage() {
     }
   }
 
-  const totals = selectedItems.length > 0 ? calculateTotal() : { subtotal: '0', tax: '0', total: '0' };
+  const totals = selectedItems.length > 0 ? calculateTotal() : { subtotal: '0' };
 
   return (
     <div className="min-h-screen page-bg-sales">
@@ -498,17 +499,10 @@ export default function InvoicePage() {
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">銷售金額</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">營業稅類型</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">營業稅金額</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">加總金額</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {selectedItems.map((item) => {
-                          const salesAmount = parseFloat(item.salesAmount || item.subtotal || 0);
-                          const taxAmount = parseFloat(item.taxAmount || 0);
-                          const totalAmount = salesAmount + taxAmount;
-                          return (
+                        {selectedItems.map((item) => (
                             <tr key={item.id}>
                               <td className="px-3 py-2 text-sm">
                                 <button
@@ -527,43 +521,14 @@ export default function InvoicePage() {
                               <td className="px-3 py-2 text-sm">
                                 NT$ {parseFloat(item.salesAmount !== undefined ? item.salesAmount : item.subtotal).toFixed(2)}
                               </td>
-                              <td className="px-3 py-2">
-                                <select
-                                  value={item.taxType || '應稅'}
-                                  onChange={(e) => updateSelectedItem(item.id, 'taxType', e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                  <option value="應稅">應稅</option>
-                                  <option value="零稅率">零稅率</option>
-                                  <option value="免稅">免稅</option>
-                                </select>
-                              </td>
-                              <td className="px-3 py-2 text-sm">
-                                NT$ {taxAmount.toFixed(2)}
-                              </td>
-                              <td className="px-3 py-2 text-sm font-semibold text-blue-600">
-                                NT$ {totalAmount.toFixed(2)}
-                              </td>
                             </tr>
-                          );
-                        })}
+                        ))}
                       </tbody>
                       <tfoot className="bg-gray-50">
                         <tr>
-                          <td colSpan="6" className="px-3 py-2 text-sm font-semibold text-right">總計：</td>
-                          <td className="px-3 py-2 text-sm font-semibold">
-                            NT$ {selectedItems.reduce((sum, item) => sum + parseFloat(item.salesAmount || item.subtotal || 0), 0).toFixed(2)}
-                          </td>
-                          <td className="px-3 py-2 text-sm"></td>
-                          <td className="px-3 py-2 text-sm font-semibold">
-                            NT$ {selectedItems.reduce((sum, item) => sum + parseFloat(item.taxAmount || 0), 0).toFixed(2)}
-                          </td>
+                          <td colSpan="6" className="px-3 py-2 text-sm font-semibold text-right">銷售金額合計：</td>
                           <td className="px-3 py-2 text-sm font-bold text-blue-600">
-                            NT$ {selectedItems.reduce((sum, item) => {
-                              const salesAmount = parseFloat(item.salesAmount || item.subtotal || 0);
-                              const taxAmount = parseFloat(item.taxAmount || 0);
-                              return sum + salesAmount + taxAmount;
-                            }, 0).toFixed(2)}
+                            NT$ {selectedItems.reduce((sum, item) => sum + parseFloat(item.salesAmount || item.subtotal || 0), 0).toFixed(2)}
                           </td>
                         </tr>
                       </tfoot>
@@ -600,6 +565,30 @@ export default function InvoicePage() {
                   />
                 </div>
                 <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      發票抬頭
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowTitleManager(!showTitleManager)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      管理選項
+                    </button>
+                  </div>
+                  <select
+                    value={formData.invoiceTitle}
+                    onChange={(e) => setFormData({ ...formData, invoiceTitle: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">請選擇抬頭...</option>
+                    {invoiceTitles.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     狀態
                   </label>
@@ -613,23 +602,139 @@ export default function InvoicePage() {
                     <option>已取消</option>
                   </select>
                 </div>
+
+                {/* 發票抬頭管理面板 */}
+                {showTitleManager && (
+                  <div className="col-span-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-sm font-semibold text-gray-700">發票抬頭管理</h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowTitleManager(false)}
+                        className="text-gray-400 hover:text-gray-600 text-sm"
+                      >
+                        收起
+                      </button>
+                    </div>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        placeholder="輸入新抬頭名稱..."
+                        value={newTitleName}
+                        onChange={(e) => setNewTitleName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTitle())}
+                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddTitle}
+                        className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        新增
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {invoiceTitles.map(title => (
+                        <span key={title} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
+                          {title}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTitle(title)}
+                            className="text-blue-400 hover:text-red-500 font-bold ml-0.5"
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                      {invoiceTitles.length === 0 && (
+                        <span className="text-xs text-gray-400">尚無抬頭選項</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    發票金額（手動輸入）
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.invoiceAmount}
+                    onChange={(e) => setFormData({ ...formData, invoiceAmount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="輸入發票金額"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    營業稅類型
+                  </label>
+                  <select
+                    value={formData.taxType}
+                    onChange={(e) => setFormData({ ...formData, taxType: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="應稅">應稅</option>
+                    <option value="零稅率">零稅率</option>
+                    <option value="免稅">免稅</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    營業稅金額（自動計算）
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={`NT$ ${taxAmount.toFixed(2)}`}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    廠商折讓金額
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.supplierDiscount}
+                    onChange={(e) => setFormData({ ...formData, supplierDiscount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="輸入廠商折讓金額"
+                  />
+                </div>
               </div>
 
               {/* 金額計算 */}
               {selectedItems.length > 0 && (
                 <div className="border-t pt-4 mb-4">
-                  <div className="flex justify-end gap-8">
-                    <div>
-                      <span className="text-sm text-gray-600">小計：</span>
-                      <span className="text-lg font-semibold ml-2">NT$ {totals.subtotal}</span>
-                    </div>
-                    <div>
-                      <span className="text-sm text-gray-600">稅額 (5%)：</span>
-                      <span className="text-lg font-semibold ml-2">NT$ {totals.tax}</span>
-                    </div>
-                    <div>
-                      <span className="text-sm text-gray-600">總金額：</span>
-                      <span className="text-xl font-bold text-blue-600 ml-2">NT$ {totals.total}</span>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex flex-wrap justify-end gap-6">
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500 mb-1">銷售金額合計</div>
+                        <div className="text-lg font-semibold">NT$ {totals.subtotal}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500 mb-1">發票金額</div>
+                        <div className="text-lg font-semibold">NT$ {(parseFloat(formData.invoiceAmount) || 0).toFixed(2)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500 mb-1">營業稅</div>
+                        <div className="text-lg font-semibold">NT$ {taxAmount.toFixed(2)}</div>
+                      </div>
+                      {parseFloat(formData.supplierDiscount) > 0 && (
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500 mb-1">廠商折讓</div>
+                          <div className="text-lg font-semibold text-red-600">- NT$ {(parseFloat(formData.supplierDiscount) || 0).toFixed(2)}</div>
+                        </div>
+                      )}
+                      <div className="text-right border-l-2 border-blue-300 pl-6">
+                        <div className="text-xs text-blue-600 mb-1 font-medium">應付總額</div>
+                        <div className="text-2xl font-bold text-blue-600">
+                          NT$ {((parseFloat(formData.invoiceAmount) || 0) + taxAmount - (parseFloat(formData.supplierDiscount) || 0)).toFixed(2)}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -652,6 +757,10 @@ export default function InvoicePage() {
                     setFormData({
                       invoiceNo: '',
                       invoiceDate: new Date().toISOString().split('T')[0],
+                      invoiceTitle: '',
+                      taxType: '應稅',
+                      invoiceAmount: '',
+                      supplierDiscount: '',
                       status: '待核銷'
                     });
                   }}
