@@ -49,12 +49,14 @@ export default function PurchasingPage() {
   const [supplierSearch, setSupplierSearch] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
+  const [invoices, setInvoices] = useState([]); // 發票資料（用於判斷發票狀態）
 
   useEffect(() => {
     fetchSuppliers();
     fetchProducts();
     fetchPurchases();
     fetchWarehouseDepartments();
+    fetchInvoices();
   }, []);
 
   // 從 URL 參數自動開啟編輯（從發票頁面跳轉過來）
@@ -70,6 +72,38 @@ export default function PurchasingPage() {
       }
     }
   }, [allPurchases, suppliers, products]);
+
+  async function fetchInvoices() {
+    try {
+      const response = await fetch('/api/sales');
+      const data = await response.json();
+      setInvoices(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('取得發票資料失敗:', error);
+      setInvoices([]);
+    }
+  }
+
+  // 建立已核銷品項ID集合
+  const invoicedItemIds = (() => {
+    const ids = new Set();
+    invoices.forEach(invoice => {
+      if (invoice.items) {
+        invoice.items.forEach(item => {
+          if (item.purchaseItemId) {
+            ids.add(item.purchaseItemId);
+          }
+        });
+      }
+    });
+    return ids;
+  })();
+
+  // 檢查某個進貨品項是否已核銷
+  function isItemInvoiced(purchaseId, itemIndex) {
+    const itemId = `${purchaseId}-${itemIndex}`;
+    return invoicedItemIds.has(itemId);
+  }
 
   async function fetchWarehouseDepartments() {
     try {
@@ -289,7 +323,7 @@ export default function PurchasingPage() {
     setSupplierSearch(supplier ? supplier.name : '');
 
     // 載入現有明細
-    const purchaseItems = purchase.items.map(item => {
+    const purchaseItems = purchase.items.map((item, idx) => {
       const product = products.find(p => p.id === item.productId);
       const itemStatus = item.status || (product ? (product.isInStock ? '待入庫' : '不需入庫') : '不需入庫');
       return {
@@ -299,7 +333,8 @@ export default function PurchasingPage() {
         note: item.note || '',
         productName: product ? product.name : '未知商品',
         subtotal: item.quantity * item.unitPrice,
-        status: itemStatus
+        status: itemStatus,
+        originalIndex: idx // 保留原始索引用於發票狀態檢查
       };
     });
     setItems(purchaseItems);
@@ -769,7 +804,8 @@ export default function PurchasingPage() {
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">小計</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">備註</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">狀態</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">入庫狀態</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">發票狀態</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">操作</th>
                         </tr>
                       </thead>
@@ -829,6 +865,20 @@ export default function PurchasingPage() {
                                 <option value="已入庫">已入庫</option>
                                 <option value="不需入庫">不需入庫</option>
                               </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              {(() => {
+                                const invoiced = editingPurchase && item.originalIndex !== undefined
+                                  ? isItemInvoiced(editingPurchase.id, item.originalIndex)
+                                  : false;
+                                return (
+                                  <span className={`px-2 py-1 rounded text-xs ${
+                                    invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                  }`}>
+                                    {invoiced ? '已核銷' : '未核銷'}
+                                  </span>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex gap-2">
@@ -1108,7 +1158,8 @@ export default function PurchasingPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">日期</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">總金額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">入庫狀態</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票狀態</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
@@ -1168,6 +1219,39 @@ export default function PurchasingPage() {
                             </span>
                           )}
                         </td>
+                        <td className="px-4 py-3 text-sm">
+                          {purchase.items && purchase.items.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(() => {
+                                let invoicedCount = 0;
+                                let uninvoicedCount = 0;
+                                purchase.items.forEach((item, idx) => {
+                                  if (isItemInvoiced(purchase.id, idx)) {
+                                    invoicedCount++;
+                                  } else {
+                                    uninvoicedCount++;
+                                  }
+                                });
+                                return (
+                                  <>
+                                    {invoicedCount > 0 && (
+                                      <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
+                                        已核銷{invoicedCount > 1 ? ` x${invoicedCount}` : ''}
+                                      </span>
+                                    )}
+                                    {uninvoicedCount > 0 && (
+                                      <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-800">
+                                        未核銷{uninvoicedCount > 1 ? ` x${uninvoicedCount}` : ''}
+                                      </span>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800">未核銷</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
                             <button
@@ -1197,7 +1281,7 @@ export default function PurchasingPage() {
                       </tr>
                       {isExpanded && (
                         <tr key={`${purchase.id}-details`}>
-                          <td colSpan="8" className="px-4 py-4 bg-gray-50">
+                          <td colSpan="9" className="px-4 py-4 bg-gray-50">
                             <div className="bg-white rounded-lg border border-gray-200 p-4">
                               <h4 className="text-lg font-semibold mb-4 text-gray-800">進貨單詳情</h4>
                               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -1241,7 +1325,8 @@ export default function PurchasingPage() {
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">單價</th>
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">小計</th>
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">備註</th>
-                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">狀態</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">入庫狀態</th>
+                                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">發票狀態</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1263,6 +1348,18 @@ export default function PurchasingPage() {
                                               }`}>
                                                 {item.status || purchase.status || '待入庫'}
                                               </span>
+                                            </td>
+                                            <td className="px-3 py-2 text-sm border border-gray-300">
+                                              {(() => {
+                                                const invoiced = isItemInvoiced(purchase.id, idx);
+                                                return (
+                                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                                    invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                  }`}>
+                                                    {invoiced ? '已核銷' : '未核銷'}
+                                                  </span>
+                                                );
+                                              })()}
                                             </td>
                                           </tr>
                                         );
