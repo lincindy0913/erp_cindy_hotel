@@ -40,8 +40,7 @@ export default function InvoicePage() {
     invoiceTitle: '', // 發票抬頭
     taxType: '應稅', // 營業稅類型
     invoiceAmount: '', // 發票金額（手動輸入）
-    supplierDiscount: '', // 廠商折讓金額
-    status: '待核銷'
+    supplierDiscount: '0' // 廠商折讓金額（預設0元）
   });
 
   // 營業稅金額自動計算
@@ -270,8 +269,7 @@ export default function InvoicePage() {
           invoiceTitle: '',
           taxType: '應稅',
           invoiceAmount: '',
-          supplierDiscount: '',
-          status: '待核銷'
+          supplierDiscount: '0'
         });
         fetchInvoices();
         if (!wantAddMore) {
@@ -436,10 +434,10 @@ export default function InvoicePage() {
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                           </th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨日期</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
@@ -460,6 +458,7 @@ export default function InvoicePage() {
                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                               </td>
+                              <td className="px-3 py-2 text-sm">{item.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm font-medium">
                                 <button
                                   type="button"
@@ -471,7 +470,6 @@ export default function InvoicePage() {
                               </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
-                              <td className="px-3 py-2 text-sm">{item.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
                               <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
@@ -513,10 +511,10 @@ export default function InvoicePage() {
                     <table className="w-full">
                       <thead className="bg-green-50">
                         <tr>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨日期</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">單價</th>
@@ -526,6 +524,7 @@ export default function InvoicePage() {
                       <tbody className="divide-y divide-gray-200">
                         {selectedItems.map((item) => (
                             <tr key={item.id}>
+                              <td className="px-3 py-2 text-sm">{item.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm">
                                 <button
                                   type="button"
@@ -537,7 +536,6 @@ export default function InvoicePage() {
                               </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
-                              <td className="px-3 py-2 text-sm">{item.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
                               <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
@@ -590,7 +588,7 @@ export default function InvoicePage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-medium text-gray-700">
-                      發票抬頭
+                      發票抬頭 *
                     </label>
                     <button
                       type="button"
@@ -601,6 +599,7 @@ export default function InvoicePage() {
                     </button>
                   </div>
                   <select
+                    required
                     value={formData.invoiceTitle}
                     onChange={(e) => setFormData({ ...formData, invoiceTitle: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -609,20 +608,6 @@ export default function InvoicePage() {
                     {invoiceTitles.map(t => (
                       <option key={t} value={t}>{t}</option>
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    狀態
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option>待核銷</option>
-                    <option>已核銷</option>
-                    <option>已取消</option>
                   </select>
                 </div>
 
@@ -678,11 +663,12 @@ export default function InvoicePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    發票金額（手動輸入）
+                    發票金額（手動輸入） *
                   </label>
                   <input
                     type="number"
                     step="0.01"
+                    required
                     value={formData.invoiceAmount}
                     onChange={(e) => setFormData({ ...formData, invoiceAmount: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -691,9 +677,10 @@ export default function InvoicePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    營業稅類型
+                    營業稅類型 *
                   </label>
                   <select
+                    required
                     value={formData.taxType}
                     onChange={(e) => setFormData({ ...formData, taxType: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -716,11 +703,12 @@ export default function InvoicePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    廠商折讓金額
+                    廠商折讓金額 *
                   </label>
                   <input
                     type="number"
                     step="0.01"
+                    required
                     value={formData.supplierDiscount}
                     onChange={(e) => setFormData({ ...formData, supplierDiscount: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
