@@ -1,22 +1,50 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
-    const store = getStore();
-    console.log('API: 取得進貨單資料, store.purchases.length =', store.purchases?.length || 0);
-    console.log('API: store.purchases =', JSON.stringify(store.purchases, null, 2));
-    return NextResponse.json(store.purchases || []);
+    const purchases = await prisma.purchaseMaster.findMany({
+      include: {
+        details: true
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    const result = purchases.map(p => ({
+      id: p.id,
+      purchaseNo: p.purchaseNo,
+      warehouse: p.warehouse,
+      department: p.department,
+      supplierId: p.supplierId,
+      purchaseDate: p.purchaseDate,
+      paymentTerms: p.paymentTerms,
+      taxType: p.taxType,
+      amount: Number(p.amount),
+      tax: Number(p.tax),
+      totalAmount: Number(p.totalAmount),
+      status: p.status,
+      items: p.details.map(d => ({
+        productId: d.productId,
+        quantity: d.quantity,
+        unitPrice: Number(d.unitPrice),
+        note: d.note || '',
+        status: d.status
+      })),
+      createdAt: p.createdAt.toISOString(),
+      updatedAt: p.updatedAt.toISOString()
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('查詢進貨單錯誤:', error);
-    const store = getStore();
-    return NextResponse.json(store.purchases || []);
+    return NextResponse.json([]);
   }
 }
 
 export async function POST(request) {
   try {
-    const store = getStore();
     const data = await request.json();
 
     if (!data.supplierId || !data.items || data.items.length === 0) {
@@ -24,44 +52,77 @@ export async function POST(request) {
     }
 
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const purchaseNo = `PUR-${today}-${String(store.counters.purchase).padStart(4, '0')}`;
+    const todayPrefix = `PUR-${today}-`;
+    const existingCount = await prisma.purchaseMaster.count({
+      where: { purchaseNo: { startsWith: todayPrefix } }
+    });
+    const purchaseNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
 
-    const newPurchase = {
-      id: store.counters.purchase++,
-      purchaseNo,
-      warehouse: data.warehouse || '',
-      department: data.department || '',
-      supplierId: parseInt(data.supplierId),
-      purchaseDate: data.purchaseDate,
-      paymentTerms: data.paymentTerms || '月結',
-      amount: data.amount || 0, // 金額
-      tax: 0, // 稅額固定為 0
-      totalAmount: data.totalAmount || parseFloat(data.amount || 0), // 總金額
-      status: data.status || '待入庫',
-      items: data.items || [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    store.purchases.push(newPurchase);
+    const newPurchase = await prisma.purchaseMaster.create({
+      data: {
+        purchaseNo,
+        warehouse: data.warehouse || '',
+        department: data.department || '',
+        supplierId: parseInt(data.supplierId),
+        purchaseDate: data.purchaseDate,
+        paymentTerms: data.paymentTerms || '月結',
+        taxType: data.taxType || null,
+        amount: parseFloat(data.amount || 0),
+        tax: 0,
+        totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : parseFloat(data.amount || 0),
+        status: data.status || '待入庫',
+        details: {
+          create: (data.items || []).map(item => ({
+            productId: parseInt(item.productId),
+            quantity: parseInt(item.quantity),
+            unitPrice: parseFloat(item.unitPrice),
+            note: item.note || '',
+            status: data.status || '待入庫'
+          }))
+        }
+      },
+      include: { details: true }
+    });
 
     // 記錄價格歷史
-    if (data.items && Array.isArray(data.items)) {
-      data.items.forEach(item => {
-        if (item.productId && item.unitPrice) {
-          const priceHistoryEntry = {
-            id: store.counters.priceHistory++,
+    for (const item of (data.items || [])) {
+      if (item.productId && item.unitPrice) {
+        await prisma.priceHistory.create({
+          data: {
             supplierId: parseInt(data.supplierId),
             productId: parseInt(item.productId),
             purchaseDate: data.purchaseDate,
             unitPrice: parseFloat(item.unitPrice)
-          };
-          store.priceHistory.push(priceHistoryEntry);
-        }
-      });
+          }
+        });
+      }
     }
 
-    return NextResponse.json(newPurchase, { status: 201 });
+    const result = {
+      id: newPurchase.id,
+      purchaseNo: newPurchase.purchaseNo,
+      warehouse: newPurchase.warehouse,
+      department: newPurchase.department,
+      supplierId: newPurchase.supplierId,
+      purchaseDate: newPurchase.purchaseDate,
+      paymentTerms: newPurchase.paymentTerms,
+      taxType: newPurchase.taxType,
+      amount: Number(newPurchase.amount),
+      tax: Number(newPurchase.tax),
+      totalAmount: Number(newPurchase.totalAmount),
+      status: newPurchase.status,
+      items: newPurchase.details.map(d => ({
+        productId: d.productId,
+        quantity: d.quantity,
+        unitPrice: Number(d.unitPrice),
+        note: d.note || '',
+        status: d.status
+      })),
+      createdAt: newPurchase.createdAt.toISOString(),
+      updatedAt: newPurchase.updatedAt.toISOString()
+    };
+
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error('建立進貨單錯誤:', error);
     return NextResponse.json({ error: '建立進貨單失敗' }, { status: 500 });

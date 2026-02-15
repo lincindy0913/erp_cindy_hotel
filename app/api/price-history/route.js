@@ -1,40 +1,40 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
-    const store = getStore();
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get('productId');
     const supplierId = searchParams.get('supplierId');
-    
-    let priceHistory = store.priceHistory;
-    
-    if (productId) {
-      priceHistory = priceHistory.filter(p => p.productId === parseInt(productId));
-    }
-    
-    if (supplierId) {
-      priceHistory = priceHistory.filter(p => p.supplierId === parseInt(supplierId));
-    }
-    
-    // 加入產品和供應商名稱
-    const result = priceHistory.map(ph => {
-      const product = store.products.find(p => p.id === ph.productId);
-      const supplier = store.suppliers.find(s => s.id === ph.supplierId);
-      return {
-        ...ph,
-        productName: product ? product.name : '未知產品',
-        supplierName: supplier ? supplier.name : '未知供應商'
-      };
+
+    const where = {};
+    if (productId) where.productId = parseInt(productId);
+    if (supplierId) where.supplierId = parseInt(supplierId);
+
+    const priceHistory = await prisma.priceHistory.findMany({
+      where,
+      include: {
+        product: { select: { name: true } },
+        supplier: { select: { name: true } }
+      },
+      orderBy: { purchaseDate: 'desc' }
     });
-    
-    return NextResponse.json(result.sort((a, b) => new Date(b.purchaseDate) - new Date(a.purchaseDate)));
+
+    const result = priceHistory.map(ph => ({
+      id: ph.id,
+      supplierId: ph.supplierId,
+      productId: ph.productId,
+      purchaseDate: ph.purchaseDate,
+      unitPrice: Number(ph.unitPrice),
+      productName: ph.product?.name || '未知產品',
+      supplierName: ph.supplier?.name || '未知供應商'
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('查詢歷史價格錯誤:', error);
     return NextResponse.json([]);
   }
 }
-

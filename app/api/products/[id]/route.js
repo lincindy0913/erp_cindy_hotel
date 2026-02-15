@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
 
 export async function GET(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
-    const product = store.products.find(p => p.id === id);
-    
+    const product = await prisma.product.findUnique({ where: { id } });
+
     if (!product) {
       return NextResponse.json({ error: '產品不存在' }, { status: 404 });
     }
@@ -18,32 +17,37 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
     const data = await request.json();
-    const productIndex = store.products.findIndex(p => p.id === id);
-    
-    if (productIndex === -1) {
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
       return NextResponse.json({ error: '產品不存在' }, { status: 404 });
     }
 
-    // 驗證：如果 isInStock 為 true，warehouseLocation 必須填寫
-    if (data.isInStock === true && !data.warehouseLocation) {
+    const isInStock = data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是';
+
+    if (isInStock && !data.warehouseLocation) {
       return NextResponse.json({ error: '列入庫存時必須填寫倉庫位置' }, { status: 400 });
     }
 
-    // 處理 isInStock 的轉換
-    const isInStock = data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是';
-    
-    store.products[productIndex] = {
-      ...store.products[productIndex],
-      ...data,
-      isInStock: isInStock,
-      warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
-      supplierId: data.supplierId ? parseInt(data.supplierId) : null,
-      updatedAt: new Date().toISOString()
-    };
-    return NextResponse.json(store.products[productIndex]);
+    const updated = await prisma.product.update({
+      where: { id },
+      data: {
+        code: data.code ?? existing.code,
+        name: data.name ?? existing.name,
+        category: data.category ?? existing.category,
+        unit: data.unit ?? existing.unit,
+        costPrice: data.costPrice !== undefined ? parseFloat(data.costPrice) : existing.costPrice,
+        salesPrice: data.salesPrice !== undefined ? parseFloat(data.salesPrice) : existing.salesPrice,
+        isInStock,
+        warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
+        accountingSubject: data.accountingSubject ?? existing.accountingSubject,
+        supplierId: data.supplierId ? parseInt(data.supplierId) : null
+      }
+    });
+
+    return NextResponse.json(updated);
   } catch (error) {
     return NextResponse.json({ error: '更新產品失敗' }, { status: 500 });
   }
@@ -51,15 +55,14 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
-    const productIndex = store.products.findIndex(p => p.id === id);
-    
-    if (productIndex === -1) {
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
       return NextResponse.json({ error: '產品不存在' }, { status: 404 });
     }
 
-    store.products.splice(productIndex, 1);
+    await prisma.product.delete({ where: { id } });
     return NextResponse.json({ message: '產品已刪除' });
   } catch (error) {
     return NextResponse.json({ error: '刪除產品失敗' }, { status: 500 });

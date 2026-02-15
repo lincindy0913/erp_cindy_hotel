@@ -1,49 +1,41 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
 
 export async function PUT(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
     const data = await request.json();
-    
-    if (!store.expenses) {
-      store.expenses = [];
-    }
-    
-    const expenseIndex = store.expenses.findIndex(e => e.id === id);
-    
-    if (expenseIndex === -1) {
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
       return NextResponse.json({ error: '支出紀錄不存在' }, { status: 404 });
     }
 
-    const existingExpense = store.expenses[expenseIndex];
-    
-    // 更新實付日期和實付金額
-    const actualPaymentDate = data.actualPaymentDate || existingExpense.actualPaymentDate;
+    const actualPaymentDate = data.actualPaymentDate || existing.actualPaymentDate;
     const actualPaymentAmount = parseFloat(data.actualPaymentAmount || 0);
-    const amount = parseFloat(existingExpense.amount || 0);
-    
-    // 判斷狀態：實付金額等於傳票金額時，狀態為已完成
+    const amount = Number(existing.amount);
+
     let status = '未完成';
-    if (actualPaymentAmount > 0) {
-      if (Math.abs(actualPaymentAmount - amount) < 0.01) { // 允許小數點誤差
-        status = '已完成';
-      } else {
-        status = '未完成';
-      }
+    if (actualPaymentAmount > 0 && Math.abs(actualPaymentAmount - amount) < 0.01) {
+      status = '已完成';
     }
-    
-    // 更新支出紀錄
-    store.expenses[expenseIndex] = {
-      ...existingExpense,
-      actualPaymentDate: actualPaymentDate,
-      actualPaymentAmount: actualPaymentAmount,
-      status: status,
-      updatedAt: new Date().toISOString()
-    };
-    
-    return NextResponse.json(store.expenses[expenseIndex]);
+
+    const updated = await prisma.expense.update({
+      where: { id },
+      data: {
+        actualPaymentDate,
+        actualPaymentAmount,
+        status
+      }
+    });
+
+    return NextResponse.json({
+      ...updated,
+      amount: Number(updated.amount),
+      actualPaymentAmount: Number(updated.actualPaymentAmount),
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString()
+    });
   } catch (error) {
     console.error('更新支出紀錄錯誤:', error);
     return NextResponse.json({ error: '更新支出紀錄失敗' }, { status: 500 });
@@ -52,24 +44,17 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
-    
-    if (!store.expenses) {
-      store.expenses = [];
-    }
-    
-    const expenseIndex = store.expenses.findIndex(e => e.id === id);
-    
-    if (expenseIndex === -1) {
+
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) {
       return NextResponse.json({ error: '支出紀錄不存在' }, { status: 404 });
     }
 
-    store.expenses.splice(expenseIndex, 1);
+    await prisma.expense.delete({ where: { id } });
     return NextResponse.json({ message: '支出紀錄已刪除' });
   } catch (error) {
     console.error('刪除支出紀錄錯誤:', error);
     return NextResponse.json({ error: '刪除支出紀錄失敗' }, { status: 500 });
   }
 }
-

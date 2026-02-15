@@ -1,70 +1,99 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
-    const store = getStore();
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth() + 1;
-    
+
+    // 本月日期範圍字串 (YYYY-MM format for startsWith matching)
+    const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
     // 計算本月進貨總額
-    const thisMonthPurchases = store.purchases.filter(p => {
-      const purchaseDate = new Date(p.purchaseDate);
-      return purchaseDate.getFullYear() === currentYear && purchaseDate.getMonth() + 1 === currentMonth;
+    const thisMonthPurchases = await prisma.purchaseMaster.findMany({
+      where: { purchaseDate: { startsWith: monthPrefix } },
+      select: { totalAmount: true }
     });
-    const purchaseTotal = thisMonthPurchases.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
-    
+    const purchaseTotal = thisMonthPurchases.reduce((sum, p) => sum + Number(p.totalAmount || 0), 0);
+
     // 計算本月銷貨總額
-    const thisMonthSales = store.sales.filter(s => {
-      const salesDate = new Date(s.salesDate);
-      return salesDate.getFullYear() === currentYear && salesDate.getMonth() + 1 === currentMonth;
+    const thisMonthSales = await prisma.salesMaster.findMany({
+      where: { invoiceDate: { startsWith: monthPrefix } },
+      select: { totalAmount: true, id: true }
     });
-    const salesTotal = thisMonthSales.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
-    
+    const salesTotal = thisMonthSales.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0);
+
     // 計算毛利（銷貨 - 進貨成本）
-    const salesCost = thisMonthSales.reduce((sum, s) => {
-      const itemCost = (s.items || []).reduce((itemSum, item) => {
-        const product = store.products.find(p => p.id === item.productId);
-        return itemSum + (parseFloat(item.quantity) * (product ? parseFloat(product.costPrice) : 0));
-      }, 0);
-      return sum + itemCost;
-    }, 0);
+    const thisMonthSalesIds = thisMonthSales.map(s => s.id);
+    let salesCost = 0;
+
+    if (thisMonthSalesIds.length > 0) {
+      const salesDetails = await prisma.salesDetail.findMany({
+        where: { salesId: { in: thisMonthSalesIds } },
+        select: { productId: true, quantity: true }
+      });
+
+      const productIds = [...new Set(salesDetails.map(d => d.productId).filter(Boolean))];
+      const products = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, costPrice: true }
+      });
+      const costMap = new Map();
+      products.forEach(p => costMap.set(p.id, Number(p.costPrice || 0)));
+
+      salesDetails.forEach(detail => {
+        const cost = costMap.get(detail.productId) || 0;
+        salesCost += (detail.quantity || 0) * cost;
+      });
+    }
+
     const grossProfit = salesTotal - salesCost;
-    
-    // 計算毛利潤率
     const grossProfitMargin = salesTotal > 0 ? ((grossProfit / salesTotal) * 100).toFixed(2) : 0;
-    
-    // 計算庫存警示（庫存 < 10）
-    const lowInventoryCount = store.products.length; // 簡化計算
-    
+
+    // 計算庫存警示
+    const productCount = await prisma.product.count({ where: { isInStock: true } });
+
     // 計算最近交易
+    const recentSales = await prisma.salesMaster.findMany({
+      orderBy: { id: 'desc' },
+      take: 5,
+      select: { salesNo: true, invoiceDate: true, totalAmount: true, status: true }
+    });
+    const recentPurchases = await prisma.purchaseMaster.findMany({
+      orderBy: { id: 'desc' },
+      take: 5,
+      select: { purchaseNo: true, purchaseDate: true, totalAmount: true }
+    });
+
     const recentTransactions = [
-      ...store.sales.slice(-5).map(s => ({
+      ...recentSales.map(s => ({
         type: '銷貨',
         no: s.salesNo,
-        date: s.salesDate,
-        amount: parseFloat(s.amount || 0),
+        date: s.invoiceDate,
+        amount: Number(s.totalAmount || 0),
         status: s.status
       })),
-      ...store.purchases.slice(-5).map(p => ({
+      ...recentPurchases.map(p => ({
         type: '進貨',
         no: p.purchaseNo,
         date: p.purchaseDate,
-        amount: parseFloat(p.amount || 0),
-        status: p.status
+        amount: Number(p.totalAmount || 0),
+        status: ''
       }))
     ]
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .slice(0, 10);
-    
+
     const dashboardData = {
       kpis: {
         thisMonthPurchase: purchaseTotal,
         thisMonthSales: salesTotal,
         grossProfit: grossProfit,
         grossProfitMargin: grossProfitMargin,
-        lowInventoryCount: lowInventoryCount
+        lowInventoryCount: productCount
       },
       recentTransactions,
       thisMonthTrend: {
@@ -72,7 +101,7 @@ export async function GET(request) {
         sales: thisMonthSales.length
       }
     };
-    
+
     return NextResponse.json(dashboardData);
   } catch (error) {
     console.error('取得儀表板資料錯誤:', error);
@@ -89,4 +118,3 @@ export async function GET(request) {
     });
   }
 }
-

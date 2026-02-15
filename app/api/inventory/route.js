@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
+
+export const dynamic = 'force-dynamic';
 
 function getInventoryStatus(currentQty) {
   if (currentQty < 0) return '不足';
@@ -10,54 +12,57 @@ function getInventoryStatus(currentQty) {
 
 export async function GET(request) {
   try {
-    const store = getStore();
-    
-    // 從現有資料計算庫存
-    const inventoryMap = new Map();
-    
-    // 只初始化「列入庫存」的產品
-    store.products
-      .filter(product => product.isInStock === true)
-      .forEach(product => {
-        inventoryMap.set(product.id, {
-          id: inventoryMap.size + 1,
-          productId: product.id,
-          beginningQty: 0,
-          purchaseQty: 0,
-          salesQty: 0,
-          currentQty: 0,
-          product: product,
-          status: '正常'
-        });
-      });
-    
-    // 計算進貨數量
-    store.purchases.forEach(purchase => {
-      purchase.items.forEach(item => {
-        const inv = inventoryMap.get(item.productId);
-        if (inv) {
-          inv.purchaseQty += item.quantity;
-        }
-      });
+    // 只取得「列入庫存」的產品
+    const products = await prisma.product.findMany({
+      where: { isInStock: true }
     });
-    
-    // 計算銷貨數量
-    store.sales.forEach(sale => {
-      sale.items.forEach(item => {
-        const inv = inventoryMap.get(item.productId);
-        if (inv) {
-          inv.salesQty += item.quantity;
-        }
-      });
+
+    // 計算進貨數量（按產品分組加總）
+    const purchaseAgg = await prisma.purchaseDetail.groupBy({
+      by: ['productId'],
+      _sum: { quantity: true }
     });
-    
-    // 計算目前庫存和狀態
-    const inventory = Array.from(inventoryMap.values()).map(inv => {
-      inv.currentQty = inv.beginningQty + inv.purchaseQty - inv.salesQty;
-      inv.status = getInventoryStatus(inv.currentQty);
-      return inv;
+    const purchaseQtyMap = new Map();
+    purchaseAgg.forEach(agg => {
+      purchaseQtyMap.set(agg.productId, agg._sum.quantity || 0);
     });
-    
+
+    // 計算銷貨數量（按產品分組加總）
+    const salesAgg = await prisma.salesDetail.groupBy({
+      by: ['productId'],
+      _sum: { quantity: true }
+    });
+    const salesQtyMap = new Map();
+    salesAgg.forEach(agg => {
+      salesQtyMap.set(agg.productId, agg._sum.quantity || 0);
+    });
+
+    // 組合庫存資料
+    const inventory = products.map((product, index) => {
+      const purchaseQty = purchaseQtyMap.get(product.id) || 0;
+      const salesQty = salesQtyMap.get(product.id) || 0;
+      const currentQty = purchaseQty - salesQty;
+
+      return {
+        id: index + 1,
+        productId: product.id,
+        beginningQty: 0,
+        purchaseQty,
+        salesQty,
+        currentQty,
+        product: {
+          id: product.id,
+          name: product.name,
+          code: product.code,
+          unit: product.unit,
+          costPrice: Number(product.costPrice),
+          sellingPrice: Number(product.salesPrice),
+          isInStock: product.isInStock
+        },
+        status: getInventoryStatus(currentQty)
+      };
+    });
+
     return NextResponse.json(inventory);
   } catch (error) {
     console.error('查詢庫存錯誤:', error);

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
 
 export async function GET(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
-    const supplier = store.suppliers.find(s => s.id === id);
-    
+    const supplier = await prisma.supplier.findUnique({ where: { id } });
+
     if (!supplier) {
       return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
     }
@@ -18,40 +17,37 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
     const data = await request.json();
-    const supplierIndex = store.suppliers.findIndex(s => s.id === id);
-    
-    if (supplierIndex === -1) {
+
+    const existing = await prisma.supplier.findUnique({ where: { id } });
+    if (!existing) {
       return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
     }
 
-    // 驗證必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話
     if (!data.name || !data.taxId || !data.contact || !data.personInCharge || !data.phone) {
       return NextResponse.json({ error: '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話' }, { status: 400 });
     }
 
-    // 更新廠商資料，保留原有的ID和時間戳記
-    const existingSupplier = store.suppliers[supplierIndex];
-    store.suppliers[supplierIndex] = {
-      ...existingSupplier,
-      name: data.name,
-      taxId: data.taxId || null,
-      contact: data.contact,
-      personInCharge: data.personInCharge || null,
-      phone: data.phone,
-      address: data.address || null,
-      email: data.email || null,
-      paymentTerms: data.paymentTerms || '月結',
-      contractDate: data.contractDate || null,
-      contractEndDate: data.contractEndDate || null,
-      paymentStatus: data.paymentStatus || '未付款',
-      remarks: data.remarks || null,
-      updatedAt: new Date().toISOString()
-    };
-    
-    return NextResponse.json(store.suppliers[supplierIndex]);
+    const updated = await prisma.supplier.update({
+      where: { id },
+      data: {
+        name: data.name,
+        taxId: data.taxId || null,
+        contact: data.contact,
+        personInCharge: data.personInCharge || null,
+        phone: data.phone,
+        address: data.address || null,
+        email: data.email || null,
+        paymentTerms: data.paymentTerms || '月結',
+        contractDate: data.contractDate || null,
+        contractEndDate: data.contractEndDate || null,
+        paymentStatus: data.paymentStatus || '未付款',
+        remarks: data.remarks || null
+      }
+    });
+
+    return NextResponse.json(updated);
   } catch (error) {
     return NextResponse.json({ error: '更新廠商失敗' }, { status: 500 });
   }
@@ -59,15 +55,14 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const store = getStore();
     const id = parseInt(params.id);
-    const supplierIndex = store.suppliers.findIndex(s => s.id === id);
-    
-    if (supplierIndex === -1) {
+
+    const existing = await prisma.supplier.findUnique({ where: { id } });
+    if (!existing) {
       return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
     }
 
-    store.suppliers.splice(supplierIndex, 1);
+    await prisma.supplier.delete({ where: { id } });
     return NextResponse.json({ message: '廠商已刪除' });
   } catch (error) {
     return NextResponse.json({ error: '刪除廠商失敗' }, { status: 500 });

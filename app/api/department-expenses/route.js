@@ -1,33 +1,40 @@
 import { NextResponse } from 'next/server';
-import { getStore } from '@/lib/mockDataStore';
+import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
-    const store = getStore();
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year');
     const month = searchParams.get('month');
-    
-    let expenses = store.departmentExpenses;
-    
-    if (year) {
-      expenses = expenses.filter(e => e.year === parseInt(year));
-    }
-    
-    if (month) {
-      expenses = expenses.filter(e => e.month === parseInt(month));
-    }
-    
-    return NextResponse.json(expenses.sort((a, b) => {
-      if (a.year !== b.year) return b.year - a.year;
-      if (a.month !== b.month) return b.month - a.month;
-      return a.department.localeCompare(b.department);
+
+    const where = {};
+    if (year) where.year = parseInt(year);
+    if (month) where.month = parseInt(month);
+
+    const expenses = await prisma.departmentExpense.findMany({
+      where,
+      orderBy: [
+        { year: 'desc' },
+        { month: 'desc' },
+        { department: 'asc' }
+      ]
+    });
+
+    const result = expenses.map(e => ({
+      id: e.id,
+      year: e.year,
+      month: e.month,
+      department: e.department,
+      category: e.category,
+      tax: Number(e.tax),
+      totalAmount: Number(e.totalAmount)
     }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('查詢部門支出錯誤:', error);
     return NextResponse.json([]);
   }
 }
-
