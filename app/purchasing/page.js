@@ -938,7 +938,7 @@ export default function PurchasingPage() {
                         onClick={addItem}
                         className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                       >
-                        新增
+                        新增（若無法新增，請先建檔）
                       </button>
                     </div>
                   </div>
