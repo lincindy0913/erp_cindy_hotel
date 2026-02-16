@@ -24,6 +24,11 @@ export default function PaymentPage() {
   const [showTermsManager, setShowTermsManager] = useState(false);
   const [newTermName, setNewTermName] = useState('');
 
+  // 付款方式選項管理
+  const [paymentMethodOptions, setPaymentMethodOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
+  const [showMethodManager, setShowMethodManager] = useState(false);
+  const [newMethodName, setNewMethodName] = useState('');
+
   // 篩選條件
   const [filterData, setFilterData] = useState({
     yearMonth: '', // 銷帳年月（發票日期）
@@ -36,7 +41,7 @@ export default function PaymentPage() {
   const [formData, setFormData] = useState({
     paymentNo: '',
     paymentDate: new Date().toISOString().split('T')[0],
-    paymentMethod: '支票',
+    paymentMethod: '月結',
     // 支票相關欄位
     checkIssueDate: '', // 開票日期
     checkDate: '', // 支票日期
@@ -208,7 +213,7 @@ export default function PaymentPage() {
         setFormData({
           paymentNo: '',
           paymentDate: new Date().toISOString().split('T')[0],
-          paymentMethod: '支票',
+          paymentMethod: '月結',
           checkIssueDate: '',
           checkDate: '',
           checkNo: '',
@@ -598,18 +603,85 @@ export default function PaymentPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">付款方式 *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    付款方式 *
+                    <button
+                      type="button"
+                      onClick={() => setShowMethodManager(!showMethodManager)}
+                      className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                    >
+                      管理選項
+                    </button>
+                  </label>
                   <select
                     required
                     value={formData.paymentMethod}
                     onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option>支票</option>
-                    <option>現金</option>
-                    <option>轉帳</option>
-                    <option>信用卡</option>
+                    {paymentMethodOptions.map(method => (
+                      <option key={method} value={method}>{method}</option>
+                    ))}
                   </select>
+                  {showMethodManager && (
+                    <div className="mt-2 bg-gray-50 border border-gray-300 rounded-lg p-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-semibold text-gray-700">管理付款方式選項</span>
+                        <button type="button" onClick={() => setShowMethodManager(false)} className="text-gray-400 hover:text-gray-600 text-xs">關閉</button>
+                      </div>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={newMethodName}
+                          onChange={(e) => setNewMethodName(e.target.value)}
+                          placeholder="輸入新付款方式"
+                          className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const trimmed = newMethodName.trim();
+                              if (trimmed && !paymentMethodOptions.includes(trimmed)) {
+                                setPaymentMethodOptions([...paymentMethodOptions, trimmed]);
+                                setNewMethodName('');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const trimmed = newMethodName.trim();
+                            if (trimmed && !paymentMethodOptions.includes(trimmed)) {
+                              setPaymentMethodOptions([...paymentMethodOptions, trimmed]);
+                              setNewMethodName('');
+                            }
+                          }}
+                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                        >
+                          新增
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {paymentMethodOptions.map(method => (
+                          <span key={method} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border rounded-full text-xs">
+                            {method}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPaymentMethodOptions(paymentMethodOptions.filter(m => m !== method));
+                                if (formData.paymentMethod === method) {
+                                  setFormData({ ...formData, paymentMethod: paymentMethodOptions[0] || '' });
+                                }
+                              }}
+                              className="text-red-400 hover:text-red-600"
+                            >
+                              x
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -680,7 +752,7 @@ export default function PaymentPage() {
                     setFormData({
                       paymentNo: '',
                       paymentDate: new Date().toISOString().split('T')[0],
-                      paymentMethod: '支票',
+                      paymentMethod: '月結',
                       checkIssueDate: '',
                       checkDate: '',
                       checkNo: '',
