@@ -1260,22 +1260,30 @@ export default function PurchasingPage() {
                             >
                               {isExpanded ? '收起' : '查看'}
                             </button>
-                            {isLoggedIn && (
-                              <>
-                                <button
-                                  onClick={() => handleEdit(purchase)}
-                                  className="text-green-600 hover:underline text-sm"
-                                >
-                                  編輯
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(purchase.id)}
-                                  className="text-red-600 hover:underline text-sm"
-                                >
-                                  刪除
-                                </button>
-                              </>
-                            )}
+                            {isLoggedIn && (() => {
+                              const allInvoiced = purchase.items && purchase.items.length > 0 &&
+                                purchase.items.every((_, idx) => isItemInvoiced(purchase.id, idx));
+                              return (
+                                <>
+                                  <button
+                                    onClick={() => !allInvoiced && handleEdit(purchase)}
+                                    className={`text-sm ${allInvoiced ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:underline cursor-pointer'}`}
+                                    disabled={allInvoiced}
+                                    title={allInvoiced ? '已核銷的進貨單無法編輯' : ''}
+                                  >
+                                    編輯
+                                  </button>
+                                  <button
+                                    onClick={() => !allInvoiced && handleDelete(purchase.id)}
+                                    className={`text-sm ${allInvoiced ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:underline cursor-pointer'}`}
+                                    disabled={allInvoiced}
+                                    title={allInvoiced ? '已核銷的進貨單無法刪除' : ''}
+                                  >
+                                    刪除
+                                  </button>
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
