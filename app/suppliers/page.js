@@ -36,6 +36,11 @@ export default function SuppliersPage() {
   const [dateFilterType, setDateFilterType] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
 
+  // 付款條件選項管理
+  const [paymentTermsOptions, setPaymentTermsOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
+  const [showTermsManager, setShowTermsManager] = useState(false);
+  const [newTermName, setNewTermName] = useState('');
+
   const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '' };
 
   useEffect(() => {
@@ -563,15 +568,82 @@ export default function SuppliersPage() {
                   placeholder="例如：台北市信義區信義路五段7號" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">付款條件</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  付款條件
+                  <button
+                    type="button"
+                    onClick={() => setShowTermsManager(!showTermsManager)}
+                    className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                  >
+                    管理選項
+                  </button>
+                </label>
                 <select value={formData.paymentTerms}
                   onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>月結</option>
-                  <option>現金</option>
-                  <option>支票</option>
-                  <option>轉帳</option>
+                  {paymentTermsOptions.map(term => (
+                    <option key={term} value={term}>{term}</option>
+                  ))}
                 </select>
+                {showTermsManager && (
+                  <div className="mt-2 bg-gray-50 border border-gray-300 rounded-lg p-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-semibold text-gray-700">管理付款條件選項</span>
+                      <button type="button" onClick={() => setShowTermsManager(false)} className="text-gray-400 hover:text-gray-600 text-xs">關閉</button>
+                    </div>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={newTermName}
+                        onChange={(e) => setNewTermName(e.target.value)}
+                        placeholder="輸入新付款條件"
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const trimmed = newTermName.trim();
+                            if (trimmed && !paymentTermsOptions.includes(trimmed)) {
+                              setPaymentTermsOptions([...paymentTermsOptions, trimmed]);
+                              setNewTermName('');
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const trimmed = newTermName.trim();
+                          if (trimmed && !paymentTermsOptions.includes(trimmed)) {
+                            setPaymentTermsOptions([...paymentTermsOptions, trimmed]);
+                            setNewTermName('');
+                          }
+                        }}
+                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                      >
+                        新增
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {paymentTermsOptions.map(term => (
+                        <span key={term} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border rounded-full text-xs">
+                          {term}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentTermsOptions(paymentTermsOptions.filter(t => t !== term));
+                              if (formData.paymentTerms === term) {
+                                setFormData({ ...formData, paymentTerms: paymentTermsOptions[0] || '' });
+                              }
+                            }}
+                            className="text-red-400 hover:text-red-600"
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">付款狀態</label>

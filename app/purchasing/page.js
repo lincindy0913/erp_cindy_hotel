@@ -783,10 +783,9 @@ export default function PurchasingPage() {
                     onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option>月結</option>
-                    <option>現金</option>
-                    <option>支票</option>
-                    <option>轉帳</option>
+                    {['月結', '現金', '支票', '轉帳', '信用卡', '員工代付'].map(term => (
+                      <option key={term} value={term}>{term}</option>
+                    ))}
                   </select>
                 </div>
               </div>
