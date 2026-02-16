@@ -58,7 +58,7 @@ export default function InvoicePage() {
 
   async function fetchInvoices() {
     try {
-      const response = await fetch('/api/sales');
+      const response = await fetch('/api/sales/with-info');
       const data = await response.json();
       setInvoices(Array.isArray(data) ? data : []);
       setLoading(false);
@@ -293,6 +293,20 @@ export default function InvoicePage() {
       newExpanded.add(invoiceId); // 如果未展開，則展開
     }
     setExpandedInvoices(newExpanded);
+  }
+
+  function handleEdit(invoice) {
+    setEditingInvoice(invoice);
+    setFormData({
+      invoiceNo: invoice.invoiceNo || '',
+      invoiceDate: invoice.invoiceDate || new Date().toISOString().split('T')[0],
+      invoiceTitle: invoice.invoiceTitle || '',
+      taxType: invoice.taxType || '應稅',
+      invoiceAmount: invoice.invoiceAmount != null ? String(invoice.invoiceAmount) : String(invoice.amount || ''),
+      supplierDiscount: invoice.supplierDiscount != null ? String(invoice.supplierDiscount) : '0'
+    });
+    setSelectedItems(invoice.items || []);
+    setShowAddForm(true);
   }
 
   async function handleDelete(invoiceId) {
@@ -800,24 +814,27 @@ export default function InvoicePage() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票抬頭</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票號</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票日期</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">品項數</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">總金額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款狀態</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
                     載入中...
                   </td>
                 </tr>
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
                     尚無發票資料
                   </td>
                 </tr>
@@ -827,6 +844,9 @@ export default function InvoicePage() {
                   return (
                     <Fragment key={invoice.id}>
                       <tr className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-4 py-3 text-sm">{invoice.warehouse || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{invoice.invoiceTitle || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{invoice.supplierName || '-'}</td>
                         <td className="px-4 py-3 text-sm">{invoice.invoiceNo || invoice.salesNo}</td>
                         <td className="px-4 py-3 text-sm">{invoice.invoiceDate || invoice.salesDate}</td>
                         <td className="px-4 py-3 text-sm">{invoice.items ? invoice.items.length : 0} 項</td>
@@ -851,12 +871,20 @@ export default function InvoicePage() {
                               {isExpanded ? '收起' : '查看'}
                             </button>
                             {isLoggedIn && (
-                              <button
-                                onClick={() => handleDelete(invoice.id)}
-                                className="text-red-600 hover:underline text-sm"
-                              >
-                                刪除
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleEdit(invoice)}
+                                  className="text-green-600 hover:underline text-sm"
+                                >
+                                  編輯
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(invoice.id)}
+                                  className="text-red-600 hover:underline text-sm"
+                                >
+                                  刪除
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
@@ -864,7 +892,7 @@ export default function InvoicePage() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan="6" className="px-4 py-4">
+                          <td colSpan="9" className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 發票基本資訊 */}
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4 border-b border-gray-300">
