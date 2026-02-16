@@ -881,35 +881,47 @@ export default function PurchasingPage() {
                               })()}
                             </td>
                             <td className="px-3 py-2">
-                              <div className="flex gap-2">
-                                {editingItemIndex === index ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingItemIndex(null)}
-                                    className="text-blue-600 hover:underline text-sm"
-                                  >
-                                    完成
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingItemIndex(index)}
-                                    className="text-green-600 hover:underline text-sm"
-                                  >
-                                    編輯
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    removeItem(index);
-                                    if (editingItemIndex === index) setEditingItemIndex(null);
-                                  }}
-                                  className="text-red-600 hover:underline text-sm"
-                                >
-                                  刪除
-                                </button>
-                              </div>
+                              {(() => {
+                                const itemInvoiced = editingPurchase && item.originalIndex !== undefined
+                                  ? isItemInvoiced(editingPurchase.id, item.originalIndex)
+                                  : false;
+                                return (
+                                  <div className="flex gap-2">
+                                    {editingItemIndex === index ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingItemIndex(null)}
+                                        className="text-blue-600 hover:underline text-sm"
+                                      >
+                                        完成
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => !itemInvoiced && setEditingItemIndex(index)}
+                                        className={`text-sm ${itemInvoiced ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:underline cursor-pointer'}`}
+                                        disabled={itemInvoiced}
+                                        title={itemInvoiced ? '已核銷品項無法編輯' : ''}
+                                      >
+                                        編輯
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (itemInvoiced) return;
+                                        removeItem(index);
+                                        if (editingItemIndex === index) setEditingItemIndex(null);
+                                      }}
+                                      className={`text-sm ${itemInvoiced ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:underline cursor-pointer'}`}
+                                      disabled={itemInvoiced}
+                                      title={itemInvoiced ? '已核銷品項無法刪除' : ''}
+                                    >
+                                      刪除
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))}
