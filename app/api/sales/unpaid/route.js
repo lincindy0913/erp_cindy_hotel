@@ -9,6 +9,7 @@ export async function GET(request) {
     const yearMonth = searchParams.get('yearMonth');
     const supplierId = searchParams.get('supplierId');
     const warehouse = searchParams.get('warehouse');
+    const paymentTerms = searchParams.get('paymentTerms');
 
     // 取得所有已付款的發票ID
     const allPayments = await prisma.payment.findMany({
@@ -38,6 +39,7 @@ export async function GET(request) {
       let invoiceSupplierId = null;
       let invoiceSupplierName = '未知廠商';
       let invoiceWarehouse = '';
+      let invoicePaymentTerms = '';
 
       if (invoice.details.length > 0 && invoice.details[0].purchaseId) {
         const purchase = await prisma.purchaseMaster.findUnique({
@@ -48,6 +50,7 @@ export async function GET(request) {
           invoiceSupplierId = purchase.supplierId;
           invoiceSupplierName = purchase.supplier?.name || '未知廠商';
           invoiceWarehouse = purchase.warehouse || '';
+          invoicePaymentTerms = purchase.paymentTerms || '';
         }
       }
 
@@ -58,6 +61,7 @@ export async function GET(request) {
       }
       if (supplierId && (!invoiceSupplierId || invoiceSupplierId !== parseInt(supplierId))) continue;
       if (warehouse && invoiceWarehouse !== warehouse) continue;
+      if (paymentTerms && invoicePaymentTerms !== paymentTerms) continue;
 
       unpaidInvoices.push({
         id: invoice.id,
@@ -89,7 +93,8 @@ export async function GET(request) {
         updatedAt: invoice.updatedAt.toISOString(),
         supplierId: invoiceSupplierId,
         supplierName: invoiceSupplierName,
-        warehouse: invoiceWarehouse
+        warehouse: invoiceWarehouse,
+        paymentTerms: invoicePaymentTerms
       });
     }
 

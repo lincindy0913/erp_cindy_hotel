@@ -18,12 +18,18 @@ export default function PaymentPage() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState(new Set());
   const [expandedPayments, setExpandedPayments] = useState(new Set()); // 追蹤展開的付款ID
   const [editingPaymentStatus, setEditingPaymentStatus] = useState(null); // 追蹤正在編輯狀態的付款ID
-  
+
+  // 付款條件選項管理
+  const [paymentTermsOptions, setPaymentTermsOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
+  const [showTermsManager, setShowTermsManager] = useState(false);
+  const [newTermName, setNewTermName] = useState('');
+
   // 篩選條件
   const [filterData, setFilterData] = useState({
     yearMonth: '', // 銷帳年月（發票日期）
     supplierId: '',
-    warehouse: '' // 管別
+    warehouse: '', // 管別
+    paymentTerms: '' // 付款條件
   });
 
   // 表單資料
@@ -87,6 +93,7 @@ export default function PaymentPage() {
       if (filterData.yearMonth) params.append('yearMonth', filterData.yearMonth);
       if (filterData.supplierId) params.append('supplierId', filterData.supplierId);
       if (filterData.warehouse) params.append('warehouse', filterData.warehouse);
+      if (filterData.paymentTerms) params.append('paymentTerms', filterData.paymentTerms);
       
       const url = `/api/sales/unpaid?${params.toString()}`;
       const response = await fetch(url);
@@ -306,7 +313,8 @@ export default function PaymentPage() {
                   setFilterData({
                     yearMonth: '',
                     supplierId: '',
-                    warehouse: ''
+                    warehouse: '',
+                    paymentTerms: ''
                   });
                 }
               }}
@@ -325,7 +333,7 @@ export default function PaymentPage() {
               {/* 篩選條件 */}
               <div className="bg-gray-50 border rounded-lg p-4 mb-6">
                 <h4 className="text-md font-semibold mb-3">篩選未付款的發票</h4>
-                <div className="grid grid-cols-3 gap-4 mb-3">
+                <div className="grid grid-cols-4 gap-4 mb-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       銷帳年月
@@ -367,7 +375,98 @@ export default function PaymentPage() {
                       <option value="民宿">民宿</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      付款條件
+                      <button
+                        type="button"
+                        onClick={() => setShowTermsManager(!showTermsManager)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                      >
+                        管理選項
+                      </button>
+                    </label>
+                    <select
+                      value={filterData.paymentTerms}
+                      onChange={(e) => setFilterData({ ...filterData, paymentTerms: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">全部條件</option>
+                      {paymentTermsOptions.map(term => (
+                        <option key={term} value={term}>{term}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
+                {/* 付款條件管理面板 */}
+                {showTermsManager && (
+                  <div className="bg-white border border-gray-300 rounded-lg p-4 mb-3">
+                    <div className="flex justify-between items-center mb-3">
+                      <h5 className="text-sm font-semibold text-gray-700">管理付款條件選項</h5>
+                      <button
+                        type="button"
+                        onClick={() => setShowTermsManager(false)}
+                        className="text-gray-400 hover:text-gray-600 text-sm"
+                      >
+                        關閉
+                      </button>
+                    </div>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={newTermName}
+                        onChange={(e) => setNewTermName(e.target.value)}
+                        placeholder="輸入新付款條件名稱"
+                        className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const trimmed = newTermName.trim();
+                            if (trimmed && !paymentTermsOptions.includes(trimmed)) {
+                              setPaymentTermsOptions([...paymentTermsOptions, trimmed]);
+                              setNewTermName('');
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const trimmed = newTermName.trim();
+                          if (trimmed && !paymentTermsOptions.includes(trimmed)) {
+                            setPaymentTermsOptions([...paymentTermsOptions, trimmed]);
+                            setNewTermName('');
+                          }
+                        }}
+                        className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                      >
+                        新增
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {paymentTermsOptions.map(term => (
+                        <span key={term} className="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 rounded-full text-sm">
+                          {term}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentTermsOptions(paymentTermsOptions.filter(t => t !== term));
+                              if (filterData.paymentTerms === term) {
+                                setFilterData({ ...filterData, paymentTerms: '' });
+                              }
+                            }}
+                            className="text-red-400 hover:text-red-600 ml-1"
+                            title={`刪除「${term}」`}
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={fetchUnpaidInvoices}
