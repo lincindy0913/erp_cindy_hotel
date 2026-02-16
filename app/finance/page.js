@@ -29,6 +29,13 @@ export default function PaymentPage() {
   const [showMethodManager, setShowMethodManager] = useState(false);
   const [newMethodName, setNewMethodName] = useState('');
 
+  // 開票賬戶選項管理（可搜尋下拉）
+  const [checkAccountOptions, setCheckAccountOptions] = useState([]);
+  const [showAccountManager, setShowAccountManager] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [accountSearch, setAccountSearch] = useState('');
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+
   // 篩選條件
   const [filterData, setFilterData] = useState({
     yearMonth: '', // 銷帳年月（發票日期）
@@ -46,7 +53,9 @@ export default function PaymentPage() {
     checkDate: '', // 支票（轉帳）日期
     checkNo: '', // 支票號碼
     checkAccount: '', // 開票賬戶
-    note: '' // 備註
+    note: '', // 備註
+    discount: '', // 會計折讓
+    paymentAmount: '' // 付款金額
   });
 
   useEffect(() => {
@@ -54,6 +63,29 @@ export default function PaymentPage() {
     fetchSuppliers();
     fetchAllInvoices();
   }, []);
+
+  // 從現有付款紀錄中提取開票賬戶選項
+  useEffect(() => {
+    if (payments.length > 0) {
+      const accounts = [...new Set(payments.map(p => p.checkAccount).filter(Boolean))];
+      setCheckAccountOptions(prev => {
+        const merged = [...new Set([...prev, ...accounts])];
+        return merged;
+      });
+    }
+  }, [payments]);
+
+  // 當勾選的發票變動時，自動更新付款金額
+  useEffect(() => {
+    if (selectedInvoiceIds.size > 0) {
+      const total = parseFloat(calculateTotal()) || 0;
+      const discountNum = parseFloat(formData.discount) || 0;
+      setFormData(prev => ({
+        ...prev,
+        paymentAmount: (total - discountNum).toFixed(2)
+      }));
+    }
+  }, [selectedInvoiceIds]);
 
   async function fetchPayments() {
     try {
@@ -176,12 +208,24 @@ export default function PaymentPage() {
       return;
     }
 
+    // 會計折讓與付款金額驗證
+    const invoiceTotal = parseFloat(calculateTotal());
+    const discountVal = parseFloat(formData.discount) || 0;
+    const paymentAmountVal = parseFloat(formData.paymentAmount) || 0;
+    const expectedPayment = invoiceTotal - discountVal;
+
+    if (Math.abs(expectedPayment - paymentAmountVal) > 0.01) {
+      alert(`付款金額驗證失敗！\n\n發票總金額：NT$ ${invoiceTotal.toFixed(2)}\n會計折讓：NT$ ${discountVal.toFixed(2)}\n應付金額：NT$ ${expectedPayment.toFixed(2)}\n輸入付款金額：NT$ ${paymentAmountVal.toFixed(2)}\n\n「發票總金額 - 會計折讓」必須等於「付款金額」`);
+      return;
+    }
+
     try {
       const paymentData = {
         ...formData,
         paymentNo: formData.paymentNo.trim() || '', // 如果為空或只有空格，傳空字串讓後端自動產生
         invoiceIds: Array.from(selectedInvoiceIds),
-        amount: calculateTotal()
+        amount: paymentAmountVal,
+        discount: discountVal
       };
 
       const response = await fetch('/api/payments', {
@@ -209,7 +253,9 @@ export default function PaymentPage() {
           checkDate: '',
           checkNo: '',
           checkAccount: '',
-          note: ''
+          note: '',
+          discount: '',
+          paymentAmount: ''
         });
         fetchPayments();
       } else {
@@ -323,7 +369,9 @@ export default function PaymentPage() {
                     checkDate: latestPayment?.checkDate || '',
                     checkNo: '',
                     checkAccount: '',
-                    note: ''
+                    note: '',
+                    discount: '',
+                    paymentAmount: ''
                   });
                 }
               }}
@@ -512,12 +560,12 @@ export default function PaymentPage() {
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                           </th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">發票抬頭</th>
+                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">發票號</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">發票日期</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">廠商</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">管別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">總金額</th>
-                          <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">狀態</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">操作</th>
                         </tr>
                       </thead>
@@ -534,30 +582,31 @@ export default function PaymentPage() {
                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
                               </td>
+                              <td className="px-3 py-2 text-sm">{invoice.warehouse || '-'}</td>
+                              <td className="px-3 py-2 text-sm">{invoice.invoiceTitle || '-'}</td>
+                              <td className="px-3 py-2 text-sm">{invoice.supplierName || getSupplierName(invoice.supplierId)}</td>
                               <td className="px-3 py-2 text-sm font-medium">{invoice.invoiceNo || invoice.salesNo}</td>
                               <td className="px-3 py-2 text-sm">{invoice.invoiceDate || invoice.salesDate}</td>
-                              <td className="px-3 py-2 text-sm">{invoice.supplierName || getSupplierName(invoice.supplierId)}</td>
-                              <td className="px-3 py-2 text-sm">{invoice.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm font-semibold">
                                 NT$ {parseFloat(invoice.totalAmount || (invoice.amount || 0) + (invoice.tax || 0)).toFixed(2)}
                               </td>
                               <td className="px-3 py-2 text-sm">
-                                <span className={`px-2 py-1 rounded text-xs ${
-                                  invoice.status === '已核銷' ? 'bg-green-100 text-green-800' :
-                                  invoice.status === '待核銷' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {invoice.status || '待核銷'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-sm">
-                                <Link
-                                  href={`/payment-voucher/${invoice.id}`}
-                                  target="_blank"
-                                  className="text-green-600 hover:underline text-sm"
-                                >
-                                  🖨️ 列印傳票
-                                </Link>
+                                <div className="flex gap-2">
+                                  <Link
+                                    href="/sales"
+                                    target="_blank"
+                                    className="text-blue-600 hover:underline text-sm"
+                                  >
+                                    編輯
+                                  </Link>
+                                  <Link
+                                    href={`/payment-voucher/${invoice.id}`}
+                                    target="_blank"
+                                    className="text-green-600 hover:underline text-sm"
+                                  >
+                                    列印傳票
+                                  </Link>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -723,15 +772,156 @@ export default function PaymentPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">開票賬戶</label>
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      開票賬戶
+                      <button
+                        type="button"
+                        onClick={() => setShowAccountManager(!showAccountManager)}
+                        className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                      >
+                        管理選項
+                      </button>
+                    </label>
                     <input
                       type="text"
-                      value={formData.checkAccount}
-                      onChange={(e) => setFormData({ ...formData, checkAccount: e.target.value })}
-                      placeholder="輸入開票賬戶"
+                      value={accountSearch !== '' ? accountSearch : formData.checkAccount}
+                      onChange={(e) => {
+                        setAccountSearch(e.target.value);
+                        setShowAccountDropdown(true);
+                        if (e.target.value === '') {
+                          setFormData({ ...formData, checkAccount: '' });
+                        }
+                      }}
+                      onFocus={() => setShowAccountDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowAccountDropdown(false), 200)}
+                      placeholder="搜尋或選擇開票賬戶..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    {showAccountDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {checkAccountOptions
+                          .filter(opt => !accountSearch || opt.toLowerCase().includes(accountSearch.toLowerCase()))
+                          .map(opt => (
+                            <div
+                              key={opt}
+                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm ${formData.checkAccount === opt ? 'bg-blue-100 font-semibold' : ''}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setFormData({ ...formData, checkAccount: opt });
+                                setAccountSearch('');
+                                setShowAccountDropdown(false);
+                              }}
+                            >
+                              {opt}
+                            </div>
+                          ))}
+                        {checkAccountOptions.filter(opt => !accountSearch || opt.toLowerCase().includes(accountSearch.toLowerCase())).length === 0 && (
+                          <div className="px-3 py-2 text-sm text-gray-400">無匹配選項</div>
+                        )}
+                      </div>
+                    )}
+                    {showAccountManager && (
+                      <div className="mt-2 bg-gray-50 border border-gray-300 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-semibold text-gray-700">管理開票賬戶選項</span>
+                          <button type="button" onClick={() => setShowAccountManager(false)} className="text-gray-400 hover:text-gray-600 text-xs">關閉</button>
+                        </div>
+                        <div className="flex gap-2 mb-2">
+                          <input
+                            type="text"
+                            value={newAccountName}
+                            onChange={(e) => setNewAccountName(e.target.value)}
+                            placeholder="輸入新開票賬戶名稱"
+                            className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const trimmed = newAccountName.trim();
+                                if (trimmed && !checkAccountOptions.includes(trimmed)) {
+                                  setCheckAccountOptions([...checkAccountOptions, trimmed]);
+                                  setNewAccountName('');
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const trimmed = newAccountName.trim();
+                              if (trimmed && !checkAccountOptions.includes(trimmed)) {
+                                setCheckAccountOptions([...checkAccountOptions, trimmed]);
+                                setNewAccountName('');
+                              }
+                            }}
+                            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                          >
+                            新增
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {checkAccountOptions.map(account => (
+                            <span key={account} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border rounded-full text-xs">
+                              {account}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCheckAccountOptions(checkAccountOptions.filter(a => a !== account));
+                                  if (formData.checkAccount === account) {
+                                    setFormData({ ...formData, checkAccount: '' });
+                                  }
+                                }}
+                                className="text-red-400 hover:text-red-600"
+                              >
+                                x
+                              </button>
+                            </span>
+                          ))}
+                          {checkAccountOptions.length === 0 && (
+                            <span className="text-xs text-gray-400">尚未新增任何賬戶</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">會計折讓</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.discount}
+                      onChange={(e) => {
+                        const discount = e.target.value;
+                        const total = parseFloat(calculateTotal()) || 0;
+                        const discountNum = parseFloat(discount) || 0;
+                        setFormData({
+                          ...formData,
+                          discount: discount,
+                          paymentAmount: (total - discountNum).toFixed(2)
+                        });
+                      }}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">付款金額 *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={formData.paymentAmount}
+                      onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {selectedInvoiceIds.size > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        發票總金額 NT$ {calculateTotal()} - 折讓 NT$ {parseFloat(formData.discount || 0).toFixed(2)} = NT$ {(parseFloat(calculateTotal()) - parseFloat(formData.discount || 0)).toFixed(2)}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
@@ -768,7 +958,9 @@ export default function PaymentPage() {
                       checkDate: '',
                       checkNo: '',
                       checkAccount: '',
-                      note: ''
+                      note: '',
+                      discount: '',
+                      paymentAmount: ''
                     });
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -800,7 +992,8 @@ export default function PaymentPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款日期</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款方式</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票數量</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">金額</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計折讓</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款金額</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款狀態</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">開票日期</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">支票（轉帳）日期</th>
@@ -811,11 +1004,11 @@ export default function PaymentPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td>
+                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">載入中...</td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
+                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
                 </tr>
               ) : (
                 payments.map((payment, index) => {
@@ -830,6 +1023,7 @@ export default function PaymentPage() {
                         <td className="px-4 py-3 text-sm">{payment.paymentDate}</td>
                         <td className="px-4 py-3 text-sm">{payment.paymentMethod}</td>
                         <td className="px-4 py-3 text-sm">{invoiceIds.length} 張</td>
+                        <td className="px-4 py-3 text-sm">{payment.discount ? `NT$ ${parseFloat(payment.discount).toFixed(2)}` : '-'}</td>
                         <td className="px-4 py-3 text-sm font-semibold">NT$ {parseFloat(payment.amount).toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm">
                           {isEditingStatus ? (
@@ -889,7 +1083,7 @@ export default function PaymentPage() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan="10" className="px-4 py-4">
+                          <td colSpan="11" className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 付款基本資訊 */}
                               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4 border-b border-gray-300">
@@ -940,9 +1134,19 @@ export default function PaymentPage() {
 
                               {/* 金額資訊 */}
                               <div className="pb-4 border-b border-gray-300">
-                                <div className="text-xs text-gray-500 mb-1">付款金額</div>
-                                <div className="text-2xl font-bold text-blue-600">
-                                  NT$ {parseFloat(payment.amount).toFixed(2)}
+                                <div className="grid grid-cols-3 gap-4">
+                                  <div>
+                                    <div className="text-xs text-gray-500 mb-1">會計折讓</div>
+                                    <div className="text-lg font-semibold">
+                                      {payment.discount ? `NT$ ${parseFloat(payment.discount).toFixed(2)}` : '-'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 mb-1">付款金額</div>
+                                    <div className="text-2xl font-bold text-blue-600">
+                                      NT$ {parseFloat(payment.amount).toFixed(2)}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
 

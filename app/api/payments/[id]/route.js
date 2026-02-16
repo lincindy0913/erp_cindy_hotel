@@ -21,6 +21,7 @@ export async function PUT(request, { params }) {
     return NextResponse.json({
       ...updated,
       amount: Number(updated.amount),
+      discount: Number(updated.discount),
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString()
     });

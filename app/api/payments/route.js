@@ -12,6 +12,7 @@ export async function GET(request) {
     const result = payments.map(p => ({
       ...p,
       amount: Number(p.amount),
+      discount: Number(p.discount),
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
       salesId: Array.isArray(p.invoiceIds) && p.invoiceIds.length > 0 ? p.invoiceIds[0] : null
@@ -63,7 +64,8 @@ export async function POST(request) {
       totalAmount += Number(invoice.totalAmount || 0);
     });
 
-    const paymentAmount = data.amount ? parseFloat(data.amount) : totalAmount;
+    const discountAmount = data.discount ? parseFloat(data.discount) : 0;
+    const paymentAmount = data.amount ? parseFloat(data.amount) : (totalAmount - discountAmount);
 
     // 產生付款單號
     let paymentNo = data.paymentNo;
@@ -95,6 +97,7 @@ export async function POST(request) {
           paymentDate: data.paymentDate || null,
           paymentMethod: data.paymentMethod || '月結',
           amount: paymentAmount,
+          discount: discountAmount,
           status: '未完成',
           checkIssueDate: data.checkIssueDate || null,
           checkDate: data.checkDate || null,
@@ -158,6 +161,7 @@ export async function POST(request) {
       return {
         ...newPayment,
         amount: Number(newPayment.amount),
+        discount: Number(newPayment.discount),
         createdAt: newPayment.createdAt.toISOString(),
         updatedAt: newPayment.updatedAt.toISOString(),
         salesId: invoiceIds[0]

@@ -223,6 +223,7 @@ model Payment {
   paymentDate    String?  @map("payment_date") @db.VarChar(20)
   paymentMethod  String   @default("月結") @map("payment_method") @db.VarChar(20)
   amount         Decimal  @default(0) @db.Decimal(12, 2)
+  discount       Decimal  @default(0) @db.Decimal(12, 2)
   status         String   @default("未完成") @db.VarChar(20)
   checkIssueDate String?  @map("check_issue_date") @db.VarChar(20)
   checkDate      String?  @map("check_date") @db.VarChar(20)
