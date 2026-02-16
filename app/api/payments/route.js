@@ -93,13 +93,14 @@ export async function POST(request) {
           paymentNo,
           invoiceIds: invoiceIds,
           paymentDate: data.paymentDate || null,
-          paymentMethod: data.paymentMethod || '支票',
+          paymentMethod: data.paymentMethod || '月結',
           amount: paymentAmount,
           status: '未完成',
           checkIssueDate: data.checkIssueDate || null,
           checkDate: data.checkDate || null,
           checkNo: data.checkNo || null,
-          checkAccount: data.checkAccount || null
+          checkAccount: data.checkAccount || null,
+          note: data.note || null
         }
       });
 

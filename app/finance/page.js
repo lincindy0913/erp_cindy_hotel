@@ -42,11 +42,11 @@ export default function PaymentPage() {
     paymentNo: '',
     paymentDate: new Date().toISOString().split('T')[0],
     paymentMethod: '月結',
-    // 支票相關欄位
     checkIssueDate: '', // 開票日期
-    checkDate: '', // 支票日期
+    checkDate: '', // 支票（轉帳）日期
     checkNo: '', // 支票號碼
-    checkAccount: '' // 開票賬戶
+    checkAccount: '', // 開票賬戶
+    note: '' // 備註
   });
 
   useEffect(() => {
@@ -166,24 +166,14 @@ export default function PaymentPage() {
       return;
     }
 
-    // 支票相關欄位驗證
-    if (formData.paymentMethod === '支票') {
-      if (!formData.checkIssueDate) {
-        alert('請輸入開票日期');
-        return;
-      }
-      if (!formData.checkDate) {
-        alert('請輸入支票日期');
-        return;
-      }
-      if (!formData.checkNo) {
-        alert('請輸入支票號碼');
-        return;
-      }
-      if (!formData.checkAccount) {
-        alert('請輸入開票賬戶');
-        return;
-      }
+    // 欄位驗證
+    if (!formData.checkIssueDate) {
+      alert('請輸入開票日期');
+      return;
+    }
+    if (!formData.checkDate) {
+      alert('請輸入支票（轉帳）日期');
+      return;
     }
 
     try {
@@ -208,7 +198,8 @@ export default function PaymentPage() {
         setFilterData({
           yearMonth: '',
           supplierId: '',
-          warehouse: ''
+          warehouse: '',
+          paymentTerms: ''
         });
         setFormData({
           paymentNo: '',
@@ -217,7 +208,8 @@ export default function PaymentPage() {
           checkIssueDate: '',
           checkDate: '',
           checkNo: '',
-          checkAccount: ''
+          checkAccount: '',
+          note: ''
         });
         fetchPayments();
       } else {
@@ -320,6 +312,18 @@ export default function PaymentPage() {
                     supplierId: '',
                     warehouse: '',
                     paymentTerms: ''
+                  });
+                  // 自動帶入最近一筆付款的開票日期和支票（轉帳）日期
+                  const latestPayment = payments.length > 0 ? payments[payments.length - 1] : null;
+                  setFormData({
+                    paymentNo: '',
+                    paymentDate: new Date().toISOString().split('T')[0],
+                    paymentMethod: '月結',
+                    checkIssueDate: latestPayment?.checkIssueDate || '',
+                    checkDate: latestPayment?.checkDate || '',
+                    checkNo: '',
+                    checkAccount: '',
+                    note: ''
                   });
                 }
               }}
@@ -685,56 +689,62 @@ export default function PaymentPage() {
                 </div>
               </div>
 
-              {/* 支票相關欄位 */}
-              {formData.paymentMethod === '支票' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <h4 className="text-md font-semibold mb-3">支票資訊 *</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">開票日期 *</label>
-                      <input
-                        type="date"
-                        required={formData.paymentMethod === '支票'}
-                        value={formData.checkIssueDate}
-                        onChange={(e) => setFormData({ ...formData, checkIssueDate: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">支票日期 *</label>
-                      <input
-                        type="date"
-                        required={formData.paymentMethod === '支票'}
-                        value={formData.checkDate}
-                        onChange={(e) => setFormData({ ...formData, checkDate: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">支票號碼 *</label>
-                      <input
-                        type="text"
-                        required={formData.paymentMethod === '支票'}
-                        value={formData.checkNo}
-                        onChange={(e) => setFormData({ ...formData, checkNo: e.target.value })}
-                        placeholder="輸入支票號碼"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">開票賬戶 *</label>
-                      <input
-                        type="text"
-                        required={formData.paymentMethod === '支票'}
-                        value={formData.checkAccount}
-                        onChange={(e) => setFormData({ ...formData, checkAccount: e.target.value })}
-                        placeholder="輸入開票賬戶"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
+              {/* 付款資訊欄位 */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <h4 className="text-md font-semibold mb-3">付款資訊</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">開票日期 *</label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.checkIssueDate}
+                      onChange={(e) => setFormData({ ...formData, checkIssueDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">支票（轉帳）日期 *</label>
+                    <input
+                      type="date"
+                      required
+                      value={formData.checkDate}
+                      onChange={(e) => setFormData({ ...formData, checkDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">支票號碼</label>
+                    <input
+                      type="text"
+                      value={formData.checkNo}
+                      onChange={(e) => setFormData({ ...formData, checkNo: e.target.value })}
+                      placeholder="輸入支票號碼"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">開票賬戶</label>
+                    <input
+                      type="text"
+                      value={formData.checkAccount}
+                      onChange={(e) => setFormData({ ...formData, checkAccount: e.target.value })}
+                      placeholder="輸入開票賬戶"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                    <textarea
+                      value={formData.note}
+                      onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                      placeholder="輸入備註事項..."
+                      rows="2"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* 操作按鈕 */}
               <div className="flex justify-end gap-3">
@@ -747,7 +757,8 @@ export default function PaymentPage() {
                     setFilterData({
                       yearMonth: '',
                       supplierId: '',
-                      warehouse: ''
+                      warehouse: '',
+                      paymentTerms: ''
                     });
                     setFormData({
                       paymentNo: '',
@@ -756,7 +767,8 @@ export default function PaymentPage() {
                       checkIssueDate: '',
                       checkDate: '',
                       checkNo: '',
-                      checkAccount: ''
+                      checkAccount: '',
+                      note: ''
                     });
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -790,23 +802,20 @@ export default function PaymentPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票數量</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">金額</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款狀態</th>
-                {payments.some(p => p.checkNo) && (
-                  <>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">支票號碼</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">開票日期</th>
-                  </>
-                )}
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">開票日期</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">支票（轉帳）日期</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">備註</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={payments.some(p => p.checkNo) ? 9 : 7} className="px-4 py-8 text-center text-gray-500">載入中...</td>
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={payments.some(p => p.checkNo) ? 9 : 7} className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
                 </tr>
               ) : (
                 payments.map((payment, index) => {
@@ -846,12 +855,9 @@ export default function PaymentPage() {
                             </span>
                           )}
                         </td>
-                        {payments.some(p => p.checkNo) && (
-                          <>
-                            <td className="px-4 py-3 text-sm">{payment.checkNo || '-'}</td>
-                            <td className="px-4 py-3 text-sm">{payment.checkIssueDate || '-'}</td>
-                          </>
-                        )}
+                        <td className="px-4 py-3 text-sm">{payment.checkIssueDate || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{payment.checkDate || '-'}</td>
+                        <td className="px-4 py-3 text-sm truncate max-w-[150px]" title={payment.note || ''}>{payment.note || '-'}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             <button
@@ -883,7 +889,7 @@ export default function PaymentPage() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan={payments.some(p => p.checkNo) ? 9 : 7} className="px-4 py-4">
+                          <td colSpan="10" className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 付款基本資訊 */}
                               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4 border-b border-gray-300">
@@ -940,10 +946,10 @@ export default function PaymentPage() {
                                 </div>
                               </div>
 
-                              {/* 支票相關資訊 */}
-                              {payment.paymentMethod === '支票' && (payment.checkNo || payment.checkIssueDate || payment.checkDate || payment.checkAccount) && (
+                              {/* 付款資訊 */}
+                              {(payment.checkIssueDate || payment.checkDate || payment.checkNo || payment.checkAccount || payment.note) && (
                                 <div className="pb-4 border-b border-gray-300">
-                                  <div className="text-sm font-semibold mb-3 text-gray-700">支票資訊</div>
+                                  <div className="text-sm font-semibold mb-3 text-gray-700">付款資訊</div>
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     {payment.checkIssueDate && (
                                       <div>
@@ -953,7 +959,7 @@ export default function PaymentPage() {
                                     )}
                                     {payment.checkDate && (
                                       <div>
-                                        <div className="text-xs text-gray-500 mb-1">支票日期</div>
+                                        <div className="text-xs text-gray-500 mb-1">支票（轉帳）日期</div>
                                         <div className="text-sm font-semibold">{payment.checkDate}</div>
                                       </div>
                                     )}
@@ -970,6 +976,12 @@ export default function PaymentPage() {
                                       </div>
                                     )}
                                   </div>
+                                  {payment.note && (
+                                    <div className="mt-3">
+                                      <div className="text-xs text-gray-500 mb-1">備註</div>
+                                      <div className="text-sm">{payment.note}</div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
