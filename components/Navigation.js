@@ -13,7 +13,8 @@ const NAV_ITEMS = [
   { href: '/sales', label: '發票登錄/核銷', linkClass: 'link-sales' },
   { href: '/finance', label: '付款', linkClass: 'link-finance' },
   { href: '/inventory', label: '庫存', linkClass: 'link-inventory' },
-  { href: '/analytics', label: '分析', linkClass: 'link-analytics' }
+  { href: '/analytics', label: '分析', linkClass: 'link-analytics' },
+  { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow' }
 ];
 
 export default function Navigation({ borderColor = 'border-blue-500' }) {

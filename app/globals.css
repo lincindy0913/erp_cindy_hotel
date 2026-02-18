@@ -49,6 +49,10 @@
   --analytics-primary: #0891B2;
   --analytics-light: #CFFAFE;
   --analytics-dark: #0E7490;
+
+  --cashflow-primary: #059669;
+  --cashflow-light: #D1FAE5;
+  --cashflow-dark: #047857;
 }
 
 body {
@@ -67,6 +71,7 @@ body {
 .nav-inventory { background: linear-gradient(135deg, var(--inventory-primary), var(--inventory-dark)); }
 .nav-expenses { background: linear-gradient(135deg, var(--expenses-primary), var(--expenses-dark)); }
 .nav-analytics { background: linear-gradient(135deg, var(--analytics-primary), var(--analytics-dark)); }
+.nav-cashflow { background: linear-gradient(135deg, var(--cashflow-primary), var(--cashflow-dark)); }
 
 /* Section header accent bars */
 .accent-dashboard { border-left: 4px solid var(--dashboard-primary); }
@@ -78,6 +83,7 @@ body {
 .accent-inventory { border-left: 4px solid var(--inventory-primary); }
 .accent-expenses { border-left: 4px solid var(--expenses-primary); }
 .accent-analytics { border-left: 4px solid var(--analytics-primary); }
+.accent-cashflow { border-left: 4px solid var(--cashflow-primary); }
 
 /* Navigation link colors */
 .link-dashboard {
@@ -160,6 +166,16 @@ body {
 .link-analytics:hover { background: rgba(8, 145, 178, 0.2); }
 .link-analytics.active { background: var(--analytics-primary); color: white; }
 
+.link-cashflow {
+  color: var(--cashflow-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(5, 150, 105, 0.1);
+  transition: all 0.2s;
+}
+.link-cashflow:hover { background: rgba(5, 150, 105, 0.2); }
+.link-cashflow.active { background: var(--cashflow-primary); color: white; }
+
 /* Page background colors with 60% transparency (smooth, subtle tint) */
 .page-bg-dashboard { background: linear-gradient(180deg, rgba(37, 99, 235, 0.08) 0%, rgba(37, 99, 235, 0.15) 100%); }
 .page-bg-products { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
@@ -170,4 +186,5 @@ body {
 .page-bg-inventory { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
 .page-bg-expenses { background: linear-gradient(180deg, rgba(225, 29, 72, 0.08) 0%, rgba(225, 29, 72, 0.15) 100%); }
 .page-bg-analytics { background: linear-gradient(180deg, rgba(8, 145, 178, 0.08) 0%, rgba(8, 145, 178, 0.15) 100%); }
+.page-bg-cashflow { background: linear-gradient(180deg, rgba(5, 150, 105, 0.08) 0%, rgba(5, 150, 105, 0.15) 100%); }
 
