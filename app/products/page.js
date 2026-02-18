@@ -15,6 +15,9 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [supplierSearch, setSupplierSearch] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [accountingSubjects, setAccountingSubjects] = useState([]);
+  const [accountingSearch, setAccountingSearch] = useState('');
+  const [showAccountingDropdown, setShowAccountingDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -43,6 +46,7 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchSuppliers();
+    fetchAccountingSubjects();
   }, []);
 
   useEffect(() => {
@@ -63,6 +67,20 @@ export default function ProductsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSupplierDropdown]);
 
+  // 點擊外部關閉會計科目下拉選單
+  useEffect(() => {
+    function handleClickOutside(event) {
+      const dropdown = document.querySelector('.product-accounting-search');
+      if (dropdown && !dropdown.contains(event.target)) {
+        setShowAccountingDropdown(false);
+      }
+    }
+    if (showAccountingDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAccountingDropdown]);
+
   async function fetchSuppliers() {
     try {
       const response = await fetch('/api/suppliers');
@@ -73,6 +91,28 @@ export default function ProductsPage() {
       setSuppliers([]);
     }
   }
+
+  async function fetchAccountingSubjects() {
+    try {
+      const response = await fetch('/api/accounting-subjects');
+      const data = await response.json();
+      setAccountingSubjects(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('取得會計科目失敗:', error);
+      setAccountingSubjects([]);
+    }
+  }
+
+  const filteredAccounting = accountingSubjects.filter(a => {
+    if (!accountingSearch.trim()) return true;
+    const keyword = accountingSearch.toLowerCase().trim();
+    return (
+      a.code.includes(keyword) ||
+      a.name.toLowerCase().includes(keyword) ||
+      a.category.toLowerCase().includes(keyword) ||
+      a.subcategory.toLowerCase().includes(keyword)
+    );
+  });
 
   const filteredSuppliers = suppliers.filter(s => {
     if (!supplierSearch.trim()) return true;
@@ -126,6 +166,12 @@ export default function ProductsPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     
+    // 前端驗證：會計科目必選
+    if (!formData.accountingSubject) {
+      alert('請選擇會計科目');
+      return;
+    }
+
     // 前端驗證：如果列入庫存為「是」，倉庫位置必須填寫
     if (formData.isInStock && !formData.warehouseLocation) {
       alert('列入庫存時必須填寫倉庫位置');
@@ -166,6 +212,7 @@ export default function ProductsPage() {
           supplierId: ''
         });
         setSupplierSearch('');
+        setAccountingSearch('');
         const productsList = await fetchProducts();
         // 新增產品後跳到最後一頁
         if (!isEditing) {
@@ -197,6 +244,7 @@ export default function ProductsPage() {
       accountingSubject: product.accountingSubject || '',
       supplierId: product.supplierId ? product.supplierId.toString() : ''
     });
+    setAccountingSearch(product.accountingSubject || '');
     if (product.supplierId) {
       const supplier = suppliers.find(s => s.id === product.supplierId);
       setSupplierSearch(supplier ? supplier.name : '');
@@ -579,17 +627,52 @@ export default function ProductsPage() {
                   )}
                 </div>
               )}
-              <div>
+              <div className="relative product-accounting-search">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  會計科目
+                  會計科目 *
                 </label>
                 <input
                   type="text"
-                  value={formData.accountingSubject}
-                  onChange={(e) => setFormData({ ...formData, accountingSubject: e.target.value })}
+                  required
+                  placeholder="輸入代碼或名稱搜尋..."
+                  value={accountingSearch}
+                  onChange={(e) => {
+                    setAccountingSearch(e.target.value);
+                    setShowAccountingDropdown(true);
+                    if (!e.target.value.trim()) {
+                      setFormData(prev => ({ ...prev, accountingSubject: '' }));
+                    }
+                  }}
+                  onFocus={() => setShowAccountingDropdown(true)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：存貨、費用等"
                 />
+                {showAccountingDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {filteredAccounting.length > 0 ? (
+                      filteredAccounting.map(a => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            const display = `${a.code} ${a.name}`;
+                            setFormData(prev => ({ ...prev, accountingSubject: display }));
+                            setAccountingSearch(display);
+                            setShowAccountingDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                            formData.accountingSubject === `${a.code} ${a.name}` ? 'bg-blue-50 text-blue-700' : ''
+                          }`}
+                        >
+                          <span className="font-mono text-purple-600 mr-2">{a.code}</span>
+                          <span className="font-medium">{a.name}</span>
+                          <span className="text-gray-400 ml-2 text-xs">{a.category}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-gray-500">找不到符合的會計科目</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="relative product-supplier-search">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -642,6 +725,7 @@ export default function ProductsPage() {
                     setShowAddForm(false);
                     setEditingProduct(null);
                     setSupplierSearch('');
+                    setAccountingSearch('');
                     setFormData({
                       code: '',
                       name: '',
