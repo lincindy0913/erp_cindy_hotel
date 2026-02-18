@@ -21,6 +21,7 @@ const DATA_SETTINGS_ITEMS = [
   { href: '/products', label: '產品資料', linkClass: 'link-products' },
   { href: '/suppliers', label: '廠商', linkClass: 'link-suppliers' },
   { href: '/accounting-subjects', label: '會計科目', linkClass: 'link-products' },
+  { href: '/fund-management', label: '資金管理', linkClass: 'link-cashflow' },
   { href: '/admin/users', label: '使用者管理', linkClass: 'link-dashboard', adminOnly: true },
 ];
 

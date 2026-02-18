@@ -318,12 +318,14 @@ model DepartmentExpense {
 
 model CashAccount {
   id             Int      @id @default(autoincrement())
+  accountCode    String?  @unique @map("account_code") @db.VarChar(20) // 帳戶序號 P001, B001...
   name           String   @db.VarChar(100)
   type           String   @db.VarChar(20)        // 現金, 銀行存款, 代墊款, 信用卡
-  warehouse      String   @db.VarChar(100)       // 館別
+  warehouse      String?  @db.VarChar(100)       // 館別
   openingBalance Decimal  @default(0) @map("opening_balance") @db.Decimal(12, 2)
   currentBalance Decimal  @default(0) @map("current_balance") @db.Decimal(12, 2)
   isActive       Boolean  @default(true) @map("is_active")
+  note           String?  @db.VarChar(500)       // 備註
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

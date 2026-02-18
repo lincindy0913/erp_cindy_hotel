@@ -28,20 +28,30 @@ export async function POST(request) {
   try {
     const data = await request.json();
 
-    if (!data.name || !data.type || !data.warehouse) {
-      return NextResponse.json({ error: '帳戶名稱、類型、館別為必填' }, { status: 400 });
+    if (!data.name || !data.type) {
+      return NextResponse.json({ error: '帳戶名稱、類型為必填' }, { status: 400 });
     }
 
     const openingBalance = parseFloat(data.openingBalance) || 0;
 
+    // 如果有 accountCode，檢查是否重複
+    if (data.accountCode) {
+      const existing = await prisma.cashAccount.findUnique({ where: { accountCode: data.accountCode } });
+      if (existing) {
+        return NextResponse.json({ error: `帳戶序號 ${data.accountCode} 已存在` }, { status: 400 });
+      }
+    }
+
     const account = await prisma.cashAccount.create({
       data: {
+        accountCode: data.accountCode || null,
         name: data.name.trim(),
         type: data.type,
-        warehouse: data.warehouse,
+        warehouse: data.warehouse || null,
         openingBalance,
         currentBalance: openingBalance,
-        isActive: true
+        isActive: true,
+        note: data.note || null
       }
     });
 
