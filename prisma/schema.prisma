@@ -384,6 +384,24 @@ model CashTransaction {
 }
 
 // ============================================
+// 會計科目
+// ============================================
+
+model AccountingSubject {
+  id          Int      @id @default(autoincrement())
+  category    String   @db.VarChar(50)    // 會計項目分類
+  subcategory String   @db.VarChar(100)   // 會計項目類別
+  code        String   @unique @db.VarChar(20) // 會計項目代碼
+  name        String   @db.VarChar(100)   // 會計項目名稱
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([code])
+  @@map("accounting_subjects")
+}
+
+// ============================================
 // 認證與權限模組
 // ============================================
 
