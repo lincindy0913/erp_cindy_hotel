@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function PUT(request, { params }) {
   try {
@@ -8,7 +9,7 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.cashAccount.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '帳戶不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '帳戶不存在', 404);
     }
 
     const updateData = {};
@@ -36,8 +37,7 @@ export async function PUT(request, { params }) {
       updatedAt: account.updatedAt.toISOString()
     });
   } catch (error) {
-    console.error('更新資金帳戶錯誤:', error);
-    return NextResponse.json({ error: '更新失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -50,13 +50,12 @@ export async function DELETE(request, { params }) {
     });
 
     if (txCount > 0) {
-      return NextResponse.json({ error: '此帳戶有交易紀錄，無法刪除。請先停用帳戶。' }, { status: 400 });
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', '此帳戶有交易紀錄，無法刪除。請先停用帳戶。', 400);
     }
 
     await prisma.cashAccount.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('刪除資金帳戶錯誤:', error);
-    return NextResponse.json({ error: '刪除失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

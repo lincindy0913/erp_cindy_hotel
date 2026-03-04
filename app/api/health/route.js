@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { handleApiError } from '@/lib/error-handler';
 
 export async function GET() {
   try {
@@ -9,10 +10,6 @@ export async function GET() {
       environment: process.env.NODE_ENV || 'development',
     });
   } catch (error) {
-    return NextResponse.json(
-      { status: 'error', message: error.message },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
-

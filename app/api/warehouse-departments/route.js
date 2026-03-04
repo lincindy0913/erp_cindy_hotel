@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +20,7 @@ export async function GET() {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('取得館別部門錯誤:', error);
-    return NextResponse.json({}, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -31,32 +31,32 @@ export async function POST(request) {
 
     if (data.action === 'addWarehouse') {
       if (!data.name || !data.name.trim()) {
-        return NextResponse.json({ error: '館別名稱不可為空' }, { status: 400 });
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '館別名稱不可為空', 400);
       }
       const name = data.name.trim();
       const existing = await prisma.warehouse.findUnique({ where: { name } });
       if (existing) {
-        return NextResponse.json({ error: '此館別已存在' }, { status: 400 });
+        return createErrorResponse('WAREHOUSE_NAME_DUPLICATE', '此館別已存在', 409);
       }
       await prisma.warehouse.create({ data: { name } });
     } else if (data.action === 'addDepartment') {
       if (!data.warehouse || !data.name || !data.name.trim()) {
-        return NextResponse.json({ error: '館別與部門名稱不可為空' }, { status: 400 });
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '館別與部門名稱不可為空', 400);
       }
       const wh = await prisma.warehouse.findUnique({ where: { name: data.warehouse } });
       if (!wh) {
-        return NextResponse.json({ error: '此館別不存在' }, { status: 404 });
+        return createErrorResponse('NOT_FOUND', '此館別不存在', 404);
       }
       const deptName = data.name.trim();
       const existingDept = await prisma.department.findUnique({
         where: { warehouseId_name: { warehouseId: wh.id, name: deptName } }
       });
       if (existingDept) {
-        return NextResponse.json({ error: '此部門已存在' }, { status: 400 });
+        return createErrorResponse('CONFLICT_UNIQUE', '此部門已存在', 409);
       }
       await prisma.department.create({ data: { name: deptName, warehouseId: wh.id } });
     } else {
-      return NextResponse.json({ error: '未知操作' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '未知操作', 400);
     }
 
     // 回傳最新的完整資料
@@ -70,8 +70,7 @@ export async function POST(request) {
     }
     return NextResponse.json(result);
   } catch (error) {
-    console.error('新增館別/部門錯誤:', error);
-    return NextResponse.json({ error: '操作失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -82,20 +81,20 @@ export async function DELETE(request) {
 
     if (data.action === 'deleteWarehouse') {
       if (!data.name) {
-        return NextResponse.json({ error: '館別名稱不可為空' }, { status: 400 });
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '館別名稱不可為空', 400);
       }
       const wh = await prisma.warehouse.findUnique({ where: { name: data.name } });
       if (!wh) {
-        return NextResponse.json({ error: '此館別不存在' }, { status: 404 });
+        return createErrorResponse('NOT_FOUND', '此館別不存在', 404);
       }
       await prisma.warehouse.delete({ where: { id: wh.id } });
     } else if (data.action === 'deleteDepartment') {
       if (!data.warehouse || !data.name) {
-        return NextResponse.json({ error: '館別與部門名稱不可為空' }, { status: 400 });
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '館別與部門名稱不可為空', 400);
       }
       const wh = await prisma.warehouse.findUnique({ where: { name: data.warehouse } });
       if (!wh) {
-        return NextResponse.json({ error: '此館別不存在' }, { status: 404 });
+        return createErrorResponse('NOT_FOUND', '此館別不存在', 404);
       }
       const dept = await prisma.department.findUnique({
         where: { warehouseId_name: { warehouseId: wh.id, name: data.name } }
@@ -104,7 +103,7 @@ export async function DELETE(request) {
         await prisma.department.delete({ where: { id: dept.id } });
       }
     } else {
-      return NextResponse.json({ error: '未知操作' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '未知操作', 400);
     }
 
     const warehouses = await prisma.warehouse.findMany({
@@ -117,7 +116,6 @@ export async function DELETE(request) {
     }
     return NextResponse.json(result);
   } catch (error) {
-    console.error('刪除館別/部門錯誤:', error);
-    return NextResponse.json({ error: '操作失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

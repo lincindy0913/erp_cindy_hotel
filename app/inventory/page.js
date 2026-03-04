@@ -4,12 +4,15 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ExportButtons from '@/components/ExportButtons';
+import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
 export default function InventoryPage() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [calcMode, setCalcMode] = useState(null);
 
   useEffect(() => {
     fetchInventory();
@@ -19,8 +22,15 @@ export default function InventoryPage() {
     try {
       const response = await fetch('/api/inventory');
       const data = await response.json();
-      // 確保 data 是陣列
-      setInventory(Array.isArray(data) ? data : []);
+      // Handle both array and object response formats
+      if (Array.isArray(data)) {
+        setInventory(data);
+      } else if (data && Array.isArray(data.data)) {
+        setInventory(data.data);
+        if (data.calculationMode) setCalcMode(data.calculationMode);
+      } else {
+        setInventory([]);
+      }
       setLoading(false);
     } catch (error) {
       console.error('取得庫存列表失敗:', error);
@@ -57,7 +67,32 @@ export default function InventoryPage() {
       <Navigation borderColor="border-amber-500" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold mb-6">庫存查詢</h2>
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">庫存查詢</h2>
+            {calcMode && (
+              <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                {calcMode === 'snapshot' ? '快照計算' : '即時計算'}
+              </span>
+            )}
+          </div>
+          <ExportButtons
+            data={inventory.map(item => ({
+              productCode: item.product?.code || '-',
+              productName: item.product?.name || '未知產品',
+              category: item.product?.category || '-',
+              warehouse: item.product?.warehouseLocation || '-',
+              quantity: item.currentQty,
+              unit: item.product?.unit || '-',
+              costPrice: item.product?.costPrice || 0,
+              totalValue: (item.currentQty || 0) * (item.product?.costPrice || 0),
+            }))}
+            columns={EXPORT_CONFIGS.inventory.columns}
+            exportName={EXPORT_CONFIGS.inventory.filename}
+            title="庫存查詢"
+            sheetName="庫存清單"
+          />
+        </div>
 
         {/* 搜尋區 */}
         <div className="bg-white rounded-lg shadow-sm p-4 mb-6">

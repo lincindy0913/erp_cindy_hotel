@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function GET(request, { params }) {
   try {
@@ -7,7 +8,7 @@ export async function GET(request, { params }) {
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
 
     if (!supplier) {
-      return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
 
     const contracts = await prisma.supplierContract.findMany({
@@ -26,7 +27,7 @@ export async function GET(request, { params }) {
     return NextResponse.json(contracts);
   } catch (error) {
     console.error('查詢合約錯誤:', error);
-    return NextResponse.json({ error: '查詢合約失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -36,18 +37,18 @@ export async function POST(request, { params }) {
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
 
     if (!supplier) {
-      return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
 
     const formData = await request.formData();
     const file = formData.get('file');
 
     if (!file) {
-      return NextResponse.json({ error: '請選擇檔案' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇檔案', 400);
     }
 
     if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: '檔案大小不能超過 10MB' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '檔案大小不能超過 10MB', 400);
     }
 
     const bytes = await file.arrayBuffer();
@@ -67,6 +68,6 @@ export async function POST(request, { params }) {
     return NextResponse.json(contractInfo, { status: 201 });
   } catch (error) {
     console.error('上傳合約錯誤:', error);
-    return NextResponse.json({ error: '上傳合約失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

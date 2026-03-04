@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +21,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢付款紀錄錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -30,7 +30,7 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.invoiceIds || !Array.isArray(data.invoiceIds) || data.invoiceIds.length === 0) {
-      return NextResponse.json({ error: '請至少選擇一張發票進行付款' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請至少選擇一張發票進行付款', 400);
     }
 
     const invoiceIds = data.invoiceIds.map(id => parseInt(id));
@@ -48,10 +48,10 @@ export async function POST(request) {
     for (const invoiceId of invoiceIds) {
       const invoice = await prisma.salesMaster.findUnique({ where: { id: invoiceId } });
       if (!invoice) {
-        return NextResponse.json({ error: `發票 ID ${invoiceId} 不存在` }, { status: 400 });
+        return createErrorResponse('NOT_FOUND', `發票 ID ${invoiceId} 不存在`, 404);
       }
       if (paidInvoiceIds.has(invoiceId)) {
-        return NextResponse.json({ error: `發票 ID ${invoiceId} 已付款` }, { status: 400 });
+        return createErrorResponse('VALIDATION_FAILED', `發票 ID ${invoiceId} 已付款`, 400);
       }
     }
 
@@ -170,7 +170,6 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    console.error('建立付款紀錄錯誤:', error);
-    return NextResponse.json({ error: '建立付款紀錄失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

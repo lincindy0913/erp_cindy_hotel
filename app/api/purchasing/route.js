@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +39,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢進貨單錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -48,7 +48,7 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.supplierId || !data.items || data.items.length === 0) {
-      return NextResponse.json({ error: '缺少必填欄位' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
 
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -124,7 +124,6 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    console.error('建立進貨單錯誤:', error);
-    return NextResponse.json({ error: '建立進貨單失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.name || !data.taxId || !data.contact || !data.personInCharge || !data.phone) {
-      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話', 400);
     }
 
     const newSupplier = await prisma.supplier.create({
@@ -43,6 +44,6 @@ export async function POST(request) {
     return NextResponse.json(newSupplier, { status: 201 });
   } catch (error) {
     console.error('建立廠商錯誤:', error);
-    return NextResponse.json({ error: '建立廠商失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function GET(request, { params }) {
   try {
@@ -7,11 +8,11 @@ export async function GET(request, { params }) {
     const supplier = await prisma.supplier.findUnique({ where: { id } });
 
     if (!supplier) {
-      return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
     return NextResponse.json(supplier);
   } catch (error) {
-    return NextResponse.json({ error: '查詢廠商失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -22,11 +23,11 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.supplier.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
 
     if (!data.name || !data.taxId || !data.contact || !data.personInCharge || !data.phone) {
-      return NextResponse.json({ error: '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話', 400);
     }
 
     const updated = await prisma.supplier.update({
@@ -49,7 +50,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(updated);
   } catch (error) {
-    return NextResponse.json({ error: '更新廠商失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -59,12 +60,12 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.supplier.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '廠商不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
 
     await prisma.supplier.delete({ where: { id } });
     return NextResponse.json({ message: '廠商已刪除' });
   } catch (error) {
-    return NextResponse.json({ error: '刪除廠商失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

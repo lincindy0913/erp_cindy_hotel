@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,7 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
     const type = searchParams.get('type');
     const accountId = searchParams.get('accountId');
+    const sourceType = searchParams.get('sourceType');
 
     const where = {};
     if (startDate && endDate) {
@@ -78,6 +80,7 @@ export async function GET(request) {
     if (warehouse) where.warehouse = warehouse;
     if (type) where.type = type;
     if (accountId) where.accountId = parseInt(accountId);
+    if (sourceType) where.sourceType = sourceType;
 
     const transactions = await prisma.cashTransaction.findMany({
       where,
@@ -94,13 +97,18 @@ export async function GET(request) {
       amount: Number(t.amount),
       fee: Number(t.fee),
       createdAt: t.createdAt.toISOString(),
-      updatedAt: t.updatedAt.toISOString()
+      updatedAt: t.updatedAt.toISOString(),
+      isReversal: t.isReversal,
+      reversedById: t.reversedById,
+      reversalOfId: t.reversalOfId,
+      isAutoCreated: t.isAutoCreated || false,
+      autoCreationReason: t.autoCreationReason || null,
+      isNonCashExpense: t.isNonCashExpense || false,
     }));
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢資金交易錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -109,27 +117,28 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.transactionDate || !data.type || !data.accountId || !data.amount) {
-      return NextResponse.json({ error: '交易日期、類型、帳戶、金額為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '交易日期、類型、帳戶、金額為必填', 400);
     }
 
     if (!['收入', '支出', '移轉'].includes(data.type)) {
-      return NextResponse.json({ error: '類型必須是「收入」、「支出」或「移轉」' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '類型必須是「收入」、「支出」或「移轉」', 400);
     }
 
     const amount = parseFloat(data.amount);
     if (amount <= 0) {
-      return NextResponse.json({ error: '金額必須大於零' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '金額必須大於零', 400);
     }
 
     const fee = data.hasFee ? (parseFloat(data.fee) || 0) : 0;
+    const sourceType = data.sourceType || 'manual';
 
     // Validate transfer requires destination account
     if (data.type === '移轉') {
       if (!data.transferAccountId) {
-        return NextResponse.json({ error: '移轉必須指定目的帳戶' }, { status: 400 });
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '移轉必須指定目的帳戶', 400);
       }
       if (parseInt(data.transferAccountId) === parseInt(data.accountId)) {
-        return NextResponse.json({ error: '來源帳戶與目的帳戶不可相同' }, { status: 400 });
+        return createErrorResponse('VALIDATION_FAILED', '來源帳戶與目的帳戶不可相同', 400);
       }
     }
 
@@ -154,6 +163,7 @@ export async function POST(request) {
             paymentTerms: null,
             description: data.description || null,
             transferAccountId: parseInt(data.transferAccountId),
+            sourceType,
             status: '已確認'
           }
         });
@@ -181,6 +191,7 @@ export async function POST(request) {
             description: data.description || null,
             transferAccountId: parseInt(data.accountId),
             linkedTransactionId: outTx.id,
+            sourceType,
             status: '已確認'
           }
         });
@@ -215,6 +226,7 @@ export async function POST(request) {
             accountingSubject: data.accountingSubject || null,
             paymentTerms: data.paymentTerms || null,
             description: data.description || null,
+            sourceType,
             status: '已確認'
           }
         });
@@ -228,7 +240,6 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    console.error('建立資金交易錯誤:', error);
-    return NextResponse.json({ error: '建立資金交易失敗: ' + error.message }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ExportButtons from '@/components/ExportButtons';
+import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
 export default function InvoicePage() {
   const router = useRouter();
@@ -43,10 +45,13 @@ export default function InvoicePage() {
     supplierDiscount: '0' // 廠商折讓金額（預設0元）
   });
 
+  // System tax rate
+  const [systemTaxRate, setSystemTaxRate] = useState(5);
+
   // 營業稅金額自動計算
   const taxAmount = (() => {
     const amount = parseFloat(formData.invoiceAmount) || 0;
-    if (formData.taxType === '應稅') return amount * 0.05;
+    if (formData.taxType === '應稅') return amount * (systemTaxRate / 100);
     return 0;
   })();
 
@@ -54,7 +59,18 @@ export default function InvoicePage() {
     fetchProducts();
     fetchSuppliers();
     fetchInvoices();
+    fetchSystemTaxRate();
   }, []);
+
+  async function fetchSystemTaxRate() {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.taxRate != null) setSystemTaxRate(Number(data.taxRate));
+      }
+    } catch { /* use default 5% */ }
+  }
 
   async function fetchInvoices() {
     try {
@@ -340,25 +356,38 @@ export default function InvoicePage() {
         {/* 標題與操作 */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
-          {isLoggedIn && (
-            <button
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                if (!showAddForm) {
-                  setSelectedItems([]);
-                  setAvailableItems([]);
-                  setFilterData({
-                    yearMonth: '',
-                    supplierId: '',
-                    warehouse: ''
-                  });
-                }
-              }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              ➕ 新增發票
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <ExportButtons
+              data={invoices.map(inv => ({
+                ...inv,
+                itemCount: inv.items?.length || 0,
+                totalWithTax: (parseFloat(inv.amount) || 0) + (parseFloat(inv.taxAmount) || 0),
+              }))}
+              columns={EXPORT_CONFIGS.sales.columns}
+              exportName={EXPORT_CONFIGS.sales.filename}
+              title="發票登錄/核銷"
+              sheetName="發票紀錄"
+            />
+            {isLoggedIn && (
+              <button
+                onClick={() => {
+                  setShowAddForm(!showAddForm);
+                  if (!showAddForm) {
+                    setSelectedItems([]);
+                    setAvailableItems([]);
+                    setFilterData({
+                      yearMonth: '',
+                      supplierId: '',
+                      warehouse: ''
+                    });
+                  }
+                }}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+              >
+                ➕ 新增發票
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 新增發票表單 */}

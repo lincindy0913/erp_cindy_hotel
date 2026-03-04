@@ -1,155 +1,154 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import prisma from '@/lib/prisma';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
-// Demo users module for development without database
-const demoUsers = require('@/lib/demo-users');
+export const dynamic = 'force-dynamic';
 
 // GET single user
 export async function GET(request, { params }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ error: '權限不足' }, { status: 403 });
+      return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    // Try database first, fallback to demo mode
-    try {
-      const prisma = (await import('@/lib/db')).default;
-      const user = await prisma.user.findUnique({
-        where: { id: parseInt(params.id) },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          permissions: true,
-          isActive: true
-        }
-      });
+    const id = parseInt(params.id);
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, email: true, name: true, role: true, permissions: true,
+        isActive: true, warehouseRestriction: true, notificationSettings: true,
+        lastLoginAt: true, createdAt: true,
+        userRoles: { include: { role: { select: { id: true, code: true, name: true } } } },
+      },
+    });
 
-      if (!user) {
-        return NextResponse.json({ error: '使用者不存在' }, { status: 404 });
-      }
-
-      return NextResponse.json(user);
-    } catch (dbError) {
-      console.log('Database not available, using demo mode');
-      const user = demoUsers.getUserById(params.id);
-
-      if (!user) {
-        return NextResponse.json({ error: '使用者不存在' }, { status: 404 });
-      }
-
-      return NextResponse.json({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        permissions: user.permissions,
-        isActive: user.isActive
-      });
+    if (!user) {
+      return createErrorResponse('NOT_FOUND', '使用者不存在', 404);
     }
+
+    return NextResponse.json({
+      ...user,
+      roles: user.userRoles.map(ur => ur.role),
+      roleCodes: user.userRoles.map(ur => ur.role.code),
+      userRoles: undefined,
+    });
   } catch (error) {
-    console.error('Get user error:', error);
-    return NextResponse.json({ error: '取得使用者資料失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
-// PUT update user
+// PUT update user (admin only)
 export async function PUT(request, { params }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ error: '權限不足' }, { status: 403 });
+      return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
+    const id = parseInt(params.id);
     const data = await request.json();
 
-    // Try database first, fallback to demo mode
-    try {
-      const prisma = (await import('@/lib/db')).default;
-      const bcrypt = (await import('bcryptjs')).default;
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { userRoles: { include: { role: true } } },
+    });
 
-      const updateData = {
-        name: data.name,
-        role: data.role,
-        permissions: data.permissions,
-        isActive: data.isActive
-      };
+    if (!user) {
+      return createErrorResponse('NOT_FOUND', '使用者不存在', 404);
+    }
 
-      // Only update password if provided
+    const beforeState = {
+      name: user.name,
+      isActive: user.isActive,
+      warehouseRestriction: user.warehouseRestriction,
+      roleCodes: user.userRoles.map(ur => ur.role.code),
+    };
+
+    await prisma.$transaction(async (tx) => {
+      const updateData = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.isActive !== undefined) updateData.isActive = data.isActive;
+      if (data.warehouseRestriction !== undefined) updateData.warehouseRestriction = data.warehouseRestriction;
+      if (data.notificationSettings !== undefined) updateData.notificationSettings = data.notificationSettings;
+
       if (data.password && data.password.trim() !== '') {
+        const bcrypt = (await import('bcryptjs')).default;
         updateData.password = await bcrypt.hash(data.password, 10);
       }
 
-      const user = await prisma.user.update({
-        where: { id: parseInt(params.id) },
-        data: updateData
-      });
+      if (Object.keys(updateData).length > 0) {
+        await tx.user.update({ where: { id }, data: updateData });
+      }
 
-      return NextResponse.json({ id: user.id, email: user.email, name: user.name });
-    } catch (dbError) {
-      console.log('Database not available, using demo mode');
+      // 更新角色
+      if (data.roleIds !== undefined) {
+        await tx.userRole.deleteMany({ where: { userId: id } });
 
-      try {
-        const updateData = {
-          name: data.name,
-          role: data.role,
-          permissions: data.permissions,
-          isActive: data.isActive
-        };
-
-        // Only update password if provided
-        if (data.password && data.password.trim() !== '') {
-          updateData.password = data.password;
+        for (const roleId of data.roleIds) {
+          await tx.userRole.create({
+            data: {
+              userId: id,
+              roleId: parseInt(roleId),
+              assignedBy: session.user.email,
+            },
+          });
         }
 
-        const user = demoUsers.updateUser(params.id, updateData);
-        return NextResponse.json(user);
-      } catch (demoError) {
-        return NextResponse.json({ error: demoError.message }, { status: 400 });
+        // 同步 User.role 欄位（向下相容）
+        const roles = await tx.role.findMany({
+          where: { id: { in: data.roleIds.map(r => parseInt(r)) } },
+        });
+        const roleCodes = roles.map(r => r.code);
+        const newRole = roleCodes.includes('admin') ? 'admin' : 'user';
+        await tx.user.update({ where: { id }, data: { role: newRole } });
       }
-    }
+    });
+
+    await auditFromSession(prisma, session, {
+      action: AUDIT_ACTIONS.USER_UPDATE,
+      targetModule: 'users',
+      targetRecordId: id,
+      beforeState,
+      afterState: { name: data.name, isActive: data.isActive, roleIds: data.roleIds },
+    });
+
+    return NextResponse.json({ message: '使用者已更新' });
   } catch (error) {
-    console.error('Update user error:', error);
-    return NextResponse.json({ error: '更新使用者失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
-// DELETE user
+// DELETE deactivate user (admin only)
 export async function DELETE(request, { params }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ error: '權限不足' }, { status: 403 });
+      return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    // Prevent deleting the current user
-    if (parseInt(params.id) === parseInt(session.user.id)) {
-      return NextResponse.json({ error: '無法刪除目前登入的使用者' }, { status: 400 });
+    const id = parseInt(params.id);
+
+    if (id === parseInt(session.user.id)) {
+      return createErrorResponse('VALIDATION_FAILED', '無法停用目前登入的使用者', 400);
     }
 
-    // Try database first, fallback to demo mode
-    try {
-      const prisma = (await import('@/lib/db')).default;
-      await prisma.user.delete({
-        where: { id: parseInt(params.id) }
-      });
+    await prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
-      return NextResponse.json({ success: true });
-    } catch (dbError) {
-      console.log('Database not available, using demo mode');
+    await auditFromSession(prisma, session, {
+      action: AUDIT_ACTIONS.USER_DEACTIVATE,
+      targetModule: 'users',
+      targetRecordId: id,
+    });
 
-      try {
-        demoUsers.deleteUser(params.id);
-        return NextResponse.json({ success: true });
-      } catch (demoError) {
-        return NextResponse.json({ error: demoError.message }, { status: 400 });
-      }
-    }
+    return NextResponse.json({ message: '使用者已停用' });
   } catch (error) {
-    console.error('Delete user error:', error);
-    return NextResponse.json({ error: '刪除使用者失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -1,0 +1,1334 @@
+'use client';
+
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Navigation from '@/components/Navigation';
+import NotificationBanner from '@/components/NotificationBanner';
+import ExportButtons from '@/components/ExportButtons';
+import { EXPORT_CONFIGS } from '@/lib/export-columns';
+
+const WAREHOUSES = ['麗格', '麗軒', '民宿'];
+const TABS = [
+  { key: 'overview', label: '每日匯入總覽' },
+  { key: 'records', label: '收入記錄明細' },
+  { key: 'statistics', label: '月度統計報表' },
+  { key: 'mapping', label: 'PMS 科目對應設定' }
+];
+
+// Default PMS mapping rules for the upload form
+const DEFAULT_PMS_COLUMNS = [
+  { pmsColumnName: '住房收入', entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
+  { pmsColumnName: '餐飲收入', entryType: '貸方', accountingCode: '4112', accountingName: '餐飲收入' },
+  { pmsColumnName: '其他營業收入', entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '服務費收入', entryType: '貸方', accountingCode: '4114', accountingName: '服務費收入' },
+  { pmsColumnName: '代收款-稅金', entryType: '貸方', accountingCode: '2171', accountingName: '代收款-稅金' },
+  { pmsColumnName: '預收款', entryType: '借方', accountingCode: '2131', accountingName: '預收款' },
+  { pmsColumnName: '應收帳款', entryType: '借方', accountingCode: '1131', accountingName: '應收帳款' },
+  { pmsColumnName: '現金收入', entryType: '借方', accountingCode: '1111', accountingName: '現金收入' },
+  { pmsColumnName: '信用卡收入', entryType: '借方', accountingCode: '1141', accountingName: '信用卡收入' },
+  { pmsColumnName: '轉帳收入', entryType: '借方', accountingCode: '1112', accountingName: '銀行轉帳收入' },
+];
+
+function formatNumber(num) {
+  if (num === null || num === undefined) return '-';
+  return Number(num).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '-';
+  return dateStr;
+}
+
+export default function PmsIncomePageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">載入中...</div>}>
+      <PmsIncomePage />
+    </Suspense>
+  );
+}
+
+function PmsIncomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'overview';
+
+  // Shared state
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Overview tab state
+  const [overviewYear, setOverviewYear] = useState(new Date().getFullYear());
+  const [overviewMonth, setOverviewMonth] = useState(new Date().getMonth() + 1);
+  const [batches, setBatches] = useState([]);
+  const [monthlySummary, setMonthlySummary] = useState(null);
+
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadWarehouse, setUploadWarehouse] = useState('麗格');
+  const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadRecords, setUploadRecords] = useState(
+    DEFAULT_PMS_COLUMNS.map(col => ({ ...col, amount: '' }))
+  );
+  const [uploadRoomCount, setUploadRoomCount] = useState('');
+  const [uploadOccupancyRate, setUploadOccupancyRate] = useState('');
+  const [uploadAvgRoomRate, setUploadAvgRoomRate] = useState('');
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
+
+  // Records tab state
+  const [records, setRecords] = useState([]);
+  const [recordsTotal, setRecordsTotal] = useState(0);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [recordsLimit] = useState(30);
+  const [filterWarehouse, setFilterWarehouse] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterEntryType, setFilterEntryType] = useState('');
+  const [filterAccountingCode, setFilterAccountingCode] = useState('');
+  const [sortField, setSortField] = useState('businessDate');
+  const [sortDir, setSortDir] = useState('desc');
+
+  // Manual add record modal
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    warehouse: '麗格', businessDate: new Date().toISOString().split('T')[0],
+    entryType: '貸方', pmsColumnName: '', amount: '', accountingCode: '', accountingName: '', note: ''
+  });
+
+  // Statistics tab state
+  const [statsYear, setStatsYear] = useState(new Date().getFullYear());
+  const [statsMonth, setStatsMonth] = useState('');
+  const [statsData, setStatsData] = useState(null);
+
+  // Mapping tab state
+  const [mappingRules, setMappingRules] = useState([]);
+
+  // ========================
+  // Tab switching
+  // ========================
+  const setActiveTab = useCallback((tab) => {
+    router.push(`/pms-income?tab=${tab}`, { scroll: false });
+  }, [router]);
+
+  // ========================
+  // Overview tab data fetching
+  // ========================
+  const fetchOverviewData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [batchRes, summaryRes] = await Promise.all([
+        fetch(`/api/pms-income/batches?year=${overviewYear}&month=${overviewMonth}`),
+        fetch(`/api/pms-income/monthly-summary?year=${overviewYear}&month=${overviewMonth}`)
+      ]);
+      const batchData = await batchRes.json();
+      const summaryData = await summaryRes.json();
+      setBatches(Array.isArray(batchData) ? batchData : []);
+      setMonthlySummary(summaryData);
+    } catch (err) {
+      setError('載入資料失敗: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [overviewYear, overviewMonth]);
+
+  useEffect(() => {
+    if (activeTab === 'overview') fetchOverviewData();
+  }, [activeTab, fetchOverviewData]);
+
+  // ========================
+  // Records tab data fetching
+  // ========================
+  const fetchRecords = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams();
+      params.set('page', recordsPage);
+      params.set('limit', recordsLimit);
+      if (filterWarehouse) params.set('warehouse', filterWarehouse);
+      if (filterStartDate) params.set('startDate', filterStartDate);
+      if (filterEndDate) params.set('endDate', filterEndDate);
+      if (filterEntryType) params.set('entryType', filterEntryType);
+      if (filterAccountingCode) params.set('accountingCode', filterAccountingCode);
+
+      const res = await fetch(`/api/pms-income?${params.toString()}`);
+      const data = await res.json();
+      setRecords(data.records || []);
+      setRecordsTotal(data.total || 0);
+    } catch (err) {
+      setError('載入記錄失敗: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [recordsPage, recordsLimit, filterWarehouse, filterStartDate, filterEndDate, filterEntryType, filterAccountingCode]);
+
+  useEffect(() => {
+    if (activeTab === 'records') fetchRecords();
+  }, [activeTab, fetchRecords]);
+
+  // ========================
+  // Statistics tab data fetching
+  // ========================
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      let url = `/api/pms-income/monthly-summary?year=${statsYear}`;
+      if (statsMonth) url += `&month=${statsMonth}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setStatsData(data);
+    } catch (err) {
+      setError('載入統計失敗: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [statsYear, statsMonth]);
+
+  useEffect(() => {
+    if (activeTab === 'statistics') fetchStats();
+  }, [activeTab, fetchStats]);
+
+  // ========================
+  // Mapping tab data fetching
+  // ========================
+  const fetchMappingRules = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/pms-income/mapping-rules');
+      if (res.ok) {
+        const data = await res.json();
+        setMappingRules(Array.isArray(data) ? data : []);
+      } else {
+        // If API doesn't exist yet, use defaults
+        setMappingRules(DEFAULT_PMS_COLUMNS.map((col, i) => ({ id: i + 1, ...col, sortOrder: i })));
+      }
+    } catch {
+      // Fallback to defaults
+      setMappingRules(DEFAULT_PMS_COLUMNS.map((col, i) => ({ id: i + 1, ...col, sortOrder: i })));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'mapping') fetchMappingRules();
+  }, [activeTab, fetchMappingRules]);
+
+  // ========================
+  // Upload handlers
+  // ========================
+  const handleUploadRecordChange = (index, field, value) => {
+    setUploadRecords(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleUploadSubmit = async () => {
+    setUploadSubmitting(true);
+    setError('');
+    setSuccess('');
+    try {
+      // Filter out records with no amount
+      const validRecords = uploadRecords
+        .filter(r => r.amount !== '' && r.amount !== null && r.amount !== undefined)
+        .map(r => ({
+          pmsColumnName: r.pmsColumnName,
+          entryType: r.entryType,
+          amount: parseFloat(r.amount),
+          accountingCode: r.accountingCode,
+          accountingName: r.accountingName
+        }));
+
+      if (validRecords.length === 0) {
+        setError('請至少輸入一筆金額');
+        setUploadSubmitting(false);
+        return;
+      }
+
+      const creditTotal = validRecords.filter(r => r.entryType === '貸方').reduce((s, r) => s + r.amount, 0);
+      const debitTotal = validRecords.filter(r => r.entryType === '借方').reduce((s, r) => s + r.amount, 0);
+
+      const body = {
+        warehouse: uploadWarehouse,
+        businessDate: uploadDate,
+        fileName: uploadFileName || `PMS_${uploadWarehouse}_${uploadDate}.xlsx`,
+        records: validRecords,
+        creditTotal,
+        debitTotal,
+        difference: creditTotal - debitTotal,
+        roomCount: uploadRoomCount ? parseInt(uploadRoomCount) : null,
+        occupancyRate: uploadOccupancyRate ? parseFloat(uploadOccupancyRate) : null,
+        avgRoomRate: uploadAvgRoomRate ? parseFloat(uploadAvgRoomRate) : null
+      };
+
+      const res = await fetch('/api/pms-income/batches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || '匯入失敗');
+      }
+
+      const result = await res.json();
+      setSuccess(`匯入成功！批次號: ${result.batchNo}，共 ${result.recordCount} 筆${result.isReplacement ? ' (已覆蓋舊資料)' : ''}`);
+      setShowUploadModal(false);
+      resetUploadForm();
+      fetchOverviewData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploadSubmitting(false);
+    }
+  };
+
+  const resetUploadForm = () => {
+    setUploadWarehouse('麗格');
+    setUploadDate(new Date().toISOString().split('T')[0]);
+    setUploadFileName('');
+    setUploadRecords(DEFAULT_PMS_COLUMNS.map(col => ({ ...col, amount: '' })));
+    setUploadRoomCount('');
+    setUploadOccupancyRate('');
+    setUploadAvgRoomRate('');
+  };
+
+  // ========================
+  // Delete batch handler
+  // ========================
+  const handleDeleteBatch = async (batchId, batchNo) => {
+    if (!confirm(`確定要刪除批次 ${batchNo} 及所有相關記錄嗎？`)) return;
+    try {
+      const res = await fetch(`/api/pms-income/batches/${batchId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('刪除失敗');
+      setSuccess(`已刪除批次 ${batchNo}`);
+      fetchOverviewData();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // ========================
+  // Add record handler
+  // ========================
+  const handleAddRecord = async () => {
+    setError('');
+    try {
+      const res = await fetch('/api/pms-income', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...addForm,
+          amount: parseFloat(addForm.amount)
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || '新增失敗');
+      }
+      setSuccess('手動新增成功');
+      setShowAddModal(false);
+      setAddForm({
+        warehouse: '麗格', businessDate: new Date().toISOString().split('T')[0],
+        entryType: '貸方', pmsColumnName: '', amount: '', accountingCode: '', accountingName: '', note: ''
+      });
+      fetchRecords();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // ========================
+  // Delete record handler
+  // ========================
+  const handleDeleteRecord = async (recordId) => {
+    if (!confirm('確定要刪除此筆記錄嗎？')) return;
+    try {
+      const res = await fetch(`/api/pms-income/${recordId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('刪除失敗');
+      setSuccess('記錄已刪除');
+      fetchRecords();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // ========================
+  // Sort handler for records
+  // ========================
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+  };
+
+  // Client-side sort for the current page (since API already sorts by businessDate desc)
+  const sortedRecords = [...records].sort((a, b) => {
+    let va = a[sortField];
+    let vb = b[sortField];
+    if (typeof va === 'string') {
+      const cmp = va.localeCompare(vb);
+      return sortDir === 'asc' ? cmp : -cmp;
+    }
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+
+  // ========================
+  // Calendar grid for overview
+  // ========================
+  const renderCalendarGrid = () => {
+    if (!monthlySummary) return null;
+    const daysInMonth = new Date(overviewYear, overviewMonth, 0).getDate();
+    const monthStr = String(overviewMonth).padStart(2, '0');
+
+    // Build import status per day per warehouse
+    const importStatus = {};
+    for (const batch of batches) {
+      const key = `${batch.warehouse}|${batch.businessDate}`;
+      importStatus[key] = batch;
+    }
+
+    const days = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      days.push(`${overviewYear}-${monthStr}-${String(d).padStart(2, '0')}`);
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-teal-50">
+              <th className="border border-gray-200 px-3 py-2 text-left font-medium text-teal-800 sticky left-0 bg-teal-50 z-10">日期</th>
+              {WAREHOUSES.map(wh => (
+                <th key={wh} className="border border-gray-200 px-3 py-2 text-center font-medium text-teal-800 min-w-[100px]">{wh}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {days.map(date => {
+              const dayNum = parseInt(date.split('-')[2]);
+              const dayOfWeek = new Date(date).getDay();
+              const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+              const isFuture = date > new Date().toISOString().split('T')[0];
+              return (
+                <tr key={date} className={`${isWeekend ? 'bg-gray-50' : ''} ${isFuture ? 'opacity-40' : ''} hover:bg-teal-50/50`}>
+                  <td className="border border-gray-200 px-3 py-1.5 font-mono text-xs sticky left-0 bg-white z-10">
+                    {dayNum}日 ({['日','一','二','三','四','五','六'][dayOfWeek]})
+                  </td>
+                  {WAREHOUSES.map(wh => {
+                    const key = `${wh}|${date}`;
+                    const batch = importStatus[key];
+                    return (
+                      <td key={wh} className="border border-gray-200 px-3 py-1.5 text-center">
+                        {batch ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-green-600 font-bold text-base">&#10003;</span>
+                            <span className="text-xs text-gray-500">{formatNumber(batch.creditTotal)}</span>
+                          </div>
+                        ) : isFuture ? (
+                          <span className="text-gray-300">-</span>
+                        ) : (
+                          <span className="text-red-500 font-bold text-base">&#10007;</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // ========================
+  // Statistics bar chart (pure CSS)
+  // ========================
+  const renderStatsChart = () => {
+    if (!statsData) return null;
+
+    // If single month detail
+    if (statsData.byAccountingCode) {
+      const items = statsData.byAccountingCode;
+      if (items.length === 0) return <p className="text-gray-500 text-center py-8">無資料</p>;
+      const maxVal = Math.max(...items.map(i => Math.abs(i.net)));
+
+      return (
+        <div className="space-y-3">
+          {items.map((item, i) => {
+            const pct = maxVal > 0 ? (Math.abs(item.net) / maxVal * 100) : 0;
+            const isPositive = item.net >= 0;
+            return (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-32 text-right text-sm text-gray-700 truncate" title={item.accountingName}>
+                  {item.accountingCode} {item.accountingName}
+                </div>
+                <div className="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${isPositive ? 'bg-teal-500' : 'bg-amber-500'}`}
+                    style={{ width: `${Math.max(pct, 2)}%` }}
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium">
+                    {formatNumber(item.net)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Year overview: 12 months
+    if (Array.isArray(statsData)) {
+      const maxTotal = Math.max(...statsData.map(m => Math.abs(m.total)), 1);
+
+      return (
+        <div className="space-y-2">
+          {statsData.map((m, i) => {
+            const pct = maxTotal > 0 ? (Math.abs(m.total) / maxTotal * 100) : 0;
+            return (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-16 text-right text-sm font-medium text-gray-700">{m.month}月</div>
+                <div className="flex-1 bg-gray-100 rounded-full h-7 relative overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-teal-500 transition-all"
+                    style={{ width: `${Math.max(pct, 1)}%` }}
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium">
+                    {formatNumber(m.total)} ({m.importedDays}/{m.totalDays}天)
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ========================
+  // Upload modal component
+  // ========================
+  const renderUploadModal = () => {
+    if (!showUploadModal) return null;
+
+    const creditRecords = uploadRecords.filter(r => r.entryType === '貸方');
+    const debitRecords = uploadRecords.filter(r => r.entryType === '借方');
+    const creditTotal = creditRecords.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    const debitTotal = debitRecords.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+            <h3 className="text-lg font-bold text-teal-800">匯入 PMS 日報表</h3>
+            <button onClick={() => { setShowUploadModal(false); resetUploadForm(); }} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          </div>
+
+          <div className="p-6 space-y-5">
+            {/* Basic info */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                <select value={uploadWarehouse} onChange={e => setUploadWarehouse(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+                  {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">營業日期</label>
+                <input type="date" value={uploadDate} onChange={e => setUploadDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">檔案名稱</label>
+                <input type="text" value={uploadFileName} onChange={e => setUploadFileName(e.target.value)}
+                  placeholder="PMS_report.xlsx"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+            </div>
+
+            {/* Room info */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">房間數</label>
+                <input type="number" value={uploadRoomCount} onChange={e => setUploadRoomCount(e.target.value)}
+                  placeholder="0" min="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">住房率 (%)</label>
+                <input type="number" value={uploadOccupancyRate} onChange={e => setUploadOccupancyRate(e.target.value)}
+                  placeholder="0.00" step="0.01" min="0" max="100"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">平均房價</label>
+                <input type="number" value={uploadAvgRoomRate} onChange={e => setUploadAvgRoomRate(e.target.value)}
+                  placeholder="0" step="1" min="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+            </div>
+
+            {/* Credit (貸方) entries */}
+            <div>
+              <h4 className="text-sm font-bold text-teal-700 mb-2 border-b border-teal-200 pb-1">貸方科目 (收入)</h4>
+              <div className="space-y-2">
+                {uploadRecords.map((rec, idx) => {
+                  if (rec.entryType !== '貸方') return null;
+                  return (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
+                      <div className="col-span-2 text-xs text-gray-500">{rec.accountingCode}</div>
+                      <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
+                      <div className="col-span-4">
+                        <input type="number" value={rec.amount} step="1" min="0"
+                          onChange={e => handleUploadRecordChange(idx, 'amount', e.target.value)}
+                          placeholder="金額"
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-teal-500 focus:border-teal-500" />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="text-right text-sm font-bold text-teal-700 pr-1">
+                  貸方合計: {formatNumber(creditTotal)}
+                </div>
+              </div>
+            </div>
+
+            {/* Debit (借方) entries */}
+            <div>
+              <h4 className="text-sm font-bold text-amber-700 mb-2 border-b border-amber-200 pb-1">借方科目 (資產/支出)</h4>
+              <div className="space-y-2">
+                {uploadRecords.map((rec, idx) => {
+                  if (rec.entryType !== '借方') return null;
+                  return (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
+                      <div className="col-span-2 text-xs text-gray-500">{rec.accountingCode}</div>
+                      <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
+                      <div className="col-span-4">
+                        <input type="number" value={rec.amount} step="1" min="0"
+                          onChange={e => handleUploadRecordChange(idx, 'amount', e.target.value)}
+                          placeholder="金額"
+                          className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-teal-500 focus:border-teal-500" />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="text-right text-sm font-bold text-amber-700 pr-1">
+                  借方合計: {formatNumber(debitTotal)}
+                </div>
+              </div>
+            </div>
+
+            {/* Difference */}
+            <div className={`text-right text-sm font-bold px-3 py-2 rounded ${Math.abs(creditTotal - debitTotal) < 0.01 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              差額 (貸-借): {formatNumber(creditTotal - debitTotal)}
+              {Math.abs(creditTotal - debitTotal) < 0.01 ? ' (平衡)' : ' (不平衡)'}
+            </div>
+
+            {error && <div className="text-red-600 text-sm bg-red-50 px-3 py-2 rounded">{error}</div>}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => { setShowUploadModal(false); resetUploadForm(); }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+                取消
+              </button>
+              <button onClick={handleUploadSubmit} disabled={uploadSubmitting}
+                className="px-6 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {uploadSubmitting ? '匯入中...' : '確認匯入'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ========================
+  // Add record modal component
+  // ========================
+  const renderAddModal = () => {
+    if (!showAddModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+          <div className="border-b px-6 py-4 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-teal-800">手動新增收入記錄</h3>
+            <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
+                <select value={addForm.warehouse} onChange={e => setAddForm(p => ({ ...p, warehouse: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+                  {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">營業日期 *</label>
+                <input type="date" value={addForm.businessDate} onChange={e => setAddForm(p => ({ ...p, businessDate: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">借貸方 *</label>
+                <select value={addForm.entryType} onChange={e => setAddForm(p => ({ ...p, entryType: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+                  <option value="貸方">貸方</option>
+                  <option value="借方">借方</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">PMS 欄位名 *</label>
+                <input type="text" value={addForm.pmsColumnName} onChange={e => setAddForm(p => ({ ...p, pmsColumnName: e.target.value }))}
+                  placeholder="例: 住房收入"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">金額 *</label>
+                <input type="number" value={addForm.amount} step="1" min="0"
+                  onChange={e => setAddForm(p => ({ ...p, amount: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">科目代碼 *</label>
+                <input type="text" value={addForm.accountingCode} onChange={e => setAddForm(p => ({ ...p, accountingCode: e.target.value }))}
+                  placeholder="4111"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">科目名稱 *</label>
+                <input type="text" value={addForm.accountingName} onChange={e => setAddForm(p => ({ ...p, accountingName: e.target.value }))}
+                  placeholder="住房收入"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+              <input type="text" value={addForm.note} onChange={e => setAddForm(p => ({ ...p, note: e.target.value }))}
+                placeholder="選填"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+            </div>
+
+            {error && <div className="text-red-600 text-sm bg-red-50 px-3 py-2 rounded">{error}</div>}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+              <button onClick={handleAddRecord}
+                className="px-6 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">確認新增</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ========================
+  // Pagination component
+  // ========================
+  const totalPages = Math.ceil(recordsTotal / recordsLimit);
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    const pages = [];
+    const start = Math.max(1, recordsPage - 2);
+    const end = Math.min(totalPages, recordsPage + 2);
+    for (let p = start; p <= end; p++) pages.push(p);
+
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <span className="text-sm text-gray-600">
+          共 {recordsTotal} 筆，第 {recordsPage}/{totalPages} 頁
+        </span>
+        <div className="flex gap-1">
+          <button onClick={() => setRecordsPage(1)} disabled={recordsPage === 1}
+            className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-100">首頁</button>
+          <button onClick={() => setRecordsPage(p => Math.max(1, p - 1))} disabled={recordsPage === 1}
+            className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-100">上一頁</button>
+          {pages.map(p => (
+            <button key={p} onClick={() => setRecordsPage(p)}
+              className={`px-3 py-1 text-xs border rounded ${p === recordsPage ? 'bg-teal-600 text-white border-teal-600' : 'hover:bg-gray-100'}`}>
+              {p}
+            </button>
+          ))}
+          <button onClick={() => setRecordsPage(p => Math.min(totalPages, p + 1))} disabled={recordsPage === totalPages}
+            className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-100">下一頁</button>
+          <button onClick={() => setRecordsPage(totalPages)} disabled={recordsPage === totalPages}
+            className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-100">末頁</button>
+        </div>
+      </div>
+    );
+  };
+
+  // ========================
+  // Sort indicator
+  // ========================
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return <span className="text-gray-300 ml-1">&#8597;</span>;
+    return <span className="text-teal-600 ml-1">{sortDir === 'asc' ? '&#9650;' : '&#9660;'}</span>;
+  };
+
+  // Clear messages after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const t = setTimeout(() => setSuccess(''), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (error && !showUploadModal && !showAddModal) {
+      const t = setTimeout(() => setError(''), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [error, showUploadModal, showAddModal]);
+
+  return (
+    <div className="min-h-screen page-bg-pms-income">
+      <Navigation borderColor="border-teal-500" />
+      <NotificationBanner moduleFilter="pms-income" />
+
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Page header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-teal-800">PMS 收入管理</h2>
+            <p className="text-sm text-gray-600 mt-1">管理飯店 PMS 系統日報表的匯入與收入記錄</p>
+            <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+              <span className="w-2 h-2 rounded-full bg-green-400"></span>
+              <span>快取啟用中</span>
+            </div>
+          </div>
+          {activeTab === 'records' && (
+            <ExportButtons
+              data={records}
+              columns={EXPORT_CONFIGS.pmsIncome.columns}
+              exportName={EXPORT_CONFIGS.pmsIncome.filename}
+              title="PMS 收入記錄"
+              sheetName="收入記錄"
+            />
+          )}
+        </div>
+
+        {/* Success/Error messages */}
+        {success && (
+          <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm flex items-center justify-between">
+            <span>{success}</span>
+            <button onClick={() => setSuccess('')} className="text-green-500 hover:text-green-700">&times;</button>
+          </div>
+        )}
+        {error && !showUploadModal && !showAddModal && (
+          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
+          </div>
+        )}
+
+        {/* Tab navigation */}
+        <div className="flex gap-1 mb-6 border-b border-gray-200">
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-teal-600 text-white border-b-2 border-teal-600'
+                  : 'text-gray-600 hover:text-teal-700 hover:bg-teal-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ============================== */}
+        {/* Tab 1: Overview */}
+        {/* ============================== */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {/* Month selector + Upload button */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <select value={overviewYear} onChange={e => setOverviewYear(parseInt(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}年</option>)}
+                </select>
+                <select value={overviewMonth} onChange={e => setOverviewMonth(parseInt(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}月</option>)}
+                </select>
+                <button onClick={fetchOverviewData}
+                  className="px-3 py-2 text-sm border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50">
+                  重新整理
+                </button>
+                <div className="flex items-center gap-1.5 text-xs text-gray-400 ml-2">
+                  <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+                  <span>快取啟用中</span>
+                </div>
+              </div>
+              <button onClick={() => setShowUploadModal(true)}
+                className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                匯入 PMS 日報表
+              </button>
+            </div>
+
+            {/* Summary cards */}
+            {monthlySummary && (
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-white rounded-lg shadow-sm border border-teal-100 p-4">
+                  <div className="text-xs text-gray-500 mb-1">本月淨收入</div>
+                  <div className="text-xl font-bold text-teal-700">{formatNumber(monthlySummary.total)}</div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-teal-100 p-4">
+                  <div className="text-xs text-gray-500 mb-1">已匯入天數</div>
+                  <div className="text-xl font-bold text-teal-700">{monthlySummary.importedDays} / {monthlySummary.totalDays}</div>
+                </div>
+                {Object.entries(monthlySummary.byWarehouse || {}).map(([wh, data]) => (
+                  <div key={wh} className="bg-white rounded-lg shadow-sm border border-teal-100 p-4">
+                    <div className="text-xs text-gray-500 mb-1">{wh} 貸方合計</div>
+                    <div className="text-xl font-bold text-teal-700">{formatNumber(data.credit)}</div>
+                    <div className="text-xs text-gray-400">{data.importedDays} 天已匯入</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Calendar grid */}
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">每日匯入狀態</h3>
+              {loading ? (
+                <div className="text-center py-8 text-gray-400">載入中...</div>
+              ) : (
+                renderCalendarGrid()
+              )}
+            </div>
+
+            {/* Batch list */}
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">匯入批次列表</h3>
+              {batches.length === 0 ? (
+                <p className="text-gray-400 text-center py-4">本月尚無匯入批次</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left">
+                        <th className="px-3 py-2 font-medium">批次號</th>
+                        <th className="px-3 py-2 font-medium">館別</th>
+                        <th className="px-3 py-2 font-medium">營業日期</th>
+                        <th className="px-3 py-2 font-medium">檔案名稱</th>
+                        <th className="px-3 py-2 font-medium text-right">貸方合計</th>
+                        <th className="px-3 py-2 font-medium text-right">借方合計</th>
+                        <th className="px-3 py-2 font-medium text-right">差額</th>
+                        <th className="px-3 py-2 font-medium text-center">筆數</th>
+                        <th className="px-3 py-2 font-medium">匯入時間</th>
+                        <th className="px-3 py-2 font-medium text-center">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batches.map(batch => (
+                        <tr key={batch.id} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-2 font-mono text-xs">{batch.batchNo}</td>
+                          <td className="px-3 py-2">{batch.warehouse}</td>
+                          <td className="px-3 py-2">{formatDate(batch.businessDate)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[150px] truncate">{batch.fileName}</td>
+                          <td className="px-3 py-2 text-right text-teal-700 font-medium">{formatNumber(batch.creditTotal)}</td>
+                          <td className="px-3 py-2 text-right text-amber-700 font-medium">{formatNumber(batch.debitTotal)}</td>
+                          <td className={`px-3 py-2 text-right font-medium ${Math.abs(batch.difference) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatNumber(batch.difference)}
+                          </td>
+                          <td className="px-3 py-2 text-center">{batch.recordCount}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">
+                            {batch.importedAt ? new Date(batch.importedAt).toLocaleString('zh-TW') : '-'}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button onClick={() => handleDeleteBatch(batch.id, batch.batchNo)}
+                              className="text-red-500 hover:text-red-700 text-xs hover:underline">
+                              刪除
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab 2: Records */}
+        {/* ============================== */}
+        {activeTab === 'records' && (
+          <div className="space-y-4">
+            {/* Filters */}
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={filterWarehouse} onChange={e => { setFilterWarehouse(e.target.value); setRecordsPage(1); }}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[100px]">
+                    <option value="">全部</option>
+                    {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input type="date" value={filterStartDate} onChange={e => { setFilterStartDate(e.target.value); setRecordsPage(1); }}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input type="date" value={filterEndDate} onChange={e => { setFilterEndDate(e.target.value); setRecordsPage(1); }}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">借貸方</label>
+                  <select value={filterEntryType} onChange={e => { setFilterEntryType(e.target.value); setRecordsPage(1); }}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[80px]">
+                    <option value="">全部</option>
+                    <option value="貸方">貸方</option>
+                    <option value="借方">借方</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">科目代碼</label>
+                  <input type="text" value={filterAccountingCode} onChange={e => { setFilterAccountingCode(e.target.value); setRecordsPage(1); }}
+                    placeholder="例: 4111"
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24" />
+                </div>
+                <button onClick={() => { setFilterWarehouse(''); setFilterStartDate(''); setFilterEndDate(''); setFilterEntryType(''); setFilterAccountingCode(''); setRecordsPage(1); }}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">
+                  清除篩選
+                </button>
+                <div className="flex-1" />
+                <button onClick={() => setShowAddModal(true)}
+                  className="px-4 py-1.5 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">
+                  + 手動新增
+                </button>
+              </div>
+            </div>
+
+            {/* Records table */}
+            <div className="bg-white rounded-lg shadow-sm border">
+              {loading ? (
+                <div className="text-center py-8 text-gray-400">載入中...</div>
+              ) : records.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">無符合條件的記錄</div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium cursor-pointer hover:text-teal-700" onClick={() => handleSort('businessDate')}>
+                            營業日期 <SortIcon field="businessDate" />
+                          </th>
+                          <th className="px-3 py-2 font-medium cursor-pointer hover:text-teal-700" onClick={() => handleSort('warehouse')}>
+                            館別 <SortIcon field="warehouse" />
+                          </th>
+                          <th className="px-3 py-2 font-medium cursor-pointer hover:text-teal-700" onClick={() => handleSort('entryType')}>
+                            借貸方 <SortIcon field="entryType" />
+                          </th>
+                          <th className="px-3 py-2 font-medium">PMS 欄位</th>
+                          <th className="px-3 py-2 font-medium text-right cursor-pointer hover:text-teal-700" onClick={() => handleSort('amount')}>
+                            金額 <SortIcon field="amount" />
+                          </th>
+                          <th className="px-3 py-2 font-medium">科目代碼</th>
+                          <th className="px-3 py-2 font-medium">科目名稱</th>
+                          <th className="px-3 py-2 font-medium">批次</th>
+                          <th className="px-3 py-2 font-medium">備註</th>
+                          <th className="px-3 py-2 font-medium text-center">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedRecords.map(rec => (
+                          <tr key={rec.id} className="border-t hover:bg-gray-50">
+                            <td className="px-3 py-2 font-mono text-xs">{formatDate(rec.businessDate)}</td>
+                            <td className="px-3 py-2">{rec.warehouse}</td>
+                            <td className="px-3 py-2">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                rec.entryType === '貸方' ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {rec.entryType}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-sm">{rec.pmsColumnName}</td>
+                            <td className="px-3 py-2 text-right font-medium">
+                              {formatNumber(rec.amount)}
+                              {rec.isModified && (
+                                <span className="ml-1 text-xs text-orange-500" title={`原始: ${formatNumber(rec.originalAmount)}`}>*</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-600">{rec.accountingCode}</td>
+                            <td className="px-3 py-2 text-xs text-gray-600">{rec.accountingName}</td>
+                            <td className="px-3 py-2 text-xs text-gray-400">{rec.importBatch?.batchNo || '手動'}</td>
+                            <td className="px-3 py-2 text-xs text-gray-400 max-w-[100px] truncate">{rec.note || '-'}</td>
+                            <td className="px-3 py-2 text-center">
+                              <button onClick={() => handleDeleteRecord(rec.id)}
+                                className="text-red-500 hover:text-red-700 text-xs hover:underline">
+                                刪除
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-4 py-3 border-t">
+                    {renderPagination()}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab 3: Statistics */}
+        {/* ============================== */}
+        {activeTab === 'statistics' && (
+          <div className="space-y-6">
+            {/* Controls */}
+            <div className="flex items-center gap-3">
+              <select value={statsYear} onChange={e => setStatsYear(parseInt(e.target.value))}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}年</option>)}
+              </select>
+              <select value={statsMonth} onChange={e => setStatsMonth(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+                <option value="">全年總覽</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}月</option>)}
+              </select>
+              <button onClick={fetchStats}
+                className="px-3 py-2 text-sm border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50">
+                查詢
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-8 text-gray-400">載入中...</div>
+            ) : statsData ? (
+              <>
+                {/* Chart */}
+                <div className="bg-white rounded-lg shadow-sm border p-6">
+                  <h3 className="text-sm font-bold text-gray-700 mb-4">
+                    {statsMonth ? `${statsYear}年${statsMonth}月 - 科目分佈` : `${statsYear}年 - 月度收入趨勢`}
+                  </h3>
+                  {renderStatsChart()}
+                </div>
+
+                {/* Detail table for single month */}
+                {statsMonth && statsData.byAccountingCode && (
+                  <div className="bg-white rounded-lg shadow-sm border p-4">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">科目明細</h3>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium">科目代碼</th>
+                          <th className="px-3 py-2 font-medium">科目名稱</th>
+                          <th className="px-3 py-2 font-medium text-right">貸方金額</th>
+                          <th className="px-3 py-2 font-medium text-right">借方金額</th>
+                          <th className="px-3 py-2 font-medium text-right">淨額</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statsData.byAccountingCode.map((item, i) => (
+                          <tr key={i} className="border-t hover:bg-gray-50">
+                            <td className="px-3 py-2 font-mono text-xs">{item.accountingCode}</td>
+                            <td className="px-3 py-2">{item.accountingName}</td>
+                            <td className="px-3 py-2 text-right text-teal-700">{formatNumber(item.credit)}</td>
+                            <td className="px-3 py-2 text-right text-amber-700">{formatNumber(item.debit)}</td>
+                            <td className={`px-3 py-2 text-right font-medium ${item.net >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
+                              {formatNumber(item.net)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 border-gray-300 font-bold">
+                          <td className="px-3 py-2" colSpan={2}>合計</td>
+                          <td className="px-3 py-2 text-right text-teal-700">
+                            {formatNumber(statsData.byAccountingCode.reduce((s, i) => s + i.credit, 0))}
+                          </td>
+                          <td className="px-3 py-2 text-right text-amber-700">
+                            {formatNumber(statsData.byAccountingCode.reduce((s, i) => s + i.debit, 0))}
+                          </td>
+                          <td className="px-3 py-2 text-right text-teal-800">
+                            {formatNumber(statsData.total)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* Warehouse breakdown */}
+                    {Object.keys(statsData.byWarehouse || {}).length > 0 && (
+                      <div className="mt-6">
+                        <h4 className="text-sm font-bold text-gray-700 mb-3">館別匯入統計</h4>
+                        <div className="grid grid-cols-3 gap-4">
+                          {Object.entries(statsData.byWarehouse).map(([wh, data]) => (
+                            <div key={wh} className="border rounded-lg p-3">
+                              <div className="font-medium text-teal-800 mb-2">{wh}</div>
+                              <div className="grid grid-cols-2 gap-1 text-xs">
+                                <span className="text-gray-500">貸方:</span>
+                                <span className="text-right text-teal-700">{formatNumber(data.credit)}</span>
+                                <span className="text-gray-500">借方:</span>
+                                <span className="text-right text-amber-700">{formatNumber(data.debit)}</span>
+                                <span className="text-gray-500">淨額:</span>
+                                <span className="text-right font-medium">{formatNumber(data.net)}</span>
+                                <span className="text-gray-500">匯入天數:</span>
+                                <span className="text-right">{data.importedDays}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Year overview table */}
+                {!statsMonth && Array.isArray(statsData) && (
+                  <div className="bg-white rounded-lg shadow-sm border p-4">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">月度摘要表</h3>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium">月份</th>
+                          <th className="px-3 py-2 font-medium text-right">淨收入</th>
+                          <th className="px-3 py-2 font-medium text-center">匯入天數</th>
+                          <th className="px-3 py-2 font-medium text-center">當月天數</th>
+                          <th className="px-3 py-2 font-medium text-center">完成率</th>
+                          <th className="px-3 py-2 font-medium">涵蓋館別</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statsData.map((m, i) => (
+                          <tr key={i} className="border-t hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium">{m.month}月</td>
+                            <td className={`px-3 py-2 text-right font-medium ${m.total >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
+                              {formatNumber(m.total)}
+                            </td>
+                            <td className="px-3 py-2 text-center">{m.importedDays}</td>
+                            <td className="px-3 py-2 text-center">{m.totalDays}</td>
+                            <td className="px-3 py-2 text-center">
+                              {m.totalDays > 0 ? `${Math.round(m.importedDays / m.totalDays * 100)}%` : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-500">
+                              {Object.keys(m.byWarehouse || {}).join(', ') || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 border-gray-300 font-bold">
+                          <td className="px-3 py-2">全年合計</td>
+                          <td className="px-3 py-2 text-right text-teal-800">
+                            {formatNumber(statsData.reduce((s, m) => s + m.total, 0))}
+                          </td>
+                          <td className="px-3 py-2 text-center">{statsData.reduce((s, m) => s + m.importedDays, 0)}</td>
+                          <td className="px-3 py-2 text-center">{statsData.reduce((s, m) => s + m.totalDays, 0)}</td>
+                          <td className="px-3 py-2 text-center">
+                            {(() => {
+                              const totalDays = statsData.reduce((s, m) => s + m.totalDays, 0);
+                              const importedDays = statsData.reduce((s, m) => s + m.importedDays, 0);
+                              return totalDays > 0 ? `${Math.round(importedDays / totalDays * 100)}%` : '-';
+                            })()}
+                          </td>
+                          <td className="px-3 py-2" />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-400">無資料</div>
+            )}
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab 4: Mapping */}
+        {/* ============================== */}
+        {activeTab === 'mapping' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-700">PMS 科目對應規則</h3>
+                <a href="/settings" className="text-sm text-teal-600 hover:text-teal-800 hover:underline">
+                  前往設定管理 &rarr;
+                </a>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                以下為 PMS 系統欄位與會計科目的對應關係。如需修改，請聯繫系統管理員或前往設定頁面。
+              </p>
+
+              {loading ? (
+                <div className="text-center py-8 text-gray-400">載入中...</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium">#</th>
+                      <th className="px-3 py-2 font-medium">PMS 欄位名稱</th>
+                      <th className="px-3 py-2 font-medium">借貸方</th>
+                      <th className="px-3 py-2 font-medium">會計科目代碼</th>
+                      <th className="px-3 py-2 font-medium">會計科目名稱</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mappingRules.map((rule, i) => (
+                      <tr key={rule.id || i} className="border-t hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                        <td className="px-3 py-2 font-medium">{rule.pmsColumnName}</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            rule.entryType === '貸方' ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {rule.entryType}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">{rule.accountingCode}</td>
+                        <td className="px-3 py-2">{rule.accountingName}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {renderUploadModal()}
+      {renderAddModal()}
+    </div>
+  );
+}

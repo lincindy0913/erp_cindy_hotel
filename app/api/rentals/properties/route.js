@@ -1,0 +1,82 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const buildingName = searchParams.get('buildingName');
+    const status = searchParams.get('status');
+
+    const where = {};
+    if (buildingName) where.buildingName = buildingName;
+    if (status) where.status = status;
+
+    const properties = await prisma.rentalProperty.findMany({
+      where,
+      include: {
+        contracts: {
+          where: { status: 'active' },
+          include: {
+            tenant: {
+              select: { fullName: true, companyName: true, tenantType: true }
+            }
+          },
+          take: 1
+        },
+        rentCollectAccount: { select: { id: true, name: true } },
+        depositAccount: { select: { id: true, name: true } }
+      },
+      orderBy: [{ buildingName: 'asc' }, { name: 'asc' }]
+    });
+
+    const result = properties.map(p => {
+      const activeContract = p.contracts[0] || null;
+      const tenantName = activeContract
+        ? (activeContract.tenant.tenantType === 'company'
+          ? activeContract.tenant.companyName
+          : activeContract.tenant.fullName)
+        : null;
+      return {
+        ...p,
+        currentTenantName: tenantName,
+        currentContractId: activeContract?.id || null
+      };
+    });
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error('GET /api/rentals/properties error:', error);
+    return handleApiError(error);
+  }
+}
+
+export async function POST(request) {
+  try {
+    const body = await request.json();
+
+    if (!body.name) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '物業名稱為必填', 400);
+    }
+
+    const property = await prisma.rentalProperty.create({
+      data: {
+        name: body.name,
+        address: body.address || null,
+        buildingName: body.buildingName || null,
+        unitNo: body.unitNo || null,
+        rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
+        depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
+        status: body.status || 'available',
+        note: body.note || null
+      }
+    });
+
+    return NextResponse.json(property, { status: 201 });
+  } catch (error) {
+    console.error('POST /api/rentals/properties error:', error);
+    return handleApiError(error);
+  }
+}

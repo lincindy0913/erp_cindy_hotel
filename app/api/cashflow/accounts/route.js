@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +20,7 @@ export async function GET() {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢資金帳戶錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -29,7 +29,7 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.name || !data.type) {
-      return NextResponse.json({ error: '帳戶名稱、類型為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '帳戶名稱、類型為必填', 400);
     }
 
     const openingBalance = parseFloat(data.openingBalance) || 0;
@@ -38,7 +38,7 @@ export async function POST(request) {
     if (data.accountCode) {
       const existing = await prisma.cashAccount.findUnique({ where: { accountCode: data.accountCode } });
       if (existing) {
-        return NextResponse.json({ error: `帳戶序號 ${data.accountCode} 已存在` }, { status: 400 });
+        return createErrorResponse('CONFLICT_UNIQUE', `帳戶序號 ${data.accountCode} 已存在`, 409);
       }
     }
 
@@ -63,7 +63,6 @@ export async function POST(request) {
       updatedAt: account.updatedAt.toISOString()
     }, { status: 201 });
   } catch (error) {
-    console.error('建立資金帳戶錯誤:', error);
-    return NextResponse.json({ error: '建立資金帳戶失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

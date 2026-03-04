@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function GET(request, { params }) {
   try {
@@ -7,7 +8,7 @@ export async function GET(request, { params }) {
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
-      return NextResponse.json({ error: '產品不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '產品不存在', 404);
     }
 
     // 查找包含此產品的進貨明細，並 join 進貨主檔和廠商
@@ -45,7 +46,6 @@ export async function GET(request, { params }) {
       purchases: purchaseRecords
     });
   } catch (error) {
-    console.error('查詢產品採購記錄錯誤:', error);
-    return NextResponse.json({ error: '查詢失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

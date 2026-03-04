@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function PUT(request, { params }) {
   try {
@@ -8,7 +9,7 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.salesMaster.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '發票不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '發票不存在', 404);
     }
 
     // 刪除舊明細，重新建立
@@ -75,7 +76,7 @@ export async function PUT(request, { params }) {
     return NextResponse.json(result);
   } catch (error) {
     console.error('更新發票錯誤:', error);
-    return NextResponse.json({ error: '更新發票失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -85,13 +86,13 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.salesMaster.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '發票不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '發票不存在', 404);
     }
 
     await prisma.salesMaster.delete({ where: { id } });
     return NextResponse.json({ message: '發票已刪除，相關進貨單品項已可重新核銷' });
   } catch (error) {
     console.error('刪除發票錯誤:', error);
-    return NextResponse.json({ error: '刪除發票失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

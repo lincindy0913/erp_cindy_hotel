@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +17,7 @@ export async function GET() {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢資金類別錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -26,11 +26,11 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.name || !data.type) {
-      return NextResponse.json({ error: '類別名稱和類型為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '類別名稱和類型為必填', 400);
     }
 
     if (!['收入', '支出'].includes(data.type)) {
-      return NextResponse.json({ error: '類型必須是「收入」或「支出」' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '類型必須是「收入」或「支出」', 400);
     }
 
     const category = await prisma.cashCategory.create({
@@ -47,7 +47,6 @@ export async function POST(request) {
       createdAt: category.createdAt.toISOString()
     }, { status: 201 });
   } catch (error) {
-    console.error('建立資金類別錯誤:', error);
-    return NextResponse.json({ error: '建立資金類別失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,6 @@ export async function GET(request) {
 
     return NextResponse.json(resultWithMin);
   } catch (error) {
-    console.error('查詢比價錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }

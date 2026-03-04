@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function GET(request, { params }) {
   try {
@@ -10,7 +11,7 @@ export async function GET(request, { params }) {
     });
 
     if (!contract) {
-      return NextResponse.json({ error: '合約不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '合約不存在', 404);
     }
 
     return new NextResponse(contract.fileData, {
@@ -22,7 +23,7 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     console.error('下載合約錯誤:', error);
-    return NextResponse.json({ error: '下載合約失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -35,13 +36,13 @@ export async function DELETE(request, { params }) {
     });
 
     if (!contract) {
-      return NextResponse.json({ error: '合約不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '合約不存在', 404);
     }
 
     await prisma.supplierContract.delete({ where: { id: contractId } });
     return NextResponse.json({ message: '合約已刪除' });
   } catch (error) {
     console.error('刪除合約錯誤:', error);
-    return NextResponse.json({ error: '刪除合約失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

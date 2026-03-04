@@ -22,7 +22,10 @@ export const authOptions = {
         try {
           const prisma = (await import('@/lib/db')).default;
           const user = await prisma.user.findUnique({
-            where: { email: credentials.email }
+            where: { email: credentials.email },
+            include: {
+              userRoles: { include: { role: true } }
+            }
           });
 
           if (!user || !user.isActive) {
@@ -38,12 +41,22 @@ export const authOptions = {
             return null;
           }
 
+          // 合併所有角色的權限
+          const roleCodes = user.userRoles.map(ur => ur.role.code);
+          const permSet = new Set();
+          for (const ur of user.userRoles) {
+            const perms = ur.role.permissions;
+            if (Array.isArray(perms)) perms.forEach(p => permSet.add(p));
+          }
+          const isAdmin = roleCodes.includes('admin');
+
           return {
             id: user.id.toString(),
             email: user.email,
             name: user.name,
-            role: user.role,
-            permissions: user.permissions
+            role: isAdmin ? 'admin' : (user.role || 'user'),
+            roles: roleCodes,
+            permissions: isAdmin ? ['*'] : Array.from(permSet),
           };
         } catch (error) {
           console.log('Database not available, using demo mode');
@@ -76,6 +89,7 @@ export const authOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        token.roles = user.roles || [];
         token.permissions = user.permissions;
       }
       return token;
@@ -84,6 +98,7 @@ export const authOptions = {
       if (session.user) {
         session.user.id = token.id;
         session.user.role = token.role;
+        session.user.roles = token.roles || [];
         session.user.permissions = token.permissions;
       }
       return session;

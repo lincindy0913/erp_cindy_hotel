@@ -1,5 +1,6 @@
 // 進銷存暨營運決策分析系統 - Prisma Schema
 // PostgreSQL Database
+// Updated: 2026-03-04 (spec0-spec28 complete integration)
 
 generator client {
   provider      = "prisma-client-js"
@@ -12,37 +13,46 @@ datasource db {
 }
 
 // ============================================
-// 主資料層
+// 主資料層 (spec0)
 // ============================================
 
 model Product {
   id                Int      @id @default(autoincrement())
   code              String   @unique @db.VarChar(50)
   name              String   @db.VarChar(255)
+  productType       String   @default("goods") @map("product_type") @db.VarChar(20) // goods, service, consumable
   category          String?  @db.VarChar(100)
   unit              String?  @db.VarChar(20)
-  costPrice         Decimal  @map("cost_price") @db.Decimal(10, 2)
-  salesPrice        Decimal  @map("sales_price") @db.Decimal(10, 2)
+  costPrice         Decimal  @default(0) @map("cost_price") @db.Decimal(10, 2)
+  salesPrice        Decimal  @default(0) @map("sales_price") @db.Decimal(10, 2)
   isInStock         Boolean  @default(false) @map("is_in_stock")
+  lowStockThreshold Int?     @map("low_stock_threshold") // spec24: 庫存偏低閾值
   warehouseLocation String?  @map("warehouse_location") @db.VarChar(50)
   accountingSubject String?  @map("accounting_subject") @db.VarChar(100)
   supplierId        Int?     @map("supplier_id")
+  isActive          Boolean  @default(true) @map("is_active")
+  note              String?  @db.Text
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  supplier         Supplier?         @relation(fields: [supplierId], references: [id])
-  purchaseDetails  PurchaseDetail[]
-  priceHistories   PriceHistory[]
-  priceComparisons PriceComparison[]
+  supplier             Supplier?                @relation(fields: [supplierId], references: [id])
+  purchaseDetails      PurchaseDetail[]
+  priceHistories       PriceHistory[]
+  priceComparisons     PriceComparison[]
+  priceSummaryCaches   PriceSummaryCache[]
+  inventorySnapshots   InventoryMonthlySnapshot[]
+  lowStockCaches       InventoryLowStockCache[]
 
   @@index([code])
   @@index([isInStock])
   @@index([supplierId])
+  @@index([productType])
   @@map("products")
 }
 
 model Supplier {
   id              Int       @id @default(autoincrement())
+  supplierCode    String?   @unique @map("supplier_code") @db.VarChar(50) // SUP-XXXXXX
   name            String    @db.VarChar(255)
   taxId           String?   @map("tax_id") @db.VarChar(50)
   contact         String?   @db.VarChar(255)
@@ -51,20 +61,24 @@ model Supplier {
   address         String?   @db.VarChar(500)
   email           String?   @db.VarChar(255)
   paymentTerms    String?   @map("payment_terms") @db.VarChar(100)
+  bankName        String?   @map("bank_name") @db.VarChar(100)
+  bankAccount     String?   @map("bank_account") @db.VarChar(100)
   contractDate    String?   @map("contract_date") @db.VarChar(20)
   contractEndDate String?   @map("contract_end_date") @db.VarChar(20)
   paymentStatus   String?   @default("未付款") @map("payment_status") @db.VarChar(20)
   remarks         String?   @db.Text
   sortOrder       Int?      @map("sort_order")
+  isActive        Boolean   @default(true) @map("is_active")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  products         Product[]
-  purchaseMasters  PurchaseMaster[]
-  contracts        SupplierContract[]
-  priceHistories   PriceHistory[]
-  priceComparisons PriceComparison[]
-  expenses         Expense[]
+  products            Product[]
+  purchaseMasters     PurchaseMaster[]
+  contracts           SupplierContract[]
+  priceHistories      PriceHistory[]
+  priceComparisons    PriceComparison[]
+  priceSummaryCaches  PriceSummaryCache[]
+  expenses            Expense[]
 
   @@index([sortOrder])
   @@index([paymentStatus])
@@ -72,12 +86,15 @@ model Supplier {
 }
 
 // ============================================
-// 館別與部門
+// 館別與部門 (spec0)
 // ============================================
 
 model Warehouse {
   id          Int          @id @default(autoincrement())
   name        String       @unique @db.VarChar(100)
+  code        String?      @db.VarChar(20)
+  isActive    Boolean      @default(true) @map("is_active")
+  sortOrder   Int?         @map("sort_order")
   createdAt   DateTime     @default(now()) @map("created_at")
 
   departments Department[]
@@ -89,6 +106,8 @@ model Department {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(100)
   warehouseId Int       @map("warehouse_id")
+  isActive    Boolean   @default(true) @map("is_active")
+  sortOrder   Int?      @map("sort_order")
   createdAt   DateTime  @default(now()) @map("created_at")
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
@@ -117,7 +136,7 @@ model SupplierContract {
 }
 
 // ============================================
-// 進貨模組
+// 進貨模組 (spec1)
 // ============================================
 
 model PurchaseMaster {
@@ -159,11 +178,12 @@ model PurchaseDetail {
 
   @@index([purchaseId])
   @@index([productId])
+  @@index([productId, purchaseId]) // spec24: 快照後增量查詢
   @@map("purchase_details")
 }
 
 // ============================================
-// 銷貨/發票模組
+// 銷貨/發票模組 (spec2)
 // ============================================
 
 model SalesMaster {
@@ -213,7 +233,7 @@ model SalesDetail {
 }
 
 // ============================================
-// 付款模組
+// 付款模組 (spec3)
 // ============================================
 
 model Payment {
@@ -238,7 +258,7 @@ model Payment {
 }
 
 // ============================================
-// 支出管理
+// 支出管理 (spec3)
 // ============================================
 
 model Expense {
@@ -253,6 +273,8 @@ model Expense {
   supplierId          Int?     @map("supplier_id")
   supplierName        String?  @map("supplier_name") @db.VarChar(255)
   warehouse           String?  @db.VarChar(100)
+  sourceType          String?  @map("source_type") @db.VarChar(50)
+  sourceRecordId      Int?     @map("source_record_id")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -266,22 +288,31 @@ model Expense {
 }
 
 // ============================================
-// 分析模組
+// 分析模組 - 價格歷史 (spec0 v3)
 // ============================================
 
 model PriceHistory {
-  id           Int      @id @default(autoincrement())
-  supplierId   Int      @map("supplier_id")
-  productId    Int      @map("product_id")
-  purchaseDate String   @map("purchase_date") @db.VarChar(20)
-  unitPrice    Decimal  @map("unit_price") @db.Decimal(10, 2)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id               Int      @id @default(autoincrement())
+  supplierId       Int      @map("supplier_id")
+  productId        Int      @map("product_id")
+  warehouse        String?  @db.VarChar(100) // spec0 v3: 館別
+  purchaseMasterId Int?     @map("purchase_master_id") // spec0 v3: 溯源
+  purchaseDetailId Int?     @map("purchase_detail_id") // spec0 v3: 溯源
+  purchaseDate     String   @map("purchase_date") @db.VarChar(20)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(10, 2)
+  quantity         Int?     // spec0 v3: 採購數量
+  taxType          String?  @map("tax_type") @db.VarChar(20) // spec0 v3: 稅別
+  isSuperseded     Boolean  @default(false) @map("is_superseded") // spec0 v3: 是否已被取代
+  createdAt        DateTime @default(now()) @map("created_at")
 
   supplier Supplier @relation(fields: [supplierId], references: [id])
   product  Product  @relation(fields: [productId], references: [id])
 
   @@index([productId])
   @@index([purchaseDate])
+  @@index([productId, supplierId])                           // spec24: 比價快取核心
+  @@index([productId, warehouse, purchaseDate(sort: Desc)])  // spec24: 本館最近採購
+  @@index([supplierId, purchaseDate])                        // spec24: 廠商採購分析
   @@map("price_history")
 }
 
@@ -296,6 +327,33 @@ model PriceComparison {
 
   @@id([productId, supplierId, date])
   @@map("price_comparisons")
+}
+
+// ============================================
+// 採購比價快取 (spec0 v3 / spec24)
+// ============================================
+
+model PriceSummaryCache {
+  id               Int       @id @default(autoincrement())
+  productId        Int       @map("product_id")
+  supplierId       Int       @map("supplier_id")
+  warehouse        String    @db.VarChar(100)
+  latestPrice      Decimal?  @map("latest_price") @db.Decimal(10, 2)
+  latestDate       String?   @map("latest_date") @db.VarChar(20)
+  lowestPrice      Decimal?  @map("lowest_price") @db.Decimal(10, 2)
+  lowestDate       String?   @map("lowest_date") @db.VarChar(20)
+  avgPrice3m       Decimal?  @map("avg_price_3m") @db.Decimal(10, 2)   // 排程計算
+  avgPrice12m      Decimal?  @map("avg_price_12m") @db.Decimal(10, 2)  // 排程計算
+  purchaseCount12m Int?      @map("purchase_count_12m")                 // 排程計算
+  lastUpdated      DateTime  @default(now()) @map("last_updated")
+
+  product  Product  @relation(fields: [productId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@unique([productId, supplierId, warehouse])
+  @@index([productId, supplierId])
+  @@index([productId, warehouse])
+  @@map("price_summary_caches")
 }
 
 model DepartmentExpense {
@@ -313,24 +371,43 @@ model DepartmentExpense {
 }
 
 // ============================================
-// 現金流管理模組
+// 現金流管理模組 (spec6 v10)
 // ============================================
 
 model CashAccount {
-  id             Int      @id @default(autoincrement())
-  accountCode    String?  @unique @map("account_code") @db.VarChar(20) // 帳戶序號 P001, B001...
-  name           String   @db.VarChar(100)
-  type           String   @db.VarChar(20)        // 現金, 銀行存款, 代墊款, 信用卡
-  warehouse      String?  @db.VarChar(100)       // 館別
-  openingBalance Decimal  @default(0) @map("opening_balance") @db.Decimal(12, 2)
-  currentBalance Decimal  @default(0) @map("current_balance") @db.Decimal(12, 2)
-  isActive       Boolean  @default(true) @map("is_active")
-  note           String?  @db.VarChar(500)       // 備註
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                       Int       @id @default(autoincrement())
+  accountCode              String?   @unique @map("account_code") @db.VarChar(20)
+  name                     String    @db.VarChar(100)
+  type                     String    @db.VarChar(20)        // 現金, 銀行存款, 代墊款, 信用卡
+  warehouse                String?   @db.VarChar(100)
+  openingBalance           Decimal   @default(0) @map("opening_balance") @db.Decimal(12, 2)
+  currentBalance           Decimal   @default(0) @map("current_balance") @db.Decimal(12, 2)
+  isActive                 Boolean   @default(true) @map("is_active")
+  isConfidential           Boolean   @default(false) @map("is_confidential")
+  // spec6 v10: auto transaction tracking
+  autoTransactionCount     Int?      @map("auto_transaction_count")
+  lastAutoTransactionDate  String?   @map("last_auto_transaction_date") @db.VarChar(20)
+  // spec6 v7: 代墊款管理
+  advanceOwnerType         String?   @map("advance_owner_type") @db.VarChar(20)
+  advanceOwnerName         String?   @map("advance_owner_name") @db.VarChar(100)
+  advanceOwnerContact      String?   @map("advance_owner_contact") @db.VarChar(100)
+  repaymentAlertDays       Int?      @map("repayment_alert_days")
+  note                     String?   @db.VarChar(500)
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  transactions   CashTransaction[] @relation("AccountTransactions")
-  transfersIn    CashTransaction[] @relation("TransferToAccount")
+  transactions       CashTransaction[]        @relation("AccountTransactions")
+  transfersIn        CashTransaction[]        @relation("TransferToAccount")
+  reconciliations    BankReconciliation[]
+  statementImports   BankStatementImport[]
+  checksSource       Check[]                  @relation("CheckSourceAccount")
+  checksDestination  Check[]                  @relation("CheckDestinationAccount")
+  loanMasters        LoanMaster[]
+  rentalProperties   RentalProperty[]         @relation("RentCollectAccount")
+  depositProperties  RentalProperty[]         @relation("DepositAccount")
+  monthlySnapshots   AccountMonthlySnapshot[]
+  cashCountConfigs   CashCountConfig[]
+  cashCounts         CashCount[]
 
   @@index([warehouse])
   @@index([type])
@@ -338,40 +415,57 @@ model CashAccount {
 }
 
 model CashCategory {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar(100)
-  type      String   @db.VarChar(10)             // 收入 or 支出
-  warehouse String?  @db.VarChar(100)
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(100)
+  type            String   @db.VarChar(10)
+  warehouse       String?  @db.VarChar(100)
+  isActive        Boolean  @default(true) @map("is_active")
+  isSystemDefault Boolean  @default(false) @map("is_system_default")
+  systemCode      String?  @map("system_code") @db.VarChar(50)
+  createdAt       DateTime @default(now()) @map("created_at")
 
   transactions CashTransaction[]
 
   @@index([type])
+  @@index([systemCode])
   @@map("cash_categories")
 }
 
 model CashTransaction {
-  id                  Int      @id @default(autoincrement())
-  transactionNo       String   @unique @map("transaction_no") @db.VarChar(50)
-  transactionDate     String   @map("transaction_date") @db.VarChar(20)
-  type                String   @db.VarChar(10)     // 收入, 支出, 移轉
-  warehouse           String?  @db.VarChar(100)
-  accountId           Int      @map("account_id")
-  categoryId          Int?     @map("category_id")
-  supplierId          Int?     @map("supplier_id")
-  paymentNo           String?  @map("payment_no") @db.VarChar(50)
-  amount              Decimal  @db.Decimal(12, 2)
-  fee                 Decimal  @default(0) @db.Decimal(12, 2)
-  hasFee              Boolean  @default(false) @map("has_fee")
-  accountingSubject   String?  @map("accounting_subject") @db.VarChar(100)
-  paymentTerms        String?  @map("payment_terms") @db.VarChar(50)
-  description         String?  @db.VarChar(500)
-  transferAccountId   Int?     @map("transfer_account_id")
-  linkedTransactionId Int?     @map("linked_transaction_id")
-  status              String   @default("已確認") @db.VarChar(20)
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                              Int       @id @default(autoincrement())
+  transactionNo                   String    @unique @map("transaction_no") @db.VarChar(50)
+  transactionDate                 String    @map("transaction_date") @db.VarChar(20)
+  type                            String    @db.VarChar(10)     // 收入, 支出, 移轉
+  warehouse                       String?   @db.VarChar(100)
+  accountId                       Int       @map("account_id")
+  categoryId                      Int?      @map("category_id")
+  supplierId                      Int?      @map("supplier_id")
+  paymentNo                       String?   @map("payment_no") @db.VarChar(50)
+  amount                          Decimal   @db.Decimal(12, 2)
+  fee                             Decimal   @default(0) @db.Decimal(12, 2)
+  hasFee                          Boolean   @default(false) @map("has_fee")
+  accountingSubject               String?   @map("accounting_subject") @db.VarChar(100)
+  paymentTerms                    String?   @map("payment_terms") @db.VarChar(50)
+  description                     String?   @db.VarChar(500)
+  transferAccountId               Int?      @map("transfer_account_id")
+  linkedTransactionId             Int?      @map("linked_transaction_id")
+  sourceType                      String?   @map("source_type") @db.VarChar(50)  // 23 types (spec6 v10)
+  sourceRecordId                  Int?      @map("source_record_id")
+  // spec6 v10: 自動交易標記
+  isAutoCreated                   Boolean   @default(false) @map("is_auto_created")
+  autoCreationReason              String?   @map("auto_creation_reason") @db.VarChar(50)
+  linkedReconciliationId          Int?      @map("linked_reconciliation_id")
+  linkedBankStatementLineId       Int?      @map("linked_bank_statement_line_id")
+  linkedCreditCardStatementLineId Int?      @map("linked_credit_card_statement_line_id")
+  isNonCashExpense                Boolean   @default(false) @map("is_non_cash_expense")
+  createdBy                       Int?      @map("created_by")
+  // reversal fields
+  status                          String    @default("已確認") @db.VarChar(20)
+  isReversal                      Boolean   @default(false) @map("is_reversal")
+  reversalOfId                    Int?      @map("reversal_of_id")
+  reversedById                    Int?      @map("reversed_by_id")
+  createdAt                       DateTime  @default(now()) @map("created_at")
+  updatedAt                       DateTime  @updatedAt @map("updated_at")
 
   account         CashAccount   @relation("AccountTransactions", fields: [accountId], references: [id])
   category        CashCategory? @relation(fields: [categoryId], references: [id])
@@ -382,6 +476,10 @@ model CashTransaction {
   @@index([type])
   @@index([warehouse])
   @@index([paymentNo])
+  @@index([sourceType, sourceRecordId])
+  @@index([accountId, transactionDate(sort: Desc)])  // spec24
+  @@index([sourceType, transactionDate])              // spec24
+  @@index([isNonCashExpense, transactionDate])         // spec24
   @@map("cash_transactions")
 }
 
@@ -391,10 +489,10 @@ model CashTransaction {
 
 model AccountingSubject {
   id          Int      @id @default(autoincrement())
-  category    String   @db.VarChar(50)    // 會計項目分類
-  subcategory String   @db.VarChar(100)   // 會計項目類別
-  code        String   @unique @db.VarChar(20) // 會計項目代碼
-  name        String   @db.VarChar(100)   // 會計項目名稱
+  category    String   @db.VarChar(50)
+  subcategory String   @db.VarChar(100)
+  code        String   @unique @db.VarChar(20)
+  name        String   @db.VarChar(100)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -404,21 +502,1446 @@ model AccountingSubject {
 }
 
 // ============================================
-// 認證與權限模組
+// 認證與權限模組 (spec8 v5)
 // ============================================
 
 model User {
-  id          Int      @id @default(autoincrement())
-  email       String   @unique @db.VarChar(255)
-  password    String   @db.VarChar(255)
-  name        String   @db.VarChar(100)
-  role        String   @default("user") @db.VarChar(20)
-  permissions Json     @default("[]")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                      Int       @id @default(autoincrement())
+  email                   String    @unique @db.VarChar(255)
+  password                String    @db.VarChar(255)
+  name                    String    @db.VarChar(100)
+  role                    String    @default("user") @db.VarChar(20)
+  permissions             Json      @default("[]")
+  isActive                Boolean   @default(true) @map("is_active")
+  warehouseRestriction    String?   @map("warehouse_restriction") @db.VarChar(100)
+  notificationSettings    Json?     @map("notification_settings")
+  // spec8 v5: 通知相關
+  notificationEmail       String?   @map("notification_email") @db.VarChar(255)
+  lineUserId              String?   @map("line_user_id") @db.VarChar(100)
+  lineDisplayName         String?   @map("line_display_name") @db.VarChar(100)
+  lineLinkedAt            DateTime? @map("line_linked_at")
+  lineBindingToken        String?   @map("line_binding_token") @db.VarChar(255)
+  lineBindingExpiredAt    DateTime? @map("line_binding_expired_at")
+  lastLoginAt             DateTime? @map("last_login_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  userRoles              UserRole[]
+  notificationChannels   UserNotificationChannel[]
 
   @@index([email])
   @@index([role])
   @@map("users")
+}
+
+// ============================================
+// 使用者通知渠道偏好 (spec8 v5 / spec28)
+// ============================================
+
+model UserNotificationChannel {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  notificationCode String  @map("notification_code") @db.VarChar(10) // N01-N14
+  enableInApp     Boolean  @default(true) @map("enable_in_app")
+  enableEmail     Boolean  @default(false) @map("enable_email")
+  enableLine      Boolean  @default(false) @map("enable_line")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationCode])
+  @@index([userId])
+  @@map("user_notification_channels")
+}
+
+// ============================================
+// 角色權限 (spec21)
+// ============================================
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  permissions Json     @default("[]")
+  isSystem    Boolean  @default(false) @map("is_system")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  roleId     Int      @map("role_id")
+  assignedBy String?  @map("assigned_by") @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ============================================
+// 系統設定 (spec20 v6)
+// ============================================
+
+model SystemConfig {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique @db.VarChar(100)
+  value       String   @db.Text
+  description String?  @db.VarChar(500)
+  isEditable  Boolean  @default(true) @map("is_editable")
+  updatedBy   String?  @map("updated_by") @db.VarChar(255)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
+
+// ============================================
+// 系統通知渠道設定 (spec20 v6 / spec28)
+// ============================================
+
+model SystemNotificationConfig {
+  id                    Int      @id @default(autoincrement())
+  // SMTP Email settings
+  smtpEnabled           Boolean  @default(false) @map("smtp_enabled")
+  smtpHost              String?  @map("smtp_host") @db.VarChar(255)
+  smtpPort              Int?     @map("smtp_port")
+  smtpUser              String?  @map("smtp_user") @db.VarChar(255)
+  smtpPassword          String?  @map("smtp_password") @db.VarChar(500) // encrypted
+  smtpUseTls            Boolean  @default(true) @map("smtp_use_tls")
+  smtpFromName          String?  @map("smtp_from_name") @db.VarChar(100)
+  smtpFromEmail         String?  @map("smtp_from_email") @db.VarChar(255)
+  // LINE Bot settings
+  lineBotEnabled        Boolean  @default(false) @map("line_bot_enabled")
+  lineBotChannelId      String?  @map("line_bot_channel_id") @db.VarChar(100)
+  lineBotChannelSecret  String?  @map("line_bot_channel_secret") @db.VarChar(500) // encrypted
+  lineBotAccessToken    String?  @map("line_bot_access_token") @db.VarChar(500)   // encrypted
+  lineBotName           String?  @map("line_bot_name") @db.VarChar(100)
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("system_notification_configs")
+}
+
+model InvoiceTitle {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(255)
+  taxId     String?  @map("tax_id") @db.VarChar(50)
+  isDefault Boolean  @default(false) @map("is_default")
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("invoice_titles")
+}
+
+model PaymentMethodOption {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  isDefault   Boolean  @default(false) @map("is_default")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("payment_method_options")
+}
+
+model ExpenseCategory {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  templates   CommonExpenseTemplate[]
+
+  @@map("expense_categories")
+}
+
+// ============================================
+// PMS 收入管理 (spec9)
+// ============================================
+
+model PmsMappingRule {
+  id                Int      @id @default(autoincrement())
+  pmsColumnName     String   @map("pms_column_name") @db.VarChar(100)
+  entryType         String   @map("entry_type") @db.VarChar(10)
+  accountingCode    String   @map("accounting_code") @db.VarChar(20)
+  accountingName    String   @map("accounting_name") @db.VarChar(100)
+  description       String?  @db.VarChar(500)
+  isSystemDefault   Boolean  @default(false) @map("is_system_default")
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([pmsColumnName, entryType])
+  @@map("pms_mapping_rules")
+}
+
+model PmsImportBatch {
+  id                  Int      @id @default(autoincrement())
+  batchNo             String   @unique @map("batch_no") @db.VarChar(50)
+  warehouse           String   @db.VarChar(100)
+  businessDate        String   @map("business_date") @db.VarChar(20)
+  fileName            String   @map("file_name") @db.VarChar(255)
+  status              String   @default("已匯入") @db.VarChar(20)
+  recordCount         Int      @default(0) @map("record_count")
+  creditTotal         Decimal  @default(0) @map("credit_total") @db.Decimal(12, 2)
+  debitTotal          Decimal  @default(0) @map("debit_total") @db.Decimal(12, 2)
+  difference          Decimal  @default(0) @db.Decimal(12, 2)
+  roomCount           Int?     @map("room_count")
+  occupancyRate       Decimal? @map("occupancy_rate") @db.Decimal(5, 2)
+  avgRoomRate         Decimal? @map("avg_room_rate") @db.Decimal(10, 2)
+  roomRevenue         Decimal? @map("room_revenue") @db.Decimal(12, 2)
+  monthlyCreditTotal  Decimal? @map("monthly_credit_total") @db.Decimal(12, 2)
+  monthlyDebitTotal   Decimal? @map("monthly_debit_total") @db.Decimal(12, 2)
+  importedBy          String?  @map("imported_by") @db.VarChar(255)
+  importedAt          DateTime @default(now()) @map("imported_at")
+
+  records PmsIncomeRecord[]
+
+  @@unique([warehouse, businessDate])
+  @@index([warehouse])
+  @@index([businessDate])
+  @@map("pms_import_batches")
+}
+
+model PmsIncomeRecord {
+  id              Int      @id @default(autoincrement())
+  importBatchId   Int?     @map("import_batch_id")
+  warehouse       String   @db.VarChar(100)
+  businessDate    String   @map("business_date") @db.VarChar(20)
+  entryType       String   @map("entry_type") @db.VarChar(10)
+  pmsColumnName   String   @map("pms_column_name") @db.VarChar(100)
+  amount          Decimal  @db.Decimal(12, 2)
+  accountingCode  String?  @map("accounting_code") @db.VarChar(20)
+  accountingName  String?  @map("accounting_name") @db.VarChar(100)
+  isModified      Boolean  @default(false) @map("is_modified")
+  originalAmount  Decimal? @map("original_amount") @db.Decimal(12, 2)
+  note            String?  @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  importBatch PmsImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([warehouse, businessDate])
+  @@index([importBatchId])
+  @@index([entryType])
+  @@map("pms_income_records")
+}
+
+// ============================================
+// 貸款利息管理 (spec11)
+// ============================================
+
+model LoanMaster {
+  id                  Int      @id @default(autoincrement())
+  loanCode            String   @unique @map("loan_code") @db.VarChar(50)
+  loanName            String   @map("loan_name") @db.VarChar(255)
+  ownerType           String   @map("owner_type") @db.VarChar(20)
+  ownerName           String?  @map("owner_name") @db.VarChar(100)
+  warehouse           String?  @db.VarChar(100)
+  bankName            String   @map("bank_name") @db.VarChar(100)
+  bankBranch          String?  @map("bank_branch") @db.VarChar(100)
+  loanType            String   @map("loan_type") @db.VarChar(50)
+  originalAmount      Decimal  @map("original_amount") @db.Decimal(14, 2)
+  currentBalance      Decimal  @map("current_balance") @db.Decimal(14, 2)
+  annualRate          Decimal  @map("annual_rate") @db.Decimal(6, 4)
+  rateType            String   @map("rate_type") @db.VarChar(20)
+  repaymentType       String   @map("repayment_type") @db.VarChar(20)
+  repaymentDay        Int      @map("repayment_day")
+  startDate           String   @map("start_date") @db.VarChar(20)
+  endDate             String   @map("end_date") @db.VarChar(20)
+  deductAccountId     Int      @map("deduct_account_id")
+  principalSubjectId  Int?     @map("principal_subject_id")
+  interestSubjectId   Int?     @map("interest_subject_id")
+  autoDebit           Boolean  @default(true) @map("auto_debit")
+  contactPerson       String?  @map("contact_person") @db.VarChar(100)
+  contactPhone        String?  @map("contact_phone") @db.VarChar(50)
+  remark              String?  @db.Text
+  status              String   @default("使用中") @db.VarChar(20)
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  deductAccount  CashAccount          @relation(fields: [deductAccountId], references: [id])
+  rateHistories  LoanRateHistory[]
+  monthlyRecords LoanMonthlyRecord[]
+  notes          LoanNote[]
+
+  @@index([warehouse])
+  @@index([status])
+  @@index([deductAccountId])
+  @@map("loan_masters")
+}
+
+model LoanRateHistory {
+  id            Int      @id @default(autoincrement())
+  loanId        Int      @map("loan_id")
+  annualRate    Decimal  @map("annual_rate") @db.Decimal(6, 4)
+  effectiveDate String   @map("effective_date") @db.VarChar(20)
+  note          String?  @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  loan LoanMaster @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+  @@map("loan_rate_histories")
+}
+
+model LoanMonthlyRecord {
+  id                  Int      @id @default(autoincrement())
+  loanId              Int      @map("loan_id")
+  recordYear          Int      @map("record_year")
+  recordMonth         Int      @map("record_month")
+  dueDate             String   @map("due_date") @db.VarChar(20)
+  status              String   @default("暫估") @db.VarChar(20)
+  estimatedPrincipal  Decimal  @default(0) @map("estimated_principal") @db.Decimal(12, 2)
+  estimatedInterest   Decimal  @default(0) @map("estimated_interest") @db.Decimal(12, 2)
+  estimatedTotal      Decimal  @default(0) @map("estimated_total") @db.Decimal(12, 2)
+  estimatedAt         DateTime? @map("estimated_at")
+  estimatedBy         String?  @map("estimated_by") @db.VarChar(255)
+  actualPrincipal     Decimal? @map("actual_principal") @db.Decimal(12, 2)
+  actualInterest      Decimal? @map("actual_interest") @db.Decimal(12, 2)
+  actualTotal         Decimal? @map("actual_total") @db.Decimal(12, 2)
+  actualDebitDate     String?  @map("actual_debit_date") @db.VarChar(20)
+  deductAccountId     Int?     @map("deduct_account_id")
+  statementNo         String?  @map("statement_no") @db.VarChar(100)
+  confirmedAt         DateTime? @map("confirmed_at")
+  confirmedBy         String?  @map("confirmed_by") @db.VarChar(255)
+  expenseId           Int?     @map("expense_id")
+  note                String?  @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  loan LoanMaster @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@unique([loanId, recordYear, recordMonth])
+  @@index([loanId])
+  @@index([recordYear, recordMonth])
+  @@index([status])
+  @@map("loan_monthly_records")
+}
+
+model LoanNote {
+  id        Int      @id @default(autoincrement())
+  loanId    Int      @map("loan_id")
+  content   String   @db.Text
+  createdBy String?  @map("created_by") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  loan LoanMaster @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+  @@map("loan_notes")
+}
+
+// ============================================
+// 支票管理 (spec12)
+// ============================================
+
+model Check {
+  id                    Int      @id @default(autoincrement())
+  checkNo               String   @unique @map("check_no") @db.VarChar(50)
+  checkType             String   @map("check_type") @db.VarChar(20)
+  checkNumber           String   @map("check_number") @db.VarChar(50)
+  amount                Decimal  @db.Decimal(12, 2)
+  issueDate             String?  @map("issue_date") @db.VarChar(20)
+  dueDate               String   @map("due_date") @db.VarChar(20)
+  clearDate             String?  @map("clear_date") @db.VarChar(20)
+  actualAmount          Decimal? @map("actual_amount") @db.Decimal(12, 2)
+  status                String   @default("pending") @db.VarChar(20)
+  drawerType            String   @default("company") @map("drawer_type") @db.VarChar(20)
+  drawerName            String?  @map("drawer_name") @db.VarChar(255)
+  sourceAccountId       Int?     @map("source_account_id")
+  payeeName             String?  @map("payee_name") @db.VarChar(255)
+  supplierId            Int?     @map("supplier_id")
+  destinationAccountId  Int?     @map("destination_account_id")
+  paymentId             Int?     @map("payment_id")
+  invoiceIds            Json?    @map("invoice_ids")
+  batchId               String?  @map("batch_id") @db.VarChar(50)
+  warehouse             String?  @db.VarChar(100)
+  accountingSubjectId   Int?     @map("accounting_subject_id")
+  bankName              String?  @map("bank_name") @db.VarChar(100)
+  bankBranch            String?  @map("bank_branch") @db.VarChar(100)
+  note                  String?  @db.Text
+  voidReason            String?  @map("void_reason") @db.Text
+  bouncedReason         String?  @map("bounced_reason") @db.Text
+  cashTransactionId     Int?     @map("cash_transaction_id")
+  clearedBy             String?  @map("cleared_by") @db.VarChar(255)
+  createdBy             String?  @map("created_by") @db.VarChar(255)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  sourceAccount      CashAccount? @relation("CheckSourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount CashAccount? @relation("CheckDestinationAccount", fields: [destinationAccountId], references: [id])
+
+  @@index([checkType])
+  @@index([status])
+  @@index([dueDate])
+  @@index([warehouse])
+  @@index([supplierId])
+  @@map("checks")
+}
+
+// ============================================
+// 月結作業 (spec13)
+// ============================================
+
+model MonthEndStatus {
+  id           Int       @id @default(autoincrement())
+  year         Int
+  month        Int
+  warehouse    String?   @db.VarChar(100)
+  status       String    @default("未結帳") @db.VarChar(20)
+  closedBy     String?   @map("closed_by") @db.VarChar(255)
+  closedAt     DateTime? @map("closed_at")
+  lockedAt     DateTime? @map("locked_at")
+  unlockedBy   String?   @map("unlocked_by") @db.VarChar(255)
+  unlockedAt   DateTime? @map("unlocked_at")
+  unlockReason String?   @map("unlock_reason") @db.Text
+  note         String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  reports MonthEndReport[]
+
+  @@unique([year, month, warehouse])
+  @@index([year, month])
+  @@map("month_end_statuses")
+}
+
+model MonthEndReport {
+  id              Int      @id @default(autoincrement())
+  monthEndId      Int      @map("month_end_id")
+  reportType      String   @map("report_type") @db.VarChar(50)
+  year            Int
+  month           Int
+  warehouse       String?  @db.VarChar(100)
+  reportData      Json     @map("report_data")
+  generatedAt     DateTime @default(now()) @map("generated_at")
+
+  monthEnd MonthEndStatus @relation(fields: [monthEndId], references: [id], onDelete: Cascade)
+
+  @@index([monthEndId])
+  @@index([year, month])
+  @@map("month_end_reports")
+}
+
+// ============================================
+// 效能快取層 (spec24)
+// ============================================
+
+model AccountMonthlySnapshot {
+  id               Int       @id @default(autoincrement())
+  accountId        Int       @map("account_id")
+  snapshotYear     Int       @map("snapshot_year")
+  snapshotMonth    Int       @map("snapshot_month")
+  openingBalance   Decimal   @default(0) @map("opening_balance") @db.Decimal(15, 2)
+  closingBalance   Decimal   @default(0) @map("closing_balance") @db.Decimal(15, 2)
+  monthlyIncome    Decimal   @default(0) @map("monthly_income") @db.Decimal(15, 2)
+  monthlyExpense   Decimal   @default(0) @map("monthly_expense") @db.Decimal(15, 2)
+  isLocked         Boolean   @default(false) @map("is_locked")
+  isStale          Boolean   @default(false) @map("is_stale")
+  lastVerifiedAt   DateTime? @map("last_verified_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  account CashAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId, snapshotYear, snapshotMonth])
+  @@index([snapshotYear, snapshotMonth])
+  @@index([accountId, snapshotYear, snapshotMonth])
+  @@map("account_monthly_snapshots")
+}
+
+model InventoryMonthlySnapshot {
+  id               Int      @id @default(autoincrement())
+  productId        Int      @map("product_id")
+  warehouse        String   @db.VarChar(100)
+  snapshotYear     Int      @map("snapshot_year")
+  snapshotMonth    Int      @map("snapshot_month")
+  closingQty       Decimal  @default(0) @map("closing_qty") @db.Decimal(12, 2)
+  totalPurchaseQty Decimal  @default(0) @map("total_purchase_qty") @db.Decimal(12, 2)
+  totalConsumeQty  Decimal  @default(0) @map("total_consume_qty") @db.Decimal(12, 2)
+  closingValue     Decimal  @default(0) @map("closing_value") @db.Decimal(15, 2)
+  isLocked         Boolean  @default(false) @map("is_locked")
+  isStale          Boolean  @default(false) @map("is_stale")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, warehouse, snapshotYear, snapshotMonth])
+  @@index([productId, warehouse])
+  @@index([snapshotYear, snapshotMonth])
+  @@map("inventory_monthly_snapshots")
+}
+
+model MonthlyAggregation {
+  id               Int      @id @default(autoincrement())
+  aggregationType  String   @map("aggregation_type") @db.VarChar(50)  // purchase, pms, expense, rental
+  year             Int
+  month            Int
+  totalAmount      Decimal  @default(0) @map("total_amount") @db.Decimal(15, 2)
+  subBreakdown     Json?    @map("sub_breakdown")
+  recordCount      Int      @default(0) @map("record_count")
+  isFinalized      Boolean  @default(false) @map("is_finalized")
+  warehouse        String?  @db.VarChar(100)
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@unique([aggregationType, year, month, warehouse])
+  @@index([aggregationType, year, month])
+  @@index([aggregationType, isFinalized])
+  @@map("monthly_aggregations")
+}
+
+model RentalMonthlyCache {
+  id               Int       @id @default(autoincrement())
+  propertyId       Int       @map("property_id")
+  rentalContractId Int?      @map("rental_contract_id")
+  year             Int
+  month            Int
+  scheduledRent    Decimal   @default(0) @map("scheduled_rent") @db.Decimal(12, 2)
+  collectedRent    Decimal   @default(0) @map("collected_rent") @db.Decimal(12, 2)
+  collectionRate   Decimal   @default(0) @map("collection_rate") @db.Decimal(5, 2)
+  maintenanceCost  Decimal   @default(0) @map("maintenance_cost") @db.Decimal(10, 2)
+  taxCost          Decimal   @default(0) @map("tax_cost") @db.Decimal(10, 2)
+  depositBalance   Decimal   @default(0) @map("deposit_balance") @db.Decimal(10, 2)
+  lastUpdatedAt    DateTime  @default(now()) @map("last_updated_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@unique([propertyId, year, month])
+  @@map("rental_monthly_caches")
+}
+
+model InventoryLowStockCache {
+  id              Int       @id @default(autoincrement())
+  productId       Int       @map("product_id")
+  warehouse       String    @db.VarChar(100)
+  currentQty      Decimal   @default(0) @map("current_qty") @db.Decimal(12, 2)
+  threshold       Decimal   @default(0) @db.Decimal(12, 2)
+  lastCalculated  DateTime  @default(now()) @map("last_calculated")
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, warehouse])
+  @@map("inventory_low_stock_caches")
+}
+
+model SupplierMonthlySummary {
+  id              Int      @id @default(autoincrement())
+  supplierId      Int      @map("supplier_id")
+  year            Int
+  month           Int
+  totalPurchase   Decimal  @default(0) @map("total_purchase") @db.Decimal(15, 2)
+  totalInvoice    Decimal  @default(0) @map("total_invoice") @db.Decimal(15, 2)
+  totalPaid       Decimal  @default(0) @map("total_paid") @db.Decimal(15, 2)
+  outstandingAP   Decimal  @default(0) @map("outstanding_ap") @db.Decimal(15, 2)
+  purchaseCount   Int      @default(0) @map("purchase_count")
+  warehouse       String?  @db.VarChar(100)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([supplierId, year, month, warehouse])
+  @@index([supplierId, year, month])
+  @@map("supplier_monthly_summaries")
+}
+
+// ============================================
+// 通知系統 (spec7 / spec28)
+// ============================================
+
+model Notification {
+  id                 Int      @id @default(autoincrement())
+  notificationCode   String   @map("notification_code") @db.VarChar(20)
+  title              String   @db.VarChar(500)
+  level              String   @db.VarChar(20)
+  targetUrl          String?  @map("target_url") @db.VarChar(255)
+  requiredPermission String?  @map("required_permission") @db.VarChar(50)
+  count              Int      @default(0)
+  totalAmount        Decimal? @map("total_amount") @db.Decimal(14, 2)
+  metadata           Json?
+  isActive           Boolean  @default(true) @map("is_active")
+  calculatedAt       DateTime @default(now()) @map("calculated_at")
+
+  @@unique([notificationCode])
+  @@map("notifications")
+}
+
+// ============================================
+// 通知推播記錄 (spec28)
+// ============================================
+
+model NotificationDeliveryLog {
+  id                 Int       @id @default(autoincrement())
+  notificationCode   String    @map("notification_code") @db.VarChar(20)
+  userId             Int       @map("user_id")
+  channel            String    @db.VarChar(20) // in_app, email, line
+  status             String    @default("pending") @db.VarChar(20) // pending, sent, failed
+  errorMessage       String?   @map("error_message") @db.Text
+  retryCount         Int       @default(0) @map("retry_count")
+  sentAt             DateTime? @map("sent_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  @@index([notificationCode])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notification_delivery_logs")
+}
+
+// ============================================
+// 稽核日誌 (spec18)
+// ============================================
+
+model AuditLog {
+  id              Int      @id @default(autoincrement())
+  action          String   @db.VarChar(100)
+  level           String   @db.VarChar(20)
+  targetModule    String?  @map("target_module") @db.VarChar(50)
+  targetRecordId  Int?     @map("target_record_id")
+  targetRecordNo  String?  @map("target_record_no") @db.VarChar(100)
+  beforeState     Json?    @map("before_state")
+  afterState      Json?    @map("after_state")
+  note            String?  @db.Text
+  userId          Int?     @map("user_id")
+  userEmail       String?  @map("user_email") @db.VarChar(255)
+  userName        String?  @map("user_name") @db.VarChar(100)
+  ipAddress       String?  @map("ip_address") @db.VarChar(45)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([targetModule])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([level, createdAt])                    // spec18: 合規報告
+  @@index([targetModule, action, createdAt])     // spec18: 模組操作統計
+  @@map("audit_logs")
+}
+
+// ============================================
+// 附件管理 (spec17)
+// ============================================
+
+model Attachment {
+  id              Int      @id @default(autoincrement())
+  sourceModule    String   @map("source_module") @db.VarChar(50)
+  sourceRecordId  Int      @map("source_record_id")
+  fileName        String   @map("file_name") @db.VarChar(255)
+  fileSize        Int      @map("file_size")
+  fileType        String   @map("file_type") @db.VarChar(100)
+  fileData        Bytes    @map("file_data")
+  uploadedBy      String?  @map("uploaded_by") @db.VarChar(255)
+  uploadedAt      DateTime @default(now()) @map("uploaded_at")
+
+  @@index([sourceModule, sourceRecordId])
+  @@map("attachments")
+}
+
+// ============================================
+// 租屋管理 (spec15)
+// ============================================
+
+model TenantMaster {
+  id                  Int      @id @default(autoincrement())
+  tenantCode          String   @unique @map("tenant_code") @db.VarChar(50)
+  tenantType          String   @map("tenant_type") @db.VarChar(20)
+  fullName            String?  @map("full_name") @db.VarChar(255)
+  idNumber            String?  @map("id_number") @db.VarChar(50)
+  birthDate           String?  @map("birth_date") @db.VarChar(20)
+  companyName         String?  @map("company_name") @db.VarChar(255)
+  taxId               String?  @map("tax_id") @db.VarChar(50)
+  representativeName  String?  @map("representative_name") @db.VarChar(100)
+  phone               String   @db.VarChar(50)
+  phone2              String?  @db.VarChar(50)
+  email               String?  @db.VarChar(255)
+  address             String?  @db.VarChar(500)
+  emergencyContact    String?  @map("emergency_contact") @db.VarChar(100)
+  emergencyPhone      String?  @map("emergency_phone") @db.VarChar(50)
+  bankCode            String?  @map("bank_code") @db.VarChar(10)
+  bankBranch          String?  @map("bank_branch") @db.VarChar(100)
+  bankAccountName     String?  @map("bank_account_name") @db.VarChar(100)
+  bankAccountNumber   String?  @map("bank_account_number") @db.VarChar(50)
+  isBlacklisted       Boolean  @default(false) @map("is_blacklisted")
+  blacklistReason     String?  @map("blacklist_reason") @db.Text
+  creditNote          String?  @map("credit_note") @db.Text
+  note                String?  @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  contracts     RentalContract[]
+  rentalIncomes RentalIncome[]
+
+  @@map("tenant_masters")
+}
+
+model RentalProperty {
+  id                    Int      @id @default(autoincrement())
+  name                  String   @db.VarChar(255)
+  address               String?  @db.VarChar(500)
+  buildingName          String?  @map("building_name") @db.VarChar(100)
+  unitNo                String?  @map("unit_no") @db.VarChar(50)
+  rentCollectAccountId  Int?     @map("rent_collect_account_id")
+  depositAccountId      Int?     @map("deposit_account_id")
+  status                String   @default("available") @db.VarChar(20)
+  note                  String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  rentCollectAccount CashAccount?     @relation("RentCollectAccount", fields: [rentCollectAccountId], references: [id])
+  depositAccount     CashAccount?     @relation("DepositAccount", fields: [depositAccountId], references: [id])
+  contracts          RentalContract[]
+  rentalIncomes      RentalIncome[]
+  propertyTaxes      PropertyTax[]
+  maintenances       RentalMaintenance[]
+
+  @@index([buildingName])
+  @@index([status])
+  @@map("rental_properties")
+}
+
+model RentalContract {
+  id                            Int       @id @default(autoincrement())
+  contractNo                    String    @unique @map("contract_no") @db.VarChar(50)
+  propertyId                    Int       @map("property_id")
+  tenantId                      Int       @map("tenant_id")
+  startDate                     String    @map("start_date") @db.VarChar(20)
+  endDate                       String    @map("end_date") @db.VarChar(20)
+  monthlyRent                   Decimal   @map("monthly_rent") @db.Decimal(12, 2)
+  paymentDueDay                 Int       @map("payment_due_day")
+  preferredPayMethod            String?   @map("preferred_pay_method") @db.VarChar(20)
+  depositAmount                 Decimal   @default(0) @map("deposit_amount") @db.Decimal(12, 2)
+  depositAccountId              Int?      @map("deposit_account_id")
+  depositReceived               Boolean   @default(false) @map("deposit_received")
+  depositCashTransactionId      Int?      @map("deposit_cash_transaction_id")
+  depositRefunded               Boolean   @default(false) @map("deposit_refunded")
+  depositRefundCashTransactionId Int?     @map("deposit_refund_cash_transaction_id")
+  rentAccountId                 Int       @map("rent_account_id")
+  status                        String    @default("pending") @db.VarChar(20)
+  autoRenew                     Boolean   @default(false) @map("auto_renew")
+  renewNotifyDays               Int       @default(60) @map("renew_notify_days")
+  specialTerms                  String?   @map("special_terms") @db.Text
+  note                          String?   @db.Text
+  createdBy                     String?   @map("created_by") @db.VarChar(255)
+  createdAt                     DateTime  @default(now()) @map("created_at")
+  updatedAt                     DateTime  @updatedAt @map("updated_at")
+
+  property      RentalProperty @relation(fields: [propertyId], references: [id])
+  tenant        TenantMaster   @relation(fields: [tenantId], references: [id])
+  rentalIncomes RentalIncome[]
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("rental_contracts")
+}
+
+model RentalIncome {
+  id                    Int       @id @default(autoincrement())
+  contractId            Int       @map("contract_id")
+  propertyId            Int       @map("property_id")
+  tenantId              Int       @map("tenant_id")
+  incomeYear            Int       @map("income_year")
+  incomeMonth           Int       @map("income_month")
+  dueDate               String    @map("due_date") @db.VarChar(20)
+  expectedAmount        Decimal   @map("expected_amount") @db.Decimal(12, 2)
+  actualDate            String?   @map("actual_date") @db.VarChar(20)
+  actualAmount          Decimal?  @map("actual_amount") @db.Decimal(12, 2)
+  accountId             Int?      @map("account_id")
+  paymentMethod         String?   @map("payment_method") @db.VarChar(20)
+  matchTransferRef      String?   @map("match_transfer_ref") @db.VarChar(100)
+  matchBankAccountName  String?   @map("match_bank_account_name") @db.VarChar(100)
+  matchNote             String?   @map("match_note") @db.VarChar(500)
+  status                String    @default("pending") @db.VarChar(20)
+  cashTransactionId     Int?      @map("cash_transaction_id")
+  note                  String?   @db.Text
+  confirmedBy           String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt           DateTime? @map("confirmed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  contract RentalContract @relation(fields: [contractId], references: [id])
+  property RentalProperty @relation(fields: [propertyId], references: [id])
+  tenant   TenantMaster   @relation(fields: [tenantId], references: [id])
+
+  @@unique([contractId, incomeYear, incomeMonth])
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([incomeYear, incomeMonth])
+  @@index([status])
+  @@map("rental_incomes")
+}
+
+model PropertyTax {
+  id                  Int       @id @default(autoincrement())
+  propertyId          Int       @map("property_id")
+  taxYear             Int       @map("tax_year")
+  taxType             String    @map("tax_type") @db.VarChar(20)
+  dueDate             String    @map("due_date") @db.VarChar(20)
+  amount              Decimal   @db.Decimal(12, 2)
+  status              String    @default("pending") @db.VarChar(20)
+  cashTransactionId   Int?      @map("cash_transaction_id")
+  confirmedBy         String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt         DateTime? @map("confirmed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  property RentalProperty @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+  @@index([taxYear])
+  @@index([status])
+  @@map("property_taxes")
+}
+
+model RentalMaintenance {
+  id                  Int       @id @default(autoincrement())
+  propertyId          Int       @map("property_id")
+  maintenanceDate     String    @map("maintenance_date") @db.VarChar(20)
+  category            String    @db.VarChar(50)
+  amount              Decimal   @db.Decimal(12, 2)
+  supplierId          Int?      @map("supplier_id")
+  status              String    @default("pending") @db.VarChar(20)
+  cashTransactionId   Int?      @map("cash_transaction_id")
+  note                String?   @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  property RentalProperty @relation(fields: [propertyId], references: [id])
+
+  @@index([propertyId])
+  @@index([status])
+  @@map("rental_maintenances")
+}
+
+// ============================================
+// 存簿對帳 (spec17)
+// ============================================
+
+model BankAccountFormat {
+  id                Int      @id @default(autoincrement())
+  bankName          String   @map("bank_name") @db.VarChar(100)
+  bankCode          String?  @map("bank_code") @db.VarChar(10)
+  fileEncoding      String   @default("UTF-8") @map("file_encoding") @db.VarChar(20)
+  fileType          String   @default("csv") @map("file_type") @db.VarChar(10)
+  hasHeaderRow      Boolean  @default(true) @map("has_header_row")
+  headerRowIndex    Int      @default(0) @map("header_row_index")
+  skipTopRows       Int      @default(0) @map("skip_top_rows")
+  skipBottomRows    Int      @default(0) @map("skip_bottom_rows")
+  dateColumn        String?  @map("date_column") @db.VarChar(50)
+  dateFormat        String?  @map("date_format") @db.VarChar(50)
+  descriptionColumn String?  @map("description_column") @db.VarChar(50)
+  debitColumn       String?  @map("debit_column") @db.VarChar(50)
+  creditColumn      String?  @map("credit_column") @db.VarChar(50)
+  amountColumn      String?  @map("amount_column") @db.VarChar(50)
+  balanceColumn     String?  @map("balance_column") @db.VarChar(50)
+  referenceColumn   String?  @map("reference_column") @db.VarChar(50)
+  closingBalanceCell String? @map("closing_balance_cell") @db.VarChar(50)
+  isBuiltIn         Boolean  @default(false) @map("is_built_in")
+  sampleRow         String?  @map("sample_row") @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  imports BankStatementImport[]
+
+  @@map("bank_account_formats")
+}
+
+model BankStatementImport {
+  id                      Int      @id @default(autoincrement())
+  importNo                String   @unique @map("import_no") @db.VarChar(50)
+  accountId               Int      @map("account_id")
+  bankFormatId            Int      @map("bank_format_id")
+  statementYear           Int      @map("statement_year")
+  statementMonth          Int      @map("statement_month")
+  statementStartDate      String?  @map("statement_start_date") @db.VarChar(20)
+  statementEndDate        String?  @map("statement_end_date") @db.VarChar(20)
+  statementOpeningBalance Decimal? @map("statement_opening_balance") @db.Decimal(14, 2)
+  statementClosingBalance Decimal? @map("statement_closing_balance") @db.Decimal(14, 2)
+  rawFileName             String   @map("raw_file_name") @db.VarChar(255)
+  rawFileUrl              String?  @map("raw_file_url") @db.VarChar(500)
+  parseStatus             String   @default("pending") @map("parse_status") @db.VarChar(20)
+  parseErrorMsg           String?  @map("parse_error_msg") @db.Text
+  totalLines              Int      @default(0) @map("total_lines")
+  parsedLines             Int      @default(0) @map("parsed_lines")
+  importedBy              String?  @map("imported_by") @db.VarChar(255)
+  importedAt              DateTime @default(now()) @map("imported_at")
+
+  account    CashAccount          @relation(fields: [accountId], references: [id])
+  bankFormat BankAccountFormat    @relation(fields: [bankFormatId], references: [id])
+  lines      BankStatementLine[]
+  reconciliation BankReconciliation?
+
+  @@index([accountId])
+  @@index([statementYear, statementMonth])
+  @@map("bank_statement_imports")
+}
+
+model BankStatementLine {
+  id                    Int      @id @default(autoincrement())
+  importId              Int      @map("import_id")
+  accountId             Int      @map("account_id")
+  lineNo                Int      @map("line_no")
+  txDate                String   @map("tx_date") @db.VarChar(20)
+  valueDate             String?  @map("value_date") @db.VarChar(20)
+  description           String?  @db.VarChar(500)
+  debitAmount           Decimal  @default(0) @map("debit_amount") @db.Decimal(14, 2)
+  creditAmount          Decimal  @default(0) @map("credit_amount") @db.Decimal(14, 2)
+  netAmount             Decimal  @default(0) @map("net_amount") @db.Decimal(14, 2)
+  runningBalance        Decimal? @map("running_balance") @db.Decimal(14, 2)
+  referenceNo           String?  @map("reference_no") @db.VarChar(100)
+  transactionType       String?  @map("transaction_type") @db.VarChar(50) // spec17 v3: 交易分類
+  matchStatus           String   @default("unprocessed") @map("match_status") @db.VarChar(20)
+  matchedTransactionId  Int?     @map("matched_transaction_id")
+  matchedBy             String?  @map("matched_by") @db.VarChar(20)
+  reconciliationId      Int?     @map("reconciliation_id")
+  note                  String?  @db.Text
+
+  import BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId])
+  @@index([accountId])
+  @@index([txDate])
+  @@index([matchStatus])
+  @@index([accountId, txDate]) // spec24
+  @@map("bank_statement_lines")
+}
+
+model BankReconciliation {
+  id                    Int       @id @default(autoincrement())
+  reconciliationNo      String    @unique @map("reconciliation_no") @db.VarChar(50)
+  accountId             Int       @map("account_id")
+  statementYear         Int       @map("statement_year")
+  statementMonth        Int       @map("statement_month")
+  importId              Int?      @unique @map("import_id")
+  openingBalance        Decimal   @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  closingBalanceSystem  Decimal   @default(0) @map("closing_balance_system") @db.Decimal(14, 2)
+  closingBalanceBank    Decimal   @default(0) @map("closing_balance_bank") @db.Decimal(14, 2)
+  difference            Decimal   @default(0) @db.Decimal(14, 2)
+  totalBankLines        Int       @default(0) @map("total_bank_lines")
+  matchedLines          Int       @default(0) @map("matched_lines")
+  bankOnlyLines         Int       @default(0) @map("bank_only_lines")
+  systemOnlyLines       Int       @default(0) @map("system_only_lines")
+  amountDiffLines       Int       @default(0) @map("amount_diff_lines")
+  adjustmentCount       Int       @default(0) @map("adjustment_count")
+  status                String    @default("draft") @db.VarChar(20)
+  confirmedBy           String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt           DateTime? @map("confirmed_at")
+  differenceExplained   String?   @map("difference_explained") @db.Text
+  note                  String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  account CashAccount          @relation(fields: [accountId], references: [id])
+  import  BankStatementImport? @relation(fields: [importId], references: [id])
+
+  @@unique([accountId, statementYear, statementMonth])
+  @@index([accountId])
+  @@index([statementYear, statementMonth])
+  @@index([status])
+  @@map("bank_reconciliations")
+}
+
+// ============================================
+// 信用卡帳單對帳 (spec17 v3)
+// ============================================
+
+model CreditCardStatement {
+  id                    Int       @id @default(autoincrement())
+  accountId             Int       @map("account_id")
+  statementYear         Int       @map("statement_year")
+  statementMonth        Int       @map("statement_month")
+  billingDate           String?   @map("billing_date") @db.VarChar(20)
+  paymentDueDate        String?   @map("payment_due_date") @db.VarChar(20)
+  totalAmount           Decimal   @default(0) @map("total_amount") @db.Decimal(14, 2)
+  minimumPayment        Decimal?  @map("minimum_payment") @db.Decimal(14, 2)
+  isPaid                Boolean   @default(false) @map("is_paid")
+  paidAmount            Decimal?  @map("paid_amount") @db.Decimal(14, 2)
+  paidDate              String?   @map("paid_date") @db.VarChar(20)
+  paidTransactionId     Int?      @map("paid_transaction_id")
+  status                String    @default("unpaid") @db.VarChar(20) // unpaid, partial, paid
+  note                  String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@unique([accountId, statementYear, statementMonth])
+  @@index([accountId])
+  @@index([status])
+  @@map("credit_card_statements")
+}
+
+// ============================================
+// 付款單與出納執行 (spec3)
+// ============================================
+
+model PaymentOrder {
+  id             Int       @id @default(autoincrement())
+  orderNo        String    @unique @map("order_no") @db.VarChar(50)
+  invoiceIds     Json      @default("[]") @map("invoice_ids")
+  supplierId     Int?      @map("supplier_id")
+  supplierName   String?   @map("supplier_name") @db.VarChar(255)
+  warehouse      String?   @db.VarChar(100)
+  paymentMethod  String    @map("payment_method") @db.VarChar(50)
+  amount         Decimal   @db.Decimal(12, 2)
+  discount       Decimal   @default(0) @db.Decimal(12, 2)
+  netAmount      Decimal   @map("net_amount") @db.Decimal(12, 2)
+  dueDate        String?   @map("due_date") @db.VarChar(20)
+  accountId      Int?      @map("account_id")
+  checkNo        String?   @map("check_no") @db.VarChar(50)
+  checkAccount   String?   @map("check_account") @db.VarChar(100)
+  checkIssueDate String?   @map("check_issue_date") @db.VarChar(20)
+  checkDueDate   String?   @map("check_due_date") @db.VarChar(20)
+  note           String?   @db.Text
+  status         String    @default("待出納") @db.VarChar(20)
+  createdBy      String?   @map("created_by") @db.VarChar(255)
+  rejectedBy     String?   @map("rejected_by") @db.VarChar(255)
+  rejectedAt     DateTime? @map("rejected_at")
+  rejectedReason String?   @map("rejected_reason") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  executions CashierExecution[]
+
+  @@index([status])
+  @@index([supplierId])
+  @@index([warehouse])
+  @@index([dueDate])
+  @@map("payment_orders")
+}
+
+model CashierExecution {
+  id                Int      @id @default(autoincrement())
+  executionNo       String   @unique @map("execution_no") @db.VarChar(50)
+  paymentOrderId    Int      @map("payment_order_id")
+  executionDate     String   @map("execution_date") @db.VarChar(20)
+  actualAmount      Decimal  @map("actual_amount") @db.Decimal(12, 2)
+  accountId         Int      @map("account_id")
+  paymentMethod     String   @map("payment_method") @db.VarChar(50)
+  checkNo           String?  @map("check_no") @db.VarChar(50)
+  cashTransactionId Int?     @map("cash_transaction_id")
+  checkId           Int?     @map("check_id")
+  note              String?  @db.Text
+  status            String   @default("已確認") @db.VarChar(20)
+  executedBy        String?  @map("executed_by") @db.VarChar(255)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  paymentOrder PaymentOrder @relation(fields: [paymentOrderId], references: [id])
+
+  @@index([paymentOrderId])
+  @@index([accountId])
+  @@map("cashier_executions")
+}
+
+// ============================================
+// 常見費用範本系統 (spec10)
+// ============================================
+
+model CommonExpenseTemplate {
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(255)
+  description     String?   @db.Text
+  categoryId      Int?      @map("category_id")
+  warehouse       String?   @db.VarChar(100)
+  defaultSupplierId Int?    @map("default_supplier_id")
+  paymentMethod   String?   @map("payment_method") @db.VarChar(50)
+  isActive        Boolean   @default(true) @map("is_active")
+  sortOrder       Int       @default(0) @map("sort_order")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  category        ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  entryLines      TemplateEntryLine[]
+  records         CommonExpenseRecord[]
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("common_expense_templates")
+}
+
+model TemplateEntryLine {
+  id              Int       @id @default(autoincrement())
+  templateId      Int       @map("template_id")
+  entryType       String    @map("entry_type") @db.VarChar(10)
+  accountingCode  String    @map("accounting_code") @db.VarChar(20)
+  accountingName  String    @map("accounting_name") @db.VarChar(100)
+  summary         String?   @db.VarChar(500)
+  defaultAmount   Decimal?  @map("default_amount") @db.Decimal(15, 2)
+  sortOrder       Int       @default(0) @map("sort_order")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  template        CommonExpenseTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("template_entry_lines")
+}
+
+model CommonExpenseRecord {
+  id              Int       @id @default(autoincrement())
+  recordNo        String    @unique @map("record_no") @db.VarChar(50)
+  templateId      Int       @map("template_id")
+  warehouse       String    @db.VarChar(100)
+  expenseMonth    String    @map("expense_month") @db.VarChar(7)
+  supplierId      Int?      @map("supplier_id")
+  supplierName    String?   @map("supplier_name") @db.VarChar(255)
+  paymentMethod   String?   @map("payment_method") @db.VarChar(50)
+  totalDebit      Decimal   @map("total_debit") @db.Decimal(15, 2)
+  totalCredit     Decimal   @map("total_credit") @db.Decimal(15, 2)
+  status          String    @default("待確認") @db.VarChar(20)
+  confirmedBy     String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt     DateTime? @map("confirmed_at")
+  voidedBy        String?   @map("voided_by") @db.VarChar(255)
+  voidedAt        DateTime? @map("voided_at")
+  voidReason      String?   @map("void_reason") @db.Text
+  note            String?   @db.Text
+  createdBy       String    @map("created_by") @db.VarChar(255)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  template        CommonExpenseTemplate @relation(fields: [templateId], references: [id])
+  entryLines      RecordEntryLine[]
+
+  @@index([templateId])
+  @@index([warehouse])
+  @@index([expenseMonth])
+  @@index([status])
+  @@map("common_expense_records")
+}
+
+model RecordEntryLine {
+  id              Int       @id @default(autoincrement())
+  recordId        Int       @map("record_id")
+  entryType       String    @map("entry_type") @db.VarChar(10)
+  accountingCode  String    @map("accounting_code") @db.VarChar(20)
+  accountingName  String    @map("accounting_name") @db.VarChar(100)
+  summary         String    @db.VarChar(500)
+  amount          Decimal   @db.Decimal(15, 2)
+  sortOrder       Int       @default(0) @map("sort_order")
+
+  record          CommonExpenseRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@map("record_entry_lines")
+}
+
+// ============================================
+// 現金盤點管理 (spec26)
+// ============================================
+
+model CashCountConfig {
+  id                 Int       @id @default(autoincrement())
+  accountId          Int       @map("account_id")
+  countFrequency     String    @default("daily") @map("count_frequency") @db.VarChar(20) // daily, weekly, monthly, on_demand
+  alertAfterDays     Int       @default(1) @map("alert_after_days")
+  shortageThreshold  Decimal   @default(5000) @map("shortage_threshold") @db.Decimal(12, 2)
+  requireDualReview  Boolean   @default(true) @map("require_dual_review")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  account CashAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId])
+  @@map("cash_count_configs")
+}
+
+model CashCount {
+  id                Int       @id @default(autoincrement())
+  countNo           String    @unique @map("count_no") @db.VarChar(50)  // CC-YYYYMMDD-XXXX
+  accountId         Int       @map("account_id")
+  countDate         String    @map("count_date") @db.VarChar(20)
+  countYear         Int       @map("count_year")
+  countMonth        Int       @map("count_month")
+  status            String    @default("pending") @db.VarChar(20) // pending, confirmed, approved, void
+  isAbnormal        Boolean   @default(false) @map("is_abnormal")
+  difference        Decimal   @default(0) @db.Decimal(12, 2) // 系統 - 實際
+  differenceType    String    @default("balanced") @map("difference_type") @db.VarChar(20) // balanced, surplus, shortage
+  systemBalance     Decimal   @default(0) @map("system_balance") @db.Decimal(12, 2)
+  actualBalance     Decimal   @default(0) @map("actual_balance") @db.Decimal(12, 2)
+  countedByUserId   Int       @map("counted_by_user_id")
+  countedAt         DateTime? @map("counted_at")
+  reviewedByUserId  Int?      @map("reviewed_by_user_id")
+  reviewedAt        DateTime? @map("reviewed_at")
+  reviewNote        String?   @map("review_note") @db.Text
+  cashTransactionId Int?      @map("cash_transaction_id") // 建立的調整交易
+  note              String?   @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  account CashAccount    @relation(fields: [accountId], references: [id])
+  details CashCountDetail[]
+
+  @@index([accountId])
+  @@index([countDate])
+  @@index([countYear, countMonth])
+  @@index([status])
+  @@map("cash_counts")
+}
+
+model CashCountDetail {
+  id           Int      @id @default(autoincrement())
+  countId      Int      @map("count_id")
+  denomination Decimal  @db.Decimal(10, 2) // 面額
+  quantity     Int      // 數量
+  subtotal     Decimal  @db.Decimal(12, 2) // 小計 = denomination × quantity
+  note         String?  @db.VarChar(500)
+
+  count CashCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+
+  @@index([countId])
+  @@map("cash_count_details")
+}
+
+// ============================================
+// 年度結轉 (spec14)
+// ============================================
+
+model YearEndRollover {
+  id               Int       @id @default(autoincrement())
+  year             Int       @unique
+  status           String    @default("進行中") @db.VarChar(20)
+  rolledOverBy     String?   @map("rolled_over_by") @db.VarChar(255)
+  rolledOverAt     DateTime? @map("rolled_over_at")
+  preCheckResults  Json?     @map("pre_check_results")
+  completedSections Json?    @map("completed_sections")
+  retainedEarnings Decimal?  @map("retained_earnings") @db.Decimal(14, 2)
+  note             String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  inventorySnapshots   YearEndInventory[]
+  balanceRecords       YearEndBalanceRecord[]
+  financialStatements  YearEndFinancialStatement[]
+
+  @@index([year])
+  @@map("year_end_rollovers")
+}
+
+model YearEndInventory {
+  id                Int      @id @default(autoincrement())
+  yearEndId         Int      @map("year_end_id")
+  productId         Int      @map("product_id")
+  productCode       String   @map("product_code") @db.VarChar(50)
+  productName       String   @map("product_name") @db.VarChar(255)
+  costPrice         Decimal  @map("cost_price") @db.Decimal(10, 2)
+  closingQuantity   Decimal  @map("closing_quantity") @db.Decimal(10, 2)
+  closingValue      Decimal  @map("closing_value") @db.Decimal(14, 2)
+  isNegative        Boolean  @default(false) @map("is_negative")
+  adjustedToZero    Boolean  @default(false) @map("adjusted_to_zero")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  yearEnd YearEndRollover @relation(fields: [yearEndId], references: [id], onDelete: Cascade)
+
+  @@index([yearEndId])
+  @@index([productId])
+  @@map("year_end_inventories")
+}
+
+model YearEndBalanceRecord {
+  id                      Int      @id @default(autoincrement())
+  yearEndId               Int      @map("year_end_id")
+  accountId               Int      @map("account_id")
+  accountName             String   @map("account_name") @db.VarChar(100)
+  accountType             String?  @map("account_type") @db.VarChar(20)
+  closingBalance          Decimal  @map("closing_balance") @db.Decimal(14, 2)
+  nextYearOpeningBalance  Decimal  @map("next_year_opening_balance") @db.Decimal(14, 2)
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  yearEnd YearEndRollover @relation(fields: [yearEndId], references: [id], onDelete: Cascade)
+
+  @@index([yearEndId])
+  @@index([accountId])
+  @@map("year_end_balance_records")
+}
+
+model YearEndFinancialStatement {
+  id             Int      @id @default(autoincrement())
+  yearEndId      Int      @map("year_end_id")
+  statementType  String   @map("statement_type") @db.VarChar(50)
+  statementData  Json     @map("statement_data")
+  generatedAt    DateTime @default(now()) @map("generated_at")
+  generatedBy    String?  @map("generated_by") @db.VarChar(255)
+
+  yearEnd YearEndRollover @relation(fields: [yearEndId], references: [id], onDelete: Cascade)
+
+  @@index([yearEndId])
+  @@map("year_end_financial_statements")
+}
+
+// ============================================
+// 資料備份管理 (spec27)
+// ============================================
+
+model BackupRecord {
+  id              Int       @id @default(autoincrement())
+  tier            String    @db.VarChar(20) // tier1_full, tier2_snapshot, tier3_monthend, tier3_yearend
+  triggerType     String    @map("trigger_type") @db.VarChar(20) // scheduled, manual, month_end, year_end
+  businessPeriod  String?   @map("business_period") @db.VarChar(20) // YYYY-MM for Tier 3
+  status          String    @default("in_progress") @db.VarChar(20) // in_progress, completed, failed, corrupted
+  filePath        String?   @map("file_path") @db.VarChar(500)
+  fileSize        BigInt?   @map("file_size")
+  sha256          String?   @db.VarChar(64)
+  cloudUploaded   Boolean   @default(false) @map("cloud_uploaded")
+  cloudPath       String?   @map("cloud_path") @db.VarChar(500)
+  cloudUploadedAt DateTime? @map("cloud_uploaded_at")
+  verified        Boolean   @default(false)
+  verifiedAt      DateTime? @map("verified_at")
+  verifyResult    String?   @map("verify_result") @db.VarChar(20) // passed, failed
+  errorMessage    String?   @map("error_message") @db.Text
+  tableCount      Int?      @map("table_count")
+  totalRecords    Int?      @map("total_records")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdBy       String?   @map("created_by") @db.VarChar(255)
+
+  verifications BackupVerification[]
+
+  @@index([tier])
+  @@index([status])
+  @@index([startedAt])
+  @@index([businessPeriod])
+  @@map("backup_records")
+}
+
+model BackupConfig {
+  id                       Int      @id @default(autoincrement())
+  // Schedule
+  tier1BackupTime          String   @default("04:00") @map("tier1_backup_time") @db.VarChar(10)
+  tier2SnapshotTime        String   @default("04:30") @map("tier2_snapshot_time") @db.VarChar(10)
+  backupCleanTime          String   @default("05:00") @map("backup_clean_time") @db.VarChar(10)
+  verifyDayOfWeek          Int      @default(0) @map("verify_day_of_week") // 0=Sunday
+  verifyTime               String   @default("06:00") @map("verify_time") @db.VarChar(10)
+  // Retention
+  tier1RetainDays          Int      @default(90) @map("tier1_retain_days")
+  tier2RetainDays          Int      @default(30) @map("tier2_retain_days")
+  // Cloud
+  cloudProvider            String   @default("disabled") @map("cloud_provider") @db.VarChar(20) // aws_s3, gcs, b2, disabled
+  cloudBucketTier1         String?  @map("cloud_bucket_tier1") @db.VarChar(255)
+  cloudBucketTier2         String?  @map("cloud_bucket_tier2") @db.VarChar(255)
+  cloudBucketTier3         String?  @map("cloud_bucket_tier3") @db.VarChar(255)
+  cloudAccessKey           String?  @map("cloud_access_key") @db.VarChar(500) // encrypted
+  cloudSecretKey           String?  @map("cloud_secret_key") @db.VarChar(500) // encrypted
+  cloudRegion              String?  @map("cloud_region") @db.VarChar(50)
+  // Notifications
+  notifyOnFailure          Boolean  @default(true) @map("notify_on_failure")
+  alertAfterFailCount      Int      @default(1) @map("alert_after_fail_count")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@map("backup_configs")
+}
+
+// ============================================
+// 面額設定 (spec26 / spec20)
+// ============================================
+
+model CashDenomination {
+  id              Int      @id @default(autoincrement())
+  denomination    Decimal  @db.Decimal(10, 2)
+  denominationType String  @map("denomination_type") @db.VarChar(10) // 紙鈔, 硬幣, 自訂
+  description     String?  @db.VarChar(100)
+  isSystemDefault Boolean  @default(false) @map("is_system_default")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("cash_denominations")
+}
+
+// ============================================
+// 期初資料匯入 (spec25)
+// ============================================
+
+model ImportSession {
+  id          Int       @id @default(autoincrement())
+  sessionNo   String    @unique @map("session_no") @db.VarChar(50)
+  status      String    @default("active") @db.VarChar(20) // active, completed, archived
+  openingDate String    @map("opening_date") @db.VarChar(20) // 開帳基準日 YYYY-MM-DD
+  note        String?   @db.Text
+  createdBy   String    @map("created_by") @db.VarChar(255)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  batches ImportBatch[]
+
+  @@index([status])
+  @@map("import_sessions")
+}
+
+model ImportBatch {
+  id           Int       @id @default(autoincrement())
+  sessionId    Int       @map("session_id")
+  importType   String    @map("import_type") @db.VarChar(50)
+  // account_balance | inventory_stock | loan | accounts_payable
+  // rental_property | rental_tenant | rental_contract | supplier | product
+  status       String    @default("pending") @db.VarChar(20)
+  // pending | uploaded | validating | validated | error | confirmed | imported
+  fileName     String?   @map("file_name") @db.VarChar(255)
+  totalRows    Int       @default(0) @map("total_rows")
+  validRows    Int       @default(0) @map("valid_rows")
+  errorRows    Int       @default(0) @map("error_rows")
+  importedRows Int       @default(0) @map("imported_rows")
+  errorDetails Json?     @map("error_details")
+  importedBy   String?   @map("imported_by") @db.VarChar(255)
+  importedAt   DateTime? @map("imported_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  session ImportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  logs    ImportLog[]
+
+  @@index([sessionId])
+  @@index([importType])
+  @@index([status])
+  @@map("import_batches")
+}
+
+model ImportLog {
+  id        Int      @id @default(autoincrement())
+  batchId   Int      @map("batch_id")
+  action    String   @db.VarChar(20) // upload | validate | confirm | rollback
+  result    String   @db.VarChar(20) // success | partial | failed
+  detail    String?  @db.Text
+  createdBy String   @map("created_by") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  batch ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@map("import_logs")
+}
+
+// ============================================
+// 備份驗證記錄 (spec27)
+// ============================================
+
+model BackupVerification {
+  id               Int      @id @default(autoincrement())
+  backupRecordId   Int      @map("backup_record_id")
+  verifiedAt       DateTime @default(now()) @map("verified_at")
+  result           String   @db.VarChar(20) // passed, warning, failed
+  checksumMatch    Boolean  @default(false) @map("checksum_match")
+  dbConnectable    Boolean  @default(false) @map("db_connectable")
+  recordCountMatch Boolean  @default(false) @map("record_count_match")
+  indexIntegrity   Boolean  @default(false) @map("index_integrity")
+  details          Json?    // 各表筆數查核細節
+  note             String?  @db.Text
+
+  backupRecord BackupRecord @relation(fields: [backupRecordId], references: [id], onDelete: Cascade)
+
+  @@index([backupRecordId])
+  @@index([result])
+  @@map("backup_verifications")
 }

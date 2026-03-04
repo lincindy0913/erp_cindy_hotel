@@ -4,20 +4,23 @@ import { useState, useEffect, Fragment } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ExportButtons from '@/components/ExportButtons';
+import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import NotificationBanner from '@/components/NotificationBanner';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
-  const [payments, setPayments] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState([]);
-  const [allInvoices, setAllInvoices] = useState([]); // 所有發票資料，用於顯示詳細資訊
+  const [allInvoices, setAllInvoices] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState(new Set());
-  const [expandedPayments, setExpandedPayments] = useState(new Set()); // 追蹤展開的付款ID
-  const [editingPaymentStatus, setEditingPaymentStatus] = useState(null); // 追蹤正在編輯狀態的付款ID
+  const [expandedOrders, setExpandedOrders] = useState(new Set());
+  const [activeTab, setActiveTab] = useState('draft');
 
   // 付款條件選項管理
   const [paymentTermsOptions, setPaymentTermsOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
@@ -38,42 +41,40 @@ export default function PaymentPage() {
 
   // 篩選條件
   const [filterData, setFilterData] = useState({
-    yearMonth: '', // 銷帳年月（發票日期）
+    yearMonth: '',
     supplierId: '',
-    warehouse: '', // 管別
-    paymentTerms: '' // 付款條件
+    warehouse: '',
+    paymentTerms: ''
   });
 
   // 表單資料
   const [formData, setFormData] = useState({
-    paymentNo: '',
-    paymentDate: new Date().toISOString().split('T')[0],
     paymentMethod: '月結',
-    checkIssueDate: '', // 開票日期
-    checkDate: '', // 支票（轉帳）日期
-    checkNo: '', // 支票號碼
-    checkAccount: '', // 開票賬戶
-    note: '', // 備註
-    discount: '', // 會計折讓
-    paymentAmount: '' // 付款金額
+    checkIssueDate: '',
+    checkDate: '',
+    checkNo: '',
+    checkAccount: '',
+    note: '',
+    discount: '',
+    paymentAmount: ''
   });
 
   useEffect(() => {
-    fetchPayments();
+    fetchOrders();
     fetchSuppliers();
     fetchAllInvoices();
   }, []);
 
   // 從現有付款紀錄中提取開票賬戶選項
   useEffect(() => {
-    if (payments.length > 0) {
-      const accounts = [...new Set(payments.map(p => p.checkAccount).filter(Boolean))];
+    if (orders.length > 0) {
+      const accounts = [...new Set(orders.map(p => p.checkAccount).filter(Boolean))];
       setCheckAccountOptions(prev => {
         const merged = [...new Set([...prev, ...accounts])];
         return merged;
       });
     }
-  }, [payments]);
+  }, [orders]);
 
   // 當勾選的發票變動時，自動更新付款金額
   useEffect(() => {
@@ -87,15 +88,15 @@ export default function PaymentPage() {
     }
   }, [selectedInvoiceIds]);
 
-  async function fetchPayments() {
+  async function fetchOrders() {
     try {
-      const response = await fetch('/api/payments');
+      const response = await fetch('/api/payment-orders');
       const data = await response.json();
-      setPayments(Array.isArray(data) ? data : []);
+      setOrders(Array.isArray(data) ? data : []);
       setLoading(false);
     } catch (error) {
-      console.error('取得付款列表失敗:', error);
-      setPayments([]);
+      console.error('取得付款單列表失敗:', error);
+      setOrders([]);
       setLoading(false);
     }
   }
@@ -131,19 +132,19 @@ export default function PaymentPage() {
       if (filterData.supplierId) params.append('supplierId', filterData.supplierId);
       if (filterData.warehouse) params.append('warehouse', filterData.warehouse);
       if (filterData.paymentTerms) params.append('paymentTerms', filterData.paymentTerms);
-      
+
       const url = `/api/sales/unpaid?${params.toString()}`;
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       const invoices = Array.isArray(data) ? data : [];
       setUnpaidInvoices(invoices);
-      setSelectedInvoiceIds(new Set()); // 清空已選發票
-      
+      setSelectedInvoiceIds(new Set());
+
       if (invoices.length === 0) {
         alert('查詢完成，但沒有找到未付款的發票。\n\n請檢查：\n1. 篩選條件是否正確\n2. 是否有建立發票資料\n3. 該發票是否已被付款');
       }
@@ -198,16 +199,6 @@ export default function PaymentPage() {
       return;
     }
 
-    // 欄位驗證
-    if (!formData.checkIssueDate) {
-      alert('請輸入開票日期');
-      return;
-    }
-    if (!formData.checkDate) {
-      alert('請輸入支票（轉帳）日期');
-      return;
-    }
-
     // 會計折讓與付款金額驗證
     const invoiceTotal = parseFloat(calculateTotal());
     const discountVal = parseFloat(formData.discount) || 0;
@@ -219,197 +210,332 @@ export default function PaymentPage() {
       return;
     }
 
+    // 從選取的發票推導供應商和倉別
+    const firstInvoice = unpaidInvoices.find(inv => selectedInvoiceIds.has(inv.id));
+    const supplierId = firstInvoice?.supplierId || null;
+    const supplierName = firstInvoice?.supplierName || (supplierId ? getSupplierName(supplierId) : null);
+    const warehouse = firstInvoice?.warehouse || null;
+
     try {
-      const paymentData = {
-        ...formData,
-        paymentNo: formData.paymentNo.trim() || '', // 如果為空或只有空格，傳空字串讓後端自動產生
+      const orderData = {
         invoiceIds: Array.from(selectedInvoiceIds),
-        amount: paymentAmountVal,
-        discount: discountVal
+        supplierId,
+        supplierName,
+        warehouse,
+        paymentMethod: formData.paymentMethod,
+        amount: invoiceTotal,
+        discount: discountVal,
+        netAmount: paymentAmountVal,
+        checkIssueDate: formData.checkIssueDate || null,
+        checkDueDate: formData.checkDate || null,
+        checkNo: formData.checkNo || null,
+        checkAccount: formData.checkAccount || null,
+        note: formData.note || null,
+        status: '草稿',
       };
 
-      const response = await fetch('/api/payments', {
+      const response = await fetch('/api/payment-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(paymentData)
+        body: JSON.stringify(orderData)
       });
 
       if (response.ok) {
-        alert('付款紀錄新增成功！');
+        alert('付款單建立成功（草稿）！');
         setShowAddForm(false);
         setSelectedInvoiceIds(new Set());
         setUnpaidInvoices([]);
-        setFilterData({
-          yearMonth: '',
-          supplierId: '',
-          warehouse: '',
-          paymentTerms: ''
-        });
-        setFormData({
-          paymentNo: '',
-          paymentDate: new Date().toISOString().split('T')[0],
-          paymentMethod: '月結',
-          checkIssueDate: '',
-          checkDate: '',
-          checkNo: '',
-          checkAccount: '',
-          note: '',
-          discount: '',
-          paymentAmount: ''
-        });
-        fetchPayments();
+        resetFilterAndForm();
+        setActiveTab('draft');
+        fetchOrders();
       } else {
         const error = await response.json();
-        alert('新增失敗：' + (error.error || '未知錯誤'));
+        alert('建立失敗：' + (error.error || error.message || '未知錯誤'));
       }
     } catch (error) {
-      console.error('新增付款紀錄失敗:', error);
-      alert('新增付款紀錄失敗，請稍後再試');
+      console.error('建立付款單失敗:', error);
+      alert('建立付款單失敗，請稍後再試');
     }
   }
 
-  async function handleDelete(paymentId) {
-    if (!confirm('確定要刪除這筆付款紀錄嗎？')) return;
-    
+  function resetFilterAndForm() {
+    setFilterData({ yearMonth: '', supplierId: '', warehouse: '', paymentTerms: '' });
+    setFormData({
+      paymentMethod: '月結',
+      checkIssueDate: '',
+      checkDate: '',
+      checkNo: '',
+      checkAccount: '',
+      note: '',
+      discount: '',
+      paymentAmount: ''
+    });
+  }
+
+  async function handleDelete(orderId) {
+    if (!confirm('確定要刪除這筆付款單嗎？')) return;
+
     try {
-      const response = await fetch(`/api/payments/${paymentId}`, {
+      const response = await fetch(`/api/payment-orders/${orderId}`, {
         method: 'DELETE'
       });
 
       if (response.ok) {
-        alert('付款紀錄刪除成功！');
-        fetchPayments();
+        alert('付款單刪除成功！');
+        fetchOrders();
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || '未知錯誤'));
+        alert('刪除失敗：' + (error.error || error.message || '未知錯誤'));
       }
     } catch (error) {
-      console.error('刪除付款紀錄失敗:', error);
-      alert('刪除付款紀錄失敗，請稍後再試');
+      console.error('刪除付款單失敗:', error);
+      alert('刪除付款單失敗，請稍後再試');
     }
   }
 
-  // 取得付款記錄中的發票資訊
-  function getInvoicesForPayment(payment) {
-    if (payment.invoiceIds && Array.isArray(payment.invoiceIds)) {
-      return payment.invoiceIds;
+  async function handleSubmitToCashier(orderId) {
+    if (!confirm('確定要提交此付款單到出納嗎？')) return;
+
+    try {
+      const response = await fetch(`/api/payment-orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'submit' })
+      });
+
+      if (response.ok) {
+        alert('付款單已提交出納！');
+        fetchOrders();
+      } else {
+        const error = await response.json();
+        alert('提交失敗：' + (error.error || error.message || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('提交出納失敗:', error);
+      alert('提交出納失敗，請稍後再試');
     }
-    // 兼容舊格式
-    if (payment.salesId) {
-      return [payment.salesId];
+  }
+
+  async function handleResubmit(orderId) {
+    if (!confirm('確定要重新提交此付款單到出納嗎？')) return;
+
+    try {
+      const response = await fetch(`/api/payment-orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resubmit' })
+      });
+
+      if (response.ok) {
+        alert('付款單已重新提交出納！');
+        fetchOrders();
+      } else {
+        const error = await response.json();
+        alert('重新提交失敗：' + (error.error || error.message || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('重新提交失敗:', error);
+      alert('重新提交失敗，請稍後再試');
+    }
+  }
+
+  async function handleVoid(orderId) {
+    if (!confirm('確定要作廢此付款單嗎？此操作不可復原。')) return;
+
+    try {
+      const response = await fetch(`/api/payment-orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'void' })
+      });
+
+      if (response.ok) {
+        alert('付款單已作廢！');
+        fetchOrders();
+      } else {
+        const error = await response.json();
+        alert('作廢失敗：' + (error.error || error.message || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('作廢失敗:', error);
+    }
+  }
+
+  function getInvoicesForOrder(order) {
+    if (order.invoiceIds && Array.isArray(order.invoiceIds)) {
+      return order.invoiceIds;
     }
     return [];
   }
 
-  // 取得發票詳細資料
   function getInvoiceDetails(invoiceId) {
     return allInvoices.find(inv => inv.id === invoiceId);
   }
 
-  // 切換查看詳細資訊
-  function handleViewDetails(paymentId) {
-    const newExpanded = new Set(expandedPayments);
-    if (newExpanded.has(paymentId)) {
-      newExpanded.delete(paymentId); // 如果已展開，則收合
+  function handleViewDetails(orderId) {
+    const newExpanded = new Set(expandedOrders);
+    if (newExpanded.has(orderId)) {
+      newExpanded.delete(orderId);
     } else {
-      newExpanded.add(paymentId); // 如果未展開，則展開
+      newExpanded.add(orderId);
     }
-    setExpandedPayments(newExpanded);
+    setExpandedOrders(newExpanded);
   }
 
-  async function handleUpdatePaymentStatus(paymentId, newStatus) {
-    try {
-      const response = await fetch(`/api/payments/${paymentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
+  // Tab filter
+  const draftOrders = orders.filter(o => o.status === '草稿');
+  const pendingOrders = orders.filter(o => o.status === '待出納');
+  const executedOrders = orders.filter(o => o.status === '已執行');
+  const rejectedOrders = orders.filter(o => o.status === '已拒絕');
 
-      if (response.ok) {
-        alert('付款狀態更新成功！');
-        setEditingPaymentStatus(null);
-        fetchPayments();
-      } else {
-        const error = await response.json();
-        alert('更新失敗：' + (error.error || '未知錯誤'));
-      }
-    } catch (error) {
-      console.error('更新付款狀態失敗:', error);
-      alert('更新付款狀態失敗，請稍後再試');
+  const TABS = [
+    { key: 'draft', label: '草稿', count: draftOrders.length, color: 'bg-gray-100 text-gray-800' },
+    { key: 'pending', label: '待出納', count: pendingOrders.length, color: 'bg-yellow-100 text-yellow-800' },
+    { key: 'executed', label: '已執行', count: executedOrders.length, color: 'bg-green-100 text-green-800' },
+    { key: 'rejected', label: '已拒絕', count: rejectedOrders.length, color: 'bg-red-100 text-red-800' },
+  ];
+
+  function getDisplayOrders() {
+    switch (activeTab) {
+      case 'draft': return draftOrders;
+      case 'pending': return pendingOrders;
+      case 'executed': return executedOrders;
+      case 'rejected': return rejectedOrders;
+      default: return orders;
     }
+  }
+
+  const displayOrders = getDisplayOrders();
+
+  function getStatusBadge(status) {
+    const map = {
+      '草稿': 'bg-gray-100 text-gray-800',
+      '待出納': 'bg-yellow-100 text-yellow-800',
+      '已執行': 'bg-green-100 text-green-800',
+      '已拒絕': 'bg-red-100 text-red-800',
+      '已作廢': 'bg-gray-200 text-gray-500',
+    };
+    return map[status] || 'bg-gray-100 text-gray-800';
+  }
+
+  // Build traceability chain for an executed order
+  function getTraceabilityChain(order) {
+    const invoiceIds = getInvoicesForOrder(order);
+    const invoiceNos = invoiceIds.map(id => {
+      const inv = getInvoiceDetails(id);
+      return inv ? (inv.invoiceNo || inv.salesNo || `#${id}`) : `#${id}`;
+    });
+
+    const chain = {
+      invoices: invoiceNos.join(', '),
+      paymentOrderNo: order.orderNo,
+      executionNo: null,
+      cashTransactionNo: null,
+    };
+
+    if (order.executions && order.executions.length > 0) {
+      const exec = order.executions[0];
+      chain.executionNo = exec.executionNo;
+      // cashTransactionId is stored on the execution - we display it as CF-xxx
+      if (exec.cashTransactionId) {
+        // We don't have the transaction no directly, but we can construct it from the execution
+        // The cashier/execute API stores it - we show what we have
+        chain.cashTransactionNo = exec.cashTransactionId;
+      }
+    }
+
+    return chain;
   }
 
   return (
     <div className="min-h-screen page-bg-finance">
       <Navigation borderColor="border-indigo-500" />
+      <NotificationBanner moduleFilter="finance" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">付款管理</h2>
-          {isLoggedIn && (
-            <button
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                if (!showAddForm) {
-                  setSelectedInvoiceIds(new Set());
-                  setUnpaidInvoices([]);
-                  setFilterData({
-                    yearMonth: '',
-                    supplierId: '',
-                    warehouse: '',
-                    paymentTerms: ''
-                  });
-                  // 自動帶入最近一筆付款的開票日期和支票（轉帳）日期
-                  const latestPayment = payments.length > 0 ? payments[payments.length - 1] : null;
-                  setFormData({
-                    paymentNo: '',
-                    paymentDate: new Date().toISOString().split('T')[0],
-                    paymentMethod: '月結',
-                    checkIssueDate: latestPayment?.checkIssueDate || '',
-                    checkDate: latestPayment?.checkDate || '',
-                    checkNo: '',
-                    checkAccount: '',
-                    note: '',
-                    discount: '',
-                    paymentAmount: ''
-                  });
-                }
-              }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              ➕ 新增付款
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <ExportButtons
+              data={displayOrders.map(o => ({
+                ...o,
+                invoiceCount: o.invoices?.length || 0,
+              }))}
+              columns={EXPORT_CONFIGS.finance.columns}
+              exportName={EXPORT_CONFIGS.finance.filename}
+              title="付款管理"
+              sheetName="付款單"
+            />
+            {isLoggedIn && (
+              <button
+                onClick={() => {
+                  setShowAddForm(!showAddForm);
+                  if (!showAddForm) {
+                    setSelectedInvoiceIds(new Set());
+                    setUnpaidInvoices([]);
+                    resetFilterAndForm();
+                    const latestOrder = orders.length > 0 ? orders[0] : null;
+                    if (latestOrder) {
+                      setFormData(prev => ({
+                        ...prev,
+                        checkIssueDate: latestOrder.checkIssueDate || '',
+                        checkDate: latestOrder.checkDueDate || '',
+                      }));
+                    }
+                  }
+                }}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+              >
+                + 新增付款單
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-gray-400">
+            <p className="text-sm text-gray-500">草稿</p>
+            <p className="text-2xl font-bold text-gray-700">{draftOrders.length}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
+            <p className="text-sm text-gray-500">待出納</p>
+            <p className="text-2xl font-bold text-yellow-700">{pendingOrders.length}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+            <p className="text-sm text-gray-500">已執行</p>
+            <p className="text-2xl font-bold text-green-700">{executedOrders.length}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-400">
+            <p className="text-sm text-gray-500">已拒絕</p>
+            <p className="text-2xl font-bold text-red-600">{rejectedOrders.length}</p>
+          </div>
         </div>
 
         {/* 新增付款表單 */}
         {showAddForm && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-blue-200">
-            <h3 className="text-lg font-semibold mb-4">新增付款紀錄</h3>
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-indigo-200">
+            <h3 className="text-lg font-semibold mb-4">新增付款單（草稿）</h3>
             <form onSubmit={handleSubmit}>
               {/* 篩選條件 */}
               <div className="bg-gray-50 border rounded-lg p-4 mb-6">
                 <h4 className="text-md font-semibold mb-3">篩選未付款的發票</h4>
                 <div className="grid grid-cols-4 gap-4 mb-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      銷帳年月
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">銷帳年月</label>
                     <input
                       type="month"
                       value={filterData.yearMonth}
                       onChange={(e) => setFilterData({ ...filterData, yearMonth: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      廠商
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
                     <select
                       value={filterData.supplierId}
                       onChange={(e) => setFilterData({ ...filterData, supplierId: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       <option value="">全部廠商</option>
                       {suppliers.map(s => (
@@ -418,13 +544,11 @@ export default function PaymentPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      管別
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">管別</label>
                     <select
                       value={filterData.warehouse}
                       onChange={(e) => setFilterData({ ...filterData, warehouse: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       <option value="">全部管別</option>
                       <option value="麗格">麗格</option>
@@ -438,7 +562,7 @@ export default function PaymentPage() {
                       <button
                         type="button"
                         onClick={() => setShowTermsManager(!showTermsManager)}
-                        className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                        className="ml-2 text-indigo-600 hover:text-indigo-800 text-xs"
                       >
                         管理選項
                       </button>
@@ -446,7 +570,7 @@ export default function PaymentPage() {
                     <select
                       value={filterData.paymentTerms}
                       onChange={(e) => setFilterData({ ...filterData, paymentTerms: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       <option value="">全部條件</option>
                       {paymentTermsOptions.map(term => (
@@ -461,13 +585,7 @@ export default function PaymentPage() {
                   <div className="bg-white border border-gray-300 rounded-lg p-4 mb-3">
                     <div className="flex justify-between items-center mb-3">
                       <h5 className="text-sm font-semibold text-gray-700">管理付款條件選項</h5>
-                      <button
-                        type="button"
-                        onClick={() => setShowTermsManager(false)}
-                        className="text-gray-400 hover:text-gray-600 text-sm"
-                      >
-                        關閉
-                      </button>
+                      <button type="button" onClick={() => setShowTermsManager(false)} className="text-gray-400 hover:text-gray-600 text-sm">關閉</button>
                     </div>
                     <div className="flex gap-2 mb-3">
                       <input
@@ -475,7 +593,7 @@ export default function PaymentPage() {
                         value={newTermName}
                         onChange={(e) => setNewTermName(e.target.value)}
                         placeholder="輸入新付款條件名稱"
-                        className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -527,7 +645,7 @@ export default function PaymentPage() {
                 <button
                   type="button"
                   onClick={fetchUnpaidInvoices}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
                   查詢未付款發票
                 </button>
@@ -543,7 +661,7 @@ export default function PaymentPage() {
                     <button
                       type="button"
                       onClick={handleSelectAll}
-                      className="text-sm text-blue-600 hover:underline"
+                      className="text-sm text-indigo-600 hover:underline"
                     >
                       {selectedInvoiceIds.size === unpaidInvoices.length ? '取消全選' : '全選'}
                     </button>
@@ -557,7 +675,7 @@ export default function PaymentPage() {
                               type="checkbox"
                               checked={selectedInvoiceIds.size === unpaidInvoices.length && unpaidInvoices.length > 0}
                               onChange={handleSelectAll}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                             />
                           </th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
@@ -573,13 +691,13 @@ export default function PaymentPage() {
                         {unpaidInvoices.map((invoice) => {
                           const isSelected = selectedInvoiceIds.has(invoice.id);
                           return (
-                            <tr key={invoice.id} className={isSelected ? 'bg-blue-50' : ''}>
+                            <tr key={invoice.id} className={isSelected ? 'bg-indigo-50' : ''}>
                               <td className="px-3 py-2">
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => handleInvoiceToggle(invoice.id)}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                 />
                               </td>
                               <td className="px-3 py-2 text-sm">{invoice.warehouse || '-'}</td>
@@ -592,20 +710,8 @@ export default function PaymentPage() {
                               </td>
                               <td className="px-3 py-2 text-sm">
                                 <div className="flex gap-2">
-                                  <Link
-                                    href="/sales"
-                                    target="_blank"
-                                    className="text-blue-600 hover:underline text-sm"
-                                  >
-                                    編輯
-                                  </Link>
-                                  <Link
-                                    href={`/payment-voucher/${invoice.id}`}
-                                    target="_blank"
-                                    className="text-green-600 hover:underline text-sm"
-                                  >
-                                    列印傳票
-                                  </Link>
+                                  <Link href="/sales" target="_blank" className="text-indigo-600 hover:underline text-sm">編輯</Link>
+                                  <Link href={`/payment-voucher/${invoice.id}`} target="_blank" className="text-green-600 hover:underline text-sm">列印傳票</Link>
                                 </div>
                               </td>
                             </tr>
@@ -617,17 +723,15 @@ export default function PaymentPage() {
                   {selectedInvoiceIds.size > 0 && (
                     <div className="mt-4 text-right">
                       <span className="text-sm text-gray-600">已選 {selectedInvoiceIds.size} 張發票，總金額：</span>
-                      <span className="text-xl font-bold text-blue-600 ml-2">NT$ {calculateTotal()}</span>
+                      <span className="text-xl font-bold text-indigo-600 ml-2">NT$ {calculateTotal()}</span>
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
                   <div className="text-center text-yellow-800">
-                    <p className="text-sm font-medium mb-2">⚠️ 尚未查詢或沒有未付款的發票</p>
-                    <p className="text-xs text-yellow-600">
-                      請先設定篩選條件（可選），然後點擊「查詢未付款發票」按鈕
-                    </p>
+                    <p className="text-sm font-medium mb-2">尚未查詢或沒有未付款的發票</p>
+                    <p className="text-xs text-yellow-600">請先設定篩選條件（可選），然後點擊「查詢未付款發票」按鈕</p>
                   </div>
                 </div>
               )}
@@ -636,41 +740,19 @@ export default function PaymentPage() {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">付款單號</label>
-                  <input
-                    type="text"
-                    value={formData.paymentNo || '自動產生'}
-                    readOnly
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">系統自動產生</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">付款日期 *</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.paymentDate}
-                    onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="text" value="自動產生" readOnly disabled className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed" />
+                  <p className="text-xs text-gray-500 mt-1">系統自動產生 PAY-YYYYMMDD-XXXX</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     付款方式 *
-                    <button
-                      type="button"
-                      onClick={() => setShowMethodManager(!showMethodManager)}
-                      className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
-                    >
-                      管理選項
-                    </button>
+                    <button type="button" onClick={() => setShowMethodManager(!showMethodManager)} className="ml-2 text-indigo-600 hover:text-indigo-800 text-xs">管理選項</button>
                   </label>
                   <select
                     required
                     value={formData.paymentMethod}
                     onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     {paymentMethodOptions.map(method => (
                       <option key={method} value={method}>{method}</option>
@@ -688,7 +770,7 @@ export default function PaymentPage() {
                           value={newMethodName}
                           onChange={(e) => setNewMethodName(e.target.value)}
                           placeholder="輸入新付款方式"
-                          className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
@@ -739,27 +821,25 @@ export default function PaymentPage() {
               </div>
 
               {/* 付款資訊欄位 */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
                 <h4 className="text-md font-semibold mb-3">付款資訊</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">開票日期 *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">開票日期</label>
                     <input
                       type="date"
-                      required
                       value={formData.checkIssueDate}
                       onChange={(e) => setFormData({ ...formData, checkIssueDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">支票（轉帳）日期 *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">支票（轉帳）日期</label>
                     <input
                       type="date"
-                      required
                       value={formData.checkDate}
                       onChange={(e) => setFormData({ ...formData, checkDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
@@ -769,19 +849,13 @@ export default function PaymentPage() {
                       value={formData.checkNo}
                       onChange={(e) => setFormData({ ...formData, checkNo: e.target.value })}
                       placeholder="輸入支票號碼"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       開票賬戶
-                      <button
-                        type="button"
-                        onClick={() => setShowAccountManager(!showAccountManager)}
-                        className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
-                      >
-                        管理選項
-                      </button>
+                      <button type="button" onClick={() => setShowAccountManager(!showAccountManager)} className="ml-2 text-indigo-600 hover:text-indigo-800 text-xs">管理選項</button>
                     </label>
                     <input
                       type="text"
@@ -796,7 +870,7 @@ export default function PaymentPage() {
                       onFocus={() => setShowAccountDropdown(true)}
                       onBlur={() => setTimeout(() => setShowAccountDropdown(false), 200)}
                       placeholder="搜尋或選擇開票賬戶..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     {showAccountDropdown && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -805,7 +879,7 @@ export default function PaymentPage() {
                           .map(opt => (
                             <div
                               key={opt}
-                              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm ${formData.checkAccount === opt ? 'bg-blue-100 font-semibold' : ''}`}
+                              className={`px-3 py-2 cursor-pointer hover:bg-indigo-50 text-sm ${formData.checkAccount === opt ? 'bg-indigo-100 font-semibold' : ''}`}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setFormData({ ...formData, checkAccount: opt });
@@ -833,7 +907,7 @@ export default function PaymentPage() {
                             value={newAccountName}
                             onChange={(e) => setNewAccountName(e.target.value)}
                             placeholder="輸入新開票賬戶名稱"
-                            className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
@@ -902,7 +976,7 @@ export default function PaymentPage() {
                         });
                       }}
                       placeholder="0.00"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
@@ -915,7 +989,7 @@ export default function PaymentPage() {
                       value={formData.paymentAmount}
                       onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
                       placeholder="0.00"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     {selectedInvoiceIds.size > 0 && (
                       <p className="text-xs text-gray-500 mt-1">
@@ -930,7 +1004,7 @@ export default function PaymentPage() {
                       onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                       placeholder="輸入備註事項..."
                       rows="2"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                 </div>
@@ -944,24 +1018,7 @@ export default function PaymentPage() {
                     setShowAddForm(false);
                     setSelectedInvoiceIds(new Set());
                     setUnpaidInvoices([]);
-                    setFilterData({
-                      yearMonth: '',
-                      supplierId: '',
-                      warehouse: '',
-                      paymentTerms: ''
-                    });
-                    setFormData({
-                      paymentNo: '',
-                      paymentDate: new Date().toISOString().split('T')[0],
-                      paymentMethod: '月結',
-                      checkIssueDate: '',
-                      checkDate: '',
-                      checkNo: '',
-                      checkAccount: '',
-                      note: '',
-                      discount: '',
-                      paymentAmount: ''
-                    });
+                    resetFilterAndForm();
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
@@ -973,162 +1030,222 @@ export default function PaymentPage() {
                   className={`px-6 py-2 rounded-lg ${
                     selectedInvoiceIds.size === 0
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700'
                   }`}
                 >
-                  儲存
+                  儲存草稿
                 </button>
               </div>
             </form>
           </div>
         )}
 
-        {/* 付款列表 */}
+        {/* Tabs */}
+        <div className="flex gap-2 mb-4">
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-indigo-50 border border-gray-200'
+              }`}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+
+        {/* 付款單列表 */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款單號</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款日期</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款方式</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票數量</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計折讓</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款金額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款狀態</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">開票日期</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">支票（轉帳）日期</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">備註</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票數</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">折讓</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">淨額</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">建立日期</th>
+                <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">載入中...</td>
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td>
                 </tr>
-              ) : payments.length === 0 ? (
+              ) : displayOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">尚無付款紀錄</td>
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                    {activeTab === 'draft' ? '目前無草稿付款單' :
+                     activeTab === 'pending' ? '目前無待出納的付款單' :
+                     activeTab === 'executed' ? '目前無已執行的付款單' :
+                     '目前無已拒絕的付款單'}
+                  </td>
                 </tr>
               ) : (
-                payments.map((payment, index) => {
-                  const invoiceIds = getInvoicesForPayment(payment);
-                  const isExpanded = expandedPayments.has(payment.id);
-                  const isEditingStatus = editingPaymentStatus === payment.id;
-                  const paymentStatus = payment.status || '未完成';
+                displayOrders.map((order, index) => {
+                  const invoiceIds = getInvoicesForOrder(order);
+                  const isExpanded = expandedOrders.has(order.id);
                   return (
-                    <Fragment key={payment.id}>
-                      <tr className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="px-4 py-3 text-sm">{payment.paymentNo}</td>
-                        <td className="px-4 py-3 text-sm">{payment.paymentDate}</td>
-                        <td className="px-4 py-3 text-sm">{payment.paymentMethod}</td>
+                    <Fragment key={order.id}>
+                      <tr className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}>
+                        <td className="px-4 py-3 text-sm font-medium text-indigo-700">{order.orderNo}</td>
+                        <td className="px-4 py-3 text-sm">{order.supplierName || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{order.warehouse || '-'}</td>
+                        <td className="px-4 py-3 text-sm">{order.paymentMethod}</td>
                         <td className="px-4 py-3 text-sm">{invoiceIds.length} 張</td>
-                        <td className="px-4 py-3 text-sm">{payment.discount ? `NT$ ${parseFloat(payment.discount).toFixed(2)}` : '-'}</td>
-                        <td className="px-4 py-3 text-sm font-semibold">NT$ {parseFloat(payment.amount).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-right">{order.discount > 0 ? `NT$ ${Number(order.discount).toLocaleString()}` : '-'}</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold">NT$ {Number(order.netAmount).toLocaleString()}</td>
                         <td className="px-4 py-3 text-sm">
-                          {isEditingStatus ? (
-                            <select
-                              value={paymentStatus}
-                              onChange={(e) => handleUpdatePaymentStatus(payment.id, e.target.value)}
-                              onBlur={() => setEditingPaymentStatus(null)}
-                              className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              autoFocus
-                            >
-                              <option value="未完成">未完成</option>
-                              <option value="已完成">已完成</option>
-                            </select>
-                          ) : (
-                            <span 
-                              className={`px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 ${
-                                paymentStatus === '已完成' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                              }`}
-                              onClick={() => setEditingPaymentStatus(payment.id)}
-                              title="點擊編輯"
-                            >
-                              {paymentStatus}
-                            </span>
-                          )}
+                          <span className={`px-2 py-0.5 rounded text-xs ${getStatusBadge(order.status)}`}>
+                            {order.status}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-sm">{payment.checkIssueDate || '-'}</td>
-                        <td className="px-4 py-3 text-sm">{payment.checkDate || '-'}</td>
-                        <td className="px-4 py-3 text-sm truncate max-w-[150px]" title={payment.note || ''}>{payment.note || '-'}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {new Date(order.createdAt).toLocaleDateString('zh-TW')}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex flex-wrap gap-1 justify-center">
                             <button
-                              onClick={() => handleViewDetails(payment.id)}
-                              className="text-blue-600 hover:underline text-sm"
+                              onClick={() => handleViewDetails(order.id)}
+                              className="text-indigo-600 hover:underline text-xs"
                             >
                               {isExpanded ? '收起' : '查看'}
                             </button>
-                            {invoiceIds.length > 0 && invoiceIds.length === 1 && (
-                              <Link
-                                href={`/payment-voucher/${invoiceIds[0]}`}
-                                target="_blank"
-                                className="text-green-600 hover:underline text-sm"
-                              >
-                                🖨️ 列印傳票
-                              </Link>
+                            {order.status === '草稿' && isLoggedIn && (
+                              <>
+                                <button
+                                  onClick={() => handleSubmitToCashier(order.id)}
+                                  className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600"
+                                >
+                                  提交出納
+                                </button>
+                                <button
+                                  onClick={() => handleVoid(order.id)}
+                                  className="text-gray-500 hover:underline text-xs"
+                                >
+                                  作廢
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(order.id)}
+                                  className="text-red-600 hover:underline text-xs"
+                                >
+                                  刪除
+                                </button>
+                              </>
                             )}
-                            {isLoggedIn && (
+                            {order.status === '待出納' && isLoggedIn && (
                               <button
-                                onClick={() => handleDelete(payment.id)}
-                                className="text-red-600 hover:underline text-sm"
+                                onClick={() => handleVoid(order.id)}
+                                className="text-gray-500 hover:underline text-xs"
                               >
-                                刪除
+                                作廢
                               </button>
+                            )}
+                            {order.status === '已拒絕' && isLoggedIn && (
+                              <>
+                                <button
+                                  onClick={() => handleResubmit(order.id)}
+                                  className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600"
+                                >
+                                  重新提交
+                                </button>
+                                <button
+                                  onClick={() => handleVoid(order.id)}
+                                  className="text-gray-500 hover:underline text-xs"
+                                >
+                                  作廢
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(order.id)}
+                                  className="text-red-600 hover:underline text-xs"
+                                >
+                                  刪除
+                                </button>
+                              </>
+                            )}
+                            {order.status === '已執行' && order.executions?.[0] && (
+                              <span className="text-xs text-gray-500">{order.executions[0].executionNo}</span>
                             )}
                           </div>
                         </td>
                       </tr>
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
-                        <tr className="bg-blue-50">
-                          <td colSpan="11" className="px-4 py-4">
+                        <tr className="bg-indigo-50">
+                          <td colSpan="10" className="px-4 py-4">
                             <div className="space-y-4">
+                              {/* 拒絕原因（如果有） */}
+                              {order.status === '已拒絕' && order.rejectedReason && (
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                  <div className="text-sm font-semibold text-red-700 mb-1">退回原因</div>
+                                  <div className="text-sm text-red-600">{order.rejectedReason}</div>
+                                  {order.rejectedBy && (
+                                    <div className="text-xs text-red-400 mt-1">退回人：{order.rejectedBy} | {order.rejectedAt ? new Date(order.rejectedAt).toLocaleString('zh-TW') : ''}</div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 追蹤鏈 (traceability chain) - 顯示於已執行的付款單 */}
+                              {order.status === '已執行' && order.executions?.length > 0 && (
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                  <div className="text-sm font-semibold text-green-700 mb-2">追蹤鏈</div>
+                                  <div className="flex items-center gap-2 flex-wrap text-sm">
+                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+                                      發票: {getInvoicesForOrder(order).map(id => {
+                                        const inv = getInvoiceDetails(id);
+                                        return inv ? (inv.invoiceNo || inv.salesNo || `#${id}`) : `#${id}`;
+                                      }).join(', ')}
+                                    </span>
+                                    <span className="text-gray-400">-&gt;</span>
+                                    <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs">
+                                      付款單: {order.orderNo}
+                                    </span>
+                                    <span className="text-gray-400">-&gt;</span>
+                                    <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs">
+                                      出納單: {order.executions[0].executionNo}
+                                    </span>
+                                    {order.executions[0].cashTransactionId && (
+                                      <>
+                                        <span className="text-gray-400">-&gt;</span>
+                                        <span className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs">
+                                          現金流: CF-{order.executions[0].cashTransactionId}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* 付款基本資訊 */}
                               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4 border-b border-gray-300">
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">付款單號</div>
-                                  <div className="text-sm font-semibold">{payment.paymentNo}</div>
+                                  <div className="text-sm font-semibold">{order.orderNo}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs text-gray-500 mb-1">付款日期</div>
-                                  <div className="text-sm font-semibold">{payment.paymentDate}</div>
+                                  <div className="text-xs text-gray-500 mb-1">廠商</div>
+                                  <div className="text-sm font-semibold">{order.supplierName || '-'}</div>
                                 </div>
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">付款方式</div>
-                                  <div className="text-sm font-semibold">{payment.paymentMethod}</div>
+                                  <div className="text-sm font-semibold">{order.paymentMethod}</div>
                                 </div>
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">發票數量</div>
                                   <div className="text-sm font-semibold">{invoiceIds.length} 張</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs text-gray-500 mb-1">付款狀態</div>
-                                  <div className="text-sm">
-                                    {editingPaymentStatus === payment.id ? (
-                                      <select
-                                        value={paymentStatus}
-                                        onChange={(e) => handleUpdatePaymentStatus(payment.id, e.target.value)}
-                                        onBlur={() => setEditingPaymentStatus(null)}
-                                        className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        autoFocus
-                                      >
-                                        <option value="未完成">未完成</option>
-                                        <option value="已完成">已完成</option>
-                                      </select>
-                                    ) : (
-                                      <span 
-                                        className={`px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 inline-block ${
-                                          paymentStatus === '已完成' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                        }`}
-                                        onClick={() => setEditingPaymentStatus(payment.id)}
-                                        title="點擊編輯"
-                                      >
-                                        {paymentStatus}
-                                      </span>
-                                    )}
-                                  </div>
+                                  <div className="text-xs text-gray-500 mb-1">狀態</div>
+                                  <span className={`px-2 py-0.5 rounded text-xs ${getStatusBadge(order.status)}`}>
+                                    {order.status}
+                                  </span>
                                 </div>
                               </div>
 
@@ -1136,56 +1253,91 @@ export default function PaymentPage() {
                               <div className="pb-4 border-b border-gray-300">
                                 <div className="grid grid-cols-3 gap-4">
                                   <div>
-                                    <div className="text-xs text-gray-500 mb-1">會計折讓</div>
+                                    <div className="text-xs text-gray-500 mb-1">發票總額</div>
                                     <div className="text-lg font-semibold">
-                                      {payment.discount ? `NT$ ${parseFloat(payment.discount).toFixed(2)}` : '-'}
+                                      NT$ {Number(order.amount).toLocaleString()}
                                     </div>
                                   </div>
                                   <div>
-                                    <div className="text-xs text-gray-500 mb-1">付款金額</div>
-                                    <div className="text-2xl font-bold text-blue-600">
-                                      NT$ {parseFloat(payment.amount).toFixed(2)}
+                                    <div className="text-xs text-gray-500 mb-1">會計折讓</div>
+                                    <div className="text-lg font-semibold">
+                                      {order.discount > 0 ? `NT$ ${Number(order.discount).toLocaleString()}` : '-'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 mb-1">應付淨額</div>
+                                    <div className="text-2xl font-bold text-indigo-600">
+                                      NT$ {Number(order.netAmount).toLocaleString()}
                                     </div>
                                   </div>
                                 </div>
                               </div>
 
                               {/* 付款資訊 */}
-                              {(payment.checkIssueDate || payment.checkDate || payment.checkNo || payment.checkAccount || payment.note) && (
+                              {(order.checkIssueDate || order.checkDueDate || order.checkNo || order.checkAccount || order.note) && (
                                 <div className="pb-4 border-b border-gray-300">
                                   <div className="text-sm font-semibold mb-3 text-gray-700">付款資訊</div>
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    {payment.checkIssueDate && (
+                                    {order.checkIssueDate && (
                                       <div>
                                         <div className="text-xs text-gray-500 mb-1">開票日期</div>
-                                        <div className="text-sm font-semibold">{payment.checkIssueDate}</div>
+                                        <div className="text-sm font-semibold">{order.checkIssueDate}</div>
                                       </div>
                                     )}
-                                    {payment.checkDate && (
+                                    {order.checkDueDate && (
                                       <div>
                                         <div className="text-xs text-gray-500 mb-1">支票（轉帳）日期</div>
-                                        <div className="text-sm font-semibold">{payment.checkDate}</div>
+                                        <div className="text-sm font-semibold">{order.checkDueDate}</div>
                                       </div>
                                     )}
-                                    {payment.checkNo && (
+                                    {order.checkNo && (
                                       <div>
                                         <div className="text-xs text-gray-500 mb-1">支票號碼</div>
-                                        <div className="text-sm font-semibold">{payment.checkNo}</div>
+                                        <div className="text-sm font-semibold">{order.checkNo}</div>
                                       </div>
                                     )}
-                                    {payment.checkAccount && (
+                                    {order.checkAccount && (
                                       <div>
                                         <div className="text-xs text-gray-500 mb-1">開票賬戶</div>
-                                        <div className="text-sm font-semibold">{payment.checkAccount}</div>
+                                        <div className="text-sm font-semibold">{order.checkAccount}</div>
                                       </div>
                                     )}
                                   </div>
-                                  {payment.note && (
+                                  {order.note && (
                                     <div className="mt-3">
                                       <div className="text-xs text-gray-500 mb-1">備註</div>
-                                      <div className="text-sm">{payment.note}</div>
+                                      <div className="text-sm">{order.note}</div>
                                     </div>
                                   )}
+                                </div>
+                              )}
+
+                              {/* 出納執行資訊 */}
+                              {order.executions?.length > 0 && (
+                                <div className="pb-4 border-b border-gray-300">
+                                  <div className="text-sm font-semibold mb-3 text-gray-700">出納執行記錄</div>
+                                  {order.executions.map(exec => (
+                                    <div key={exec.id} className="bg-white rounded border p-3 text-sm">
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <div>
+                                          <div className="text-xs text-gray-500">執行單號</div>
+                                          <div className="font-medium">{exec.executionNo}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500">執行日期</div>
+                                          <div>{exec.executionDate}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500">實付金額</div>
+                                          <div className="font-medium">NT$ {Number(exec.actualAmount).toLocaleString()}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs text-gray-500">執行人</div>
+                                          <div>{exec.executedBy || '-'}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               )}
 
@@ -1195,20 +1347,13 @@ export default function PaymentPage() {
                                   <div className="flex justify-between items-center mb-3">
                                     <div className="text-sm font-semibold text-gray-700">支付的發票詳情（共 {invoiceIds.length} 張）</div>
                                     <div className="flex gap-2">
-                                      {invoiceIds.map(invoiceId => {
-                                        const invoice = getInvoiceDetails(invoiceId);
-                                        if (!invoice) return null;
-                                        return (
-                                          <Link
-                                            key={invoiceId}
-                                            href={`/payment-voucher/${invoiceId}`}
-                                            target="_blank"
-                                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
-                                          >
-                                            🖨️ 列印傳票
-                                          </Link>
-                                        );
-                                      })}
+                                      <Link
+                                        href={`/payment-voucher/${order.id}`}
+                                        target="_blank"
+                                        className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
+                                      >
+                                        列印傳票
+                                      </Link>
                                     </div>
                                   </div>
                                   <div className="border rounded-lg overflow-hidden">
@@ -1240,29 +1385,14 @@ export default function PaymentPage() {
                                           const amount = parseFloat(invoice.amount || 0);
                                           const tax = parseFloat(invoice.tax || 0);
                                           const totalAmount = parseFloat(invoice.totalAmount || amount + tax);
-                                          
-                                          // 從發票的 items 中取得廠商和管別資訊
-                                          let supplierId = null;
-                                          let warehouse = '-';
-                                          
-                                          // 優先從發票本身取得（如果有的話）
-                                          if (invoice.supplierId) {
-                                            supplierId = invoice.supplierId;
-                                          } else if (invoice.items && invoice.items.length > 0) {
-                                            // 從第一個 item 取得 supplierId
+
+                                          let supplierId = invoice.supplierId || null;
+                                          let warehouse = invoice.warehouse || '-';
+
+                                          if (!supplierId && invoice.items && invoice.items.length > 0) {
                                             supplierId = invoice.items[0].supplierId;
                                           }
-                                          
-                                          // 取得管別資訊
-                                          if (invoice.warehouse) {
-                                            warehouse = invoice.warehouse;
-                                          } else if (invoice.items && invoice.items.length > 0) {
-                                            // 從第一個 item 的 purchaseId 查找進貨單取得管別
-                                            const firstPurchaseId = invoice.items[0].purchaseId;
-                                            // 這裡需要從 purchases 中查找，但我們先使用發票本身的資訊
-                                            // 如果沒有，則顯示 '-'
-                                          }
-                                          
+
                                           const supplierName = supplierId ? getSupplierName(supplierId) : '未知廠商';
 
                                           return (
@@ -1295,8 +1425,8 @@ export default function PaymentPage() {
                                               return sum + parseFloat(invoice.tax || 0);
                                             }, 0).toFixed(2)}
                                           </td>
-                                          <td className="px-3 py-2 text-right text-blue-600">
-                                            NT$ {parseFloat(payment.amount).toFixed(2)}
+                                          <td className="px-3 py-2 text-right text-indigo-600">
+                                            NT$ {Number(order.netAmount).toLocaleString()}
                                           </td>
                                         </tr>
                                       </tbody>

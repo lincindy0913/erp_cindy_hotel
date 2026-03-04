@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 /**
  * 取得傳票完整資料
@@ -16,7 +17,7 @@ export async function GET(request, { params }) {
     });
 
     if (!invoice) {
-      return NextResponse.json({ error: '發票不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '發票不存在', 404);
     }
 
     // 從發票的 details 中取得進貨單資訊
@@ -123,7 +124,6 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(voucherData);
   } catch (error) {
-    console.error('取得傳票資料錯誤:', error);
-    return NextResponse.json({ error: '取得傳票資料失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

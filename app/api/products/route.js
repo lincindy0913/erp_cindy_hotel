@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +25,7 @@ export async function GET(request) {
 
     return NextResponse.json(products);
   } catch (error) {
-    console.error('查詢產品錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -34,18 +34,18 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.code || !data.name || !data.costPrice || !data.salesPrice) {
-      return NextResponse.json({ error: '缺少必填欄位' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
 
     const existing = await prisma.product.findUnique({ where: { code: data.code } });
     if (existing) {
-      return NextResponse.json({ error: '產品代碼已存在' }, { status: 409 });
+      return createErrorResponse('PRODUCT_CODE_DUPLICATE', '產品代碼已存在', 409);
     }
 
     const isInStock = data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是';
 
     if (isInStock && !data.warehouseLocation) {
-      return NextResponse.json({ error: '列入庫存時必須填寫倉庫位置' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '列入庫存時必須填寫倉庫位置', 400);
     }
 
     const newProduct = await prisma.product.create({
@@ -65,7 +65,6 @@ export async function POST(request) {
 
     return NextResponse.json(newProduct, { status: 201 });
   } catch (error) {
-    console.error('建立產品錯誤:', error);
-    return NextResponse.json({ error: '建立產品失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

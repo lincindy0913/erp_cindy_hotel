@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function PUT(request, { params }) {
   try {
@@ -8,7 +9,7 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.expense.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '支出紀錄不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '支出紀錄不存在', 404);
     }
 
     const actualPaymentDate = data.actualPaymentDate || existing.actualPaymentDate;
@@ -37,8 +38,7 @@ export async function PUT(request, { params }) {
       updatedAt: updated.updatedAt.toISOString()
     });
   } catch (error) {
-    console.error('更新支出紀錄錯誤:', error);
-    return NextResponse.json({ error: '更新支出紀錄失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -48,13 +48,12 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.expense.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '支出紀錄不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '支出紀錄不存在', 404);
     }
 
     await prisma.expense.delete({ where: { id } });
     return NextResponse.json({ message: '支出紀錄已刪除' });
   } catch (error) {
-    console.error('刪除支出紀錄錯誤:', error);
-    return NextResponse.json({ error: '刪除支出紀錄失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

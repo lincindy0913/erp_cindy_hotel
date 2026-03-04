@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+
+export const dynamic = 'force-dynamic';
 
 // Helper: recalculate account balance
 async function recalcBalance(tx, accountId) {
@@ -35,6 +38,60 @@ async function recalcBalance(tx, accountId) {
   });
 }
 
+export async function GET(request, { params }) {
+  try {
+    const id = parseInt(params.id);
+
+    const transaction = await prisma.cashTransaction.findUnique({
+      where: { id },
+      include: {
+        account: { select: { id: true, name: true, type: true, warehouse: true } },
+        category: { select: { id: true, name: true, type: true } },
+        transferAccount: { select: { id: true, name: true, type: true, warehouse: true } },
+      }
+    });
+
+    if (!transaction) {
+      return createErrorResponse('NOT_FOUND', '交易不存在', 404);
+    }
+
+    // If reversed, fetch the reversal transaction info
+    let reversedByInfo = null;
+    if (transaction.reversedById) {
+      const reversedBy = await prisma.cashTransaction.findUnique({
+        where: { id: transaction.reversedById },
+        select: { id: true, transactionNo: true, transactionDate: true }
+      });
+      reversedByInfo = reversedBy;
+    }
+
+    // If this is a reversal, fetch the original transaction info
+    let reversalOfInfo = null;
+    if (transaction.reversalOfId) {
+      const reversalOf = await prisma.cashTransaction.findUnique({
+        where: { id: transaction.reversalOfId },
+        select: { id: true, transactionNo: true, transactionDate: true }
+      });
+      reversalOfInfo = reversalOf;
+    }
+
+    return NextResponse.json({
+      ...transaction,
+      amount: Number(transaction.amount),
+      fee: Number(transaction.fee),
+      createdAt: transaction.createdAt.toISOString(),
+      updatedAt: transaction.updatedAt.toISOString(),
+      isReversal: transaction.isReversal,
+      reversedById: transaction.reversedById,
+      reversedByInfo,
+      reversalOfId: transaction.reversalOfId,
+      reversalOfInfo,
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
 export async function PUT(request, { params }) {
   try {
     const id = parseInt(params.id);
@@ -42,12 +99,19 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.cashTransaction.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '交易不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '交易不存在', 404);
     }
 
     // 移轉交易不允許單獨編輯
     if (existing.type === '移轉' || existing.type === '移轉入') {
-      return NextResponse.json({ error: '移轉交易無法單獨編輯，請刪除後重新建立' }, { status: 400 });
+      return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', '移轉交易無法單獨編輯，請刪除後重新建立', 403);
+    }
+
+    // 系統產生的交易不可修改金額或帳戶
+    if (existing.sourceType && existing.sourceType !== 'manual') {
+      if (data.amount !== undefined || data.accountId !== undefined) {
+        return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', '系統產生的交易不可修改金額或帳戶', 403);
+      }
     }
 
     const updateData = {};
@@ -78,11 +142,13 @@ export async function PUT(request, { params }) {
       amount: Number(result.amount),
       fee: Number(result.fee),
       createdAt: result.createdAt.toISOString(),
-      updatedAt: result.updatedAt.toISOString()
+      updatedAt: result.updatedAt.toISOString(),
+      isReversal: result.isReversal,
+      reversedById: result.reversedById,
+      reversalOfId: result.reversalOfId,
     });
   } catch (error) {
-    console.error('更新資金交易錯誤:', error);
-    return NextResponse.json({ error: '更新失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -92,7 +158,7 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.cashTransaction.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '交易不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '交易不存在', 404);
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -121,7 +187,6 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('刪除資金交易錯誤:', error);
-    return NextResponse.json({ error: '刪除失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

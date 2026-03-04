@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
+import { ROLE_LABELS, ROLE_COLORS } from '@/lib/permissions';
 
 export default function UnauthorizedPage() {
   const { data: session } = useSession();
+
+  const userRoles = session?.user?.roles || [];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-rose-100">
@@ -15,12 +18,27 @@ export default function UnauthorizedPage() {
           </svg>
         </div>
         <h1 className="text-2xl font-bold text-red-600 mb-2">權限不足</h1>
-        <p className="text-gray-600 mb-6">您沒有權限存取此頁面，請聯繫管理員開通權限</p>
+        <p className="text-gray-600 mb-6">您無此功能的存取權限</p>
 
         {session && (
-          <p className="text-sm text-gray-500 mb-4">
-            目前登入: {session.user?.name} ({session.user?.email})
-          </p>
+          <div className="mb-4 text-sm text-gray-500">
+            <p>
+              目前登入: {session.user?.name} ({session.user?.email})
+            </p>
+            {userRoles.length > 0 && (
+              <div className="flex justify-center gap-1 mt-2">
+                {userRoles.map(code => {
+                  const colorClass = ROLE_COLORS[code] || 'bg-gray-100 text-gray-800';
+                  return (
+                    <span key={code} className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${colorClass}`}>
+                      {ROLE_LABELS[code] || code}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <p className="mt-2 text-gray-400">如需開通權限，請聯繫系統管理員</p>
+          </div>
         )}
 
         <div className="flex gap-3 justify-center">

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ExportButtons from '@/components/ExportButtons';
+import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
 export default function ProductsPage() {
   const { data: session } = useSession();
@@ -278,45 +280,7 @@ export default function ProductsPage() {
     alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n數量：${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}\n廠商：${product.supplierId ? getSupplierName(product.supplierId) : '未設定'}`);
   }
 
-  function handleExport() {
-    try {
-      // 轉換為 CSV 格式
-      const headers = ['ID', '產品代碼', '產品名稱', '類別', '單位', '成本價', '數量', '列入庫存', '倉庫位置', '會計科目', '廠商'];
-      const rows = products.map(p => [
-        p.id,
-        p.code,
-        p.name,
-        p.category || '',
-        p.unit || '',
-        p.costPrice,
-        p.salesPrice,
-        p.isInStock ? '是' : '否',
-        p.warehouseLocation || '',
-        p.accountingSubject || '',
-        p.supplierId ? getSupplierName(p.supplierId) : ''
-      ]);
-
-      const csv = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n');
-
-      // 建立 Blob 並下載
-      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }); // 加入 BOM 支援中文
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `產品清單_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-      
-      alert('產品資料已匯出！');
-    } catch (error) {
-      console.error('匯出失敗:', error);
-      alert('匯出失敗，請稍後再試');
-    }
-  }
+  // Old handleExport removed - replaced by ExportButtons component
 
   function handleImport() {
     const input = document.createElement('input');
@@ -781,12 +745,17 @@ export default function ProductsPage() {
             >
               {searchKeyword ? '清除' : '搜尋'}
             </button>
-            <button
-              onClick={handleExport}
-              className="px-4 py-2 text-blue-600 hover:underline"
-            >
-              匯出
-            </button>
+            <ExportButtons
+              data={products.map(p => ({
+                ...p,
+                isInStockLabel: p.isInStock ? '是' : '否',
+                supplierName: p.supplierId ? getSupplierName(p.supplierId) : '-',
+              }))}
+              columns={EXPORT_CONFIGS.products.columns}
+              exportName={EXPORT_CONFIGS.products.filename}
+              title="產品主檔管理"
+              sheetName="產品主檔"
+            />
             {isLoggedIn && (
               <button
                 onClick={handleImport}

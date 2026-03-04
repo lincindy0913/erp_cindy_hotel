@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function PUT(request, { params }) {
   try {
@@ -22,8 +23,7 @@ export async function PUT(request, { params }) {
       createdAt: category.createdAt.toISOString()
     });
   } catch (error) {
-    console.error('更新資金類別錯誤:', error);
-    return NextResponse.json({ error: '更新失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -33,13 +33,12 @@ export async function DELETE(request, { params }) {
 
     const txCount = await prisma.cashTransaction.count({ where: { categoryId: id } });
     if (txCount > 0) {
-      return NextResponse.json({ error: '此類別有交易紀錄，無法刪除' }, { status: 400 });
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', '此類別有交易紀錄，無法刪除', 400);
     }
 
     await prisma.cashCategory.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('刪除資金類別錯誤:', error);
-    return NextResponse.json({ error: '刪除失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

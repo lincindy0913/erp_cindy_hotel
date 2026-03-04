@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function PUT(request, { params }) {
   try {
@@ -8,7 +9,7 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.purchaseMaster.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '進貨單不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '進貨單不存在', 404);
     }
 
     await prisma.purchaseDetail.deleteMany({ where: { purchaseId: id } });
@@ -64,8 +65,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('更新進貨單錯誤:', error);
-    return NextResponse.json({ error: '更新進貨單失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -75,13 +75,12 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.purchaseMaster.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '進貨單不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '進貨單不存在', 404);
     }
 
     await prisma.purchaseMaster.delete({ where: { id } });
     return NextResponse.json({ message: '進貨單已刪除' });
   } catch (error) {
-    console.error('刪除進貨單錯誤:', error);
-    return NextResponse.json({ error: '刪除進貨單失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

@@ -53,6 +53,58 @@
   --cashflow-primary: #059669;
   --cashflow-light: #D1FAE5;
   --cashflow-dark: #047857;
+
+  --pms-income-primary: #0D9488;
+  --pms-income-light: #CCFBF1;
+  --pms-income-dark: #0F766E;
+
+  --monthend-primary: #475569;
+  --monthend-light: #F1F5F9;
+  --monthend-dark: #334155;
+
+  --loans-primary: #6366F1;
+  --loans-light: #E0E7FF;
+  --loans-dark: #4F46E5;
+
+  --checks-primary: #7C3AED;
+  --checks-light: #EDE9FE;
+  --checks-dark: #6D28D9;
+
+  --reconciliation-primary: #7C3AED;
+  --reconciliation-light: #EDE9FE;
+  --reconciliation-dark: #6D28D9;
+
+  --rentals-primary: #0D9488;
+  --rentals-light: #CCFBF1;
+  --rentals-dark: #0F766E;
+
+  --cashier-primary: #D97706;
+  --cashier-light: #FEF3C7;
+  --cashier-dark: #B45309;
+
+  --audit-primary: #71717A;
+  --audit-light: #F4F4F5;
+  --audit-dark: #52525B;
+
+  --notifications-primary: #F59E0B;
+  --notifications-light: #FEF3C7;
+  --notifications-dark: #D97706;
+
+  --settings-primary: #6B7280;
+  --settings-light: #F3F4F6;
+  --settings-dark: #4B5563;
+
+  --year-end-primary: #7C3AED;
+  --year-end-light: #EDE9FE;
+  --year-end-dark: #6D28D9;
+
+  --backup-primary: #DC2626;
+  --backup-light: #FEE2E2;
+  --backup-dark: #B91C1C;
+
+  --import-primary: #D97706;
+  --import-light: #FEF3C7;
+  --import-dark: #B45309;
 }
 
 body {
@@ -72,6 +124,19 @@ body {
 .nav-expenses { background: linear-gradient(135deg, var(--expenses-primary), var(--expenses-dark)); }
 .nav-analytics { background: linear-gradient(135deg, var(--analytics-primary), var(--analytics-dark)); }
 .nav-cashflow { background: linear-gradient(135deg, var(--cashflow-primary), var(--cashflow-dark)); }
+.nav-pms-income { background: linear-gradient(135deg, var(--pms-income-primary), var(--pms-income-dark)); }
+.nav-monthend { background: linear-gradient(135deg, var(--monthend-primary), var(--monthend-dark)); }
+.nav-loans { background: linear-gradient(135deg, var(--loans-primary), var(--loans-dark)); }
+.nav-checks { background: linear-gradient(135deg, var(--checks-primary), var(--checks-dark)); }
+.nav-reconciliation { background: linear-gradient(135deg, var(--reconciliation-primary), var(--reconciliation-dark)); }
+.nav-rentals { background: linear-gradient(135deg, var(--rentals-primary), var(--rentals-dark)); }
+.nav-cashier { background: linear-gradient(135deg, var(--cashier-primary), var(--cashier-dark)); }
+.nav-audit { background: linear-gradient(135deg, var(--audit-primary), var(--audit-dark)); }
+.nav-notifications { background: linear-gradient(135deg, var(--notifications-primary), var(--notifications-dark)); }
+.nav-settings { background: linear-gradient(135deg, var(--settings-primary), var(--settings-dark)); }
+.nav-year-end { background: linear-gradient(135deg, var(--year-end-primary), var(--year-end-dark)); }
+.nav-backup { background: linear-gradient(135deg, var(--backup-primary), var(--backup-dark)); }
+.nav-import { background: linear-gradient(135deg, var(--import-primary), var(--import-dark)); }
 
 /* Section header accent bars */
 .accent-dashboard { border-left: 4px solid var(--dashboard-primary); }
@@ -84,6 +149,19 @@ body {
 .accent-expenses { border-left: 4px solid var(--expenses-primary); }
 .accent-analytics { border-left: 4px solid var(--analytics-primary); }
 .accent-cashflow { border-left: 4px solid var(--cashflow-primary); }
+.accent-pms-income { border-left: 4px solid var(--pms-income-primary); }
+.accent-monthend { border-left: 4px solid var(--monthend-primary); }
+.accent-loans { border-left: 4px solid var(--loans-primary); }
+.accent-checks { border-left: 4px solid var(--checks-primary); }
+.accent-reconciliation { border-left: 4px solid var(--reconciliation-primary); }
+.accent-rentals { border-left: 4px solid var(--rentals-primary); }
+.accent-cashier { border-left: 4px solid var(--cashier-primary); }
+.accent-audit { border-left: 4px solid var(--audit-primary); }
+.accent-notifications { border-left: 4px solid var(--notifications-primary); }
+.accent-settings { border-left: 4px solid var(--settings-primary); }
+.accent-year-end { border-left: 4px solid var(--year-end-primary); }
+.accent-backup { border-left: 4px solid var(--backup-primary); }
+.accent-import { border-left: 4px solid var(--import-primary); }
 
 /* Navigation link colors */
 .link-dashboard {
@@ -176,6 +254,116 @@ body {
 .link-cashflow:hover { background: rgba(5, 150, 105, 0.2); }
 .link-cashflow.active { background: var(--cashflow-primary); color: white; }
 
+.link-pms-income {
+  color: var(--pms-income-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(13, 148, 136, 0.1);
+  transition: all 0.2s;
+}
+.link-pms-income:hover { background: rgba(13, 148, 136, 0.2); }
+.link-pms-income.active { background: var(--pms-income-primary); color: white; }
+
+.link-monthend {
+  color: var(--monthend-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(71, 85, 105, 0.1);
+  transition: all 0.2s;
+}
+.link-monthend:hover { background: rgba(71, 85, 105, 0.2); }
+.link-monthend.active { background: var(--monthend-primary); color: white; }
+
+.link-loans {
+  color: var(--loans-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(99, 102, 241, 0.1);
+  transition: all 0.2s;
+}
+.link-loans:hover { background: rgba(99, 102, 241, 0.2); }
+.link-loans.active { background: var(--loans-primary); color: white; }
+
+.link-checks {
+  color: var(--checks-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(124, 58, 237, 0.1);
+  transition: all 0.2s;
+}
+.link-checks:hover { background: rgba(124, 58, 237, 0.2); }
+.link-checks.active { background: var(--checks-primary); color: white; }
+
+.link-reconciliation {
+  color: var(--reconciliation-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(124, 58, 237, 0.1);
+  transition: all 0.2s;
+}
+.link-reconciliation:hover { background: rgba(124, 58, 237, 0.2); }
+.link-reconciliation.active { background: var(--reconciliation-primary); color: white; }
+
+.link-rentals {
+  color: var(--rentals-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(13, 148, 136, 0.1);
+  transition: all 0.2s;
+}
+.link-rentals:hover { background: rgba(13, 148, 136, 0.2); }
+.link-rentals.active { background: var(--rentals-primary); color: white; }
+
+.link-cashier {
+  color: var(--cashier-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(217, 119, 6, 0.1);
+  transition: all 0.2s;
+}
+.link-cashier:hover { background: rgba(217, 119, 6, 0.2); }
+.link-cashier.active { background: var(--cashier-primary); color: white; }
+
+.link-audit {
+  color: var(--audit-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(113, 113, 122, 0.1);
+  transition: all 0.2s;
+}
+.link-audit:hover { background: rgba(113, 113, 122, 0.2); }
+.link-audit.active { background: var(--audit-primary); color: white; }
+
+.link-notifications {
+  color: var(--notifications-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(245, 158, 11, 0.1);
+  transition: all 0.2s;
+}
+.link-notifications:hover { background: rgba(245, 158, 11, 0.2); }
+.link-notifications.active { background: var(--notifications-primary); color: white; }
+
+.link-settings {
+  color: var(--settings-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(107, 114, 128, 0.1);
+  transition: all 0.2s;
+}
+.link-settings:hover { background: rgba(107, 114, 128, 0.2); }
+.link-settings.active { background: var(--settings-primary); color: white; }
+
+.link-year-end {
+  color: var(--year-end-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(124, 58, 237, 0.1);
+  transition: all 0.2s;
+}
+.link-year-end:hover { background: rgba(124, 58, 237, 0.2); }
+.link-year-end.active { background: var(--year-end-primary); color: white; }
+
 /* Page background colors with 60% transparency (smooth, subtle tint) */
 .page-bg-dashboard { background: linear-gradient(180deg, rgba(37, 99, 235, 0.08) 0%, rgba(37, 99, 235, 0.15) 100%); }
 .page-bg-products { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
@@ -187,4 +375,16 @@ body {
 .page-bg-expenses { background: linear-gradient(180deg, rgba(225, 29, 72, 0.08) 0%, rgba(225, 29, 72, 0.15) 100%); }
 .page-bg-analytics { background: linear-gradient(180deg, rgba(8, 145, 178, 0.08) 0%, rgba(8, 145, 178, 0.15) 100%); }
 .page-bg-cashflow { background: linear-gradient(180deg, rgba(5, 150, 105, 0.08) 0%, rgba(5, 150, 105, 0.15) 100%); }
-
+.page-bg-pms-income { background: linear-gradient(180deg, rgba(13, 148, 136, 0.08) 0%, rgba(13, 148, 136, 0.15) 100%); }
+.page-bg-monthend { background: linear-gradient(180deg, rgba(71, 85, 105, 0.08) 0%, rgba(71, 85, 105, 0.15) 100%); }
+.page-bg-loans { background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.15) 100%); }
+.page-bg-checks { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
+.page-bg-reconciliation { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
+.page-bg-rentals { background: linear-gradient(180deg, rgba(13, 148, 136, 0.08) 0%, rgba(13, 148, 136, 0.15) 100%); }
+.page-bg-cashier { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
+.page-bg-audit { background: linear-gradient(180deg, rgba(113, 113, 122, 0.08) 0%, rgba(113, 113, 122, 0.15) 100%); }
+.page-bg-notifications { background: linear-gradient(180deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.15) 100%); }
+.page-bg-settings { background: linear-gradient(180deg, rgba(107, 114, 128, 0.08) 0%, rgba(107, 114, 128, 0.15) 100%); }
+.page-bg-year-end { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
+.page-bg-backup { background: linear-gradient(180deg, rgba(220, 38, 38, 0.08) 0%, rgba(220, 38, 38, 0.15) 100%); }
+.page-bg-import { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
 
     if (!startDate || !endDate) {
-      return NextResponse.json({ error: '請提供起始與結束日期' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供起始與結束日期', 400);
     }
 
     const where = {
@@ -82,7 +83,6 @@ export async function GET(request) {
       transactionCount: transactions.length
     });
   } catch (error) {
-    console.error('產生現金流量表錯誤:', error);
-    return NextResponse.json({ error: '產生報表失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

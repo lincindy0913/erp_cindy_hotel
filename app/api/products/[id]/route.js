@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export async function GET(request, { params }) {
   try {
@@ -7,11 +8,11 @@ export async function GET(request, { params }) {
     const product = await prisma.product.findUnique({ where: { id } });
 
     if (!product) {
-      return NextResponse.json({ error: '產品不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '產品不存在', 404);
     }
     return NextResponse.json(product);
   } catch (error) {
-    return NextResponse.json({ error: '查詢產品失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -22,13 +23,13 @@ export async function PUT(request, { params }) {
 
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '產品不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '產品不存在', 404);
     }
 
     const isInStock = data.isInStock === true || data.isInStock === 'true' || data.isInStock === '是';
 
     if (isInStock && !data.warehouseLocation) {
-      return NextResponse.json({ error: '列入庫存時必須填寫倉庫位置' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '列入庫存時必須填寫倉庫位置', 400);
     }
 
     const updated = await prisma.product.update({
@@ -49,7 +50,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(updated);
   } catch (error) {
-    return NextResponse.json({ error: '更新產品失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -59,12 +60,12 @@ export async function DELETE(request, { params }) {
 
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) {
-      return NextResponse.json({ error: '產品不存在' }, { status: 404 });
+      return createErrorResponse('NOT_FOUND', '產品不存在', 404);
     }
 
     await prisma.product.delete({ where: { id } });
     return NextResponse.json({ message: '產品已刪除' });
   } catch (error) {
-    return NextResponse.json({ error: '刪除產品失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

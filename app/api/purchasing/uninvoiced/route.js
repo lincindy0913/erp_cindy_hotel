@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,6 @@ export async function GET(request) {
 
     return NextResponse.json(uninvoicedItems);
   } catch (error) {
-    console.error('查詢未核銷進貨單品項錯誤:', error);
-    return NextResponse.json({ error: '查詢失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

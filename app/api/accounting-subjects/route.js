@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +12,7 @@ export async function GET() {
     });
     return NextResponse.json(subjects);
   } catch (error) {
-    console.error('Error fetching accounting subjects:', error);
-    return NextResponse.json({ error: '取得會計科目失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -47,12 +47,12 @@ export async function POST(request) {
     // 單筆新增
     const { category, subcategory, code, name } = body;
     if (!category || !subcategory || !code || !name) {
-      return NextResponse.json({ error: '所有欄位皆為必填' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '所有欄位皆為必填', 400);
     }
 
     const existing = await prisma.accountingSubject.findUnique({ where: { code } });
     if (existing) {
-      return NextResponse.json({ error: `代碼 ${code} 已存在` }, { status: 400 });
+      return createErrorResponse('CONFLICT_UNIQUE', `代碼 ${code} 已存在`, 409);
     }
 
     const subject = await prisma.accountingSubject.create({
@@ -60,8 +60,7 @@ export async function POST(request) {
     });
     return NextResponse.json(subject, { status: 201 });
   } catch (error) {
-    console.error('Error creating accounting subject:', error);
-    return NextResponse.json({ error: '新增會計科目失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -72,7 +71,7 @@ export async function DELETE(request) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ error: '缺少 id 參數' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id 參數', 400);
     }
 
     await prisma.accountingSubject.delete({
@@ -81,7 +80,6 @@ export async function DELETE(request) {
 
     return NextResponse.json({ message: '刪除成功' });
   } catch (error) {
-    console.error('Error deleting accounting subject:', error);
-    return NextResponse.json({ error: '刪除會計科目失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

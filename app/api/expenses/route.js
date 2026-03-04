@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +20,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢支出紀錄錯誤:', error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -29,7 +29,7 @@ export async function POST(request) {
     const data = await request.json();
 
     if (!data.invoiceId || !data.invoiceNo || !data.amount) {
-      return NextResponse.json({ error: '缺少必填欄位：發票ID、發票號碼和金額' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：發票ID、發票號碼和金額', 400);
     }
 
     const newExpense = await prisma.expense.create({
@@ -55,7 +55,6 @@ export async function POST(request) {
       updatedAt: newExpense.updatedAt.toISOString()
     }, { status: 201 });
   } catch (error) {
-    console.error('建立支出紀錄錯誤:', error);
-    return NextResponse.json({ error: '建立支出紀錄失敗' }, { status: 500 });
+    return handleApiError(error);
   }
 }

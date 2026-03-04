@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ExportButtons from '@/components/ExportButtons';
+import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
 export default function PurchasingPage() {
   const { data: session } = useSession();
@@ -46,6 +48,7 @@ export default function PurchasingPage() {
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [recentPurchases, setRecentPurchases] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [priceCache, setPriceCache] = useState(null);
   const [supplierSearch, setSupplierSearch] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
@@ -402,13 +405,21 @@ export default function PurchasingPage() {
 
   async function fetchRecentPurchases(productId) {
     setLoadingHistory(true);
+    setPriceCache(null);
     try {
-      const response = await fetch(`/api/products/${productId}/purchases`);
-      if (response.ok) {
-        const data = await response.json();
+      const [purchaseRes, cacheRes] = await Promise.all([
+        fetch(`/api/products/${productId}/purchases`),
+        fetch(`/api/products/${productId}/price-cache`).catch(() => null),
+      ]);
+      if (purchaseRes.ok) {
+        const data = await purchaseRes.json();
         setRecentPurchases((data.purchases || []).slice(0, 3));
       } else {
         setRecentPurchases([]);
+      }
+      if (cacheRes && cacheRes.ok) {
+        const cacheData = await cacheRes.json();
+        setPriceCache(cacheData);
       }
     } catch (error) {
       console.error('取得產品歷史採購記錄失敗:', error);
@@ -549,14 +560,27 @@ export default function PurchasingPage() {
         {/* 標題與操作 */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">進貨單管理</h2>
-          {isLoggedIn && (
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              ➕ 新增進貨單
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <ExportButtons
+              data={purchases.map(p => ({
+                ...p,
+                supplierName: getSupplierName(p.supplierId),
+                itemCount: p.items?.length || 0,
+              }))}
+              columns={EXPORT_CONFIGS.purchasing.columns}
+              exportName={EXPORT_CONFIGS.purchasing.filename}
+              title="進貨單管理"
+              sheetName="進貨單"
+            />
+            {isLoggedIn && (
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+              >
+                ➕ 新增進貨單
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 新增進貨單表單 */}
@@ -1054,6 +1078,40 @@ export default function PurchasingPage() {
                         </table>
                       ) : (
                         <p className="text-xs text-gray-500">此產品尚無採購記錄</p>
+                      )}
+
+                      {/* Price Cache Comparison */}
+                      {priceCache && (
+                        <div className="mt-3 pt-3 border-t border-blue-200">
+                          <h5 className="text-xs font-semibold text-blue-700 mb-1">快取比價摘要</h5>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div className="bg-white p-2 rounded">
+                              <span className="text-gray-500">最低價</span>
+                              <div className="font-bold text-green-600">NT$ {Number(priceCache.minPrice || 0).toFixed(2)}</div>
+                              {priceCache.minSupplier && <div className="text-gray-400">{priceCache.minSupplier}</div>}
+                            </div>
+                            <div className="bg-white p-2 rounded">
+                              <span className="text-gray-500">平均價</span>
+                              <div className="font-bold">NT$ {Number(priceCache.avgPrice || 0).toFixed(2)}</div>
+                            </div>
+                            <div className="bg-white p-2 rounded">
+                              <span className="text-gray-500">最高價</span>
+                              <div className="font-bold text-red-600">NT$ {Number(priceCache.maxPrice || 0).toFixed(2)}</div>
+                              {priceCache.maxSupplier && <div className="text-gray-400">{priceCache.maxSupplier}</div>}
+                            </div>
+                          </div>
+                          {newItem.unitPrice && priceCache.avgPrice && (
+                            <div className="mt-2 text-xs">
+                              {Number(newItem.unitPrice) > Number(priceCache.avgPrice) * 1.1 ? (
+                                <span className="text-red-600 font-medium">⚠ 目前單價高於平均價 {((Number(newItem.unitPrice) / Number(priceCache.avgPrice) - 1) * 100).toFixed(1)}%</span>
+                              ) : Number(newItem.unitPrice) < Number(priceCache.minPrice) ? (
+                                <span className="text-green-600 font-medium">✓ 低於歷史最低價</span>
+                              ) : (
+                                <span className="text-gray-500">價格在合理範圍內</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
