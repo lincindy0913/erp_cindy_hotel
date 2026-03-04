@@ -22,6 +22,7 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [executiveData, setExecutiveData] = useState(null);
+  const [latestReport, setLatestReport] = useState(null);
 
   // Notification state for 本日待辦 card
   const [ntfNotifications, setNtfNotifications] = useState([]);
@@ -52,6 +53,7 @@ export default function Dashboard() {
     fetchDashboardData();
     fetchNotifications();
     fetchExecutiveData();
+    fetchLatestReport();
   }, [fetchNotifications]);
 
   async function fetchDashboardData() {
@@ -75,6 +77,20 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error('取得決策儀表板資料失敗:', error);
+    }
+  }
+
+  async function fetchLatestReport() {
+    try {
+      const now = new Date();
+      const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const response = await fetch(`/api/analytics/business-report?month=${month}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLatestReport(data.report || data.generated);
+      }
+    } catch (error) {
+      console.error('取得月度報告失敗:', error);
     }
   }
 
@@ -271,40 +287,121 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Executive Risk Alerts */}
+          {/* Executive Risk Alerts + Recommendations */}
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">決策建議</h2>
               <Link href="/analytics" className="text-sm text-blue-600 hover:underline">完整分析 →</Link>
             </div>
+            {/* Risk alerts from executive API */}
+            {executiveData?.riskAlerts?.length > 0 && (
+              <div className="mb-3 space-y-2">
+                {executiveData.riskAlerts.slice(0, 3).map((alert, i) => (
+                  <div key={i} className={`px-3 py-2 rounded-lg text-xs flex items-start gap-2 ${
+                    alert.severity === 'high' ? 'bg-red-50 text-red-800' :
+                    alert.severity === 'medium' ? 'bg-amber-50 text-amber-800' :
+                    'bg-blue-50 text-blue-800'
+                  }`}>
+                    <span>{alert.severity === 'high' ? '🔴' : alert.severity === 'medium' ? '🟠' : '🟡'}</span>
+                    <div>
+                      <span className="font-medium">{alert.message}</span>
+                      {alert.action && <span className="ml-1 opacity-75">— {alert.action}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {executiveData?.recommendations?.length > 0 ? (
-              <div className="space-y-3 max-h-56 overflow-y-auto">
+              <div className="space-y-2 max-h-44 overflow-y-auto">
                 {executiveData.recommendations.map((rec, i) => (
                   <div key={i} className={`p-3 rounded-lg border-l-4 ${
-                    rec.level === 'critical' ? 'bg-red-50 border-red-500' :
-                    rec.level === 'warning' ? 'bg-amber-50 border-amber-400' :
+                    rec.priority === 1 ? 'bg-red-50 border-red-400' :
+                    rec.priority === 2 ? 'bg-amber-50 border-amber-400' :
                     'bg-blue-50 border-blue-400'
                   }`}>
                     <p className={`text-sm font-medium ${
-                      rec.level === 'critical' ? 'text-red-800' :
-                      rec.level === 'warning' ? 'text-amber-800' :
+                      rec.priority === 1 ? 'text-red-800' :
+                      rec.priority === 2 ? 'text-amber-800' :
                       'text-blue-800'
-                    }`}>{rec.title}</p>
-                    <p className={`text-xs mt-1 ${
-                      rec.level === 'critical' ? 'text-red-600' :
-                      rec.level === 'warning' ? 'text-amber-600' :
+                    }`}>{rec.priority}. {rec.action}</p>
+                    <p className={`text-xs mt-0.5 ${
+                      rec.priority === 1 ? 'text-red-600' :
+                      rec.priority === 2 ? 'text-amber-600' :
                       'text-blue-600'
                     }`}>{rec.description}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="h-56 bg-gray-50 rounded flex items-center justify-center text-gray-400">
+              <div className="h-32 bg-gray-50 rounded flex items-center justify-center text-gray-400 text-sm">
                 暫無風險警示，運營狀況良好
               </div>
             )}
           </div>
         </div>
+
+        {/* Monthly Business Report Widget */}
+        {latestReport && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xl font-semibold">
+                月度經營報告
+                <span className="ml-2 text-sm font-normal text-gray-500">
+                  {latestReport.reportYear}年{latestReport.reportMonth}月
+                </span>
+              </h2>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs px-2 py-0.5 rounded ${
+                  latestReport.status === 'approved' ? 'bg-green-100 text-green-700' :
+                  latestReport.status === 'preview' ? 'bg-blue-100 text-blue-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {latestReport.status === 'approved' ? '已簽核' : latestReport.status === 'preview' ? '即時預覽' : '草稿'}
+                </span>
+                <Link href="/analytics?tab=business-report" className="text-sm text-blue-600 hover:underline">查看完整報告 →</Link>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-500">銷貨額</p>
+                <p className="text-base font-bold text-gray-800 mt-1">
+                  NT$ {Number(latestReport.profitAnalysis?.totalSales || 0).toLocaleString()}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-500">毛利率</p>
+                <p className={`text-base font-bold mt-1 ${
+                  (latestReport.profitAnalysis?.grossMargin || 0) >= 36 ? 'text-green-700' : 'text-amber-600'
+                }`}>
+                  {latestReport.profitAnalysis?.grossMargin || 0}%
+                </p>
+                <p className="text-xs text-gray-400">目標 36%</p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-500">現金餘額</p>
+                <p className="text-base font-bold text-gray-800 mt-1">
+                  NT$ {Number(latestReport.cashFlowAnalysis?.currentBalance || 0).toLocaleString()}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-500">廠商集中度</p>
+                <p className={`text-base font-bold mt-1 ${
+                  (latestReport.riskAnalysis?.supplierConcentration?.top1Percentage || 0) > 20 ? 'text-red-600' : 'text-green-700'
+                }`}>
+                  {latestReport.riskAnalysis?.supplierConcentration?.top1Percentage || 0}%
+                </p>
+                <p className="text-xs text-gray-400">門檻 20%</p>
+              </div>
+            </div>
+            {latestReport.executiveSummary && (
+              <p className="mt-3 text-xs text-gray-500 border-t border-gray-100 pt-3 leading-relaxed">
+                {latestReport.executiveSummary.length > 200
+                  ? latestReport.executiveSummary.substring(0, 200) + '...'
+                  : latestReport.executiveSummary}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-4 mb-8 flex-wrap">
           <Link href="/purchasing" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 inline-flex items-center gap-2">

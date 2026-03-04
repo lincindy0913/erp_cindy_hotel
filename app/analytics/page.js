@@ -11,6 +11,7 @@ const ANALYTICS_TABS = [
   { key: 'payables', label: '應付帳齡' },
   { key: 'cashflow-forecast', label: '現金流預測' },
   { key: 'department', label: '部門支出' },
+  { key: 'business-report', label: '月度報告' },
 ];
 
 export default function AnalyticsPage() {
@@ -38,6 +39,15 @@ export default function AnalyticsPage() {
   const [forecastLoading, setForecastLoading] = useState(false);
   const [forecastDays, setForecastDays] = useState(30);
 
+  // Business report state
+  const [businessReport, setBusinessReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportMonth, setReportMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [reportApproving, setReportApproving] = useState(false);
+
   useEffect(() => {
     fetchProducts();
     fetchPriceComparison();
@@ -48,6 +58,7 @@ export default function AnalyticsPage() {
     if (activeTab === 'supplier-risk' && !supplierRisk) fetchSupplierRisk();
     if (activeTab === 'payables' && !payablesAging) fetchPayablesAging();
     if (activeTab === 'cashflow-forecast' && !cashForecast) fetchCashForecast();
+    if (activeTab === 'business-report') fetchBusinessReport(reportMonth);
   }, [activeTab]);
 
   useEffect(() => {
@@ -142,6 +153,37 @@ export default function AnalyticsPage() {
       console.error('取得現金流預測失敗:', error);
     }
     setForecastLoading(false);
+  }
+
+  async function fetchBusinessReport(month) {
+    setReportLoading(true);
+    setBusinessReport(null);
+    try {
+      const res = await fetch(`/api/analytics/business-report?month=${month}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBusinessReport(data);
+      }
+    } catch (error) {
+      console.error('取得月度報告失敗:', error);
+    }
+    setReportLoading(false);
+  }
+
+  async function approveReport() {
+    setReportApproving(true);
+    try {
+      const res = await fetch(`/api/analytics/business-report?month=${reportMonth}`, {
+        method: 'PATCH',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBusinessReport(prev => ({ ...prev, report: data.report }));
+      }
+    } catch (error) {
+      console.error('簽核失敗:', error);
+    }
+    setReportApproving(false);
   }
 
   // 按月份分組部門支出
@@ -539,6 +581,233 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Business Report Tab */}
+        {activeTab === 'business-report' && (
+          <div className="space-y-6">
+            {/* Month selector */}
+            <div className="flex items-center gap-4 bg-white rounded-lg shadow-sm p-4">
+              <label className="text-sm text-gray-600 font-medium">選擇月份：</label>
+              <input
+                type="month"
+                value={`${reportMonth.substring(0, 4)}-${reportMonth.substring(4, 6)}`}
+                onChange={e => {
+                  const val = e.target.value.replace('-', '');
+                  setReportMonth(val);
+                  fetchBusinessReport(val);
+                }}
+                className="px-3 py-1.5 border rounded-lg text-sm"
+              />
+              <button
+                onClick={() => fetchBusinessReport(reportMonth)}
+                className="px-3 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700"
+              >
+                重新載入
+              </button>
+            </div>
+
+            {reportLoading ? (
+              <div className="text-center py-12 text-gray-500">載入月度報告中...</div>
+            ) : businessReport ? (() => {
+              const r = businessReport.report || businessReport.generated;
+              if (!r) return <div className="text-center py-12 text-gray-400">無報告資料</div>;
+              const profit = r.profitAnalysis || {};
+              const risk = r.riskAnalysis || {};
+              const cashFlow = r.cashFlowAnalysis || {};
+              const recs = r.decisionRecommendations || [];
+              const isLive = !businessReport.report;
+              const isApproved = r.status === 'approved';
+
+              return (
+                <div className="space-y-4">
+                  {/* Report header */}
+                  <div className="bg-white rounded-lg shadow-sm p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-800">
+                          {r.reportYear}年{r.reportMonth}月 經營分析報告
+                        </h3>
+                        {r.reportNo && <p className="text-xs text-gray-400 mt-0.5">報告編號：{r.reportNo}</p>}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            isLive ? 'bg-blue-100 text-blue-700' :
+                            isApproved ? 'bg-green-100 text-green-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {isLive ? '即時預覽' : isApproved ? '已簽核' : '草稿'}
+                          </span>
+                          {r.generatedAt && (
+                            <span className="text-xs text-gray-400">
+                              生成於 {new Date(r.generatedAt).toLocaleDateString('zh-TW')}
+                            </span>
+                          )}
+                          {isApproved && r.approvedBy && (
+                            <span className="text-xs text-green-600">簽核人：{r.approvedBy}</span>
+                          )}
+                        </div>
+                      </div>
+                      {!isLive && !isApproved && (
+                        <button
+                          onClick={approveReport}
+                          disabled={reportApproving}
+                          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {reportApproving ? '簽核中...' : '簽核批准'}
+                        </button>
+                      )}
+                    </div>
+                    {r.executiveSummary && (
+                      <p className="mt-3 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-3">
+                        {r.executiveSummary}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Profit Analysis */}
+                  {profit.totalSales !== undefined && (
+                    <div className="bg-white rounded-lg shadow-sm p-5">
+                      <h4 className="font-semibold text-gray-700 mb-4">利潤分析</h4>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div className="text-center p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500">銷貨額</p>
+                          <p className="text-lg font-bold text-gray-800 mt-1">NT$ {Number(profit.totalSales || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="text-center p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500">採購額</p>
+                          <p className="text-lg font-bold text-gray-800 mt-1">NT$ {Number(profit.totalPurchase || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="text-center p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500">毛利</p>
+                          <p className={`text-lg font-bold mt-1 ${(profit.grossProfit || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            NT$ {Number(profit.grossProfit || 0).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="text-center p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500">毛利率</p>
+                          <p className={`text-lg font-bold mt-1 ${(profit.grossMargin || 0) >= (profit.targetGrossMargin || 36) ? 'text-green-700' : 'text-amber-600'}`}>
+                            {profit.grossMargin || 0}%
+                          </p>
+                          <p className="text-xs text-gray-400">目標 {profit.targetGrossMargin || 36}%</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          profit.status === 'achieved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {profit.status === 'achieved' ? '✅ 達成目標' : `⚠️ 目標達成率 ${profit.achievement}%`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Risk Analysis */}
+                  {risk.supplierConcentration && (
+                    <div className="bg-white rounded-lg shadow-sm p-5">
+                      <h4 className="font-semibold text-gray-700 mb-4">風險分析</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm font-medium text-gray-700 mb-2">廠商集中度風險</p>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">最大廠商佔比</span>
+                              <span className={`font-medium ${(risk.supplierConcentration.top1Percentage || 0) > 20 ? 'text-red-600' : 'text-green-600'}`}>
+                                {risk.supplierConcentration.top1Percentage || 0}%
+                                {(risk.supplierConcentration.top1Percentage || 0) > 20 ? ' 🔴' : ' ✅'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">Top 3 廠商佔比</span>
+                              <span className={`font-medium ${(risk.supplierConcentration.top3Percentage || 0) > 50 ? 'text-red-600' : 'text-green-600'}`}>
+                                {risk.supplierConcentration.top3Percentage || 0}%
+                                {(risk.supplierConcentration.top3Percentage || 0) > 50 ? ' 🔴' : ' ✅'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">廠商數量</span>
+                              <span className="font-medium text-gray-700">{risk.supplierConcentration.supplierCount || 0} 家</span>
+                            </div>
+                            <div className="mt-2">
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                risk.supplierConcentration.riskLevel === 'high' ? 'bg-red-100 text-red-700' :
+                                risk.supplierConcentration.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {risk.supplierConcentration.riskLevel === 'high' ? '高風險' :
+                                 risk.supplierConcentration.riskLevel === 'medium' ? '中風險' : '低風險'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm font-medium text-gray-700 mb-2">現金流風險</p>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-500">當前現金餘額</span>
+                              <span className={`font-medium ${(risk.cashShortage?.currentCash || 0) < 100000 ? 'text-red-600' : 'text-green-600'}`}>
+                                NT$ {Number(risk.cashShortage?.currentCash || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="mt-2">
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                risk.cashShortage?.riskLevel === 'critical' ? 'bg-red-100 text-red-700' :
+                                risk.cashShortage?.riskLevel === 'high' ? 'bg-amber-100 text-amber-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {risk.cashShortage?.riskLevel === 'critical' ? '危急' :
+                                 risk.cashShortage?.riskLevel === 'high' ? '高風險' : '正常'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Decision Recommendations */}
+                  {recs.length > 0 && (
+                    <div className="bg-white rounded-lg shadow-sm p-5">
+                      <h4 className="font-semibold text-gray-700 mb-4">決策建議（按優先級）</h4>
+                      <div className="space-y-3">
+                        {recs.map((rec, i) => (
+                          <div key={i} className={`p-4 rounded-lg border-l-4 ${
+                            rec.priority === 1 ? 'bg-red-50 border-red-400' :
+                            rec.priority === 2 ? 'bg-amber-50 border-amber-400' :
+                            'bg-blue-50 border-blue-400'
+                          }`}>
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <span className={`text-sm font-semibold ${
+                                  rec.priority === 1 ? 'text-red-800' :
+                                  rec.priority === 2 ? 'text-amber-800' :
+                                  'text-blue-800'
+                                }`}>
+                                  {rec.priority}. {rec.action}
+                                </span>
+                                <p className={`text-xs mt-1 ${
+                                  rec.priority === 1 ? 'text-red-600' :
+                                  rec.priority === 2 ? 'text-amber-600' :
+                                  'text-blue-600'
+                                }`}>{rec.description}</p>
+                                {rec.expectedImpact && (
+                                  <p className="text-xs text-gray-500 mt-1">預期效果：{rec.expectedImpact}</p>
+                                )}
+                              </div>
+                              {rec.timeline && (
+                                <span className="text-xs text-gray-400 whitespace-nowrap ml-4">{rec.timeline}</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              <div className="text-center py-12 text-gray-400">無法載入月度報告</div>
+            )}
+          </div>
         )}
 
         {/* 部門支出 Tab */}

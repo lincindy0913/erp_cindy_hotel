@@ -550,6 +550,96 @@ export async function POST(request) {
       return { monthEnd, createdReports };
     });
 
+    // ==========================================
+    // spec13 v9 STEP 9: Auto-generate MonthlyBusinessReport (async, non-blocking)
+    // ==========================================
+    const reportNo = `RPT-${year}${String(month).padStart(2, '0')}-001`;
+    try {
+      const purchaseTotal = reports[0]?.data?.totalAmount || 0;
+      const salesTotal = reports[1]?.data?.totalAmount || 0;
+      const expenseTotal = reports[2]?.data?.totalAmount || 0;
+      const grossMargin = salesTotal > 0 ? ((salesTotal - purchaseTotal) / salesTotal * 100).toFixed(1) : 0;
+
+      const profitAnalysis = {
+        revenue: Math.round(salesTotal),
+        cogs: Math.round(purchaseTotal),
+        grossProfit: Math.round(salesTotal - purchaseTotal),
+        grossMarginPct: Number(grossMargin),
+        operatingExpenses: Math.round(expenseTotal),
+        operatingProfit: Math.round(salesTotal - purchaseTotal - expenseTotal),
+        diagnosis: grossMargin < 20
+          ? '毛利率偏低，建議檢視採購成本或調整售價結構'
+          : grossMargin > 50
+          ? '毛利率良好，持續維持成本控制'
+          : '毛利率正常',
+      };
+
+      const cashByType = reports[3]?.data?.byAccountType || [];
+      const totalIncome = cashByType.reduce((s, t) => s + (t.income || 0), 0);
+      const totalExpCash = cashByType.reduce((s, t) => s + (t.expense || 0), 0);
+      const cashFlowAnalysis = {
+        operatingInflow: Math.round(totalIncome),
+        operatingOutflow: Math.round(totalExpCash),
+        netCashFlow: Math.round(totalIncome - totalExpCash),
+        diagnosis: (totalIncome - totalExpCash) < 0
+          ? '本月淨現金流為負，需關注資金充裕度'
+          : '本月淨現金流為正，資金狀況穩健',
+      };
+
+      const decisionRecommendations = [];
+      if (Number(grossMargin) < 20) {
+        decisionRecommendations.push({
+          priority: 1,
+          action: '檢視採購成本',
+          description: `本月毛利率 ${grossMargin}%，低於建議值 20%`,
+          expectedImpact: '提升毛利率 5–10%',
+          timeline: '下個月',
+          owner: 'manager',
+        });
+      }
+      if ((totalIncome - totalExpCash) < 0) {
+        decisionRecommendations.push({
+          priority: 2,
+          action: '加速應收帳款回收',
+          description: '本月淨現金流為負，建議追催未收款項',
+          expectedImpact: '改善現金流',
+          timeline: '兩週內',
+          owner: 'finance',
+        });
+      }
+
+      const executiveSummary = `${year}年${month}月營運摘要：銷貨收入 NT$${Math.round(salesTotal).toLocaleString()}，` +
+        `進貨成本 NT$${Math.round(purchaseTotal).toLocaleString()}，毛利率 ${grossMargin}%，` +
+        `淨現金流 NT$${Math.round(totalIncome - totalExpCash).toLocaleString()}。`;
+
+      await prisma.monthlyBusinessReport.upsert({
+        where: { reportNo },
+        create: {
+          reportNo,
+          reportYear: year,
+          reportMonth: month,
+          warehouse: warehouse || null,
+          status: 'draft',
+          profitAnalysis,
+          cashFlowAnalysis,
+          decisionRecommendations,
+          executiveSummary,
+          generatedAt: new Date(),
+          generatedBy: body.closedBy || 'system',
+        },
+        update: {
+          profitAnalysis,
+          cashFlowAnalysis,
+          decisionRecommendations,
+          executiveSummary,
+          generatedAt: new Date(),
+          status: 'draft',
+        },
+      });
+    } catch (reportErr) {
+      console.error('月結業務報告生成失敗（非阻斷）:', reportErr.message);
+    }
+
     return NextResponse.json({
       success: true,
       id: result.monthEnd.id,
@@ -560,6 +650,7 @@ export async function POST(request) {
       closedAt: result.monthEnd.closedAt.toISOString(),
       preChecks,
       reports: result.createdReports,
+      businessReport: reportNo,
       summary: {
         purchaseCount: reports[0]?.data.totalCount || 0,
         purchaseTotal: Math.round(reports[0]?.data.totalAmount || 0),

@@ -1123,6 +1123,9 @@ model AuditLog {
   ipAddress       String?  @map("ip_address") @db.VarChar(45)
   createdAt       DateTime @default(now()) @map("created_at")
 
+  snapshots          AuditSnapshot[]
+  criticalOperations CriticalOperationRecord[]
+
   @@index([action])
   @@index([targetModule])
   @@index([userId])
@@ -1445,8 +1448,10 @@ model BankReconciliation {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  account CashAccount          @relation(fields: [accountId], references: [id])
-  import  BankStatementImport? @relation(fields: [importId], references: [id])
+  account             CashAccount                @relation(fields: [accountId], references: [id])
+  import              BankStatementImport?       @relation(fields: [importId], references: [id])
+  creditCardLines     CreditCardStatementLine[]
+  txSuggestions       BankTransactionSuggestion[]
 
   @@unique([accountId, statementYear, statementMonth])
   @@index([accountId])
@@ -1944,4 +1949,197 @@ model BackupVerification {
   @@index([backupRecordId])
   @@index([result])
   @@map("backup_verifications")
+}
+
+// ============================================
+// 每月經營分析報告 (spec13 v9 / spec16 v5)
+// ============================================
+
+model MonthlyBusinessReport {
+  id                     Int       @id @default(autoincrement())
+  reportNo               String    @unique @map("report_no") @db.VarChar(50) // RPT-YYYYMM-XXX
+  reportYear             Int       @map("report_year")
+  reportMonth            Int       @map("report_month")
+  warehouse              String?   @db.VarChar(50)
+  status                 String    @default("draft") @db.VarChar(20) // draft, pending_approval, approved, rejected
+  profitAnalysis         Json?     @map("profit_analysis")
+  cashFlowAnalysis       Json?     @map("cash_flow_analysis")
+  riskAnalysis           Json?     @map("risk_analysis")
+  financialEfficiency    Json?     @map("financial_efficiency")
+  decisionRecommendations Json?   @map("decision_recommendations")
+  executiveSummary       String?   @map("executive_summary") @db.Text
+  generatedAt            DateTime? @map("generated_at")
+  generatedBy            String?   @map("generated_by") @db.VarChar(255)
+  approvedBy             String?   @map("approved_by") @db.VarChar(255)
+  approvedAt             DateTime? @map("approved_at")
+  rejectedBy             String?   @map("rejected_by") @db.VarChar(255)
+  rejectedAt             DateTime? @map("rejected_at")
+  rejectionReason        String?   @map("rejection_reason") @db.Text
+  sentToEmail            Boolean   @default(false) @map("sent_to_email")
+  sentAt                 DateTime? @map("sent_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  @@index([reportYear, reportMonth])
+  @@index([status])
+  @@map("monthly_business_reports")
+}
+
+// ============================================
+// KPI 定義與決策規則 (spec16 v5)
+// ============================================
+
+model AnalyticsKPI {
+  id                 Int      @id @default(autoincrement())
+  kpiCode            String   @unique @map("kpi_code") @db.VarChar(50)
+  kpiName            String   @map("kpi_name") @db.VarChar(100)
+  module             String   @db.VarChar(50)
+  formula            String?  @db.Text
+  unit               String?  @db.VarChar(20) // %, days, NT$, etc.
+  targetValue        Decimal? @map("target_value") @db.Decimal(12, 4)
+  warningThreshold   Decimal? @map("warning_threshold") @db.Decimal(12, 4)
+  criticalThreshold  Decimal? @map("critical_threshold") @db.Decimal(12, 4)
+  diagnosticRules    Json?    @map("diagnostic_rules")
+  suggestedActions   Json?    @map("suggested_actions")
+  isActive           Boolean  @default(true) @map("is_active")
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([module])
+  @@index([isActive])
+  @@map("analytics_kpis")
+}
+
+// ============================================
+// 風險警示 (spec16 v5)
+// ============================================
+
+model RiskAlert {
+  id              Int       @id @default(autoincrement())
+  alertType       String    @map("alert_type") @db.VarChar(50)
+  // supplier_concentration | payables_aging | cash_shortage | profit_decline | ar_aging
+  severity        String    @db.VarChar(20) // low, medium, high, critical
+  status          String    @default("active") @db.VarChar(20) // active, acknowledged, resolved
+  title           String    @db.VarChar(255)
+  description     String?   @db.Text
+  affectedPeriod  String?   @map("affected_period") @db.VarChar(20) // YYYY-MM
+  metricValue     Decimal?  @map("metric_value") @db.Decimal(12, 4)
+  threshold       Decimal?  @db.Decimal(12, 4)
+  details         Json?
+  acknowledgedBy  String?   @map("acknowledged_by") @db.VarChar(255)
+  acknowledgedAt  DateTime? @map("acknowledged_at")
+  resolvedBy      String?   @map("resolved_by") @db.VarChar(255)
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([alertType])
+  @@index([severity, status])
+  @@index([createdAt])
+  @@map("risk_alerts")
+}
+
+// ============================================
+// 信用卡對帳明細 (spec17 v3)
+// ============================================
+
+model CreditCardStatementLine {
+  id                Int       @id @default(autoincrement())
+  reconciliationId  Int       @map("reconciliation_id")
+  transactionDate   String    @map("transaction_date") @db.VarChar(20)
+  postingDate       String?   @map("posting_date") @db.VarChar(20)
+  description       String?   @db.VarChar(500)
+  amount            Decimal   @db.Decimal(12, 2)
+  currency          String    @default("TWD") @db.VarChar(10)
+  merchantCategory  String?   @map("merchant_category") @db.VarChar(100)
+  merchantName      String?   @map("merchant_name") @db.VarChar(255)
+  referenceNo       String?   @map("reference_no") @db.VarChar(100)
+  matchStatus       String    @default("unmatched") @map("match_status") @db.VarChar(20)
+  // unmatched, matched, manual, ignored
+  matchedExpenseId  Int?      @map("matched_expense_id")
+  matchedTxId       Int?      @map("matched_tx_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  reconciliation BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@index([reconciliationId])
+  @@index([matchStatus])
+  @@index([transactionDate])
+  @@map("credit_card_statement_lines")
+}
+
+// ============================================
+// 銀行異動建議 (spec17 v3)
+// ============================================
+
+model BankTransactionSuggestion {
+  id               Int       @id @default(autoincrement())
+  reconciliationId Int       @map("reconciliation_id")
+  suggestionType   String    @map("suggestion_type") @db.VarChar(50)
+  // bank_interest | bank_fee | fx_gain_loss | credit_card_charge | other
+  transactionDate  String    @map("transaction_date") @db.VarChar(20)
+  amount           Decimal   @db.Decimal(12, 2)
+  description      String?   @db.VarChar(500)
+  suggestedAccount String?   @map("suggested_account") @db.VarChar(100)
+  status           String    @default("pending") @db.VarChar(20) // pending, accepted, rejected, auto_created
+  acceptedById     Int?      @map("accepted_by_id")
+  acceptedAt       DateTime? @map("accepted_at")
+  createdTxId      Int?      @map("created_tx_id") // CashTransaction created from this suggestion
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  reconciliation BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@index([reconciliationId])
+  @@index([status])
+  @@map("bank_transaction_suggestions")
+}
+
+// ============================================
+// 稽核快照 (spec18 v3)
+// ============================================
+
+model AuditSnapshot {
+  id           Int      @id @default(autoincrement())
+  auditLogId   Int      @map("audit_log_id")
+  snapshotType String   @map("snapshot_type") @db.VarChar(20) // before, after
+  modelName    String   @map("model_name") @db.VarChar(100)
+  recordId     Int?     @map("record_id")
+  data         Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  auditLog AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+
+  @@index([auditLogId])
+  @@index([modelName, recordId])
+  @@map("audit_snapshots")
+}
+
+// ============================================
+// 關鍵決策稽核鏈 (spec18 v3)
+// ============================================
+
+model CriticalOperationRecord {
+  id                Int       @id @default(autoincrement())
+  operationCode     String    @map("operation_code") @db.VarChar(50)
+  // BATCH_APPROVE | CASHIER_EXECUTE | MONTH_END_CLOSE | YEAR_END_CLOSE | LOAN_CONFIRM | etc.
+  operatorId        Int       @map("operator_id")
+  operatorName      String    @map("operator_name") @db.VarChar(100)
+  targetModule      String    @map("target_module") @db.VarChar(50)
+  targetId          Int?      @map("target_id")
+  targetNo          String?   @map("target_no") @db.VarChar(100)
+  amount            Decimal?  @db.Decimal(14, 2)
+  previousAuditId   Int?      @map("previous_audit_id") // Links approval → execution chain
+  auditLogId        Int       @map("audit_log_id")
+  complianceResult  String?   @map("compliance_result") @db.VarChar(20) // pass, warning, fail
+  complianceDetails Json?     @map("compliance_details")
+  note              String?   @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  auditLog AuditLog @relation(fields: [auditLogId], references: [id])
+
+  @@index([operationCode])
+  @@index([operatorId])
+  @@index([targetModule, targetId])
+  @@index([createdAt])
+  @@map("critical_operation_records")
 }
