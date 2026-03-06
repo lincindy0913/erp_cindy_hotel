@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.ANALYTICS_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
@@ -163,6 +163,23 @@ export async function GET(request) {
 
     return NextResponse.json(dashboardData);
   } catch (error) {
+    // DB connection error → return empty dashboard instead of 500
+    const isConnectionError =
+      error.code === 'P1001' || error.code === 'P1002' || error.code === 'P1003' ||
+      error.message?.includes('connect ECONNREFUSED') ||
+      error.message?.includes("Can't reach database server");
+    if (isConnectionError) {
+      return NextResponse.json({
+        kpis: { thisMonthPurchase: 0, thisMonthSales: 0, grossProfit: 0, grossProfitMargin: 0, lowInventoryCount: 0 },
+        recentTransactions: [],
+        thisMonthTrend: { purchases: 0, sales: 0 },
+        totalCashBalance: 0,
+        cashAccounts: [],
+        pendingPayments: 0,
+        riskAlerts: { overdueChecks: 0, expiringLoans: 0 },
+        cacheStatus: 'offline',
+      });
+    }
     return handleApiError(error);
   }
 }
