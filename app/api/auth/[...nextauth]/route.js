@@ -91,7 +91,7 @@ export const authOptions = {
             email: user.email,
             name: user.name,
             role: user.role,
-            permissions: user.permissions
+            permissions: user.role === 'admin' ? ['*'] : user.permissions
           };
         }
       }
