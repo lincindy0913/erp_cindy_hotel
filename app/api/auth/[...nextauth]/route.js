@@ -48,7 +48,7 @@ export const authOptions = {
             const perms = ur.role.permissions;
             if (Array.isArray(perms)) perms.forEach(p => permSet.add(p));
           }
-          const isAdmin = roleCodes.includes('admin');
+          const isAdmin = roleCodes.includes('admin') || user.role === 'admin';
 
           return {
             id: user.id.toString(),

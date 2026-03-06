@@ -55,7 +55,7 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
     // 未登入使用者看不到需要權限的項目
     if (!session) return requiredPermission === null;
     // admin 有所有權限
-    if (userPermissions.includes('*')) return true;
+    if (isAdmin || userPermissions.includes('*')) return true;
     // 不需權限的項目
     if (!requiredPermission) return true;
     return hasPermission(userPermissions, requiredPermission);
