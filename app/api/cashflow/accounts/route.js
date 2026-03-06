@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const auth = await requirePermission(PERMISSIONS.CASHFLOW_VIEW);
+    if (!auth.ok) return auth.response;
+
     const accounts = await prisma.cashAccount.findMany({
       orderBy: [{ warehouse: 'asc' }, { type: 'asc' }, { name: 'asc' }]
     });
@@ -26,6 +31,9 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const auth = await requirePermission(PERMISSIONS.CASHFLOW_CREATE);
+    if (!auth.ok) return auth.response;
+
     const data = await request.json();
 
     if (!data.name || !data.type) {

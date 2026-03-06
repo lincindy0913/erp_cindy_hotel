@@ -43,20 +43,20 @@ const DEFAULT_PMS_COLUMNS = [
 // ===== Standalone sub-components for sections with local state =====
 
 const EVENT_CODES = [
-  { code: 'N01', label: '支票到期提醒' },
-  { code: 'N02', label: '貸款還款提醒' },
-  { code: 'N03', label: '月結提醒' },
-  { code: 'N04', label: 'PMS未匯入警告' },
-  { code: 'N05', label: '庫存不足警示' },
-  { code: 'N06', label: '付款單待審核' },
-  { code: 'N07', label: '費用超支警告' },
-  { code: 'N08', label: '現金盤點差異' },
-  { code: 'N09', label: '備份完成通知' },
-  { code: 'N10', label: '系統錯誤通知' },
-  { code: 'N11', label: '合約到期提醒' },
-  { code: 'N12', label: '租金逾期通知' },
-  { code: 'N13', label: '對帳差異通知' },
-  { code: 'N14', label: '年結完成通知' },
+  { code: 'N01', label: 'PMS 報表未匯入警示' },
+  { code: 'N02', label: '貸款本月應還款提醒' },
+  { code: 'N03', label: '支票 3 日內到期提醒' },
+  { code: 'N04', label: '支票已逾期未兌現' },
+  { code: 'N05', label: '租金逾期未收' },
+  { code: 'N06', label: '合約即將到期' },
+  { code: 'N07', label: '貸款 6 個月內到期' },
+  { code: 'N08', label: '費用傳票待確認' },
+  { code: 'N09', label: '庫存偏低警示' },
+  { code: 'N10', label: '對帳差異警示' },
+  { code: 'N11', label: '代墊款逾期提醒' },
+  { code: 'N12', label: '信用卡繳款到期' },
+  { code: 'N13', label: '現金盤點逾期提醒' },
+  { code: 'N14', label: '備份失敗 / 驗證失敗' },
 ];
 
 function NotificationChannelsSection({ showToast }) {
@@ -95,10 +95,14 @@ function NotificationChannelsSection({ showToast }) {
 
   async function toggleChannel(eventCode, channel, enabled) {
     try {
+      const payload = { notificationCode: eventCode };
+      if (channel === 'email') payload.enableEmail = enabled;
+      if (channel === 'line') payload.enableLine = enabled;
+
       const res = await fetch('/api/notification-channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventCode, channel, enabled }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         await fetchChannels();
@@ -167,8 +171,8 @@ function NotificationChannelsSection({ showToast }) {
           </div>
           <div className="p-4 bg-gray-50 rounded-lg border">
             <div className="text-sm font-medium text-gray-600">LINE</div>
-            <div className={`font-medium mt-1 ${channelConfig?.lineChannelAccessToken ? 'text-green-600' : 'text-gray-400'}`}>
-              {channelConfig?.lineChannelAccessToken ? '已設定' : '未設定'}
+            <div className={`font-medium mt-1 ${channelConfig?.lineBotAccessToken ? 'text-green-600' : 'text-gray-400'}`}>
+              {channelConfig?.lineBotAccessToken ? '已設定' : '未設定'}
             </div>
             <button onClick={generateLineBinding} className="mt-2 text-xs text-blue-600 hover:underline">產生綁定連結</button>
             {lineBindingUrl && <div className="mt-2 text-xs text-gray-500 break-all">{lineBindingUrl}</div>}
@@ -188,18 +192,18 @@ function NotificationChannelsSection({ showToast }) {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {EVENT_CODES.map(ev => {
-              const ch = channels.find(c => c.eventCode === ev.code) || {};
+              const ch = channels.find(c => c.notificationCode === ev.code) || {};
               return (
                 <tr key={ev.code} className="hover:bg-gray-50">
                   <td className="px-4 py-3">{ev.code} - {ev.label}</td>
                   <td className="px-4 py-3 text-center">
-                    <input type="checkbox" checked={ch.inApp !== false} onChange={e => toggleChannel(ev.code, 'inApp', e.target.checked)} className="rounded" />
+                    <input type="checkbox" checked={true} disabled className="rounded opacity-60 cursor-not-allowed" />
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <input type="checkbox" checked={!!ch.email} onChange={e => toggleChannel(ev.code, 'email', e.target.checked)} className="rounded" />
+                    <input type="checkbox" checked={!!ch.enableEmail} onChange={e => toggleChannel(ev.code, 'email', e.target.checked)} className="rounded" />
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <input type="checkbox" checked={!!ch.line} onChange={e => toggleChannel(ev.code, 'line', e.target.checked)} className="rounded" />
+                    <input type="checkbox" checked={!!ch.enableLine} onChange={e => toggleChannel(ev.code, 'line', e.target.checked)} className="rounded" />
                   </td>
                 </tr>
               );
@@ -229,7 +233,8 @@ function CashCountConfigSection({ showToast }) {
       ]);
       if (accRes.ok) {
         const data = await accRes.json();
-        setCcAccounts(data.data || data || []);
+        const accountList = data.data || data || [];
+        setCcAccounts(accountList.filter(acc => acc.type === '現金'));
       }
       if (confRes.ok) {
         const data = await confRes.json();
@@ -274,7 +279,7 @@ function CashCountConfigSection({ showToast }) {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">館別</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-500">盤點頻率</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-500">容差金額</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-500">是否啟用</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-500">需雙人覆核</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -285,17 +290,18 @@ function CashCountConfigSection({ showToast }) {
                     <td className="px-4 py-3 font-medium">{acc.name}</td>
                     <td className="px-4 py-3 text-gray-500">{acc.warehouse || '-'}</td>
                     <td className="px-4 py-3 text-center">
-                      <select value={conf.frequency || 'daily'} onChange={e => saveConfig(acc.id, 'frequency', e.target.value)} className="px-2 py-1 border rounded text-xs">
+                      <select value={conf.countFrequency || 'daily'} onChange={e => saveConfig(acc.id, 'countFrequency', e.target.value)} className="px-2 py-1 border rounded text-xs">
                         <option value="daily">每日</option>
                         <option value="weekly">每週</option>
                         <option value="monthly">每月</option>
+                        <option value="on_demand">按需</option>
                       </select>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <input type="number" defaultValue={conf.toleranceAmount || 100} onBlur={e => saveConfig(acc.id, 'toleranceAmount', Number(e.target.value))} className="w-24 px-2 py-1 border rounded text-xs text-center" />
+                      <input type="number" defaultValue={conf.shortageThreshold || 5000} onBlur={e => saveConfig(acc.id, 'shortageThreshold', Number(e.target.value))} className="w-24 px-2 py-1 border rounded text-xs text-center" />
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <input type="checkbox" checked={conf.enabled !== false} onChange={e => saveConfig(acc.id, 'enabled', e.target.checked)} className="rounded" />
+                      <input type="checkbox" checked={conf.requireDualReview !== false} onChange={e => saveConfig(acc.id, 'requireDualReview', e.target.checked)} className="rounded" />
                     </td>
                   </tr>
                 );

@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: List all historical year-end records
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.YEAREND_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const records = await prisma.yearEndRollover.findMany({
       orderBy: { year: 'desc' },
@@ -43,6 +48,9 @@ export async function GET(request) {
 
 // POST: Execute year-end rollover
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.YEAREND_EXECUTE);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { year, rolledOverBy, note } = body;

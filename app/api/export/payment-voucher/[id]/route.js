@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +13,9 @@ export const dynamic = 'force-dynamic';
  * Returns a PDF document as a downloadable response
  */
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPORT_PDF);
+  if (!auth.ok) return auth.response;
+  
   try {
     const orderId = parseInt(params.id);
 

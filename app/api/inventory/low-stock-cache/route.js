@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // spec4 v3: Read from InventoryLowStockCache for the low-stock banner
 export async function GET() {
+  const auth = await requirePermission(PERMISSIONS.INVENTORY_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     let lowStockItems = [];
     let lastCalculated = null;

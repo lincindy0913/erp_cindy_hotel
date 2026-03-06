@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +27,9 @@ async function generateBatchNo(businessDate) {
 
 // GET: List import batches with filters
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.PMS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse');
@@ -72,6 +77,9 @@ export async function GET(request) {
 
 // POST: Handle PMS report upload and import
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const data = await request.json();
 

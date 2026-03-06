@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,9 @@ export const dynamic = 'force-dynamic';
  *   { "productId": 123 }  - Rebuild only for a specific product
  */
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  if (!auth.ok) return auth.response;
+  
   try {
     // Parse optional body
     let body = {};

@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requireAnyPermission, requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET - 取得備份設定（全系統唯一一筆，id=1）
 export async function GET() {
   try {
+    const auth = await requireAnyPermission([PERMISSIONS.BACKUP_VIEW, PERMISSIONS.SETTINGS_VIEW]);
+    if (!auth.ok) return auth.response;
+
     let config = await prisma.backupConfig.findFirst({
       orderBy: { id: 'asc' },
     });
@@ -77,6 +82,9 @@ export async function GET() {
 // PUT - 更新備份設定
 export async function PUT(request) {
   try {
+    const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+    if (!auth.ok) return auth.response;
+
     const data = await request.json();
 
     // 取得現有設定

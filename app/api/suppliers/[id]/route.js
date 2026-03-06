@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
     const supplier = await prisma.supplier.findUnique({ where: { id } });
@@ -17,6 +22,9 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
     const data = await request.json();
@@ -55,6 +63,9 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
 

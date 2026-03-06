@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // spec18 v3: Query critical decisions (batch approvals, expense confirmations, etc.)
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.AUDIT_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page')) || 1;

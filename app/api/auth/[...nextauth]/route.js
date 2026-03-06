@@ -59,6 +59,19 @@ export const authOptions = {
             permissions: isAdmin ? ['*'] : Array.from(permSet),
           };
         } catch (error) {
+          // Only fall back to demo mode for DB connection errors
+          const isConnectionError =
+            error.code === 'P1001' ||
+            error.code === 'P1002' ||
+            error.code === 'P1003' ||
+            error.message?.includes('connect ECONNREFUSED') ||
+            error.message?.includes("Can't reach database server");
+
+          if (!isConnectionError) {
+            console.error('Auth DB error (non-connection):', error.message);
+            return null;
+          }
+
           console.log('Database not available, using demo mode');
 
           // Fallback to demo users (file-based storage)

@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: Get a specific month-end report by ID
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.MONTHEND_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
     if (!id) {

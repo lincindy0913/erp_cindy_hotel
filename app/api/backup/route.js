@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { spawn } from 'child_process';
+import path from 'path';
+import { requireAnyPermission, requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET - 取得備份紀錄列表（支援篩選：tier, status, 日期範圍）
 export async function GET(request) {
   try {
+    const auth = await requireAnyPermission([PERMISSIONS.BACKUP_VIEW, PERMISSIONS.SETTINGS_VIEW]);
+    if (!auth.ok) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const tier = searchParams.get('tier');
     const status = searchParams.get('status');
@@ -77,6 +84,9 @@ export async function GET(request) {
 // POST - 建立新的備份紀錄並觸發備份流程
 export async function POST(request) {
   try {
+    const auth = await requirePermission(PERMISSIONS.BACKUP_EXECUTE);
+    if (!auth.ok) return auth.response;
+
     const data = await request.json();
 
     // 驗證必要欄位
@@ -126,22 +136,25 @@ export async function POST(request) {
         triggerType,
         businessPeriod: data.businessPeriod || null,
         status: 'in_progress',
-        createdBy: data.createdBy || null,
+        createdBy: auth.session.user.email || auth.session.user.name || null,
         startedAt: new Date(),
       },
     });
 
-    // 模擬備份流程（實際部署時會替換為真實的 pg_dump / JSON 匯出邏輯）
-    // 非同步執行備份，不阻塞回應
-    performBackup(backupRecord.id, data.tier).catch(err => {
-      console.error(`備份執行失敗 (ID: ${backupRecord.id}):`, err);
+    // 啟動背景 worker 執行真實備份流程
+    const workerPath = path.join(process.cwd(), 'scripts', 'backup-worker.mjs');
+    const child = spawn(process.execPath, [workerPath, String(backupRecord.id)], {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
     });
+    child.unref();
 
     return NextResponse.json(
       {
         ...backupRecord,
         fileSize: backupRecord.fileSize !== null ? backupRecord.fileSize.toString() : null,
-        message: '備份已啟動，正在背景執行中',
+        message: '備份已啟動，正在背景執行中（真實備份流程）',
       },
       { status: 201 }
     );
@@ -150,119 +163,4 @@ export async function POST(request) {
   }
 }
 
-// 非同步備份執行（模擬）
-async function performBackup(backupId, tier) {
-  try {
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-
-    // 根據 tier 決定備份路徑與行為
-    let filePath;
-    let estimatedSize;
-
-    switch (tier) {
-      case 'tier1_full':
-        filePath = `/backup/db/full_${dateStr}.dump.gz`;
-        estimatedSize = 500 * 1024 * 1024; // ~500MB
-        break;
-      case 'tier2_snapshot':
-        filePath = `/backup/snapshot/snapshot_${dateStr}.json.gz`;
-        estimatedSize = 50 * 1024 * 1024; // ~50MB
-        break;
-      case 'tier3_monthend':
-        filePath = `/backup/export/monthly_${dateStr}.json.gz`;
-        estimatedSize = 20 * 1024 * 1024; // ~20MB
-        break;
-      case 'tier3_yearend':
-        filePath = `/backup/export/annual_${dateStr}.json.gz`;
-        estimatedSize = 100 * 1024 * 1024; // ~100MB
-        break;
-      default:
-        filePath = `/backup/unknown_${dateStr}`;
-        estimatedSize = 0;
-    }
-
-    // 收集各資料表統計資訊
-    let tableCount = 0;
-    let totalRecords = 0;
-
-    if (tier === 'tier1_full') {
-      // Tier 1: 計算所有資料表的總筆數
-      const counts = await Promise.all([
-        prisma.product.count(),
-        prisma.supplier.count(),
-        prisma.purchaseMaster.count(),
-        prisma.salesMaster.count(),
-        prisma.cashAccount.count(),
-        prisma.cashTransaction.count(),
-      ]);
-      tableCount = counts.length;
-      totalRecords = counts.reduce((sum, c) => sum + c, 0);
-    } else if (tier === 'tier2_snapshot') {
-      // Tier 2: 快照快取資料表
-      tableCount = 2;
-      totalRecords = 0;
-      // 嘗試計算快取資料表，如果模型存在的話
-      try {
-        const snapshotCounts = await Promise.all([
-          prisma.accountMonthlySnapshot.count(),
-          prisma.inventoryMonthlySnapshot.count(),
-        ]);
-        totalRecords = snapshotCounts.reduce((sum, c) => sum + c, 0);
-      } catch {
-        // 快取表可能不存在，忽略
-      }
-    } else if (tier === 'tier3_monthend' || tier === 'tier3_yearend') {
-      // Tier 3: 業務資料匯出
-      const counts = await Promise.all([
-        prisma.purchaseMaster.count(),
-        prisma.salesMaster.count(),
-        prisma.cashTransaction.count(),
-        prisma.product.count(),
-        prisma.supplier.count(),
-      ]);
-      tableCount = counts.length;
-      totalRecords = counts.reduce((sum, c) => sum + c, 0);
-    }
-
-    // 模擬 SHA256 校驗碼
-    const sha256 = generateSimpleHash(`${tier}-${dateStr}-${totalRecords}`);
-
-    // 更新備份紀錄為完成
-    await prisma.backupRecord.update({
-      where: { id: backupId },
-      data: {
-        status: 'completed',
-        filePath,
-        fileSize: BigInt(estimatedSize),
-        sha256,
-        tableCount,
-        totalRecords,
-        completedAt: new Date(),
-      },
-    });
-  } catch (error) {
-    // 備份失敗，更新狀態
-    console.error('備份流程錯誤:', error);
-    await prisma.backupRecord.update({
-      where: { id: backupId },
-      data: {
-        status: 'failed',
-        errorMessage: error.message || '備份執行過程中發生未知錯誤',
-        completedAt: new Date(),
-      },
-    });
-  }
-}
-
-// 簡易雜湊產生（模擬 SHA256，實際部署請使用 crypto 模組）
-function generateSimpleHash(input) {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  const hex = Math.abs(hash).toString(16).padStart(8, '0');
-  return hex.repeat(8).substring(0, 64);
-}
+// 備份執行邏輯由 scripts/backup-worker.mjs 負責

@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET - 取得所有會計科目
 export async function GET() {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const subjects = await prisma.accountingSubject.findMany({
       orderBy: { code: 'asc' }
@@ -18,6 +23,9 @@ export async function GET() {
 
 // POST - 新增會計科目
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const body = await request.json();
 
@@ -66,6 +74,9 @@ export async function POST(request) {
 
 // DELETE - 刪除會計科目
 export async function DELETE(request) {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

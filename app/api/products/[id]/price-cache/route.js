@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +19,9 @@ export const dynamic = 'force-dynamic';
  * Fallback: if no cache exists, queries PriceHistory directly and builds cache on-the-fly.
  */
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const productId = parseInt(params.id);
     if (isNaN(productId)) {

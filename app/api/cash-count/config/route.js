@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/cash-count/config - Get all CashCountConfig records (one per cash account)
 // Optional query param: ?accountId=X to get a single config
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.CASH_COUNT_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get('accountId');
@@ -108,6 +113,9 @@ export async function GET(request) {
 // PUT /api/cash-count/config - Create or update CashCountConfig for an account
 // Body: { accountId, countFrequency?, alertAfterDays?, shortageThreshold?, requireDualReview? }
 export async function PUT(request) {
+  const auth = await requirePermission(PERMISSIONS.CASH_COUNT_REVIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const data = await request.json();
 

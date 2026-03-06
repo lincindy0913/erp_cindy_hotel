@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +84,9 @@ function serializeCashCount(c) {
 
 // GET /api/cash-count/[id] - Get single cash count detail
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.CASH_COUNT_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
 
@@ -139,6 +144,9 @@ export async function GET(request, { params }) {
 //   - "reject"   : Reject a pending abnormal shortage (admin, sets status to void)
 //   - "unlock"   : Unlock a confirmed/approved count for re-editing (admin)
 export async function PUT(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.CASH_COUNT_REVIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
     const data = await request.json();

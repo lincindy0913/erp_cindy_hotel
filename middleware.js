@@ -22,10 +22,13 @@ const ROUTE_PERMISSIONS = {
 
 // 公開路由 - 不需登入
 const PUBLIC_ROUTES = ['/', '/login', '/unauthorized'];
+const PUBLIC_API_PREFIXES = ['/api/auth'];
+const PUBLIC_API_ROUTES = ['/api/health'];
 
 function isPublicRoute(pathname) {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
-  if (pathname.startsWith('/api/')) return true;
+  if (PUBLIC_API_ROUTES.includes(pathname)) return true;
+  if (PUBLIC_API_PREFIXES.some(prefix => pathname.startsWith(prefix))) return true;
   return false;
 }
 
@@ -43,15 +46,30 @@ export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl;
     const token = req.nextauth.token;
+    const isApiRoute = pathname.startsWith('/api/');
 
     // 公開路由直接放行
     if (isPublicRoute(pathname)) {
       return NextResponse.next();
     }
 
+    // API 路由：統一回傳 JSON，避免被重導向
+    if (isApiRoute && !token) {
+      return NextResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '請先登入' } },
+        { status: 401 }
+      );
+    }
+
     // /admin 路由 - 僅 admin 角色可存取
     if (pathname.startsWith('/admin')) {
       if (token?.role !== 'admin') {
+        if (isApiRoute) {
+          return NextResponse.json(
+            { error: { code: 'FORBIDDEN', message: '權限不足' } },
+            { status: 403 }
+          );
+        }
         return NextResponse.redirect(new URL('/unauthorized', req.url));
       }
       return NextResponse.next();
@@ -66,6 +84,12 @@ export default withAuth(
         return NextResponse.next();
       }
       if (!permissions.includes(requiredPermission)) {
+        if (isApiRoute) {
+          return NextResponse.json(
+            { error: { code: 'FORBIDDEN', message: '權限不足' } },
+            { status: 403 }
+          );
+        }
         return NextResponse.redirect(new URL('/unauthorized', req.url));
       }
     }
@@ -80,6 +104,10 @@ export default withAuth(
         if (isPublicRoute(pathname)) {
           return true;
         }
+        // API 授權回應在 middleware 主體處理（回 401 JSON）
+        if (pathname.startsWith('/api/')) {
+          return true;
+        }
         // 所有受保護路由必須登入
         return !!token;
       }
@@ -89,6 +117,7 @@ export default withAuth(
 
 export const config = {
   matcher: [
+    '/api/:path*',
     '/admin/:path*',
     '/purchasing/:path*',
     '/sales/:path*',

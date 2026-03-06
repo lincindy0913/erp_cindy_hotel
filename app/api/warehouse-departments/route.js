@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 取得所有館別與部門
 export async function GET() {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const warehouses = await prisma.warehouse.findMany({
       include: { departments: true },
@@ -26,6 +31,9 @@ export async function GET() {
 
 // POST: 新增館別或部門
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const data = await request.json();
 

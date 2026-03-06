@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // POST: Import bank statement
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
+  if (!auth.ok) return auth.response;
+  
   try {
     const data = await request.json();
     const { accountId, bankFormatId, year, month, fileName, lines } = data;

@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: Fetch a specific financial statement by ID
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.YEAREND_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
     if (!id) {

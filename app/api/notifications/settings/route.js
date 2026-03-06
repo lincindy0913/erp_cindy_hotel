@@ -6,7 +6,7 @@ import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
-// Default notification settings - all enabled
+// Default notification settings - all enabled (N01-N14)
 const DEFAULT_SETTINGS = {
   N01: true,
   N02: true,
@@ -19,6 +19,9 @@ const DEFAULT_SETTINGS = {
   N09: true,
   N10: true,
   N11: true,
+  N12: true,
+  N13: true,
+  N14: true,
 };
 
 export async function GET() {
@@ -60,7 +63,7 @@ export async function PUT(request) {
       return createErrorResponse('VALIDATION_FAILED', '缺少 settings 欄位', 400);
     }
 
-    // Validate that all keys are valid N01-N11 codes and values are boolean
+    // Validate that all keys are valid N01-N14 codes and values are boolean
     const validCodes = Object.keys(DEFAULT_SETTINGS);
     const cleanSettings = {};
     for (const code of validCodes) {

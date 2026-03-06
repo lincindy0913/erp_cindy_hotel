@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +10,9 @@ export const dynamic = 'force-dynamic';
 // 接受 JSON: { importType, data: [], options: { skipDuplicates, dryRun } }
 export async function POST(request) {
   try {
+    const auth = await requirePermission(PERMISSIONS.IMPORT_EXECUTE);
+    if (!auth.ok) return auth.response;
+
     const body = await request.json();
     const { importType, data, options = {} } = body;
 

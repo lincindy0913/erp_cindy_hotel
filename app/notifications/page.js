@@ -77,6 +77,9 @@ const NOTIFICATION_TYPES = [
   { code: 'N09', name: '庫存偏低', description: '品項庫存低於安全庫存' },
   { code: 'N10', name: '月結未執行', description: '上月月結尚未執行' },
   { code: 'N11', name: 'PMS 貸借差異', description: 'PMS 匯入貸借不平衡' },
+  { code: 'N12', name: '信用卡繳款到期', description: '信用卡帳單繳款日即將到期' },
+  { code: 'N13', name: '現金盤點逾期', description: '現金帳戶逾期未盤點' },
+  { code: 'N14', name: '備份異常', description: '備份失敗或驗證失敗' },
 ];
 
 export default function NotificationsPage() {

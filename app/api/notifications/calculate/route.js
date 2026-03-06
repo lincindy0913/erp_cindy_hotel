@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// N01-N11 notification definitions per spec16
+// N01-N14 notification definitions (spec7/spec28)
 const NOTIFICATION_DEFS = {
   N01: { type: 'PMS 報表未匯入', level: 'warning', title: 'PMS 報表未匯入', targetUrl: '/pms-income' },
   N02: { type: '貸款還款提醒', level: 'urgent', title: '貸款還款日即將到來', targetUrl: '/loans' },
@@ -13,13 +15,19 @@ const NOTIFICATION_DEFS = {
   N05: { type: '付款單待出納', level: 'warning', title: '付款單待出納', targetUrl: '/cashier' },
   N06: { type: '付款單被退回', level: 'urgent', title: '付款單已退回', targetUrl: '/finance' },
   N07: { type: '貸款到期預警', level: 'warning', title: '貸款即將到期', targetUrl: '/loans' },
-  N08: { type: '費用傳票待確認', level: 'warning', title: '費用傳票待確認', targetUrl: '/common-expenses' },
+  N08: { type: '費用傳票待確認', level: 'warning', title: '費用傳票待確認', targetUrl: '/expenses' },
   N09: { type: '庫存偏低', level: 'warning', title: '庫存偏低', targetUrl: '/inventory' },
   N10: { type: '月結未執行', level: 'warning', title: '月結未執行', targetUrl: '/month-end' },
   N11: { type: 'PMS 貸借差異', level: 'warning', title: 'PMS 貸借差異', targetUrl: '/pms-income' },
+  N12: { type: '信用卡繳款到期', level: 'urgent', title: '信用卡帳單繳款即將到期', targetUrl: '/reconciliation' },
+  N13: { type: '現金盤點逾期', level: 'urgent', title: '現金盤點逾期', targetUrl: '/cashflow?tab=cash-count' },
+  N14: { type: '備份失敗或驗證失敗', level: 'critical', title: '資料備份異常', targetUrl: '/admin/backup' },
 };
 
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.NOTIFICATION_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     let body = {};
     try {
@@ -446,6 +454,162 @@ export async function POST(request) {
       }
     } catch (err) {
       console.error('N11 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N12: 信用卡繳款到期 - unpaid/partial and due in 3 days
+    // ==============================
+    try {
+      const threeDaysLater = new Date(today);
+      threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+      const threeDaysLaterStr = threeDaysLater.toISOString().split('T')[0];
+
+      const dueCreditCards = await prisma.creditCardStatement.findMany({
+        where: {
+          status: { in: ['unpaid', 'partial'] },
+          paymentDueDate: {
+            gte: todayStr,
+            lte: threeDaysLaterStr,
+          },
+        },
+        select: {
+          id: true,
+          accountId: true,
+          totalAmount: true,
+          paidAmount: true,
+          paymentDueDate: true,
+          status: true,
+        },
+      });
+
+      if (dueCreditCards.length > 0) {
+        const totalAmount = dueCreditCards.reduce((sum, s) => {
+          const paid = Number(s.paidAmount || 0);
+          const total = Number(s.totalAmount || 0);
+          return sum + Math.max(0, total - paid);
+        }, 0);
+        const def = NOTIFICATION_DEFS.N12;
+        notifications.push({
+          code: 'N12',
+          type: def.type,
+          level: def.level,
+          title: def.title,
+          message: `${dueCreditCards.length} 筆信用卡帳單 3 天內到期，待繳 NT$ ${totalAmount.toLocaleString()}`,
+          count: dueCreditCards.length,
+          targetUrl: def.targetUrl,
+          metadata: { statementIds: dueCreditCards.map(s => s.id), totalAmount },
+        });
+      }
+    } catch (err) {
+      console.error('N12 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N13: 現金盤點逾期 - based on CashCountConfig.alertAfterDays
+    // ==============================
+    try {
+      const cashAccounts = await prisma.cashAccount.findMany({
+        where: {
+          type: '現金',
+          isActive: true,
+        },
+        select: { id: true, name: true, warehouse: true },
+      });
+
+      if (cashAccounts.length > 0) {
+        const accountIds = cashAccounts.map(a => a.id);
+        const configs = await prisma.cashCountConfig.findMany({
+          where: { accountId: { in: accountIds } },
+          select: { accountId: true, alertAfterDays: true },
+        });
+        const configMap = Object.fromEntries(configs.map(c => [c.accountId, c]));
+
+        const latestCounts = await prisma.cashCount.groupBy({
+          by: ['accountId'],
+          where: { accountId: { in: accountIds } },
+          _max: { countDate: true },
+        });
+        const latestMap = Object.fromEntries(
+          latestCounts.map(c => [c.accountId, c._max.countDate])
+        );
+
+        const overdueAccounts = [];
+        for (const acc of cashAccounts) {
+          const latestDateStr = latestMap[acc.id];
+          const alertAfterDays = configMap[acc.id]?.alertAfterDays ?? 1;
+          if (!latestDateStr) {
+            overdueAccounts.push(acc);
+            continue;
+          }
+          const latestDate = new Date(`${latestDateStr}T00:00:00`);
+          if (Number.isNaN(latestDate.getTime())) {
+            overdueAccounts.push(acc);
+            continue;
+          }
+          const daysSince = Math.floor((today.getTime() - latestDate.getTime()) / (24 * 60 * 60 * 1000));
+          if (daysSince > alertAfterDays) {
+            overdueAccounts.push(acc);
+          }
+        }
+
+        if (overdueAccounts.length > 0) {
+          const def = NOTIFICATION_DEFS.N13;
+          const names = overdueAccounts.slice(0, 5).map(a => a.name).join('、');
+          const suffix = overdueAccounts.length > 5 ? '...' : '';
+          notifications.push({
+            code: 'N13',
+            type: def.type,
+            level: def.level,
+            title: def.title,
+            message: `${overdueAccounts.length} 個現金帳戶逾期未盤點 (${names}${suffix})`,
+            count: overdueAccounts.length,
+            targetUrl: def.targetUrl,
+            metadata: { accountIds: overdueAccounts.map(a => a.id) },
+          });
+        }
+      }
+    } catch (err) {
+      console.error('N13 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N14: 備份失敗 / 驗證失敗
+    // ==============================
+    try {
+      const sevenDaysAgo = new Date(today);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const [failedBackups, failedVerifications] = await Promise.all([
+        prisma.backupRecord.count({
+          where: {
+            startedAt: { gte: sevenDaysAgo },
+            status: { in: ['failed', 'corrupted'] },
+          },
+        }),
+        prisma.backupRecord.count({
+          where: {
+            startedAt: { gte: sevenDaysAgo },
+            verifyResult: 'failed',
+          },
+        }),
+      ]);
+
+      const totalIssues = failedBackups + failedVerifications;
+      if (totalIssues > 0) {
+        const def = NOTIFICATION_DEFS.N14;
+        notifications.push({
+          code: 'N14',
+          type: def.type,
+          level: def.level,
+          title: def.title,
+          message: `最近 7 天有 ${failedBackups} 筆備份失敗、${failedVerifications} 筆驗證失敗`,
+          count: totalIssues,
+          targetUrl: def.targetUrl,
+          metadata: { failedBackups, failedVerifications, lookbackDays: 7 },
+        });
+      }
+    } catch (err) {
+      console.error('N14 calculation error:', err.message);
     }
 
     // Sort by level priority: critical > urgent > warning

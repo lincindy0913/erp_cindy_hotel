@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: List month-end statuses for a given year
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.MONTHEND_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get('year'));
@@ -142,6 +147,9 @@ export async function GET(request) {
 
 // POST: Start month-end closing process
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.MONTHEND_EXECUTE);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { year, month, warehouse } = body;

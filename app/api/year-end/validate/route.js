@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // POST: Validate pre-conditions for year-end rollover
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.YEAREND_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { year } = body;

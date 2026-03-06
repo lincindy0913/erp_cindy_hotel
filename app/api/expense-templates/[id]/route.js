@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET: Get single template with entryLines
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
 
@@ -43,6 +48,9 @@ export async function GET(request, { params }) {
 
 // PUT: Update template and entryLines
 export async function PUT(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
     const data = await request.json();
@@ -136,6 +144,9 @@ export async function PUT(request, { params }) {
 
 // DELETE: Delete template (only if no records exist)
 export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  if (!auth.ok) return auth.response;
+  
   try {
     const id = parseInt(params.id);
 

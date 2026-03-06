@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // spec7 v5: Executive dashboard with decision intelligence
 export async function GET() {
+  const auth = await requirePermission(PERMISSIONS.ANALYTICS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();

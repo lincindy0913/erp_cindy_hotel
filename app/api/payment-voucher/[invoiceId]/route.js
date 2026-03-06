@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 /**
  * 取得傳票完整資料
  * 包含：發票資料、進貨單資料、產品歷史最低價
  */
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.FINANCE_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const invoiceId = parseInt(params.invoiceId);
 

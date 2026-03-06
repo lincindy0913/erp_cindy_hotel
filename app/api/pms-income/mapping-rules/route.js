@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET - 取得所有 PMS 科目對應規則
 export async function GET() {
+  const auth = await requirePermission(PERMISSIONS.PMS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const rules = await prisma.pmsMappingRule.findMany({
       orderBy: [{ entryType: 'asc' }, { sortOrder: 'asc' }],
@@ -19,6 +24,9 @@ export async function GET() {
 
 // POST - 新增 PMS 科目對應規則
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const body = await request.json();
     const { pmsColumnName, entryType, accountingCode, accountingName, description } = body;
@@ -66,6 +74,9 @@ export async function POST(request) {
 
 // PUT - 更新 PMS 科目對應規則
 export async function PUT(request) {
+  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -102,6 +113,9 @@ export async function PUT(request) {
 
 // DELETE - 刪除 PMS 科目對應規則 (僅限非系統預設)
 export async function DELETE(request) {
+  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

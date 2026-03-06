@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +11,9 @@ export const dynamic = 'force-dynamic';
 // If month provided: single month detail
 // If no month: array of 12 monthly summaries for the year
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.PMS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year');

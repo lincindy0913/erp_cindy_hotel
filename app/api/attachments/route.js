@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requireModuleViewPermission, requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +16,18 @@ export async function GET(request) {
     if (!sourceModule || !sourceRecordId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 sourceModule 或 sourceRecordId', 400);
     }
+    const parsedSourceRecordId = parseInt(sourceRecordId, 10);
+    if (Number.isNaN(parsedSourceRecordId)) {
+      return createErrorResponse('VALIDATION_FAILED', 'sourceRecordId 格式錯誤', 400);
+    }
+
+    const auth = await requireModuleViewPermission(sourceModule);
+    if (!auth.ok) return auth.response;
 
     const attachments = await prisma.attachment.findMany({
       where: {
         sourceModule,
-        sourceRecordId: parseInt(sourceRecordId),
+        sourceRecordId: parsedSourceRecordId,
       },
       select: {
         id: true,
@@ -44,11 +53,19 @@ export async function POST(request) {
     const file = formData.get('file');
     const sourceModule = formData.get('sourceModule');
     const sourceRecordId = formData.get('sourceRecordId');
-    const uploadedBy = formData.get('uploadedBy');
 
     if (!file || !sourceModule || !sourceRecordId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
     }
+    const parsedSourceRecordId = parseInt(sourceRecordId, 10);
+    if (Number.isNaN(parsedSourceRecordId)) {
+      return createErrorResponse('VALIDATION_FAILED', 'sourceRecordId 格式錯誤', 400);
+    }
+
+    const uploadAuth = await requirePermission(PERMISSIONS.ATTACHMENT_UPLOAD);
+    if (!uploadAuth.ok) return uploadAuth.response;
+    const moduleAuth = await requireModuleViewPermission(sourceModule);
+    if (!moduleAuth.ok) return moduleAuth.response;
 
     // Validate file size (10MB)
     const MAX_SIZE = 10 * 1024 * 1024;
@@ -73,12 +90,12 @@ export async function POST(request) {
     const attachment = await prisma.attachment.create({
       data: {
         sourceModule,
-        sourceRecordId: parseInt(sourceRecordId),
+        sourceRecordId: parsedSourceRecordId,
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,
         fileData: buffer,
-        uploadedBy: uploadedBy || null,
+        uploadedBy: uploadAuth.session.user.email || uploadAuth.session.user.name || null,
       },
     });
 

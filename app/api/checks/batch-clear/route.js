@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +46,9 @@ async function recalcBalance(accountId) {
 }
 
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.CHECK_CLEAR);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { checkIds, clearDate, clearedBy } = await request.json();
 

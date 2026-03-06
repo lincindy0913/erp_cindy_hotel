@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: List all bank reconciliations
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year') ? parseInt(searchParams.get('year')) : null;
@@ -48,6 +53,9 @@ export async function GET(request) {
 
 // POST: Create or get reconciliation for account/month
 export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
+  if (!auth.ok) return auth.response;
+  
   try {
     const data = await request.json();
     const { accountId, year, month } = data;

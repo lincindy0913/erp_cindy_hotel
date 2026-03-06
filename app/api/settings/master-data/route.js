@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: fetch master data summary (warehouses, departments, accounting subjects)
 export async function GET() {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  if (!auth.ok) return auth.response;
+  
   try {
     const [warehouses, accountingSubjects] = await Promise.all([
       prisma.warehouse.findMany({
