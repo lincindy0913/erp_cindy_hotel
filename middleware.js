@@ -79,8 +79,8 @@ export default withAuth(
     const requiredPermission = getRequiredPermission(pathname);
     if (requiredPermission) {
       const permissions = token?.permissions || [];
-      // admin 有萬用權限 '*'
-      if (permissions.includes('*')) {
+      // admin role 或萬用權限 '*' 直接放行
+      if (token?.role === 'admin' || permissions.includes('*')) {
         return NextResponse.next();
       }
       if (!permissions.includes(requiredPermission)) {
