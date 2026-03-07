@@ -134,5 +134,6 @@ export const config = {
     '/month-end/:path*',
     '/expenses/:path*',
     '/settings/:path*',
+    '/warehouse-departments/:path*',
   ]
 };
