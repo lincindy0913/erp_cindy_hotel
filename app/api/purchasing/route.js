@@ -36,7 +36,8 @@ export async function GET(request) {
         quantity: d.quantity,
         unitPrice: Number(d.unitPrice),
         note: d.note || '',
-        status: d.status
+        status: d.status,
+        inventoryWarehouse: d.inventoryWarehouse || ''
       })),
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString()
@@ -85,7 +86,8 @@ export async function POST(request) {
             quantity: parseInt(item.quantity),
             unitPrice: parseFloat(item.unitPrice),
             note: item.note || '',
-            status: data.status || '待入庫'
+            status: item.status || '待入庫',
+            inventoryWarehouse: item.inventoryWarehouse || null
           }))
         }
       },
@@ -124,7 +126,8 @@ export async function POST(request) {
         quantity: d.quantity,
         unitPrice: Number(d.unitPrice),
         note: d.note || '',
-        status: d.status
+        status: d.status,
+        inventoryWarehouse: d.inventoryWarehouse || ''
       })),
       createdAt: newPurchase.createdAt.toISOString(),
       updatedAt: newPurchase.updatedAt.toISOString()

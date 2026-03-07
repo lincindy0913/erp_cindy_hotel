@@ -37,7 +37,8 @@ export async function PUT(request, { params }) {
             quantity: parseInt(item.quantity),
             unitPrice: parseFloat(item.unitPrice),
             note: item.note || '',
-            status: item.status || data.status || '待入庫'
+            status: item.status || '待入庫',
+            inventoryWarehouse: item.inventoryWarehouse || null
           }))
         }
       },
@@ -62,7 +63,8 @@ export async function PUT(request, { params }) {
         quantity: d.quantity,
         unitPrice: Number(d.unitPrice),
         note: d.note || '',
-        status: d.status
+        status: d.status,
+        inventoryWarehouse: d.inventoryWarehouse || ''
       })),
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString()

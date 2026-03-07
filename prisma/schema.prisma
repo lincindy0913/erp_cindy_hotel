@@ -170,8 +170,9 @@ model PurchaseDetail {
   productId  Int     @map("product_id")
   quantity   Int
   unitPrice  Decimal @map("unit_price") @db.Decimal(10, 2)
-  note       String? @db.Text
-  status     String  @default("待入庫") @db.VarChar(20)
+  note               String? @db.Text
+  status             String  @default("待入庫") @db.VarChar(20)
+  inventoryWarehouse String? @map("inventory_warehouse") @db.VarChar(100)
 
   purchaseMaster PurchaseMaster @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product        Product        @relation(fields: [productId], references: [id])
