@@ -28,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: erp-app
+    container_name: erp_cindy
     restart: unless-stopped
     depends_on:
       db:

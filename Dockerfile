@@ -63,7 +63,8 @@ COPY --from=builder /app/scripts ./scripts
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
+# Normalize line endings in case of Windows checkouts
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 USER nextjs
 
@@ -72,5 +73,6 @@ EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Use sh explicitly to avoid Windows line-ending/shebang issues
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["node", "server.js"]

@@ -162,6 +162,23 @@ export default function PaymentPage() {
     return supplier ? supplier.name : '未知廠商';
   }
 
+  // Auto-fill payment method from supplier's default paymentTerms
+  function autoFillPaymentMethod(newSelected) {
+    if (newSelected.size === 0) return;
+    const firstInvoiceId = [...newSelected][0];
+    const firstInvoice = unpaidInvoices.find(inv => inv.id === firstInvoiceId);
+    if (firstInvoice?.supplierId) {
+      const supplier = suppliers.find(s => s.id === firstInvoice.supplierId);
+      if (supplier?.paymentTerms) {
+        const method = supplier.paymentTerms;
+        if (!paymentMethodOptions.includes(method)) {
+          setPaymentMethodOptions(prev => [...prev, method]);
+        }
+        setFormData(prev => ({ ...prev, paymentMethod: method }));
+      }
+    }
+  }
+
   function handleInvoiceToggle(invoiceId) {
     const newSelected = new Set(selectedInvoiceIds);
     if (newSelected.has(invoiceId)) {
@@ -170,13 +187,16 @@ export default function PaymentPage() {
       newSelected.add(invoiceId);
     }
     setSelectedInvoiceIds(newSelected);
+    autoFillPaymentMethod(newSelected);
   }
 
   function handleSelectAll() {
     if (selectedInvoiceIds.size === unpaidInvoices.length && unpaidInvoices.length > 0) {
       setSelectedInvoiceIds(new Set());
     } else {
-      setSelectedInvoiceIds(new Set(unpaidInvoices.map(inv => inv.id)));
+      const newSelected = new Set(unpaidInvoices.map(inv => inv.id));
+      setSelectedInvoiceIds(newSelected);
+      autoFillPaymentMethod(newSelected);
     }
   }
 

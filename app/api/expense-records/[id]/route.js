@@ -4,11 +4,209 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
+// Helper: generate transaction number CF-YYYYMMDD-XXXX
+async function generateTxNo(tx, dateStr) {
+  const prefix = `CF-${dateStr.replace(/-/g, '')}-`;
+  const existing = await tx.cashTransaction.findMany({
+    where: { transactionNo: { startsWith: prefix } },
+    select: { transactionNo: true }
+  });
+  let maxSeq = 0;
+  for (const item of existing) {
+    const seq = parseInt(item.transactionNo.substring(prefix.length)) || 0;
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+}
+
+// Helper: recalculate account balance from all transactions
+async function recalcAccountBalance(tx, accountId) {
+  const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
+  if (!account) return;
+  const allTx = await tx.cashTransaction.findMany({
+    where: { accountId, status: '已確認' }
+  });
+  let balance = Number(account.openingBalance);
+  for (const t of allTx) {
+    const amt = Number(t.amount);
+    const fee = Number(t.fee || 0);
+    if (t.type === '收入' || t.type === '移轉入') {
+      balance += amt;
+    } else {
+      balance -= amt;
+    }
+    if (fee > 0) balance -= fee;
+  }
+  await tx.cashAccount.update({
+    where: { id: accountId },
+    data: { currentBalance: balance }
+  });
+}
+
+// Helper: sync DepartmentExpense (upsert by year/month/department/category)
+async function syncDepartmentExpense(tx, record, template, sign) {
+  const [yearStr, monthStr] = record.expenseMonth.split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr);
+  const department = record.warehouse;
+  const category = template?.category?.name || '未分類';
+  const amount = Number(record.totalDebit) * sign;
+
+  const existing = await tx.departmentExpense.findFirst({
+    where: { year, month, department, category }
+  });
+
+  if (existing) {
+    const newAmount = Number(existing.totalAmount) + amount;
+    if (newAmount <= 0) {
+      await tx.departmentExpense.delete({ where: { id: existing.id } });
+    } else {
+      await tx.departmentExpense.update({
+        where: { id: existing.id },
+        data: { totalAmount: newAmount }
+      });
+    }
+  } else if (sign > 0) {
+    await tx.departmentExpense.create({
+      data: { year, month, department, category, tax: 0, totalAmount: amount }
+    });
+  }
+}
+
+// Helper: sync MonthlyAggregation for expense type
+async function syncMonthlyAggregation(tx, record, sign) {
+  const [yearStr, monthStr] = record.expenseMonth.split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr);
+  const amount = Number(record.totalDebit) * sign;
+
+  const existing = await tx.monthlyAggregation.findFirst({
+    where: { aggregationType: 'expense', year, month, warehouse: record.warehouse }
+  });
+
+  if (existing) {
+    await tx.monthlyAggregation.update({
+      where: { id: existing.id },
+      data: {
+        totalAmount: { increment: amount },
+        recordCount: { increment: sign }
+      }
+    });
+  } else if (sign > 0) {
+    await tx.monthlyAggregation.create({
+      data: {
+        aggregationType: 'expense',
+        year, month,
+        warehouse: record.warehouse,
+        totalAmount: amount,
+        recordCount: 1
+      }
+    });
+  }
+}
+
+// Helper: create CashTransaction for expense and update account balance
+async function createExpenseCashTransaction(tx, record, template) {
+  const transactionDate = `${record.expenseMonth}-01`;
+  const txNo = await generateTxNo(tx, transactionDate);
+
+  // Find the matching cash account by warehouse, prefer 銀行存款 type
+  let account = null;
+  if (record.warehouse) {
+    account = await tx.cashAccount.findFirst({
+      where: { warehouse: record.warehouse, isActive: true },
+      orderBy: { id: 'asc' }
+    });
+  }
+  if (!account) {
+    account = await tx.cashAccount.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' }
+    });
+  }
+  if (!account) return null;
+
+  const templateName = template?.name || '常見費用';
+  const cashTx = await tx.cashTransaction.create({
+    data: {
+      transactionNo: txNo,
+      transactionDate,
+      type: '支出',
+      warehouse: record.warehouse,
+      accountId: account.id,
+      supplierId: record.supplierId,
+      amount: Number(record.totalDebit),
+      description: `常見費用 - ${templateName} - ${record.warehouse} - ${record.expenseMonth}`,
+      sourceType: 'common_expense',
+      sourceRecordId: record.id,
+      status: '已確認',
+      isAutoCreated: true,
+      autoCreationReason: 'common_expense_confirm'
+    }
+  });
+
+  await recalcAccountBalance(tx, account.id);
+  return cashTx;
+}
+
+// Helper: reverse CashTransaction for expense void
+async function reverseExpenseCashTransaction(tx, recordId) {
+  const cashTx = await tx.cashTransaction.findFirst({
+    where: { sourceType: 'common_expense', sourceRecordId: recordId, status: '已確認', isReversal: false }
+  });
+  if (!cashTx) return null;
+
+  const transactionDate = new Date().toISOString().split('T')[0];
+  const reversalTxNo = await generateTxNo(tx, transactionDate);
+
+  const reversalTx = await tx.cashTransaction.create({
+    data: {
+      transactionNo: reversalTxNo,
+      transactionDate,
+      type: '收入',
+      warehouse: cashTx.warehouse,
+      accountId: cashTx.accountId,
+      supplierId: cashTx.supplierId,
+      amount: Number(cashTx.amount),
+      description: `沖銷 - ${cashTx.description}`,
+      sourceType: 'common_expense',
+      sourceRecordId: recordId,
+      status: '已確認',
+      isReversal: true,
+      reversalOfId: cashTx.id,
+      isAutoCreated: true,
+      autoCreationReason: 'common_expense_void'
+    }
+  });
+
+  // Mark original as reversed
+  await tx.cashTransaction.update({
+    where: { id: cashTx.id },
+    data: { reversedById: reversalTx.id }
+  });
+
+  await recalcAccountBalance(tx, cashTx.accountId);
+  return reversalTx;
+}
+
+function formatRecord(record) {
+  return {
+    ...record,
+    totalDebit: Number(record.totalDebit),
+    totalCredit: Number(record.totalCredit),
+    entryLines: record.entryLines.map(l => ({ ...l, amount: Number(l.amount) })),
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+    confirmedAt: record.confirmedAt ? record.confirmedAt.toISOString() : null,
+    voidedAt: record.voidedAt ? record.voidedAt.toISOString() : null
+  };
+}
+
 // GET: Get single record with entryLines
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const id = parseInt(params.id);
 
@@ -28,21 +226,7 @@ export async function GET(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到費用記錄', 404);
     }
 
-    const result = {
-      ...record,
-      totalDebit: Number(record.totalDebit),
-      totalCredit: Number(record.totalCredit),
-      entryLines: record.entryLines.map(line => ({
-        ...line,
-        amount: Number(line.amount)
-      })),
-      createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString(),
-      confirmedAt: record.confirmedAt ? record.confirmedAt.toISOString() : null,
-      voidedAt: record.voidedAt ? record.voidedAt.toISOString() : null
-    };
-
-    return NextResponse.json(result);
+    return NextResponse.json(formatRecord(record));
   } catch (error) {
     return handleApiError(error);
   }
@@ -52,13 +236,18 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const id = parseInt(params.id);
     const data = await request.json();
 
     const existing = await prisma.commonExpenseRecord.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        template: {
+          select: { id: true, name: true, categoryId: true, category: { select: { name: true } } }
+        }
+      }
     });
 
     if (!existing) {
@@ -71,29 +260,34 @@ export async function PUT(request, { params }) {
         return createErrorResponse('VALIDATION_FAILED', `無法確認：目前狀態為「${existing.status}」`, 400);
       }
 
-      const updated = await prisma.commonExpenseRecord.update({
-        where: { id },
-        data: {
-          status: '已確認',
-          confirmedBy: data.confirmedBy || '系統',
-          confirmedAt: new Date()
-        },
-        include: {
-          template: { select: { id: true, name: true } },
-          entryLines: { orderBy: { sortOrder: 'asc' } }
-        }
+      const updated = await prisma.$transaction(async (tx) => {
+        // 1. Update record status
+        const record = await tx.commonExpenseRecord.update({
+          where: { id },
+          data: {
+            status: '已確認',
+            confirmedBy: data.confirmedBy || '系統',
+            confirmedAt: new Date()
+          },
+          include: {
+            template: { select: { id: true, name: true } },
+            entryLines: { orderBy: { sortOrder: 'asc' } }
+          }
+        });
+
+        // 2. Sync DepartmentExpense (+1)
+        await syncDepartmentExpense(tx, existing, existing.template, 1);
+
+        // 3. Sync MonthlyAggregation (+1)
+        await syncMonthlyAggregation(tx, existing, 1);
+
+        // 4. Create CashTransaction & update CashAccount balance
+        await createExpenseCashTransaction(tx, existing, existing.template);
+
+        return record;
       });
 
-      return NextResponse.json({
-        ...updated,
-        totalDebit: Number(updated.totalDebit),
-        totalCredit: Number(updated.totalCredit),
-        entryLines: updated.entryLines.map(l => ({ ...l, amount: Number(l.amount) })),
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        confirmedAt: updated.confirmedAt ? updated.confirmedAt.toISOString() : null,
-        voidedAt: updated.voidedAt ? updated.voidedAt.toISOString() : null
-      });
+      return NextResponse.json(formatRecord(updated));
     }
 
     // Action: void
@@ -106,30 +300,40 @@ export async function PUT(request, { params }) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '請輸入作廢原因', 400);
       }
 
-      const updated = await prisma.commonExpenseRecord.update({
-        where: { id },
-        data: {
-          status: '已作廢',
-          voidedBy: data.voidedBy || '系統',
-          voidedAt: new Date(),
-          voidReason: data.voidReason.trim()
-        },
-        include: {
-          template: { select: { id: true, name: true } },
-          entryLines: { orderBy: { sortOrder: 'asc' } }
+      const wasConfirmed = existing.status === '已確認';
+
+      const updated = await prisma.$transaction(async (tx) => {
+        // 1. Update record status
+        const record = await tx.commonExpenseRecord.update({
+          where: { id },
+          data: {
+            status: '已作廢',
+            voidedBy: data.voidedBy || '系統',
+            voidedAt: new Date(),
+            voidReason: data.voidReason.trim()
+          },
+          include: {
+            template: { select: { id: true, name: true } },
+            entryLines: { orderBy: { sortOrder: 'asc' } }
+          }
+        });
+
+        // Only reverse synced data if it was previously confirmed
+        if (wasConfirmed) {
+          // 2. Reverse DepartmentExpense (-1)
+          await syncDepartmentExpense(tx, existing, existing.template, -1);
+
+          // 3. Reverse MonthlyAggregation (-1)
+          await syncMonthlyAggregation(tx, existing, -1);
+
+          // 4. Reverse CashTransaction & recalculate balance
+          await reverseExpenseCashTransaction(tx, id);
         }
+
+        return record;
       });
 
-      return NextResponse.json({
-        ...updated,
-        totalDebit: Number(updated.totalDebit),
-        totalCredit: Number(updated.totalCredit),
-        entryLines: updated.entryLines.map(l => ({ ...l, amount: Number(l.amount) })),
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-        confirmedAt: updated.confirmedAt ? updated.confirmedAt.toISOString() : null,
-        voidedAt: updated.voidedAt ? updated.voidedAt.toISOString() : null
-      });
+      return NextResponse.json(formatRecord(updated));
     }
 
     return createErrorResponse('VALIDATION_FAILED', '無效的操作，請指定 action: confirm 或 void', 400);
@@ -142,7 +346,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const id = parseInt(params.id);
 

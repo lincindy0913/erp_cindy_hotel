@@ -96,10 +96,12 @@ export default function ExpensesPage() {
 
       setTemplates(Array.isArray(templatesData) ? templatesData : []);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      // warehouses from warehouse-departments API might be array of objects with name
-      const whList = Array.isArray(warehousesData)
-        ? warehousesData.map(w => w.name || w)
-        : [];
+      // warehouse-departments API returns object { '館別名': [...departments] }
+      const whList = warehousesData && typeof warehousesData === 'object' && !Array.isArray(warehousesData)
+        ? Object.keys(warehousesData)
+        : Array.isArray(warehousesData)
+          ? warehousesData.map(w => w.name || w)
+          : [];
       setWarehouses(whList);
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : (suppliersData?.suppliers || []));
     } catch (err) {

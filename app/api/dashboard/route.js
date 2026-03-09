@@ -19,7 +19,7 @@ export async function GET(request) {
     // Try to read from MonthlyAggregation cache first (spec24)
     const cachedAgg = await prisma.monthlyAggregation.findFirst({
       where: {
-        type: 'dashboard',
+        aggregationType: 'dashboard',
         year: currentYear,
         month: currentMonth,
       },
@@ -92,6 +92,18 @@ export async function GET(request) {
       lowInventoryCount = await prisma.product.count({ where: { isInStock: true } });
     }
 
+    // Common expense total this month (confirmed only)
+    const thisMonthExpenses = await prisma.commonExpenseRecord.findMany({
+      where: { expenseMonth: monthPrefix, status: '已確認' },
+      select: { totalDebit: true }
+    });
+    const expenseTotal = thisMonthExpenses.reduce((sum, e) => sum + Number(e.totalDebit || 0), 0);
+
+    // Pending expense records count
+    const pendingExpenses = await prisma.commonExpenseRecord.count({
+      where: { status: '待確認' }
+    });
+
     // Pending payment orders count
     const pendingPayments = await prisma.paymentOrder.count({
       where: { status: { in: ['pending', 'pending_cashier'] } }
@@ -109,6 +121,12 @@ export async function GET(request) {
       select: { purchaseNo: true, purchaseDate: true, totalAmount: true }
     });
 
+    const recentExpenseRecords = await prisma.commonExpenseRecord.findMany({
+      orderBy: { id: 'desc' },
+      take: 5,
+      select: { recordNo: true, expenseMonth: true, totalDebit: true, status: true, warehouse: true }
+    });
+
     const recentTransactions = [
       ...recentSales.map(s => ({
         type: '銷貨', no: s.salesNo, date: s.invoiceDate,
@@ -117,6 +135,10 @@ export async function GET(request) {
       ...recentPurchases.map(p => ({
         type: '進貨', no: p.purchaseNo, date: p.purchaseDate,
         amount: Number(p.totalAmount || 0), status: ''
+      })),
+      ...recentExpenseRecords.map(e => ({
+        type: '費用', no: e.recordNo, date: e.expenseMonth + '-01',
+        amount: Number(e.totalDebit || 0), status: e.status
       }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
 
@@ -144,6 +166,8 @@ export async function GET(request) {
         lowInventoryCount,
         totalCashBalance,
         pendingPayments,
+        thisMonthExpense: expenseTotal,
+        pendingExpenses,
       },
       recentTransactions,
       riskAlerts: {

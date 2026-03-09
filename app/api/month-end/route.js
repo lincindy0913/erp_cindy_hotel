@@ -85,7 +85,7 @@ export async function GET(request) {
       }
     });
 
-    // Get monthly expense summaries
+    // Get monthly expense summaries (legacy Expense table)
     const expenses = await prisma.expense.findMany({
       where: {
         invoiceDate: { gte: yearStart, lte: yearEnd }
@@ -95,6 +95,19 @@ export async function GET(request) {
         warehouse: true,
         amount: true,
         status: true
+      }
+    });
+
+    // Get CommonExpenseRecord summaries (confirmed only)
+    const commonExpenses = await prisma.commonExpenseRecord.findMany({
+      where: {
+        expenseMonth: { gte: `${year}-01`, lte: `${year}-12` },
+        status: '已確認'
+      },
+      select: {
+        expenseMonth: true,
+        totalDebit: true,
+        warehouse: true
       }
     });
 
@@ -114,10 +127,15 @@ export async function GET(request) {
       const monthExpenses = expenses.filter(e => {
         return e.invoiceDate >= monthStart && e.invoiceDate <= monthEnd;
       });
+      const monthCommonExpenses = commonExpenses.filter(e => {
+        return e.expenseMonth === `${year}-${monthStr}`;
+      });
 
       const purchaseTotal = monthPurchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
       const salesTotal = monthSales.reduce((sum, s) => sum + Number(s.totalAmount), 0);
-      const expenseTotal = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+      const legacyExpenseTotal = monthExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+      const commonExpenseTotal = monthCommonExpenses.reduce((sum, e) => sum + Number(e.totalDebit), 0);
+      const expenseTotal = legacyExpenseTotal + commonExpenseTotal;
 
       const key = `${m}-all`;
       const statusInfo = statusMap[key] || null;
@@ -445,6 +463,20 @@ export async function POST(request) {
       where: expenseWhere
     });
 
+    // Also include CommonExpenseRecord (confirmed)
+    const commonExpWhere = {
+      expenseMonth: `${year}-${monthStr}`,
+      status: '已確認'
+    };
+    if (warehouse) commonExpWhere.warehouse = warehouse;
+
+    const commonExpData = await prisma.commonExpenseRecord.findMany({
+      where: commonExpWhere,
+      include: {
+        template: { select: { name: true, category: { select: { name: true } } } }
+      }
+    });
+
     const expByCat = {};
     const expByWh = {};
     expenseData.forEach(e => {
@@ -459,12 +491,28 @@ export async function POST(request) {
       expByWh[wh].total += Number(e.amount);
     });
 
+    // Merge CommonExpenseRecord into expense summary
+    commonExpData.forEach(e => {
+      const cat = e.template?.category?.name || e.template?.name || '常見費用';
+      if (!expByCat[cat]) expByCat[cat] = { count: 0, total: 0 };
+      expByCat[cat].count++;
+      expByCat[cat].total += Number(e.totalDebit);
+
+      const wh = e.warehouse || '未指定';
+      if (!expByWh[wh]) expByWh[wh] = { count: 0, total: 0 };
+      expByWh[wh].count++;
+      expByWh[wh].total += Number(e.totalDebit);
+    });
+
+    const allExpenseTotal = expenseData.reduce((s, e) => s + Number(e.amount), 0)
+      + commonExpData.reduce((s, e) => s + Number(e.totalDebit), 0);
+
     reports.push({
       reportType: '支出彙總',
       data: {
         period: `${year}/${monthStr}`,
-        totalCount: expenseData.length,
-        totalAmount: expenseData.reduce((s, e) => s + Number(e.amount), 0),
+        totalCount: expenseData.length + commonExpData.length,
+        totalAmount: allExpenseTotal,
         byCategory: Object.entries(expByCat).map(([name, d]) => ({ name, ...d })),
         byWarehouse: Object.entries(expByWh).map(([name, d]) => ({ name, ...d }))
       }

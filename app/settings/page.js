@@ -661,7 +661,9 @@ export default function SettingsPage() {
       }
       if (warehouseRes && warehouseRes.ok) {
         const data = await warehouseRes.json();
-        counts.warehouses = Array.isArray(data) ? data.length : 0;
+        counts.warehouses = data && typeof data === 'object' && !Array.isArray(data)
+          ? Object.keys(data).length
+          : Array.isArray(data) ? data.length : 0;
       }
 
       setMasterDataCounts(counts);

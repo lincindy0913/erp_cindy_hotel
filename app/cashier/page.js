@@ -21,8 +21,14 @@ export default function CashierPage() {
     paymentMethod: '',
     note: '',
   });
-  // Store execution results for display after successful execution
   const [executionResults, setExecutionResults] = useState({});
+
+  // Batch selection
+  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
+  const [batchAccountId, setBatchAccountId] = useState('');
+  const [batchExecutionDate, setBatchExecutionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [batchNote, setBatchNote] = useState('');
+  const [batchExecuting, setBatchExecuting] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -72,6 +78,100 @@ export default function CashierPage() {
     }
   }
 
+  // Batch selection handlers
+  function handleToggleSelect(orderId) {
+    const newSelected = new Set(selectedOrderIds);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrderIds(newSelected);
+  }
+
+  function handleSelectAll() {
+    if (selectedOrderIds.size === pendingOrders.length && pendingOrders.length > 0) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(pendingOrders.map(o => o.id)));
+    }
+  }
+
+  const selectedOrders = pendingOrders.filter(o => selectedOrderIds.has(o.id));
+  const selectedTotal = selectedOrders.reduce((sum, o) => sum + Number(o.netAmount), 0);
+
+  // Group selected orders by payment method for summary
+  const selectedByMethod = {};
+  selectedOrders.forEach(o => {
+    const method = o.paymentMethod || '未指定';
+    if (!selectedByMethod[method]) selectedByMethod[method] = { count: 0, total: 0, orders: [] };
+    selectedByMethod[method].count++;
+    selectedByMethod[method].total += Number(o.netAmount);
+    selectedByMethod[method].orders.push(o);
+  });
+
+  async function handleBatchExecute() {
+    if (selectedOrderIds.size === 0) {
+      alert('請至少勾選一筆付款單');
+      return;
+    }
+    if (!batchAccountId) {
+      alert('請選擇付款帳戶');
+      return;
+    }
+
+    const confirmMsg = `確定要批次執行 ${selectedOrderIds.size} 筆付款單？\n總金額：NT$ ${selectedTotal.toLocaleString()}`;
+    if (!confirm(confirmMsg)) return;
+
+    setBatchExecuting(true);
+    const results = [];
+    const errors = [];
+
+    for (const order of selectedOrders) {
+      try {
+        const res = await fetch('/api/cashier/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentOrderId: order.id,
+            executionDate: batchExecutionDate,
+            actualAmount: Number(order.netAmount),
+            accountId: batchAccountId,
+            paymentMethod: order.paymentMethod,
+            note: batchNote || `批次執行`,
+          }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          results.push({ orderNo: order.orderNo, ...result });
+          setExecutionResults(prev => ({
+            ...prev,
+            [order.id]: {
+              executionNo: result.executionNo,
+              cashTransactionNo: result.cashTransactionNo,
+            }
+          }));
+        } else {
+          const err = await res.json();
+          errors.push({ orderNo: order.orderNo, error: err.error || err.message || '執行失敗' });
+        }
+      } catch {
+        errors.push({ orderNo: order.orderNo, error: '網路錯誤' });
+      }
+    }
+
+    setBatchExecuting(false);
+    setSelectedOrderIds(new Set());
+
+    let msg = `批次執行完成！\n成功：${results.length} 筆`;
+    if (errors.length > 0) {
+      msg += `\n失敗：${errors.length} 筆`;
+      errors.forEach(e => { msg += `\n  - ${e.orderNo}: ${e.error}`; });
+    }
+    alert(msg);
+    fetchOrders();
+  }
+
   async function handleExecute(e, order) {
     e.preventDefault();
     if (!executeData.accountId) {
@@ -92,7 +192,6 @@ export default function CashierPage() {
 
       if (res.ok) {
         const result = await res.json();
-        // Store the execution results for displaying traceability
         setExecutionResults(prev => ({
           ...prev,
           [order.id]: {
@@ -155,6 +254,7 @@ export default function CashierPage() {
   }
 
   const displayOrders = getDisplayOrders();
+  const isPendingTab = activeTab === 'pending';
 
   return (
     <div className="min-h-screen page-bg-cashier">
@@ -185,7 +285,7 @@ export default function CashierPage() {
         <div className="flex gap-2 mb-4">
           {TABS.map(tab => (
             <button key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setExpandedOrderId(null); }}
+              onClick={() => { setActiveTab(tab.key); setExpandedOrderId(null); setSelectedOrderIds(new Set()); }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'bg-amber-600 text-white'
@@ -209,6 +309,16 @@ export default function CashierPage() {
             <table className="w-full text-sm">
               <thead className="bg-amber-50 border-b">
                 <tr>
+                  {isPendingTab && (
+                    <th className="px-3 py-3 text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedOrderIds.size === pendingOrders.length && pendingOrders.length > 0}
+                        onChange={handleSelectAll}
+                        className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                      />
+                    </th>
+                  )}
                   <th className="px-4 py-3 text-left">付款單號</th>
                   <th className="px-4 py-3 text-left">廠商</th>
                   <th className="px-4 py-3 text-left">館別</th>
@@ -224,11 +334,23 @@ export default function CashierPage() {
                   const isExpanded = expandedOrderId === order.id;
                   const exec = order.executions?.[0];
                   const storedResult = executionResults[order.id];
+                  const isSelected = selectedOrderIds.has(order.id);
+                  const colSpan = isPendingTab ? 9 : 8;
 
                   return (
                     <Fragment key={order.id}>
-                      <tr className={`border-b hover:bg-amber-50 transition-colors cursor-pointer ${isExpanded ? 'bg-amber-50' : ''}`}
+                      <tr className={`border-b hover:bg-amber-50 transition-colors cursor-pointer ${isExpanded ? 'bg-amber-50' : ''} ${isSelected ? 'bg-amber-50/70' : ''}`}
                         onClick={() => toggleExpand(order)}>
+                        {isPendingTab && (
+                          <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(order.id)}
+                              className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                            />
+                          </td>
+                        )}
                         <td className="px-4 py-3 font-medium text-amber-800">{order.orderNo}</td>
                         <td className="px-4 py-3">{order.supplierName || '-'}</td>
                         <td className="px-4 py-3">{order.warehouse || '-'}</td>
@@ -274,7 +396,7 @@ export default function CashierPage() {
                       {/* Inline Expansion */}
                       {isExpanded && (
                         <tr className="bg-amber-50/50">
-                          <td colSpan="8" className="px-4 py-4">
+                          <td colSpan={colSpan} className="px-4 py-4">
                             <div className="space-y-4">
                               {/* Order Summary */}
                               <div className="bg-white rounded-lg border p-4">
@@ -366,7 +488,6 @@ export default function CashierPage() {
                                 <div className="bg-white border-2 border-amber-300 rounded-lg p-4">
                                   <div className="text-sm font-bold text-amber-800 mb-3">出納確認執行</div>
 
-                                  {/* Warning if payment method differs */}
                                   {executeData.paymentMethod && executeData.paymentMethod !== order.paymentMethod && (
                                     <div className="bg-orange-50 border border-orange-300 rounded p-2 mb-3 text-sm text-orange-700">
                                       注意：執行付款方式（{executeData.paymentMethod}）與付款單指定方式（{order.paymentMethod}）不同
@@ -441,7 +562,6 @@ export default function CashierPage() {
                                     </div>
                                   </form>
 
-                                  {/* Reject with reason input */}
                                   {rejectingOrderId === order.id && (
                                     <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
                                       <div className="text-sm font-semibold text-red-700 mb-2">退回付款單</div>
@@ -487,6 +607,126 @@ export default function CashierPage() {
             </table>
           )}
         </div>
+
+        {/* Batch Execution Panel - only show on pending tab when items selected */}
+        {isPendingTab && selectedOrderIds.size > 0 && (
+          <div className="mt-6 bg-white rounded-lg shadow border-2 border-amber-400 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-amber-800">
+                批次執行（已選 {selectedOrderIds.size} 筆）
+              </h3>
+              <div className="text-right">
+                <span className="text-sm text-gray-500">總金額</span>
+                <span className="text-2xl font-bold text-amber-700 ml-2">NT$ {selectedTotal.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Selected orders summary by payment method */}
+            <div className="mb-4 bg-amber-50 rounded-lg p-4">
+              <div className="text-sm font-medium text-gray-700 mb-2">依付款方式分類</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {Object.entries(selectedByMethod).map(([method, info]) => (
+                  <div key={method} className="bg-white rounded-lg border p-3">
+                    <div className="text-xs text-gray-500">{method}</div>
+                    <div className="font-bold text-amber-700">NT$ {info.total.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400">{info.count} 筆</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Selected orders detail list */}
+            <div className="mb-4 border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款單號</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">廠商</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款方式</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">金額</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {selectedOrders.map(o => (
+                    <tr key={o.id}>
+                      <td className="px-3 py-2 font-medium text-amber-800">{o.orderNo}</td>
+                      <td className="px-3 py-2">{o.supplierName || '-'}</td>
+                      <td className="px-3 py-2">{o.paymentMethod}</td>
+                      <td className="px-3 py-2 text-right font-medium">NT$ {Number(o.netAmount).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-amber-50 font-bold">
+                    <td colSpan="3" className="px-3 py-2 text-right">合計</td>
+                    <td className="px-3 py-2 text-right text-amber-700">NT$ {selectedTotal.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Batch execution form */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">執行日期</label>
+                <input type="date" value={batchExecutionDate}
+                  onChange={e => setBatchExecutionDate(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">付款帳戶 *</label>
+                <select value={batchAccountId}
+                  onChange={e => setBatchAccountId(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
+                  <option value="">-- 選擇帳戶 --</option>
+                  {accounts.filter(a => a.isActive).map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.type}) - 餘額 NT$ {Number(a.currentBalance).toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+                {batchAccountId && (() => {
+                  const acct = accounts.find(a => a.id === parseInt(batchAccountId));
+                  if (acct) {
+                    const remaining = Number(acct.currentBalance) - selectedTotal;
+                    return (
+                      <p className={`text-xs mt-1 ${remaining < 0 ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                        執行後餘額：NT$ {remaining.toLocaleString()}
+                        {remaining < 0 && ' (餘額不足！)'}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                <input type="text" value={batchNote}
+                  onChange={e => setBatchNote(e.target.value)}
+                  placeholder="選填..."
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setSelectedOrderIds(new Set())}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              >
+                取消選取
+              </button>
+              <button
+                onClick={handleBatchExecute}
+                disabled={batchExecuting || !batchAccountId}
+                className={`px-6 py-2 rounded-lg text-sm font-medium ${
+                  batchExecuting || !batchAccountId
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                {batchExecuting ? '執行中...' : `批次確認執行 (${selectedOrderIds.size} 筆)`}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

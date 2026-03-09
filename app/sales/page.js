@@ -28,6 +28,11 @@ export default function InvoicePage() {
   const [showTitleManager, setShowTitleManager] = useState(false);
   const [newTitleName, setNewTitleName] = useState('');
 
+  // 搜尋廠商（列表篩選）
+  const [searchSupplier, setSearchSupplier] = useState('');
+  const [searchDateFrom, setSearchDateFrom] = useState('');
+  const [searchDateTo, setSearchDateTo] = useState('');
+
   // 篩選條件
   const [filterData, setFilterData] = useState({
     yearMonth: '', // YYYY-MM
@@ -838,6 +843,43 @@ export default function InvoicePage() {
           </div>
         )}
 
+        {/* 搜尋列：廠商 + 日期區間 */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={searchSupplier}
+            onChange={(e) => setSearchSupplier(e.target.value)}
+            placeholder="搜尋廠商名稱..."
+            className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">起始日期</label>
+            <input
+              type="date"
+              value={searchDateFrom}
+              onChange={(e) => setSearchDateFrom(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">結束日期</label>
+            <input
+              type="date"
+              value={searchDateTo}
+              onChange={(e) => setSearchDateTo(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+          {(searchSupplier || searchDateFrom || searchDateTo) && (
+            <button
+              onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); }}
+              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+            >
+              清除篩選
+            </button>
+          )}
+        </div>
+
         {/* 列表 */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full">
@@ -868,7 +910,22 @@ export default function InvoicePage() {
                   </td>
                 </tr>
               ) : (
-                invoices.map((invoice, index) => {
+                invoices
+                  .filter(inv => {
+                    if (searchSupplier && !(inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())) return false;
+                    const invDate = inv.invoiceDate || inv.salesDate || '';
+                    if (searchDateFrom && invDate < searchDateFrom) return false;
+                    if (searchDateTo && invDate > searchDateTo) return false;
+                    return true;
+                  })
+                  .sort((a, b) => {
+                    const statusOrder = { '待核銷': 0, '未核銷': 0, '已核銷': 1 };
+                    const aOrder = statusOrder[a.status] ?? 0;
+                    const bOrder = statusOrder[b.status] ?? 0;
+                    if (aOrder !== bOrder) return aOrder - bOrder;
+                    return new Date(b.invoiceDate || b.salesDate || 0) - new Date(a.invoiceDate || a.salesDate || 0);
+                  })
+                  .map((invoice, index) => {
                   const isExpanded = expandedInvoices.has(invoice.id);
                   return (
                     <Fragment key={invoice.id}>
