@@ -1,58 +1,33 @@
-version: '3.8'
-
 services:
-  # PostgreSQL 資料庫服務
-  db:
-    image: postgres:16-alpine
-    container_name: erp-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-erp_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erp_password}
-      POSTGRES_DB: ${POSTGRES_DB:-erp_database}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erp_user} -d ${POSTGRES_DB:-erp_database}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - erp-network
-
-  # Next.js 應用服務
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: erp_cindy
-    restart: unless-stopped
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://erp:erp_secret@db:5432/erp
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-erp_user}:${POSTGRES_PASSWORD:-erp_password}@db:5432/${POSTGRES_DB:-erp_database}?schema=public
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NODE_ENV: production
+      - POSTGRES_USER=erp
+      - POSTGRES_PASSWORD=erp_secret
+      - POSTGRES_DB=erp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "3000:3000"
-    networks:
-      - erp-network
+      - "5432:5432"
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
-    driver: local
-
-networks:
-  erp-network:
-    driver: bridge

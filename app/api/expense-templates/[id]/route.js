@@ -68,52 +68,52 @@ export async function PUT(request, { params }) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請輸入範本名稱', 400);
     }
 
-    // Validate debit = credit balance if entryLines provided
-    if (data.entryLines && data.entryLines.length > 0) {
-      const debitTotal = data.entryLines
-        .filter(l => l.entryType === 'debit')
-        .reduce((sum, l) => sum + (parseFloat(l.defaultAmount) || 0), 0);
-      const creditTotal = data.entryLines
-        .filter(l => l.entryType === 'credit')
-        .reduce((sum, l) => sum + (parseFloat(l.defaultAmount) || 0), 0);
-
-      if (debitTotal > 0 && creditTotal > 0 && Math.abs(debitTotal - creditTotal) > 0.01) {
-        return createErrorResponse('VALIDATION_FAILED', `借貸不平衡：借方 ${debitTotal} ≠ 貸方 ${creditTotal}`, 400);
-      }
+    const hasEntryLines = data.entryLines && data.entryLines.length > 0;
+    if (existing.templateType === 'fixed' && !hasEntryLines) {
+      return createErrorResponse('VALIDATION_FAILED', '請至少新增一筆會計分錄', 400);
     }
 
     // Use transaction to update template and entry lines atomically
     const template = await prisma.$transaction(async (tx) => {
-      // Delete existing entry lines
-      if (data.entryLines) {
-        await tx.templateEntryLine.deleteMany({ where: { templateId: id } });
+      await tx.templateEntryLine.deleteMany({ where: { templateId: id } });
+
+      const updatePayload = {
+        name: data.name.trim(),
+        description: data.description?.trim() || null,
+        categoryId: data.categoryId ? parseInt(data.categoryId) : null,
+        warehouse: data.warehouse?.trim() || null,
+        defaultSupplierId: data.defaultSupplierId ? parseInt(data.defaultSupplierId) : null,
+        paymentMethod: data.paymentMethod?.trim() || null,
+        isActive: data.isActive !== false,
+        sortOrder: data.sortOrder || 0,
+      };
+      if (existing.templateType === 'fixed') {
+        updatePayload.warehouseAccountMap = Array.isArray(data.warehouseAccountMap) ? data.warehouseAccountMap : null;
+        updatePayload.warehouseAmounts = Array.isArray(data.warehouseAmounts) ? data.warehouseAmounts : null;
+        updatePayload.defaultDebitCode = data.defaultDebitCode?.trim() || null;
+        updatePayload.defaultDebitName = data.defaultDebitName?.trim() || null;
+        updatePayload.defaultCreditCode = data.defaultCreditCode?.trim() || null;
+        updatePayload.defaultCreditName = data.defaultCreditName?.trim() || null;
+      }
+      if (data.entryLines?.length > 0) {
+        updatePayload.entryLines = {
+          create: data.entryLines.map((line, idx) => ({
+            entryType: line.entryType,
+            accountingCode: line.accountingCode || '',
+            accountingName: line.accountingName || '',
+            summary: line.summary?.trim() || null,
+            defaultAmount: line.defaultAmount ? parseFloat(line.defaultAmount) : null,
+            warehouse: line.warehouse?.trim() || null,
+            paymentMethod: line.paymentMethod?.trim() || null,
+            accountId: line.accountId ? parseInt(line.accountId) : null,
+            sortOrder: line.sortOrder ?? idx
+          }))
+        };
       }
 
-      // Update template
       const updated = await tx.commonExpenseTemplate.update({
         where: { id },
-        data: {
-          name: data.name.trim(),
-          description: data.description?.trim() || null,
-          categoryId: data.categoryId ? parseInt(data.categoryId) : null,
-          warehouse: data.warehouse?.trim() || null,
-          defaultSupplierId: data.defaultSupplierId ? parseInt(data.defaultSupplierId) : null,
-          paymentMethod: data.paymentMethod?.trim() || null,
-          isActive: data.isActive !== false,
-          sortOrder: data.sortOrder || 0,
-          ...(data.entryLines ? {
-            entryLines: {
-              create: data.entryLines.map((line, idx) => ({
-                entryType: line.entryType,
-                accountingCode: line.accountingCode,
-                accountingName: line.accountingName,
-                summary: line.summary?.trim() || null,
-                defaultAmount: line.defaultAmount ? parseFloat(line.defaultAmount) : null,
-                sortOrder: line.sortOrder ?? idx
-              }))
-            }
-          } : {})
-        },
+        data: updatePayload,
         include: {
           category: true,
           entryLines: {

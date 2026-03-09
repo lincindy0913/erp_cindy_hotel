@@ -1660,6 +1660,13 @@ model CommonExpenseTemplate {
   paymentMethod   String?   @map("payment_method") @db.VarChar(50)
   purchaseItems   Json?     @map("purchase_items")   // For purchase type: [{productId, quantity, unitPrice, note}]
   defaultTaxType  String?   @map("default_tax_type") @db.VarChar(20)
+  // 固定費用：各館別對應支出存簿 [{ warehouse, accountId }]
+  warehouseAccountMap Json? @map("warehouse_account_map")
+  warehouseAmounts Json?    @map("warehouse_amounts") // legacy [{ warehouse, defaultAmount }]
+  defaultDebitCode  String? @map("default_debit_code") @db.VarChar(20)
+  defaultDebitName  String? @map("default_debit_name") @db.VarChar(100)
+  defaultCreditCode String? @map("default_credit_code") @db.VarChar(20)
+  defaultCreditName String? @map("default_credit_name") @db.VarChar(100)
   isActive        Boolean   @default(true) @map("is_active")
   sortOrder       Int       @default(0) @map("sort_order")
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -1683,6 +1690,9 @@ model TemplateEntryLine {
   accountingName  String    @map("accounting_name") @db.VarChar(100)
   summary         String?   @db.VarChar(500)
   defaultAmount   Decimal?  @map("default_amount") @db.Decimal(15, 2)
+  warehouse       String?   @db.VarChar(100)       // 館別
+  paymentMethod   String?   @map("payment_method") @db.VarChar(50)
+  accountId       Int?      @map("account_id")     // 轉帳存簿 (CashAccount)
   sortOrder       Int       @default(0) @map("sort_order")
   createdAt       DateTime  @default(now()) @map("created_at")
 

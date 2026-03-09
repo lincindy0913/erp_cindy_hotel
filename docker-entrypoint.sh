@@ -5,8 +5,8 @@ echo "🚀 Starting ERP Application..."
 
 # Wait for database to be ready
 echo "⏳ Waiting for database connection..."
-echo "   Giving database time to initialize..."
-sleep 10
+# depends_on + healthcheck 已確保 db 就緒，短暫緩衝即可
+sleep 3
 
 echo "✅ Database should be ready!"
 

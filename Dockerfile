@@ -1,78 +1,47 @@
-# Stage 1: Dependencies
-FROM node:18-alpine AS deps
-RUN apk add --no-cache libc6-compat
+# Build stage
+FROM node:20-alpine AS builder
+
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Install dependencies
+COPY package.json package-lock.json* ./
 RUN npm ci
 
-# Stage 2: Builder
-FROM node:18-alpine AS builder
-WORKDIR /app
+# Prisma generate (for build)
+COPY prisma ./prisma/
+RUN npx prisma generate
 
-# Copy package files
-COPY package.json package-lock.json ./
-
-# Copy Prisma schema BEFORE npm ci (needed for postinstall hook)
-COPY prisma ./prisma
-
-# Install dependencies (will run prisma generate via postinstall)
-RUN npm ci
-
-# Copy source code
+# App source and Next.js build
 COPY . .
-
-# Ensure public directory exists
-RUN mkdir -p public
-
-# Build Next.js application
-# This will run: prisma generate && next build (from package.json)
-ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
-# Stage 3: Runner
-FROM node:18-alpine AS runner
+# Production stage
+FROM node:20-alpine AS runner
+
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
-
-# Install runtime dependencies for Prisma
-RUN apk add --no-cache openssl libc6-compat
+ENV NODE_ENV=production
+ENV PORT=3000
 
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# Copy necessary files from builder
-COPY --from=builder /app/next.config.js ./
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/prisma ./prisma
+# Copy standalone output
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
-# Copy Next.js build output
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# Copy node_modules from builder (includes Prisma Client) with correct ownership
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-
-# Copy scripts directory (for reference)
-COPY --from=builder /app/scripts ./scripts
-
-# Copy entrypoint script
-COPY docker-entrypoint.sh ./
-# Normalize line endings in case of Windows checkouts
-RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
+# Prisma CLI + client (for migrate deploy at runtime)
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/package.json ./
 
 USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
-
-# Use sh explicitly to avoid Windows line-ending/shebang issues
-ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
-CMD ["node", "server.js"]
+# Wait for DB then run migrations and start server
+CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss 2>/dev/null; node server.js"]

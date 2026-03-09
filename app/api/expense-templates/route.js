@@ -67,21 +67,11 @@ export async function POST(request) {
 
     const templateType = data.templateType || 'fixed';
 
-    // For fixed type: require entry lines with debit/credit balance
+    // For fixed type: require entryLines with 館別/付款方式/存簿 per row
     if (templateType === 'fixed') {
-      if (!data.entryLines || data.entryLines.length === 0) {
-        return createErrorResponse('VALIDATION_FAILED', '請至少新增一筆分錄', 400);
-      }
-
-      const debitTotal = data.entryLines
-        .filter(l => l.entryType === 'debit')
-        .reduce((sum, l) => sum + (parseFloat(l.defaultAmount) || 0), 0);
-      const creditTotal = data.entryLines
-        .filter(l => l.entryType === 'credit')
-        .reduce((sum, l) => sum + (parseFloat(l.defaultAmount) || 0), 0);
-
-      if (debitTotal > 0 && creditTotal > 0 && Math.abs(debitTotal - creditTotal) > 0.01) {
-        return createErrorResponse('VALIDATION_FAILED', `借貸不平衡：借方 ${debitTotal} ≠ 貸方 ${creditTotal}`, 400);
+      const hasEntryLines = data.entryLines && data.entryLines.length > 0;
+      if (!hasEntryLines) {
+        return createErrorResponse('VALIDATION_FAILED', '請至少新增一筆會計分錄（含館別、付款方式、轉帳存簿）', 400);
       }
     }
 
@@ -109,15 +99,27 @@ export async function POST(request) {
       sortOrder: data.sortOrder || 0,
     };
 
-    // Add entry lines for fixed type
+    if (templateType === 'fixed') {
+      templateData.warehouseAccountMap = Array.isArray(data.warehouseAccountMap) ? data.warehouseAccountMap : null;
+      templateData.warehouseAmounts = Array.isArray(data.warehouseAmounts) ? data.warehouseAmounts : null;
+      templateData.defaultDebitCode = data.defaultDebitCode?.trim() || null;
+      templateData.defaultDebitName = data.defaultDebitName?.trim() || null;
+      templateData.defaultCreditCode = data.defaultCreditCode?.trim() || null;
+      templateData.defaultCreditName = data.defaultCreditName?.trim() || null;
+    }
+
+    // Add entry lines for fixed type (optional when warehouseAmounts is used)
     if (templateType === 'fixed' && data.entryLines?.length > 0) {
       templateData.entryLines = {
         create: data.entryLines.map((line, idx) => ({
           entryType: line.entryType,
-          accountingCode: line.accountingCode,
-          accountingName: line.accountingName,
+          accountingCode: line.accountingCode || '',
+          accountingName: line.accountingName || '',
           summary: line.summary?.trim() || null,
           defaultAmount: line.defaultAmount ? parseFloat(line.defaultAmount) : null,
+          warehouse: line.warehouse?.trim() || null,
+          paymentMethod: line.paymentMethod?.trim() || null,
+          accountId: line.accountId ? parseInt(line.accountId) : null,
           sortOrder: line.sortOrder ?? idx
         }))
       };

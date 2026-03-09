@@ -1,69 +1,40 @@
 # Dependencies
 node_modules
+.pnp
+.pnp.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Next.js
+# Build / Next
 .next
 out
 build
 dist
 
-# Testing
-coverage
-.nyc_output
-
-# Environment variables
+# Env and secrets (use docker-compose or runtime env)
 .env
-.env*.local
+.env.*
+!.env.example
 
-# Vercel
-.vercel
-
-# Git
+# Git and IDE
 .git
 .gitignore
-.gitattributes
-
-# IDE
-.vscode
-.idea
 .cursor
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Documentation
+.vscode
 *.md
 !README.md
-AGENTS.md
-COMPLETION-REPORT.md
-DEPLOYMENT-*.md
-RAILWAY-*.md
-PROJECT-*.md
-*.png
-*.jpg
-*.jpeg
 
-# Database
-prisma/migrations
-*.db
-*.sqlite
+# Tests and misc
+coverage
+.nyc_output
+*.test.js
+*.spec.js
+__tests__
+.DS_Store
+Thumbs.db
 
-# Misc
-.claude
-*.xlsx
-*.pem
-.pnp
-.pnp.js
-
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
+# Optional: keep image smaller
+agent-transcripts
+openspec
+*.jsonl
