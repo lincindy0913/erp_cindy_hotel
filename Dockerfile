@@ -1,22 +1,23 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Install dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci
-
-# Prisma generate (for build)
 COPY prisma ./prisma/
-RUN npx prisma generate
+RUN npm ci
 
 # App source and Next.js build
 COPY . .
-RUN npm run build
+RUN mkdir -p public && npm run build
 
 # Production stage
 FROM node:20-alpine AS runner
+
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
@@ -36,6 +37,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
 
@@ -44,4 +46,4 @@ USER nextjs
 EXPOSE 3000
 
 # Wait for DB then run migrations and start server
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss 2>/dev/null; node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy || node node_modules/prisma/build/index.js db push --accept-data-loss; node server.js"]
