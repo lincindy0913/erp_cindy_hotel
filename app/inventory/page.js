@@ -228,7 +228,7 @@ export default function InventoryPage() {
     const payload = items.map(i => ({
       productId: Number(i.productId),
       systemQty: Number(i.systemQty) || 0,
-      actualQty: Number(i.actualQty) ?? Number(i.systemQty) || 0,
+      actualQty: (Number(i.actualQty) ?? Number(i.systemQty)) || 0,
     }));
     setCountSubmitting(true);
     try {
@@ -651,7 +651,7 @@ export default function InventoryPage() {
                     </tr></thead>
                     <tbody>
                       {countForm.items.map((it, idx) => {
-                        const act = Number(it.actualQty) ?? Number(it.systemQty) || 0;
+                        const act = (Number(it.actualQty) ?? Number(it.systemQty)) || 0;
                         const sys = Number(it.systemQty) || 0;
                         const diff = act - sys;
                         return (
