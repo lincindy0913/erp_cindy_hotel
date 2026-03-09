@@ -17,6 +17,7 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
     const status = searchParams.get('status');
     const templateId = searchParams.get('templateId');
+    const executionType = searchParams.get('type'); // purchase or fixed
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 50;
 
@@ -25,6 +26,7 @@ export async function GET(request) {
     if (warehouse) where.warehouse = warehouse;
     if (status) where.status = status;
     if (templateId) where.templateId = parseInt(templateId);
+    if (executionType) where.executionType = executionType;
 
     const [records, total] = await Promise.all([
       prisma.commonExpenseRecord.findMany({

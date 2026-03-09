@@ -42,6 +42,9 @@ model Product {
   priceSummaryCaches   PriceSummaryCache[]
   inventorySnapshots   InventoryMonthlySnapshot[]
   lowStockCaches       InventoryLowStockCache[]
+  inventoryRequisitions InventoryRequisition[]
+  inventoryTransferItems InventoryTransferItem[]
+  stockCountItems      StockCountItem[]
 
   @@index([code])
   @@index([isInStock])
@@ -659,16 +662,18 @@ model PaymentMethodOption {
 }
 
 model ExpenseCategory {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique @db.VarChar(100)
-  description String?  @db.VarChar(500)
-  sortOrder   Int      @default(0) @map("sort_order")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           Int      @id @default(autoincrement())
+  name         String   @unique @db.VarChar(100)
+  description  String?  @db.VarChar(500)
+  categoryType String   @default("fixed") @map("category_type") @db.VarChar(20) // purchase, fixed
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   templates   CommonExpenseTemplate[]
 
+  @@index([categoryType])
   @@map("expense_categories")
 }
 
@@ -1040,6 +1045,94 @@ model InventoryLowStockCache {
 
   @@unique([productId, warehouse])
   @@map("inventory_low_stock_caches")
+}
+
+// ============================================
+// 領用單 / 調撥單 / 盤點（簡化版，一人總務）
+// ============================================
+
+model InventoryRequisition {
+  id             Int      @id @default(autoincrement())
+  requisitionNo  String   @unique @map("requisition_no") @db.VarChar(50)
+  warehouse      String   @db.VarChar(100)
+  department     String?  @db.VarChar(100)
+  productId      Int      @map("product_id")
+  quantity       Int
+  requisitionDate String  @map("requisition_date") @db.VarChar(20)
+  status         String   @default("已領用") @db.VarChar(20)
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([warehouse])
+  @@index([requisitionDate])
+  @@map("inventory_requisitions")
+}
+
+model InventoryTransfer {
+  id             Int      @id @default(autoincrement())
+  transferNo     String   @unique @map("transfer_no") @db.VarChar(50)
+  fromWarehouse  String   @map("from_warehouse") @db.VarChar(100)
+  toWarehouse    String   @map("to_warehouse") @db.VarChar(100)
+  transferDate   String   @map("transfer_date") @db.VarChar(20)
+  status         String   @default("已調撥") @db.VarChar(20)
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  items InventoryTransferItem[]
+
+  @@index([fromWarehouse])
+  @@index([toWarehouse])
+  @@index([transferDate])
+  @@map("inventory_transfers")
+}
+
+model InventoryTransferItem {
+  id         Int     @id @default(autoincrement())
+  transferId Int     @map("transfer_id")
+  productId  Int     @map("product_id")
+  quantity   Int
+
+  transfer InventoryTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product           @relation(fields: [productId], references: [id])
+
+  @@index([transferId])
+  @@index([productId])
+  @@map("inventory_transfer_items")
+}
+
+model StockCount {
+  id         Int      @id @default(autoincrement())
+  countNo    String   @unique @map("count_no") @db.VarChar(50)
+  warehouse  String   @db.VarChar(100)
+  countDate  String   @map("count_date") @db.VarChar(20)
+  status     String   @default("已確認") @db.VarChar(20)
+  note       String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  items StockCountItem[]
+
+  @@index([warehouse])
+  @@index([countDate])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id          Int     @id @default(autoincrement())
+  countId     Int     @map("count_id")
+  productId   Int     @map("product_id")
+  systemQty   Int     @map("system_qty")
+  actualQty   Int     @map("actual_qty")
+  diff        Int
+  note        String? @db.Text
+
+  stockCount StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@index([countId])
+  @@index([productId])
+  @@map("stock_count_items")
 }
 
 model SupplierMonthlySummary {
@@ -1560,10 +1653,13 @@ model CommonExpenseTemplate {
   id              Int       @id @default(autoincrement())
   name            String    @db.VarChar(255)
   description     String?   @db.Text
+  templateType    String    @default("fixed") @map("template_type") @db.VarChar(20) // purchase, fixed
   categoryId      Int?      @map("category_id")
   warehouse       String?   @db.VarChar(100)
   defaultSupplierId Int?    @map("default_supplier_id")
   paymentMethod   String?   @map("payment_method") @db.VarChar(50)
+  purchaseItems   Json?     @map("purchase_items")   // For purchase type: [{productId, quantity, unitPrice, note}]
+  defaultTaxType  String?   @map("default_tax_type") @db.VarChar(20)
   isActive        Boolean   @default(true) @map("is_active")
   sortOrder       Int       @default(0) @map("sort_order")
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -1575,6 +1671,7 @@ model CommonExpenseTemplate {
 
   @@index([categoryId])
   @@index([isActive])
+  @@index([templateType])
   @@map("common_expense_templates")
 }
 
@@ -1599,6 +1696,7 @@ model CommonExpenseRecord {
   id              Int       @id @default(autoincrement())
   recordNo        String    @unique @map("record_no") @db.VarChar(50)
   templateId      Int       @map("template_id")
+  executionType   String    @default("fixed") @map("execution_type") @db.VarChar(20) // purchase, fixed
   warehouse       String    @db.VarChar(100)
   expenseMonth    String    @map("expense_month") @db.VarChar(7)
   supplierId      Int?      @map("supplier_id")
@@ -1606,6 +1704,13 @@ model CommonExpenseRecord {
   paymentMethod   String?   @map("payment_method") @db.VarChar(50)
   totalDebit      Decimal   @map("total_debit") @db.Decimal(15, 2)
   totalCredit     Decimal   @map("total_credit") @db.Decimal(15, 2)
+  // Linked downstream records
+  purchaseMasterId Int?     @map("purchase_master_id")
+  salesMasterId    Int?     @map("sales_master_id")
+  paymentOrderId   Int?     @map("payment_order_id")
+  purchaseNo       String?  @map("linked_purchase_no") @db.VarChar(50)
+  salesNo          String?  @map("linked_sales_no") @db.VarChar(50)
+  paymentOrderNo   String?  @map("linked_payment_order_no") @db.VarChar(50)
   status          String    @default("待確認") @db.VarChar(20)
   confirmedBy     String?   @map("confirmed_by") @db.VarChar(255)
   confirmedAt     DateTime? @map("confirmed_at")
@@ -1624,6 +1729,7 @@ model CommonExpenseRecord {
   @@index([warehouse])
   @@index([expenseMonth])
   @@index([status])
+  @@index([executionType])
   @@map("common_expense_records")
 }
 

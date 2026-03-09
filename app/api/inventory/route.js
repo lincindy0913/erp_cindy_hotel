@@ -132,29 +132,77 @@ export async function GET(request) {
         };
       });
     } else {
-      // Fallback: v2 full calculation
-      const purchaseAgg = await prisma.purchaseDetail.groupBy({
-        by: ['productId'],
-        _sum: { quantity: true }
+      // Fallback: v2 full calculation (含領用、調撥、盤點)
+      const wh = warehouse || null;
+      const baseWhere = wh ? undefined : {};
+      const purchaseWhere = wh
+        ? { OR: [{ inventoryWarehouse: wh }, { purchaseMaster: { warehouse: wh } }] }
+        : {};
+      const purchaseDetails = await prisma.purchaseDetail.findMany({
+        where: Object.keys(purchaseWhere).length ? purchaseWhere : {},
+        include: { purchaseMaster: { select: { warehouse: true } } },
       });
       const purchaseQtyMap = new Map();
-      purchaseAgg.forEach(agg => {
-        purchaseQtyMap.set(agg.productId, agg._sum.quantity || 0);
+      purchaseDetails.forEach(d => {
+        const w = d.inventoryWarehouse || d.purchaseMaster?.warehouse || 'default';
+        if (!wh || w === wh) {
+          const key = d.productId;
+          purchaseQtyMap.set(key, (purchaseQtyMap.get(key) || 0) + (d.quantity || 0));
+        }
       });
 
-      const salesAgg = await prisma.salesDetail.groupBy({
-        by: ['productId'],
-        _sum: { quantity: true }
+      const salesWhere = wh ? { warehouse: wh } : {};
+      const salesDetails = await prisma.salesDetail.findMany({
+        where: Object.keys(salesWhere).length ? salesWhere : {},
       });
       const salesQtyMap = new Map();
-      salesAgg.forEach(agg => {
-        salesQtyMap.set(agg.productId, agg._sum.quantity || 0);
+      salesDetails.forEach(d => {
+        const w = d.warehouse || 'default';
+        if (!wh || w === wh) {
+          const pid = d.productId;
+          if (pid) salesQtyMap.set(pid, (salesQtyMap.get(pid) || 0) + (d.quantity || 0));
+        }
+      });
+
+      // 領用：減庫存
+      const reqWhere = wh ? { warehouse: wh } : {};
+      const requisitions = await prisma.inventoryRequisition.findMany({ where: reqWhere }).catch(() => []);
+      const reqQtyMap = new Map();
+      requisitions.forEach(r => {
+        reqQtyMap.set(r.productId, (reqQtyMap.get(r.productId) || 0) + r.quantity);
+      });
+
+      // 調撥：轉出減、轉入加
+      const transferOutWhere = wh ? { fromWarehouse: wh } : {};
+      const transferInWhere = wh ? { toWarehouse: wh } : {};
+      const [transfersOut, transfersIn] = await Promise.all([
+        prisma.inventoryTransfer.findMany({ where: transferOutWhere, include: { items: true } }).catch(() => []),
+        prisma.inventoryTransfer.findMany({ where: transferInWhere, include: { items: true } }).catch(() => []),
+      ]);
+      const transferOutMap = new Map();
+      transfersOut.forEach(t => t.items.forEach(i => transferOutMap.set(i.productId, (transferOutMap.get(i.productId) || 0) + i.quantity)));
+      const transferInMap = new Map();
+      transfersIn.forEach(t => t.items.forEach(i => transferInMap.set(i.productId, (transferInMap.get(i.productId) || 0) + i.quantity)));
+
+      // 盤點差異
+      const countItems = await prisma.stockCountItem.findMany({
+        where: wh ? { stockCount: { warehouse: wh } } : {},
+        include: { stockCount: true },
+      }).catch(() => []);
+      const countItemsFiltered = countItems;
+      const countDiffMap = new Map();
+      countItemsFiltered.forEach(ci => {
+        countDiffMap.set(ci.productId, (countDiffMap.get(ci.productId) || 0) + (ci.diff || 0));
       });
 
       inventory = products.map((product, index) => {
         const purchaseQty = purchaseQtyMap.get(product.id) || 0;
         const salesQty = salesQtyMap.get(product.id) || 0;
-        const currentQty = purchaseQty - salesQty;
+        const reqQty = reqQtyMap.get(product.id) || 0;
+        const outQty = transferOutMap.get(product.id) || 0;
+        const inQty = transferInMap.get(product.id) || 0;
+        const adjQty = countDiffMap.get(product.id) || 0;
+        const currentQty = purchaseQty - salesQty - reqQty - outQty + inQty + adjQty;
         const threshold = product.lowStockThreshold || 10;
 
         return {
@@ -163,22 +211,28 @@ export async function GET(request) {
           beginningQty: 0,
           purchaseQty,
           salesQty,
+          requisitionQty: reqQty,
+          transferOutQty: outQty,
+          transferInQty: inQty,
+          countAdjustQty: adjQty,
           currentQty,
           product: {
             id: product.id, name: product.name, code: product.code,
             unit: product.unit, costPrice: Number(product.costPrice),
             sellingPrice: Number(product.salesPrice), isInStock: product.isInStock,
+            warehouseLocation: product.warehouseLocation,
           },
           status: getInventoryStatus(currentQty, threshold),
           totalValue: currentQty * Number(product.costPrice || 0),
         };
       });
+
+      if (wh) {
+        inventory = inventory.filter(item => item.currentQty !== 0 || item.purchaseQty || item.requisitionQty || item.transferInQty || item.transferOutQty || item.countAdjustQty);
+      }
     }
 
     // Apply filters
-    if (warehouse) {
-      // Filter by warehouse if applicable (products have warehouseLocation)
-    }
     if (status) {
       inventory = inventory.filter(item => item.status === status);
     }

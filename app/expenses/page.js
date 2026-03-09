@@ -4,12 +4,16 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
-import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
-const TABS = [
+const MAIN_TABS = [
+  { key: 'purchase', label: '進銷存每月費用' },
+  { key: 'fixed', label: '固定費用' }
+];
+
+const SUB_TABS = [
   { key: 'templates', label: '費用範本' },
-  { key: 'records', label: '執行記錄' },
-  { key: 'execute', label: '快速執行' }
+  { key: 'execute', label: '快速執行' },
+  { key: 'records', label: '執行記錄' }
 ];
 
 const EMPTY_ENTRY_LINE = {
@@ -20,29 +24,40 @@ const EMPTY_ENTRY_LINE = {
   defaultAmount: ''
 };
 
+const EMPTY_PURCHASE_ITEM = {
+  productId: '',
+  quantity: 1,
+  unitPrice: '',
+  note: ''
+};
+
 export default function ExpensesPage() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
-  const [activeTab, setActiveTab] = useState('templates');
+  const [mainTab, setMainTab] = useState('purchase');
+  const [subTab, setSubTab] = useState('templates');
 
   // Shared data
   const [templates, setTemplates] = useState([]);
   const [categories, setCategories] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Template tab state
-  const [activeCategoryTab, setActiveCategoryTab] = useState('all');
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [templateForm, setTemplateForm] = useState({
     name: '', description: '', categoryId: '', warehouse: '',
     defaultSupplierId: '', paymentMethod: '', sortOrder: 0,
+    defaultTaxType: '',
     entryLines: [
       { ...EMPTY_ENTRY_LINE, entryType: 'debit' },
       { ...EMPTY_ENTRY_LINE, entryType: 'credit' }
-    ]
+    ],
+    purchaseItems: [{ ...EMPTY_PURCHASE_ITEM }]
   });
 
   // Records tab state
@@ -66,8 +81,18 @@ export default function ExpensesPage() {
     supplierId: '',
     supplierName: '',
     paymentMethod: '',
+    paymentTerms: '',
     note: '',
-    entryLines: []
+    // For fixed type
+    entryLines: [],
+    // For purchase type
+    items: [],
+    // Invoice info (purchase type)
+    invoiceNo: '',
+    invoiceDate: '',
+    invoiceTitle: '',
+    taxType: '',
+    department: ''
   });
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -77,26 +102,50 @@ export default function ExpensesPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'records') fetchRecords();
-  }, [activeTab, recordFilter]);
+    if (subTab === 'records') fetchRecords();
+  }, [subTab, mainTab, recordFilter]);
+
+  useEffect(() => {
+    // Reset selection when switching main tabs
+    setSelectedTemplateId('');
+    setShowTemplateForm(false);
+    setEditingTemplate(null);
+    setDuplicateWarning(null);
+    setExecuteForm(prev => ({
+      ...prev,
+      items: [],
+      entryLines: [],
+      invoiceNo: '',
+      invoiceDate: '',
+      invoiceTitle: '',
+      taxType: '',
+      supplierId: '',
+      supplierName: '',
+    }));
+  }, [mainTab]);
 
   async function fetchAll() {
     setLoading(true);
     try {
-      const [templatesRes, categoriesRes, warehousesRes, suppliersRes] = await Promise.all([
-        fetch('/api/expense-templates'),
+      const [templatesRes, categoriesRes, warehousesRes, suppliersRes, productsRes, accountingRes] = await Promise.all([
+        fetch('/api/expense-templates?activeOnly=false'),
         fetch('/api/settings/expense-categories'),
         fetch('/api/warehouse-departments'),
-        fetch('/api/suppliers?activeOnly=true')
+        fetch('/api/suppliers?activeOnly=true'),
+        fetch('/api/products'),
+        fetch('/api/settings/accounting-subjects')
       ]);
       const templatesData = await templatesRes.json();
       const categoriesData = await categoriesRes.json();
       const warehousesData = await warehousesRes.json();
       const suppliersData = await suppliersRes.json();
+      let productsData = [];
+      try { productsData = await productsRes.json(); } catch(e) {}
+      let accountingData = [];
+      try { accountingData = await accountingRes.json(); } catch(e) {}
 
       setTemplates(Array.isArray(templatesData) ? templatesData : []);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      // warehouse-departments API returns object { '館別名': [...departments] }
       const whList = warehousesData && typeof warehousesData === 'object' && !Array.isArray(warehousesData)
         ? Object.keys(warehousesData)
         : Array.isArray(warehousesData)
@@ -104,6 +153,8 @@ export default function ExpensesPage() {
           : [];
       setWarehouses(whList);
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : (suppliersData?.suppliers || []));
+      setProducts(Array.isArray(productsData) ? productsData : []);
+      setAccountingSubjects(Array.isArray(accountingData) ? accountingData : []);
     } catch (err) {
       console.error('載入資料失敗:', err);
     }
@@ -112,7 +163,7 @@ export default function ExpensesPage() {
 
   async function fetchTemplates() {
     try {
-      const res = await fetch('/api/expense-templates');
+      const res = await fetch('/api/expense-templates?activeOnly=false');
       const data = await res.json();
       setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -127,6 +178,7 @@ export default function ExpensesPage() {
       if (recordFilter.month) params.set('month', recordFilter.month);
       if (recordFilter.warehouse) params.set('warehouse', recordFilter.warehouse);
       if (recordFilter.status) params.set('status', recordFilter.status);
+      params.set('type', mainTab);
       const res = await fetch(`/api/expense-records?${params.toString()}`);
       const data = await res.json();
       setRecords(data.records || []);
@@ -137,15 +189,20 @@ export default function ExpensesPage() {
     setRecordsLoading(false);
   }
 
+  // Filter templates by current main tab type
+  const filteredTemplates = templates.filter(t => (t.templateType || 'fixed') === mainTab);
+
   // ====== Template CRUD ======
   function resetTemplateForm() {
     setTemplateForm({
       name: '', description: '', categoryId: '', warehouse: '',
       defaultSupplierId: '', paymentMethod: '', sortOrder: 0,
+      defaultTaxType: '',
       entryLines: [
         { ...EMPTY_ENTRY_LINE, entryType: 'debit' },
         { ...EMPTY_ENTRY_LINE, entryType: 'credit' }
-      ]
+      ],
+      purchaseItems: [{ ...EMPTY_PURCHASE_ITEM }]
     });
     setEditingTemplate(null);
     setShowTemplateForm(false);
@@ -153,7 +210,7 @@ export default function ExpensesPage() {
 
   function handleEditTemplate(tmpl) {
     setEditingTemplate(tmpl);
-    setTemplateForm({
+    const form = {
       name: tmpl.name,
       description: tmpl.description || '',
       categoryId: tmpl.categoryId ? String(tmpl.categoryId) : '',
@@ -161,14 +218,30 @@ export default function ExpensesPage() {
       defaultSupplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
       paymentMethod: tmpl.paymentMethod || '',
       sortOrder: tmpl.sortOrder || 0,
-      entryLines: tmpl.entryLines.map(l => ({
+      defaultTaxType: tmpl.defaultTaxType || '',
+      entryLines: (tmpl.entryLines || []).map(l => ({
         entryType: l.entryType,
         accountingCode: l.accountingCode,
         accountingName: l.accountingName,
         summary: l.summary || '',
         defaultAmount: l.defaultAmount != null ? String(l.defaultAmount) : ''
-      }))
-    });
+      })),
+      purchaseItems: Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
+        ? tmpl.purchaseItems.map(item => ({
+            productId: String(item.productId || ''),
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
+            note: item.note || ''
+          }))
+        : [{ ...EMPTY_PURCHASE_ITEM }]
+    };
+    if (form.entryLines.length === 0) {
+      form.entryLines = [
+        { ...EMPTY_ENTRY_LINE, entryType: 'debit' },
+        { ...EMPTY_ENTRY_LINE, entryType: 'credit' }
+      ];
+    }
+    setTemplateForm(form);
     setShowTemplateForm(true);
   }
 
@@ -193,6 +266,27 @@ export default function ExpensesPage() {
     }));
   }
 
+  function addPurchaseItem() {
+    setTemplateForm(prev => ({
+      ...prev,
+      purchaseItems: [...prev.purchaseItems, { ...EMPTY_PURCHASE_ITEM }]
+    }));
+  }
+
+  function removePurchaseItem(idx) {
+    setTemplateForm(prev => ({
+      ...prev,
+      purchaseItems: prev.purchaseItems.filter((_, i) => i !== idx)
+    }));
+  }
+
+  function updatePurchaseItem(idx, field, value) {
+    setTemplateForm(prev => ({
+      ...prev,
+      purchaseItems: prev.purchaseItems.map((item, i) => i === idx ? { ...item, [field]: value } : item)
+    }));
+  }
+
   function getTemplateBalance() {
     const debit = templateForm.entryLines
       .filter(l => l.entryType === 'debit')
@@ -203,33 +297,69 @@ export default function ExpensesPage() {
     return { debit, credit, balanced: debit === 0 && credit === 0 ? true : Math.abs(debit - credit) < 0.01 };
   }
 
+  function getPurchaseTotal() {
+    return templateForm.purchaseItems.reduce((sum, item) => {
+      return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
+    }, 0);
+  }
+
   async function handleSaveTemplate() {
     if (!templateForm.name.trim()) {
       alert('請輸入範本名稱');
       return;
     }
-    if (templateForm.entryLines.length === 0) {
-      alert('請至少新增一筆分錄');
-      return;
-    }
-    for (const line of templateForm.entryLines) {
-      if (!line.accountingCode.trim() || !line.accountingName.trim()) {
-        alert('每筆分錄必須填寫科目代碼和科目名稱');
+
+    if (mainTab === 'fixed') {
+      if (templateForm.entryLines.length === 0) {
+        alert('請至少新增一筆分錄');
+        return;
+      }
+      for (const line of templateForm.entryLines) {
+        if (!line.accountingCode.trim() || !line.accountingName.trim()) {
+          alert('每筆分錄必須填寫科目代碼和科目名稱');
+          return;
+        }
+      }
+      const bal = getTemplateBalance();
+      if (!bal.balanced && bal.debit > 0 && bal.credit > 0) {
+        alert(`借貸不平衡：借方 ${bal.debit.toFixed(2)} ≠ 貸方 ${bal.credit.toFixed(2)}`);
         return;
       }
     }
-    const bal = getTemplateBalance();
-    if (!bal.balanced && bal.debit > 0 && bal.credit > 0) {
-      alert(`借貸不平衡：借方 ${bal.debit.toFixed(2)} ≠ 貸方 ${bal.credit.toFixed(2)}`);
-      return;
+
+    if (mainTab === 'purchase') {
+      if (!templateForm.defaultSupplierId) {
+        alert('請選擇預設廠商');
+        return;
+      }
+      const validItems = templateForm.purchaseItems.filter(item => item.productId);
+      if (validItems.length === 0) {
+        alert('請至少新增一筆進貨品項');
+        return;
+      }
     }
 
     const body = {
       ...templateForm,
+      templateType: mainTab,
       categoryId: templateForm.categoryId || null,
       defaultSupplierId: templateForm.defaultSupplierId || null,
-      entryLines: templateForm.entryLines.map((l, i) => ({ ...l, sortOrder: i }))
     };
+
+    if (mainTab === 'fixed') {
+      body.entryLines = templateForm.entryLines.map((l, i) => ({ ...l, sortOrder: i }));
+      delete body.purchaseItems;
+    } else {
+      body.purchaseItems = templateForm.purchaseItems
+        .filter(item => item.productId)
+        .map(item => ({
+          productId: parseInt(item.productId),
+          quantity: parseInt(item.quantity) || 1,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          note: item.note || ''
+        }));
+      delete body.entryLines;
+    }
 
     try {
       const url = editingTemplate
@@ -272,18 +402,18 @@ export default function ExpensesPage() {
 
   async function handleToggleTemplateActive(tmpl) {
     try {
+      const body = {
+        ...tmpl,
+        isActive: !tmpl.isActive,
+        entryLines: tmpl.entryLines || [],
+        purchaseItems: tmpl.purchaseItems || []
+      };
       const res = await fetch(`/api/expense-templates/${tmpl.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...tmpl,
-          isActive: !tmpl.isActive,
-          entryLines: tmpl.entryLines
-        })
+        body: JSON.stringify(body)
       });
-      if (res.ok) {
-        fetchTemplates();
-      }
+      if (res.ok) fetchTemplates();
     } catch (err) {
       alert('更新失敗');
     }
@@ -341,9 +471,8 @@ export default function ExpensesPage() {
     if (!confirm('確定要刪除此記錄嗎？')) return;
     try {
       const res = await fetch(`/api/expense-records/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchRecords();
-      } else {
+      if (res.ok) fetchRecords();
+      else {
         const err = await res.json();
         alert(err.error || '刪除失敗');
       }
@@ -357,38 +486,60 @@ export default function ExpensesPage() {
     setSelectedTemplateId(tmplId);
     setDuplicateWarning(null);
     if (!tmplId) {
-      setExecuteForm(prev => ({ ...prev, entryLines: [] }));
+      setExecuteForm(prev => ({ ...prev, entryLines: [], items: [] }));
       return;
     }
     const tmpl = templates.find(t => t.id === parseInt(tmplId));
     if (!tmpl) return;
 
-    // Resolve summary template variables
-    const resolvedLines = tmpl.entryLines.map(l => {
-      let summary = l.summary || l.accountingName;
-      summary = summary
-        .replace(/\{\{館別\}\}/g, executeForm.warehouse || '___')
-        .replace(/\{\{月份\}\}/g, executeForm.expenseMonth || '___');
-      return {
-        entryType: l.entryType,
-        accountingCode: l.accountingCode,
-        accountingName: l.accountingName,
-        summary,
-        amount: l.defaultAmount != null ? String(l.defaultAmount) : '',
-        sortOrder: l.sortOrder
-      };
-    });
+    if (mainTab === 'purchase') {
+      // Purchase type: load items from template
+      const items = Array.isArray(tmpl.purchaseItems) ? tmpl.purchaseItems.map(item => ({
+        productId: String(item.productId || ''),
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
+        note: item.note || ''
+      })) : [{ ...EMPTY_PURCHASE_ITEM }];
 
-    setExecuteForm(prev => ({
-      ...prev,
-      supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
-      supplierName: tmpl.defaultSupplierId
-        ? (suppliers.find(s => s.id === tmpl.defaultSupplierId)?.name || '')
-        : '',
-      paymentMethod: tmpl.paymentMethod || '',
-      warehouse: tmpl.warehouse || prev.warehouse,
-      entryLines: resolvedLines
-    }));
+      setExecuteForm(prev => ({
+        ...prev,
+        supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
+        supplierName: tmpl.defaultSupplierId
+          ? (suppliers.find(s => s.id === tmpl.defaultSupplierId)?.name || '')
+          : '',
+        paymentTerms: tmpl.paymentMethod || '月結',
+        warehouse: tmpl.warehouse || prev.warehouse,
+        taxType: tmpl.defaultTaxType || '',
+        items
+      }));
+    } else {
+      // Fixed type: load entry lines
+      const resolvedLines = (tmpl.entryLines || []).map(l => {
+        let summary = l.summary || l.accountingName;
+        summary = summary
+          .replace(/\{\{館別\}\}/g, executeForm.warehouse || '___')
+          .replace(/\{\{月份\}\}/g, executeForm.expenseMonth || '___');
+        return {
+          entryType: l.entryType,
+          accountingCode: l.accountingCode,
+          accountingName: l.accountingName,
+          summary,
+          amount: l.defaultAmount != null ? String(l.defaultAmount) : '',
+          sortOrder: l.sortOrder
+        };
+      });
+
+      setExecuteForm(prev => ({
+        ...prev,
+        supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
+        supplierName: tmpl.defaultSupplierId
+          ? (suppliers.find(s => s.id === tmpl.defaultSupplierId)?.name || '')
+          : '',
+        paymentMethod: tmpl.paymentMethod || '',
+        warehouse: tmpl.warehouse || prev.warehouse,
+        entryLines: resolvedLines
+      }));
+    }
   }
 
   function updateExecuteLine(idx, field, value) {
@@ -398,20 +549,24 @@ export default function ExpensesPage() {
     }));
   }
 
-  // Re-resolve summaries when warehouse or month changes
-  function refreshSummaries() {
-    if (!selectedTemplateId) return;
-    const tmpl = templates.find(t => t.id === parseInt(selectedTemplateId));
-    if (!tmpl) return;
+  function updateExecuteItem(idx, field, value) {
     setExecuteForm(prev => ({
       ...prev,
-      entryLines: prev.entryLines.map((l, idx) => {
-        const origSummary = tmpl.entryLines[idx]?.summary || tmpl.entryLines[idx]?.accountingName || l.accountingName;
-        const resolved = origSummary
-          .replace(/\{\{館別\}\}/g, prev.warehouse || '___')
-          .replace(/\{\{月份\}\}/g, prev.expenseMonth || '___');
-        return { ...l, summary: resolved };
-      })
+      items: prev.items.map((item, i) => i === idx ? { ...item, [field]: value } : item)
+    }));
+  }
+
+  function addExecuteItem() {
+    setExecuteForm(prev => ({
+      ...prev,
+      items: [...prev.items, { ...EMPTY_PURCHASE_ITEM }]
+    }));
+  }
+
+  function removeExecuteItem(idx) {
+    setExecuteForm(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== idx)
     }));
   }
 
@@ -423,6 +578,12 @@ export default function ExpensesPage() {
       .filter(l => l.entryType === 'credit')
       .reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
     return { debit, credit, balanced: Math.abs(debit - credit) < 0.01 };
+  }
+
+  function getExecutePurchaseTotal() {
+    return executeForm.items.reduce((sum, item) => {
+      return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
+    }, 0);
   }
 
   async function handleExecute(allowDuplicate = false) {
@@ -438,947 +599,1047 @@ export default function ExpensesPage() {
       alert('請選擇費用月份');
       return;
     }
-    const bal = getExecuteBalance();
-    if (!bal.balanced) {
-      alert(`借貸不平衡：借方 ${bal.debit.toFixed(2)} ≠ 貸方 ${bal.credit.toFixed(2)}`);
-      return;
-    }
-    if (bal.debit <= 0) {
-      alert('金額必須大於 0');
-      return;
-    }
 
     setSubmitting(true);
+    setDuplicateWarning(null);
+
     try {
-      const body = {
-        templateId: parseInt(selectedTemplateId),
-        warehouse: executeForm.warehouse,
-        expenseMonth: executeForm.expenseMonth,
-        supplierId: executeForm.supplierId || null,
-        supplierName: executeForm.supplierName || null,
-        paymentMethod: executeForm.paymentMethod || null,
-        note: executeForm.note || null,
-        createdBy: session?.user?.name || session?.user?.email || '系統',
-        allowDuplicate,
-        entryLines: executeForm.entryLines.map((l, i) => ({
-          entryType: l.entryType,
-          accountingCode: l.accountingCode,
-          accountingName: l.accountingName,
-          summary: l.summary,
-          amount: parseFloat(l.amount),
-          sortOrder: i
-        }))
-      };
-
-      const res = await fetch('/api/expense-records', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (res.status === 409) {
-        const data = await res.json();
-        if (data.duplicate) {
-          setDuplicateWarning(data.message);
+      if (mainTab === 'purchase') {
+        // Execute purchase type
+        const validItems = executeForm.items.filter(item => item.productId);
+        if (validItems.length === 0) {
+          alert('請至少新增一筆進貨品項');
           setSubmitting(false);
           return;
         }
-      }
+        if (!executeForm.supplierId) {
+          alert('請選擇廠商');
+          setSubmitting(false);
+          return;
+        }
 
-      if (res.ok) {
-        const data = await res.json();
-        alert(`費用記錄建立成功！編號: ${data.recordNo}`);
-        setDuplicateWarning(null);
-        setSelectedTemplateId('');
-        setExecuteForm(prev => ({ ...prev, entryLines: [], note: '' }));
-        // Switch to records tab to show the new record
-        setActiveTab('records');
-        fetchRecords();
+        const body = {
+          templateId: parseInt(selectedTemplateId),
+          warehouse: executeForm.warehouse,
+          expenseMonth: executeForm.expenseMonth,
+          supplierId: parseInt(executeForm.supplierId),
+          supplierName: executeForm.supplierName,
+          paymentTerms: executeForm.paymentTerms || '月結',
+          taxType: executeForm.taxType || null,
+          department: executeForm.department || '',
+          items: validItems.map(item => ({
+            productId: parseInt(item.productId),
+            quantity: parseInt(item.quantity) || 1,
+            unitPrice: parseFloat(item.unitPrice) || 0,
+            note: item.note || ''
+          })),
+          invoiceNo: executeForm.invoiceNo || null,
+          invoiceDate: executeForm.invoiceDate || null,
+          invoiceTitle: executeForm.invoiceTitle || null,
+          createdBy: session?.user?.name || session?.user?.email || '系統',
+          note: executeForm.note || null,
+          allowDuplicate
+        };
+
+        const res = await fetch('/api/expense-records/execute-purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          let msg = `執行成功！\n進貨單號: ${result.linkedPurchaseNo}`;
+          if (result.linkedSalesNo) msg += `\n發票單號: ${result.linkedSalesNo}`;
+          msg += `\n費用記錄: ${result.recordNo}`;
+          alert(msg);
+          setSelectedTemplateId('');
+          setExecuteForm(prev => ({ ...prev, items: [], invoiceNo: '', invoiceDate: '', invoiceTitle: '' }));
+          if (subTab === 'records') fetchRecords();
+        } else if (res.status === 409) {
+          const err = await res.json();
+          if (err.duplicate) {
+            setDuplicateWarning(err.error);
+          } else {
+            alert(err.error || '執行失敗');
+          }
+        } else {
+          const err = await res.json();
+          alert(err.error || '執行失敗');
+        }
       } else {
-        const err = await res.json();
-        alert(err.error || '建立失敗');
+        // Execute fixed type
+        const bal = getExecuteBalance();
+        if (!bal.balanced) {
+          alert(`借貸不平衡：借方 ${bal.debit.toFixed(2)} ≠ 貸方 ${bal.credit.toFixed(2)}`);
+          setSubmitting(false);
+          return;
+        }
+        if (bal.debit <= 0) {
+          alert('金額必須大於 0');
+          setSubmitting(false);
+          return;
+        }
+
+        const body = {
+          templateId: parseInt(selectedTemplateId),
+          warehouse: executeForm.warehouse,
+          expenseMonth: executeForm.expenseMonth,
+          supplierId: executeForm.supplierId ? parseInt(executeForm.supplierId) : null,
+          supplierName: executeForm.supplierName || null,
+          paymentMethod: executeForm.paymentMethod || '月結',
+          dueDate: executeForm.dueDate || null,
+          entryLines: executeForm.entryLines.map((l, idx) => ({
+            entryType: l.entryType,
+            accountingCode: l.accountingCode,
+            accountingName: l.accountingName,
+            summary: l.summary,
+            amount: parseFloat(l.amount),
+            sortOrder: idx
+          })),
+          createdBy: session?.user?.name || session?.user?.email || '系統',
+          note: executeForm.note || null,
+          allowDuplicate
+        };
+
+        const res = await fetch('/api/expense-records/execute-fixed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          alert(`執行成功！\n付款單號: ${result.linkedPaymentOrderNo}\n費用記錄: ${result.recordNo}`);
+          setSelectedTemplateId('');
+          setExecuteForm(prev => ({ ...prev, entryLines: [] }));
+          if (subTab === 'records') fetchRecords();
+        } else if (res.status === 409) {
+          const err = await res.json();
+          if (err.duplicate) {
+            setDuplicateWarning(err.error);
+          } else {
+            alert(err.error || '執行失敗');
+          }
+        } else {
+          const err = await res.json();
+          alert(err.error || '執行失敗');
+        }
       }
     } catch (err) {
-      alert('建立失敗: ' + err.message);
+      alert('執行失敗: ' + err.message);
     }
     setSubmitting(false);
   }
 
-  // ====== Filtered templates for category sub-tabs ======
-  function getFilteredTemplates() {
-    if (activeCategoryTab === 'all') return templates;
-    if (activeCategoryTab === 'uncategorized') return templates.filter(t => !t.categoryId);
-    return templates.filter(t => t.categoryId === parseInt(activeCategoryTab));
-  }
-
-  // ====== Status badge helper ======
-  function statusBadge(status) {
-    const styles = {
-      '待確認': 'bg-yellow-100 text-yellow-800',
-      '已確認': 'bg-green-100 text-green-800',
-      '已作廢': 'bg-gray-200 text-gray-500'
-    };
-    return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
-        {status}
-      </span>
-    );
-  }
-
+  // ====== RENDER ======
   if (loading) {
     return (
-      <div className="min-h-screen page-bg-expenses">
-        <Navigation borderColor="border-rose-500" />
-        <main className="max-w-7xl mx-auto px-4 py-8">
-          <p className="text-center text-gray-500 py-12">載入中...</p>
-        </main>
+      <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
+        <Navigation />
+        <div style={{ padding: 32, textAlign: 'center' }}>載入中...</div>
       </div>
     );
   }
 
+  const activeTemplates = filteredTemplates.filter(t => t.isActive);
+  const getProductName = (id) => {
+    const p = products.find(p => p.id === parseInt(id));
+    return p ? `${p.code} - ${p.name}` : id;
+  };
+  const getSupplierName = (id) => {
+    const s = suppliers.find(s => s.id === parseInt(id));
+    return s?.name || id;
+  };
+
   return (
-    <div className="min-h-screen page-bg-expenses">
-      <Navigation borderColor="border-rose-500" />
+    <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
+      <Navigation />
+      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>費用管理</h1>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">常見費用管理</h2>
-          {activeTab === 'records' && (
-            <ExportButtons
-              data={records.map(rec => ({
-                ...rec,
-                templateName: rec.template?.name || '-',
-                executedBy: rec.executedByUser?.name || '-',
-              }))}
-              columns={EXPORT_CONFIGS.expenses.columns}
-              exportName={EXPORT_CONFIGS.expenses.filename}
-              title="費用執行記錄"
-              sheetName="費用記錄"
-            />
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-gray-200">
-          {TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === tab.key
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
+        {/* Main Tabs: 進銷存每月費用 / 固定費用 */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 0, borderBottom: '2px solid #dee2e6' }}>
+          {MAIN_TABS.map(tab => (
+            <button key={tab.key}
+              onClick={() => setMainTab(tab.key)}
+              style={{
+                padding: '12px 28px',
+                background: mainTab === tab.key ? '#fff' : '#e9ecef',
+                color: mainTab === tab.key ? '#1a73e8' : '#555',
+                border: mainTab === tab.key ? '2px solid #dee2e6' : '1px solid transparent',
+                borderBottom: mainTab === tab.key ? '2px solid #fff' : 'none',
+                borderRadius: '8px 8px 0 0',
+                fontWeight: mainTab === tab.key ? 700 : 500,
+                fontSize: 15,
+                cursor: 'pointer',
+                marginBottom: mainTab === tab.key ? -2 : 0,
+                position: 'relative'
+              }}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* ==================== Tab 1: Templates ==================== */}
-        {activeTab === 'templates' && (
-          <div>
-            {/* Category sub-tabs */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button
-                onClick={() => setActiveCategoryTab('all')}
-                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  activeCategoryTab === 'all'
-                    ? 'bg-rose-100 border-rose-300 text-rose-700'
-                    : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                全部 ({templates.length})
-              </button>
-              {categories.map(cat => {
-                const count = templates.filter(t => t.categoryId === cat.id).length;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setActiveCategoryTab(String(cat.id))}
-                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                      activeCategoryTab === String(cat.id)
-                        ? 'bg-rose-100 border-rose-300 text-rose-700'
-                        : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {cat.name} ({count})
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setActiveCategoryTab('uncategorized')}
-                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                  activeCategoryTab === 'uncategorized'
-                    ? 'bg-rose-100 border-rose-300 text-rose-700'
-                    : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                未分類 ({templates.filter(t => !t.categoryId).length})
-              </button>
-            </div>
+        {/* Sub Tabs: 費用範本 / 快速執行 / 執行記錄 */}
+        <div style={{ display: 'flex', gap: 8, padding: '12px 0', borderBottom: '1px solid #eee', background: '#fff', paddingLeft: 16 }}>
+          {SUB_TABS.map(tab => (
+            <button key={tab.key}
+              onClick={() => setSubTab(tab.key)}
+              style={{
+                padding: '6px 18px',
+                background: subTab === tab.key ? '#1a73e8' : '#f8f9fa',
+                color: subTab === tab.key ? '#fff' : '#333',
+                border: subTab === tab.key ? 'none' : '1px solid #dee2e6',
+                borderRadius: 6,
+                fontWeight: 500,
+                fontSize: 14,
+                cursor: 'pointer'
+              }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-            {/* Add template button */}
-            {isLoggedIn && (
-              <div className="mb-4">
-                <button
-                  onClick={() => { resetTemplateForm(); setShowTemplateForm(true); }}
-                  className="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm"
-                >
+        <div style={{ background: '#fff', padding: 20, borderRadius: '0 0 8px 8px', minHeight: 400 }}>
+          {/* ====== TEMPLATES TAB ====== */}
+          {subTab === 'templates' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 style={{ fontSize: 17, fontWeight: 600 }}>
+                  {mainTab === 'purchase' ? '進銷存費用範本' : '固定費用範本'}
+                </h2>
+                <button onClick={() => { resetTemplateForm(); setShowTemplateForm(true); }}
+                  style={{ padding: '8px 16px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
                   + 新增範本
                 </button>
               </div>
-            )}
 
-            {/* Template Form (add/edit) */}
-            {showTemplateForm && (
-              <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border border-rose-200">
-                <h3 className="text-lg font-bold mb-4">
-                  {editingTemplate ? '編輯範本' : '新增範本'}
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">範本名稱 *</label>
-                    <input
-                      type="text"
-                      value={templateForm.name}
-                      onChange={e => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                      placeholder="例：水電費"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">費用類別</label>
-                    <select
-                      value={templateForm.categoryId}
-                      onChange={e => setTemplateForm(prev => ({ ...prev, categoryId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="">-- 未分類 --</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">適用館別</label>
-                    <select
-                      value={templateForm.warehouse}
-                      onChange={e => setTemplateForm(prev => ({ ...prev, warehouse: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="">全部館別</option>
-                      {warehouses.map(w => (
-                        <option key={w} value={w}>{w}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">預設供應商</label>
-                    <select
-                      value={templateForm.defaultSupplierId}
-                      onChange={e => setTemplateForm(prev => ({ ...prev, defaultSupplierId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="">-- 無 --</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
-                    <input
-                      type="text"
-                      value={templateForm.paymentMethod}
-                      onChange={e => setTemplateForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                      placeholder="例：銀行轉帳"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">說明</label>
-                    <input
-                      type="text"
-                      value={templateForm.description}
-                      onChange={e => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                      placeholder="範本說明"
-                    />
-                  </div>
-                </div>
+              {/* Template Form */}
+              {showTemplateForm && (
+                <div style={{ border: '1px solid #dee2e6', borderRadius: 8, padding: 20, marginBottom: 20, background: '#fafbfc' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                    {editingTemplate ? '編輯範本' : '新增範本'}
+                  </h3>
 
-                {/* Entry lines */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-bold text-gray-700">分錄明細</h4>
-                    <div className="flex gap-2">
-                      <button onClick={() => addEntryLine('debit')} className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200">
-                        + 借方
-                      </button>
-                      <button onClick={() => addEntryLine('credit')} className="px-3 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200">
-                        + 貸方
-                      </button>
+                  {/* Common fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={labelStyle}>範本名稱 *</label>
+                      <input value={templateForm.name}
+                        onChange={e => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+                        style={inputStyle} placeholder="例: 每月OO廠商進貨" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>館別</label>
+                      <select value={templateForm.warehouse}
+                        onChange={e => setTemplateForm(prev => ({ ...prev, warehouse: e.target.value }))}
+                        style={inputStyle}>
+                        <option value="">不限</option>
+                        {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>分類</label>
+                      <select value={templateForm.categoryId}
+                        onChange={e => setTemplateForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                        style={inputStyle}>
+                        <option value="">無分類</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left w-20">借/貸</th>
-                          <th className="px-3 py-2 text-left w-28">科目代碼</th>
-                          <th className="px-3 py-2 text-left">科目名稱</th>
-                          <th className="px-3 py-2 text-left">摘要模板</th>
-                          <th className="px-3 py-2 text-right w-32">預設金額</th>
-                          <th className="px-3 py-2 w-12"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {templateForm.entryLines.map((line, idx) => (
-                          <tr key={idx} className={`border-t ${line.entryType === 'debit' ? 'bg-blue-50/30' : 'bg-green-50/30'}`}>
-                            <td className="px-3 py-2">
-                              <select
-                                value={line.entryType}
-                                onChange={e => updateEntryLine(idx, 'entryType', e.target.value)}
-                                className={`px-2 py-1 rounded text-xs font-medium border ${
-                                  line.entryType === 'debit'
-                                    ? 'bg-blue-100 text-blue-700 border-blue-200'
-                                    : 'bg-green-100 text-green-700 border-green-200'
-                                }`}
-                              >
-                                <option value="debit">借方</option>
-                                <option value="credit">貸方</option>
-                              </select>
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                value={line.accountingCode}
-                                onChange={e => updateEntryLine(idx, 'accountingCode', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                placeholder="6000"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                value={line.accountingName}
-                                onChange={e => updateEntryLine(idx, 'accountingName', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                placeholder="水電瓦斯費"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                value={line.summary}
-                                onChange={e => updateEntryLine(idx, 'summary', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                placeholder="{{館別}}{{月份}}水電費"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={line.defaultAmount}
-                                onChange={e => updateEntryLine(idx, 'defaultAmount', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-right"
-                                placeholder="0.00"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <button
-                                onClick={() => removeEntryLine(idx)}
-                                className="text-red-500 hover:text-red-700 text-xs"
-                                title="移除"
-                              >
-                                X
-                              </button>
-                            </td>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={labelStyle}>說明</label>
+                      <input value={templateForm.description}
+                        onChange={e => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
+                        style={inputStyle} placeholder="範本說明..." />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>預設廠商{mainTab === 'purchase' ? ' *' : ''}</label>
+                      <select value={templateForm.defaultSupplierId}
+                        onChange={e => setTemplateForm(prev => ({ ...prev, defaultSupplierId: e.target.value }))}
+                        style={inputStyle}>
+                        <option value="">不指定</option>
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Purchase-type specific: product items */}
+                  {mainTab === 'purchase' && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <label style={labelStyle}>付款條件</label>
+                          <input value={templateForm.paymentMethod}
+                            onChange={e => setTemplateForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                            style={inputStyle} placeholder="月結" />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>預設稅別</label>
+                          <select value={templateForm.defaultTaxType}
+                            onChange={e => setTemplateForm(prev => ({ ...prev, defaultTaxType: e.target.value }))}
+                            style={inputStyle}>
+                            <option value="">不指定</option>
+                            <option value="應稅">應稅</option>
+                            <option value="免稅">免稅</option>
+                            <option value="零稅率">零稅率</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>預設進貨品項</h4>
+                      <table style={tableStyle}>
+                        <thead>
+                          <tr>
+                            <th style={thStyle}>商品</th>
+                            <th style={{ ...thStyle, width: 80 }}>數量</th>
+                            <th style={{ ...thStyle, width: 100 }}>單價</th>
+                            <th style={{ ...thStyle, width: 100 }}>小計</th>
+                            <th style={thStyle}>備註</th>
+                            <th style={{ ...thStyle, width: 40 }}></th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {/* Balance summary */}
-                  {(() => {
-                    const bal = getTemplateBalance();
-                    return (
-                      <div className={`mt-2 p-2 rounded text-sm flex gap-6 ${
-                        bal.balanced ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                      }`}>
-                        <span>借方合計: {bal.debit.toFixed(2)}</span>
-                        <span>貸方合計: {bal.credit.toFixed(2)}</span>
-                        <span className="font-medium">
-                          {bal.balanced ? '-- 借貸平衡 --' : `差額: ${Math.abs(bal.debit - bal.credit).toFixed(2)}`}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveTemplate}
-                    className="px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 text-sm"
-                  >
-                    {editingTemplate ? '更新範本' : '儲存範本'}
-                  </button>
-                  <button
-                    onClick={resetTemplateForm}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
-                  >
-                    取消
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Template list */}
-            <div className="space-y-3">
-              {getFilteredTemplates().length === 0 ? (
-                <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
-                  尚無費用範本
-                </div>
-              ) : (
-                getFilteredTemplates().map(tmpl => (
-                  <div
-                    key={tmpl.id}
-                    className={`bg-white rounded-lg shadow-sm border ${
-                      tmpl.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'
-                    }`}
-                  >
-                    <div className="p-4">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-bold text-base">{tmpl.name}</h4>
-                            {tmpl.category && (
-                              <span className="px-2 py-0.5 bg-rose-50 text-rose-600 rounded text-xs">
-                                {tmpl.category.name}
-                              </span>
-                            )}
-                            {tmpl.warehouse && (
-                              <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">
-                                {tmpl.warehouse}
-                              </span>
-                            )}
-                            {!tmpl.isActive && (
-                              <span className="px-2 py-0.5 bg-gray-200 text-gray-500 rounded text-xs">停用</span>
-                            )}
-                          </div>
-                          {tmpl.description && (
-                            <p className="text-sm text-gray-500 mb-2">{tmpl.description}</p>
-                          )}
-                          {/* Entry lines summary */}
-                          <div className="flex flex-wrap gap-1 text-xs">
-                            {tmpl.entryLines.map((line, i) => (
-                              <span
-                                key={i}
-                                className={`px-2 py-0.5 rounded ${
-                                  line.entryType === 'debit'
-                                    ? 'bg-blue-50 text-blue-700'
-                                    : 'bg-green-50 text-green-700'
-                                }`}
-                              >
-                                {line.entryType === 'debit' ? '借' : '貸'} {line.accountingCode} {line.accountingName}
-                                {line.defaultAmount ? ` $${Number(line.defaultAmount).toLocaleString()}` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 ml-4">
-                          {isLoggedIn && (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setSelectedTemplateId(String(tmpl.id));
-                                  handleSelectTemplate(String(tmpl.id));
-                                  setActiveTab('execute');
-                                }}
-                                className="px-3 py-1.5 bg-rose-600 text-white rounded text-xs hover:bg-rose-700"
-                              >
-                                執行
-                              </button>
-                              <button
-                                onClick={() => handleEditTemplate(tmpl)}
-                                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
-                              >
-                                編輯
-                              </button>
-                              <button
-                                onClick={() => handleToggleTemplateActive(tmpl)}
-                                className={`px-3 py-1.5 rounded text-xs ${
-                                  tmpl.isActive
-                                    ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                                }`}
-                              >
-                                {tmpl.isActive ? '停用' : '啟用'}
-                              </button>
-                              {tmpl._count?.records === 0 && (
-                                <button
-                                  onClick={() => handleDeleteTemplate(tmpl.id)}
-                                  className="px-3 py-1.5 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
-                                >
-                                  刪除
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
+                        </thead>
+                        <tbody>
+                          {templateForm.purchaseItems.map((item, idx) => (
+                            <tr key={idx}>
+                              <td style={tdStyle}>
+                                <select value={item.productId}
+                                  onChange={e => updatePurchaseItem(idx, 'productId', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }}>
+                                  <option value="">選擇商品</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
+                                </select>
+                              </td>
+                              <td style={tdStyle}>
+                                <input type="number" value={item.quantity}
+                                  onChange={e => updatePurchaseItem(idx, 'quantity', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0, width: '100%' }} min="1" />
+                              </td>
+                              <td style={tdStyle}>
+                                <input type="number" value={item.unitPrice}
+                                  onChange={e => updatePurchaseItem(idx, 'unitPrice', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0, width: '100%' }} step="0.01" />
+                              </td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={item.note}
+                                  onChange={e => updatePurchaseItem(idx, 'note', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} />
+                              </td>
+                              <td style={tdStyle}>
+                                <button onClick={() => removePurchaseItem(idx)}
+                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={3} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{getPurchaseTotal().toLocaleString()}</td>
+                            <td colSpan={2} style={tdStyle}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                      <button onClick={addPurchaseItem}
+                        style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                        + 新增品項
+                      </button>
                     </div>
+                  )}
+
+                  {/* Fixed-type specific: entry lines */}
+                  {mainTab === 'fixed' && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <label style={labelStyle}>付款方式</label>
+                          <input value={templateForm.paymentMethod}
+                            onChange={e => setTemplateForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                            style={inputStyle} placeholder="月結 / 現金 / 匯款" />
+                        </div>
+                      </div>
+
+                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>會計分錄</h4>
+                      <table style={tableStyle}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...thStyle, width: 80 }}>借/貸</th>
+                            <th style={{ ...thStyle, width: 100 }}>科目代碼</th>
+                            <th style={thStyle}>科目名稱</th>
+                            <th style={thStyle}>摘要</th>
+                            <th style={{ ...thStyle, width: 120 }}>預設金額</th>
+                            <th style={{ ...thStyle, width: 40 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {templateForm.entryLines.map((line, idx) => (
+                            <tr key={idx} style={{ background: line.entryType === 'debit' ? '#fff3e0' : '#e3f2fd' }}>
+                              <td style={tdStyle}>
+                                <select value={line.entryType}
+                                  onChange={e => updateEntryLine(idx, 'entryType', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }}>
+                                  <option value="debit">借方</option>
+                                  <option value="credit">貸方</option>
+                                </select>
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={line.accountingCode}
+                                  onChange={e => updateEntryLine(idx, 'accountingCode', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="科目代碼" />
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={line.accountingName}
+                                  onChange={e => updateEntryLine(idx, 'accountingName', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="科目名稱" />
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={line.summary}
+                                  onChange={e => updateEntryLine(idx, 'summary', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="摘要 (可用 {{館別}} {{月份}})" />
+                              </td>
+                              <td style={tdStyle}>
+                                <input type="number" value={line.defaultAmount}
+                                  onChange={e => updateEntryLine(idx, 'defaultAmount', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0, textAlign: 'right' }} step="0.01" />
+                              </td>
+                              <td style={tdStyle}>
+                                <button onClick={() => removeEntryLine(idx)}
+                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button onClick={() => addEntryLine('debit')}
+                          style={{ padding: '4px 12px', background: '#fff3e0', color: '#e65100', border: '1px solid #e65100', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                          + 借方
+                        </button>
+                        <button onClick={() => addEntryLine('credit')}
+                          style={{ padding: '4px 12px', background: '#e3f2fd', color: '#1565c0', border: '1px solid #1565c0', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                          + 貸方
+                        </button>
+                      </div>
+                      {(() => {
+                        const bal = getTemplateBalance();
+                        return (bal.debit > 0 || bal.credit > 0) ? (
+                          <div style={{ marginTop: 8, fontSize: 13, color: bal.balanced ? '#28a745' : '#dc3545' }}>
+                            借方: {bal.debit.toLocaleString()} / 貸方: {bal.credit.toLocaleString()}
+                            {bal.balanced ? ' ✓ 平衡' : ' ✗ 不平衡'}
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={resetTemplateForm}
+                      style={{ padding: '8px 16px', background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: 6, cursor: 'pointer' }}>
+                      取消
+                    </button>
+                    <button onClick={handleSaveTemplate}
+                      style={{ padding: '8px 16px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
+                      {editingTemplate ? '更新' : '儲存'}
+                    </button>
                   </div>
-                ))
+                </div>
               )}
-            </div>
-          </div>
-        )}
 
-        {/* ==================== Tab 2: Records ==================== */}
-        {activeTab === 'records' && (
-          <div>
-            {/* Filters */}
-            <div className="bg-white rounded-lg shadow-sm p-4 mb-4 flex flex-wrap gap-4 items-end">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">費用月份</label>
-                <input
-                  type="month"
-                  value={recordFilter.month}
-                  onChange={e => setRecordFilter(prev => ({ ...prev, month: e.target.value }))}
-                  className="px-3 py-2 border border-gray-300 rounded text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">館別</label>
-                <select
-                  value={recordFilter.warehouse}
-                  onChange={e => setRecordFilter(prev => ({ ...prev, warehouse: e.target.value }))}
-                  className="px-3 py-2 border border-gray-300 rounded text-sm"
-                >
-                  <option value="">全部</option>
-                  {warehouses.map(w => (
-                    <option key={w} value={w}>{w}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">狀態</label>
-                <select
-                  value={recordFilter.status}
-                  onChange={e => setRecordFilter(prev => ({ ...prev, status: e.target.value }))}
-                  className="px-3 py-2 border border-gray-300 rounded text-sm"
-                >
-                  <option value="">全部</option>
-                  <option value="待確認">待確認</option>
-                  <option value="已確認">已確認</option>
-                  <option value="已作廢">已作廢</option>
-                </select>
-              </div>
-              <div className="text-sm text-gray-500">
-                共 {recordsTotal} 筆
-              </div>
-            </div>
-
-            {/* Records list */}
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-              {recordsLoading ? (
-                <div className="p-8 text-center text-gray-500">載入中...</div>
-              ) : records.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">尚無執行記錄</div>
+              {/* Template List */}
+              {filteredTemplates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+                  尚無{mainTab === 'purchase' ? '進銷存' : '固定'}費用範本
+                </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                <table style={tableStyle}>
+                  <thead>
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">單號</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">範本</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">館別</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">月份</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">借方</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-700">貸方</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-700">狀態</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">建立者</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">操作</th>
+                      <th style={thStyle}>名稱</th>
+                      <th style={thStyle}>分類</th>
+                      <th style={thStyle}>館別</th>
+                      <th style={thStyle}>{mainTab === 'purchase' ? '預設廠商' : '付款方式'}</th>
+                      <th style={thStyle}>{mainTab === 'purchase' ? '品項數' : '分錄數'}</th>
+                      <th style={thStyle}>{mainTab === 'purchase' ? '預估金額' : '預設金額'}</th>
+                      <th style={thStyle}>狀態</th>
+                      <th style={thStyle}>操作</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {records.map(rec => (
-                      <RecordRow
-                        key={rec.id}
-                        rec={rec}
-                        isExpanded={expandedRecord === rec.id}
-                        onToggle={() => setExpandedRecord(expandedRecord === rec.id ? null : rec.id)}
-                        onConfirm={() => handleConfirmRecord(rec.id)}
-                        onVoidClick={() => { setShowVoidModal(rec.id); setVoidReason(''); }}
-                        onDelete={() => handleDeleteRecord(rec.id)}
-                        isLoggedIn={isLoggedIn}
-                        statusBadge={statusBadge}
-                      />
-                    ))}
+                  <tbody>
+                    {filteredTemplates.map(tmpl => {
+                      const itemCount = mainTab === 'purchase'
+                        ? (Array.isArray(tmpl.purchaseItems) ? tmpl.purchaseItems.length : 0)
+                        : (tmpl.entryLines?.length || 0);
+                      const totalAmt = mainTab === 'purchase'
+                        ? (Array.isArray(tmpl.purchaseItems) ? tmpl.purchaseItems.reduce((s, i) => s + (i.quantity || 0) * (i.unitPrice || 0), 0) : 0)
+                        : (tmpl.entryLines?.filter(l => l.entryType === 'debit').reduce((s, l) => s + (Number(l.defaultAmount) || 0), 0) || 0);
+                      return (
+                        <tr key={tmpl.id} style={{ opacity: tmpl.isActive ? 1 : 0.5 }}>
+                          <td style={tdStyle}>
+                            <div style={{ fontWeight: 500 }}>{tmpl.name}</div>
+                            {tmpl.description && <div style={{ fontSize: 12, color: '#888' }}>{tmpl.description}</div>}
+                          </td>
+                          <td style={tdStyle}>{tmpl.category?.name || '-'}</td>
+                          <td style={tdStyle}>{tmpl.warehouse || '不限'}</td>
+                          <td style={tdStyle}>
+                            {mainTab === 'purchase'
+                              ? (tmpl.defaultSupplierId ? getSupplierName(tmpl.defaultSupplierId) : '-')
+                              : (tmpl.paymentMethod || '-')}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: 'center' }}>{itemCount}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right' }}>{totalAmt > 0 ? totalAmt.toLocaleString() : '-'}</td>
+                          <td style={tdStyle}>
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 4, fontSize: 12,
+                              background: tmpl.isActive ? '#d4edda' : '#f8d7da',
+                              color: tmpl.isActive ? '#155724' : '#721c24'
+                            }}>
+                              {tmpl.isActive ? '啟用' : '停用'}
+                            </span>
+                          </td>
+                          <td style={tdStyle}>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              <button onClick={() => handleEditTemplate(tmpl)}
+                                style={smallBtnStyle}>編輯</button>
+                              <button onClick={() => handleToggleTemplateActive(tmpl)}
+                                style={{ ...smallBtnStyle, color: tmpl.isActive ? '#dc3545' : '#28a745' }}>
+                                {tmpl.isActive ? '停用' : '啟用'}
+                              </button>
+                              <button onClick={() => handleDeleteTemplate(tmpl.id)}
+                                style={{ ...smallBtnStyle, color: '#dc3545' }}>刪除</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
             </div>
+          )}
 
-            {/* Void modal */}
-            {showVoidModal && (
-              <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-                  <h3 className="text-lg font-bold mb-4">作廢記錄</h3>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">作廢原因 *</label>
-                  <textarea
-                    value={voidReason}
-                    onChange={e => setVoidReason(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm mb-4"
-                    rows={3}
-                    placeholder="請輸入作廢原因..."
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => { setShowVoidModal(null); setVoidReason(''); }}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={() => handleVoidRecord(showVoidModal)}
-                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                    >
-                      確定作廢
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+          {/* ====== EXECUTE TAB ====== */}
+          {subTab === 'execute' && (
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 600, marginBottom: 16 }}>
+                快速執行 - {mainTab === 'purchase' ? '進銷存每月費用' : '固定費用'}
+              </h2>
 
-        {/* ==================== Tab 3: Quick Execute ==================== */}
-        {activeTab === 'execute' && (
-          <div>
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="text-lg font-bold mb-4">快速執行費用範本</h3>
-
-              {/* Template selection + basic info */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {/* Template selection and basic info */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">選擇範本 *</label>
-                  <select
-                    value={selectedTemplateId}
+                  <label style={labelStyle}>選擇範本 *</label>
+                  <select value={selectedTemplateId}
                     onChange={e => handleSelectTemplate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  >
-                    <option value="">-- 請選擇範本 --</option>
-                    {templates.filter(t => t.isActive).map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} {t.category ? `(${t.category.name})` : ''}
-                      </option>
+                    style={inputStyle}>
+                    <option value="">-- 選擇範本 --</option>
+                    {activeTemplates.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
-                  <select
-                    value={executeForm.warehouse}
-                    onChange={e => {
-                      setExecuteForm(prev => ({ ...prev, warehouse: e.target.value }));
-                      setTimeout(refreshSummaries, 0);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  >
-                    <option value="">-- 請選擇 --</option>
-                    {warehouses.map(w => (
-                      <option key={w} value={w}>{w}</option>
-                    ))}
+                  <label style={labelStyle}>館別 *</label>
+                  <select value={executeForm.warehouse}
+                    onChange={e => setExecuteForm(prev => ({ ...prev, warehouse: e.target.value }))}
+                    style={inputStyle}>
+                    <option value="">選擇館別</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">費用月份 *</label>
-                  <input
-                    type="month"
-                    value={executeForm.expenseMonth}
-                    onChange={e => {
-                      setExecuteForm(prev => ({ ...prev, expenseMonth: e.target.value }));
-                      setTimeout(refreshSummaries, 0);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">供應商</label>
-                  <select
-                    value={executeForm.supplierId}
-                    onChange={e => {
-                      const sup = suppliers.find(s => s.id === parseInt(e.target.value));
-                      setExecuteForm(prev => ({
-                        ...prev,
-                        supplierId: e.target.value,
-                        supplierName: sup ? sup.name : ''
-                      }));
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                  >
-                    <option value="">-- 無 --</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
-                  <input
-                    type="text"
-                    value={executeForm.paymentMethod}
-                    onChange={e => setExecuteForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    placeholder="例：銀行轉帳"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                  <input
-                    type="text"
-                    value={executeForm.note}
-                    onChange={e => setExecuteForm(prev => ({ ...prev, note: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                    placeholder="備註..."
-                  />
+                  <label style={labelStyle}>費用月份 *</label>
+                  <input type="month" value={executeForm.expenseMonth}
+                    onChange={e => setExecuteForm(prev => ({ ...prev, expenseMonth: e.target.value }))}
+                    style={inputStyle} />
                 </div>
               </div>
 
-              {/* Entry lines with editable amounts */}
-              {executeForm.entryLines.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-sm font-bold text-gray-700 mb-2">分錄明細</h4>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left w-20">借/貸</th>
-                          <th className="px-3 py-2 text-left w-28">科目代碼</th>
-                          <th className="px-3 py-2 text-left">科目名稱</th>
-                          <th className="px-3 py-2 text-left">摘要</th>
-                          <th className="px-3 py-2 text-right w-40">金額 *</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {executeForm.entryLines.map((line, idx) => (
-                          <tr key={idx} className={`border-t ${line.entryType === 'debit' ? 'bg-blue-50/30' : 'bg-green-50/30'}`}>
-                            <td className="px-3 py-2">
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                line.entryType === 'debit'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-green-100 text-green-700'
-                              }`}>
-                                {line.entryType === 'debit' ? '借方' : '貸方'}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2 font-mono">{line.accountingCode}</td>
-                            <td className="px-3 py-2">{line.accountingName}</td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                value={line.summary}
-                                onChange={e => updateExecuteLine(idx, 'summary', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={line.amount}
-                                onChange={e => updateExecuteLine(idx, 'amount', e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-right"
-                                placeholder="0.00"
-                              />
-                            </td>
+              {selectedTemplateId && (
+                <>
+                  {/* Purchase-type execution */}
+                  {mainTab === 'purchase' && (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div>
+                          <label style={labelStyle}>廠商 *</label>
+                          <select value={executeForm.supplierId}
+                            onChange={e => {
+                              const s = suppliers.find(s => s.id === parseInt(e.target.value));
+                              setExecuteForm(prev => ({
+                                ...prev,
+                                supplierId: e.target.value,
+                                supplierName: s?.name || ''
+                              }));
+                            }}
+                            style={inputStyle}>
+                            <option value="">選擇廠商</option>
+                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>付款條件</label>
+                          <input value={executeForm.paymentTerms}
+                            onChange={e => setExecuteForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                            style={inputStyle} placeholder="月結" />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>稅別</label>
+                          <select value={executeForm.taxType}
+                            onChange={e => setExecuteForm(prev => ({ ...prev, taxType: e.target.value }))}
+                            style={inputStyle}>
+                            <option value="">不指定</option>
+                            <option value="應稅">應稅</option>
+                            <option value="免稅">免稅</option>
+                            <option value="零稅率">零稅率</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>進貨品項</h4>
+                      <table style={tableStyle}>
+                        <thead>
+                          <tr>
+                            <th style={thStyle}>商品</th>
+                            <th style={{ ...thStyle, width: 80 }}>數量</th>
+                            <th style={{ ...thStyle, width: 100 }}>單價</th>
+                            <th style={{ ...thStyle, width: 100 }}>小計</th>
+                            <th style={thStyle}>備註</th>
+                            <th style={{ ...thStyle, width: 40 }}></th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {executeForm.items.map((item, idx) => (
+                            <tr key={idx}>
+                              <td style={tdStyle}>
+                                <select value={item.productId}
+                                  onChange={e => updateExecuteItem(idx, 'productId', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }}>
+                                  <option value="">選擇商品</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
+                                </select>
+                              </td>
+                              <td style={tdStyle}>
+                                <input type="number" value={item.quantity}
+                                  onChange={e => updateExecuteItem(idx, 'quantity', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0, width: '100%' }} min="1" />
+                              </td>
+                              <td style={tdStyle}>
+                                <input type="number" value={item.unitPrice}
+                                  onChange={e => updateExecuteItem(idx, 'unitPrice', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0, width: '100%' }} step="0.01" />
+                              </td>
+                              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
+                                {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={item.note}
+                                  onChange={e => updateExecuteItem(idx, 'note', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} />
+                              </td>
+                              <td style={tdStyle}>
+                                <button onClick={() => removeExecuteItem(idx)}
+                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={3} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                              {getExecutePurchaseTotal().toLocaleString()}
+                            </td>
+                            <td colSpan={2} style={tdStyle}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                      <button onClick={addExecuteItem}
+                        style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                        + 新增品項
+                      </button>
+
+                      {/* Invoice section */}
+                      <div style={{ marginTop: 20, padding: 16, background: '#f0f7ff', borderRadius: 8, border: '1px solid #bee5eb' }}>
+                        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#0c5460' }}>
+                          發票資訊 (選填 - 填寫後會同時建立發票記錄)
+                        </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                          <div>
+                            <label style={labelStyle}>發票號碼</label>
+                            <input value={executeForm.invoiceNo}
+                              onChange={e => setExecuteForm(prev => ({ ...prev, invoiceNo: e.target.value }))}
+                              style={inputStyle} placeholder="例: AB-12345678" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>發票日期</label>
+                            <input type="date" value={executeForm.invoiceDate}
+                              onChange={e => setExecuteForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                              style={inputStyle} />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>發票抬頭</label>
+                            <input value={executeForm.invoiceTitle}
+                              onChange={e => setExecuteForm(prev => ({ ...prev, invoiceTitle: e.target.value }))}
+                              style={inputStyle} placeholder="公司名稱" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fixed-type execution */}
+                  {mainTab === 'fixed' && (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div>
+                          <label style={labelStyle}>廠商</label>
+                          <select value={executeForm.supplierId}
+                            onChange={e => {
+                              const s = suppliers.find(s => s.id === parseInt(e.target.value));
+                              setExecuteForm(prev => ({
+                                ...prev,
+                                supplierId: e.target.value,
+                                supplierName: s?.name || ''
+                              }));
+                            }}
+                            style={inputStyle}>
+                            <option value="">不指定</option>
+                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>付款方式</label>
+                          <select value={executeForm.paymentMethod}
+                            onChange={e => setExecuteForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                            style={inputStyle}>
+                            <option value="月結">月結</option>
+                            <option value="現金">現金</option>
+                            <option value="匯款">匯款</option>
+                            <option value="支票">支票</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>到期日</label>
+                          <input type="date" value={executeForm.dueDate || ''}
+                            onChange={e => setExecuteForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                            style={inputStyle} />
+                        </div>
+                      </div>
+
+                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>會計分錄</h4>
+                      <table style={tableStyle}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...thStyle, width: 80 }}>借/貸</th>
+                            <th style={{ ...thStyle, width: 100 }}>科目代碼</th>
+                            <th style={thStyle}>科目名稱</th>
+                            <th style={thStyle}>摘要</th>
+                            <th style={{ ...thStyle, width: 120 }}>金額</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {executeForm.entryLines.map((line, idx) => (
+                            <tr key={idx} style={{ background: line.entryType === 'debit' ? '#fff3e0' : '#e3f2fd' }}>
+                              <td style={tdStyle}>
+                                <span style={{ fontWeight: 500 }}>{line.entryType === 'debit' ? '借方' : '貸方'}</span>
+                              </td>
+                              <td style={tdStyle}>{line.accountingCode}</td>
+                              <td style={tdStyle}>{line.accountingName}</td>
+                              <td style={tdStyle}>
+                                <input value={line.summary}
+                                  onChange={e => updateExecuteLine(idx, 'summary', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} />
+                              </td>
+                              <td style={tdStyle}>
+                                <input type="number" value={line.amount}
+                                  onChange={e => updateExecuteLine(idx, 'amount', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0, textAlign: 'right' }} step="0.01" />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {(() => {
+                        const bal = getExecuteBalance();
+                        return (
+                          <div style={{ marginTop: 8, fontSize: 13, color: bal.balanced ? '#28a745' : '#dc3545' }}>
+                            借方: {bal.debit.toLocaleString()} / 貸方: {bal.credit.toLocaleString()}
+                            {bal.balanced ? ' ✓ 平衡' : ' ✗ 不平衡'}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Note */}
+                  <div style={{ marginTop: 16 }}>
+                    <label style={labelStyle}>備註</label>
+                    <input value={executeForm.note}
+                      onChange={e => setExecuteForm(prev => ({ ...prev, note: e.target.value }))}
+                      style={inputStyle} placeholder="選填" />
                   </div>
 
-                  {/* Balance summary row */}
-                  {(() => {
-                    const bal = getExecuteBalance();
-                    return (
-                      <div className={`mt-2 p-3 rounded text-sm flex gap-6 items-center ${
-                        bal.balanced && bal.debit > 0
-                          ? 'bg-green-50 text-green-700 border border-green-200'
-                          : bal.debit === 0 && bal.credit === 0
-                          ? 'bg-gray-50 text-gray-500'
-                          : 'bg-red-50 text-red-700 border border-red-200'
-                      }`}>
-                        <span className="font-medium">借方合計: NT$ {bal.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        <span className="font-medium">貸方合計: NT$ {bal.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        {bal.balanced && bal.debit > 0 ? (
-                          <span className="font-bold">-- 借貸平衡 --</span>
-                        ) : bal.debit === 0 && bal.credit === 0 ? (
-                          <span>請輸入金額</span>
-                        ) : (
-                          <span className="font-bold">差額: NT$ {Math.abs(bal.debit - bal.credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        )}
+                  {/* Duplicate warning */}
+                  {duplicateWarning && (
+                    <div style={{ marginTop: 12, padding: 12, background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 6 }}>
+                      <p style={{ marginBottom: 8, color: '#856404' }}>{duplicateWarning}</p>
+                      <button onClick={() => handleExecute(true)} disabled={submitting}
+                        style={{ padding: '6px 16px', background: '#ffc107', color: '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 500 }}>
+                        確定重複執行
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Execute button */}
+                  <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button onClick={() => handleExecute(false)}
+                      disabled={submitting}
+                      style={{
+                        padding: '10px 32px',
+                        background: submitting ? '#ccc' : '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        cursor: submitting ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: 15
+                      }}>
+                      {submitting ? '執行中...' : '執行'}
+                    </button>
+                  </div>
+
+                  {/* Data flow info */}
+                  <div style={{ marginTop: 16, padding: 12, background: '#f8f9fa', borderRadius: 6, fontSize: 13, color: '#666' }}>
+                    {mainTab === 'purchase' ? (
+                      <div>
+                        <strong>執行後資料流向：</strong>
+                        <br />→ 進貨管理：自動建立進貨單 (PUR-XXXXXX)
+                        {executeForm.invoiceNo && <><br />→ 發票管理：自動建立發票記錄 (INV-XXXXXX)</>}
+                        <br />→ 費用記錄：建立本筆費用執行記錄 (EXP-XXXXXX)
                       </div>
-                    );
-                  })()}
+                    ) : (
+                      <div>
+                        <strong>執行後資料流向：</strong>
+                        <br />→ 付款管理：自動建立付款單 (PAY-XXXXXX)
+                        <br />→ 費用記錄：建立本筆費用執行記錄 (EXP-XXXXXX)
+                        <br />→ 部門費用/月彙總：自動同步更新
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ====== RECORDS TAB ====== */}
+          {subTab === 'records' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h2 style={{ fontSize: 17, fontWeight: 600 }}>
+                  {mainTab === 'purchase' ? '進銷存費用記錄' : '固定費用記錄'}
+                </h2>
+              </div>
+
+              {/* Filters */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <label style={{ ...labelStyle, fontSize: 12 }}>月份</label>
+                  <input type="month" value={recordFilter.month}
+                    onChange={e => setRecordFilter(prev => ({ ...prev, month: e.target.value }))}
+                    style={{ ...inputStyle, width: 160 }} />
                 </div>
+                <div>
+                  <label style={{ ...labelStyle, fontSize: 12 }}>館別</label>
+                  <select value={recordFilter.warehouse}
+                    onChange={e => setRecordFilter(prev => ({ ...prev, warehouse: e.target.value }))}
+                    style={{ ...inputStyle, width: 120 }}>
+                    <option value="">全部</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ ...labelStyle, fontSize: 12 }}>狀態</label>
+                  <select value={recordFilter.status}
+                    onChange={e => setRecordFilter(prev => ({ ...prev, status: e.target.value }))}
+                    style={{ ...inputStyle, width: 120 }}>
+                    <option value="">全部</option>
+                    <option value="待確認">待確認</option>
+                    <option value="已確認">已確認</option>
+                    <option value="已作廢">已作廢</option>
+                  </select>
+                </div>
+              </div>
+
+              {recordsLoading ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>載入中...</div>
+              ) : records.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
+                  本月尚無{mainTab === 'purchase' ? '進銷存' : '固定'}費用記錄
+                </div>
+              ) : (
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>記錄單號</th>
+                      <th style={thStyle}>範本</th>
+                      <th style={thStyle}>月份</th>
+                      <th style={thStyle}>館別</th>
+                      <th style={thStyle}>金額</th>
+                      <th style={thStyle}>關聯單號</th>
+                      <th style={thStyle}>狀態</th>
+                      <th style={thStyle}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {records.map(r => (
+                      <tr key={r.id} style={{ background: r.status === '已作廢' ? '#f8f8f8' : '#fff' }}>
+                        <td style={tdStyle}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{r.recordNo}</span>
+                        </td>
+                        <td style={tdStyle}>{r.template?.name || '-'}</td>
+                        <td style={tdStyle}>{r.expenseMonth}</td>
+                        <td style={tdStyle}>{r.warehouse}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 500 }}>
+                          {Number(r.totalDebit).toLocaleString()}
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ fontSize: 12 }}>
+                            {r.purchaseNo && <div>進貨: <span style={{ color: '#1a73e8' }}>{r.purchaseNo}</span></div>}
+                            {r.salesNo && <div>發票: <span style={{ color: '#1a73e8' }}>{r.salesNo}</span></div>}
+                            {r.paymentOrderNo && <div>付款: <span style={{ color: '#1a73e8' }}>{r.paymentOrderNo}</span></div>}
+                            {!r.purchaseNo && !r.salesNo && !r.paymentOrderNo && '-'}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: 4, fontSize: 12,
+                            background: r.status === '已確認' ? '#d4edda' : r.status === '已作廢' ? '#f8d7da' : '#fff3cd',
+                            color: r.status === '已確認' ? '#155724' : r.status === '已作廢' ? '#721c24' : '#856404'
+                          }}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <button onClick={() => setExpandedRecord(expandedRecord === r.id ? null : r.id)}
+                              style={smallBtnStyle}>
+                              {expandedRecord === r.id ? '收起' : '明細'}
+                            </button>
+                            {r.status === '待確認' && (
+                              <>
+                                <button onClick={() => handleConfirmRecord(r.id)}
+                                  style={{ ...smallBtnStyle, color: '#28a745' }}>確認</button>
+                                <button onClick={() => handleDeleteRecord(r.id)}
+                                  style={{ ...smallBtnStyle, color: '#dc3545' }}>刪除</button>
+                              </>
+                            )}
+                            {r.status === '已確認' && (
+                              <button onClick={() => { setShowVoidModal(r.id); setVoidReason(''); }}
+                                style={{ ...smallBtnStyle, color: '#dc3545' }}>作廢</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {records.map(r => expandedRecord === r.id && (
+                      <tr key={`detail-${r.id}`}>
+                        <td colSpan={8} style={{ padding: 16, background: '#fafbfc' }}>
+                          <div style={{ fontSize: 13 }}>
+                            <div style={{ marginBottom: 8 }}>
+                              <strong>建立者:</strong> {r.createdBy} | <strong>建立時間:</strong> {r.createdAt?.split('T')[0]}
+                              {r.confirmedBy && <> | <strong>確認者:</strong> {r.confirmedBy}</>}
+                              {r.note && <> | <strong>備註:</strong> {r.note}</>}
+                            </div>
+                            {r.entryLines && r.entryLines.length > 0 && (
+                              <table style={{ ...tableStyle, fontSize: 12 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ ...thStyle, padding: '4px 8px' }}>借/貸</th>
+                                    <th style={{ ...thStyle, padding: '4px 8px' }}>科目代碼</th>
+                                    <th style={{ ...thStyle, padding: '4px 8px' }}>科目名稱</th>
+                                    <th style={{ ...thStyle, padding: '4px 8px' }}>摘要</th>
+                                    <th style={{ ...thStyle, padding: '4px 8px', textAlign: 'right' }}>金額</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {r.entryLines.map((line, i) => (
+                                    <tr key={i} style={{ background: line.entryType === 'debit' ? '#fff3e0' : '#e3f2fd' }}>
+                                      <td style={{ ...tdStyle, padding: '4px 8px' }}>{line.entryType === 'debit' ? '借方' : '貸方'}</td>
+                                      <td style={{ ...tdStyle, padding: '4px 8px' }}>{line.accountingCode}</td>
+                                      <td style={{ ...tdStyle, padding: '4px 8px' }}>{line.accountingName}</td>
+                                      <td style={{ ...tdStyle, padding: '4px 8px' }}>{line.summary}</td>
+                                      <td style={{ ...tdStyle, padding: '4px 8px', textAlign: 'right' }}>{Number(line.amount).toLocaleString()}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
 
-              {/* Duplicate warning */}
-              {duplicateWarning && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded text-sm text-yellow-800">
-                  <p className="font-medium mb-2">{duplicateWarning}</p>
-                  <button
-                    onClick={() => handleExecute(true)}
-                    disabled={submitting}
-                    className="px-4 py-1.5 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700 mr-2"
-                  >
-                    確定，仍要新增
-                  </button>
-                  <button
-                    onClick={() => setDuplicateWarning(null)}
-                    className="px-4 py-1.5 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
-                  >
-                    取消
-                  </button>
-                </div>
-              )}
+              <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
+                共 {recordsTotal} 筆記錄
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
-              {/* Submit button */}
-              <button
-                onClick={() => handleExecute(false)}
-                disabled={submitting || !selectedTemplateId || executeForm.entryLines.length === 0}
-                className={`px-6 py-2.5 rounded text-sm font-medium ${
-                  submitting || !selectedTemplateId || executeForm.entryLines.length === 0
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-rose-600 text-white hover:bg-rose-700'
-                }`}
-              >
-                {submitting ? '處理中...' : '執行建立'}
+      {/* Void Modal */}
+      {showVoidModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>作廢記錄</h3>
+            <label style={labelStyle}>作廢原因 *</label>
+            <textarea value={voidReason}
+              onChange={e => setVoidReason(e.target.value)}
+              style={{ ...inputStyle, height: 80, resize: 'vertical' }}
+              placeholder="請輸入作廢原因" />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+              <button onClick={() => { setShowVoidModal(null); setVoidReason(''); }}
+                style={{ padding: '8px 16px', background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: 6, cursor: 'pointer' }}>
+                取消
+              </button>
+              <button onClick={() => handleVoidRecord(showVoidModal)}
+                style={{ padding: '8px 16px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
+                確定作廢
               </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }
 
-// ====== Record Row Component ======
-function RecordRow({ rec, isExpanded, onToggle, onConfirm, onVoidClick, onDelete, isLoggedIn, statusBadge }) {
-  return (
-    <>
-      <tr className="hover:bg-gray-50 cursor-pointer" onClick={onToggle}>
-        <td className="px-4 py-3 font-mono text-xs">
-          <span className="flex items-center gap-1">
-            <span className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>&#9654;</span>
-            {rec.recordNo}
-          </span>
-        </td>
-        <td className="px-4 py-3">{rec.template?.name || '-'}</td>
-        <td className="px-4 py-3">{rec.warehouse}</td>
-        <td className="px-4 py-3">{rec.expenseMonth}</td>
-        <td className="px-4 py-3 text-right font-medium text-blue-700">
-          {Number(rec.totalDebit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-        </td>
-        <td className="px-4 py-3 text-right font-medium text-green-700">
-          {Number(rec.totalCredit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-        </td>
-        <td className="px-4 py-3 text-center">{statusBadge(rec.status)}</td>
-        <td className="px-4 py-3 text-xs text-gray-500">{rec.createdBy}</td>
-        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-          {isLoggedIn && (
-            <div className="flex gap-1">
-              {rec.status === '待確認' && (
-                <>
-                  <button
-                    onClick={onConfirm}
-                    className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
-                  >
-                    確認
-                  </button>
-                  <button
-                    onClick={onVoidClick}
-                    className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200"
-                  >
-                    作廢
-                  </button>
-                  <button
-                    onClick={onDelete}
-                    className="px-2 py-1 bg-red-100 text-red-600 rounded text-xs hover:bg-red-200"
-                  >
-                    刪除
-                  </button>
-                </>
-              )}
-              {rec.status === '已確認' && (
-                <button
-                  onClick={onVoidClick}
-                  className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200"
-                >
-                  作廢
-                </button>
-              )}
-            </div>
-          )}
-        </td>
-      </tr>
-      {isExpanded && (
-        <tr>
-          <td colSpan="9" className="px-4 py-0">
-            <div className="bg-gray-50 rounded p-3 mb-2">
-              {rec.supplierName && (
-                <p className="text-xs text-gray-600 mb-1">供應商: {rec.supplierName}</p>
-              )}
-              {rec.paymentMethod && (
-                <p className="text-xs text-gray-600 mb-1">付款方式: {rec.paymentMethod}</p>
-              )}
-              {rec.note && (
-                <p className="text-xs text-gray-600 mb-1">備註: {rec.note}</p>
-              )}
-              {rec.confirmedBy && (
-                <p className="text-xs text-gray-600 mb-1">確認者: {rec.confirmedBy} ({rec.confirmedAt?.slice(0, 10)})</p>
-              )}
-              {rec.voidedBy && (
-                <p className="text-xs text-red-600 mb-1">作廢者: {rec.voidedBy} ({rec.voidedAt?.slice(0, 10)}) - {rec.voidReason}</p>
-              )}
-              <table className="w-full text-xs mt-2">
-                <thead>
-                  <tr className="border-b">
-                    <th className="py-1 text-left w-16">借/貸</th>
-                    <th className="py-1 text-left w-24">科目代碼</th>
-                    <th className="py-1 text-left">科目名稱</th>
-                    <th className="py-1 text-left">摘要</th>
-                    <th className="py-1 text-right w-28">金額</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rec.entryLines.map((line, i) => (
-                    <tr key={i} className={`border-t ${line.entryType === 'debit' ? 'text-blue-700' : 'text-green-700'}`}>
-                      <td className="py-1">
-                        <span className={`px-1.5 py-0.5 rounded text-xs ${
-                          line.entryType === 'debit' ? 'bg-blue-50' : 'bg-green-50'
-                        }`}>
-                          {line.entryType === 'debit' ? '借' : '貸'}
-                        </span>
-                      </td>
-                      <td className="py-1 font-mono">{line.accountingCode}</td>
-                      <td className="py-1">{line.accountingName}</td>
-                      <td className="py-1">{line.summary}</td>
-                      <td className="py-1 text-right font-medium">
-                        {Number(line.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
+// ====== Styles ======
+const labelStyle = { display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4, color: '#555' };
+const inputStyle = {
+  width: '100%', padding: '6px 10px', border: '1px solid #dee2e6', borderRadius: 4,
+  fontSize: 14, boxSizing: 'border-box', marginBottom: 4
+};
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 14 };
+const thStyle = {
+  textAlign: 'left', padding: '8px 10px', background: '#f8f9fa',
+  borderBottom: '2px solid #dee2e6', fontWeight: 600, fontSize: 13
+};
+const tdStyle = { padding: '8px 10px', borderBottom: '1px solid #eee', verticalAlign: 'middle' };
+const smallBtnStyle = {
+  padding: '3px 8px', background: 'none', border: '1px solid #dee2e6',
+  borderRadius: 4, cursor: 'pointer', fontSize: 12, color: '#1a73e8'
+};
