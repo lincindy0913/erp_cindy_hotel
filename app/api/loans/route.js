@@ -138,6 +138,10 @@ export async function POST(request) {
           autoDebit: data.autoDebit !== undefined ? data.autoDebit : true,
           contactPerson: data.contactPerson || null,
           contactPhone: data.contactPhone || null,
+          collateral: data.collateral || null,
+          guarantor: data.guarantor || null,
+          guarantorPhone: data.guarantorPhone || null,
+          guarantorIdNo: data.guarantorIdNo || null,
           remark: data.remark || null,
           status: '使用中',
           sortOrder: parseInt(data.sortOrder) || 0

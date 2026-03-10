@@ -37,7 +37,8 @@ export default function CashFlowPage() {
 
   // Category form
   const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({ name: '', type: '收入', warehouse: '' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', type: '收入', warehouse: '', accountingSubjectId: '' });
+  const [accountingSubjects, setAccountingSubjects] = useState([]);
 
   // Transaction form
   const [showTxForm, setShowTxForm] = useState(false);
@@ -89,9 +90,18 @@ export default function CashFlowPage() {
       fetchAccounts(),
       fetchCategories(),
       fetchSuppliers(),
-      fetchWarehouses()
+      fetchWarehouses(),
+      fetchAccountingSubjects()
     ]);
     setLoading(false);
+  }
+
+  async function fetchAccountingSubjects() {
+    try {
+      const res = await fetch('/api/accounting-subjects');
+      const data = await res.json();
+      setAccountingSubjects(Array.isArray(data) ? data : []);
+    } catch { setAccountingSubjects([]); }
   }
 
   async function fetchAccounts() {
@@ -213,7 +223,7 @@ export default function CashFlowPage() {
       });
       if (res.ok) {
         setShowCategoryForm(false);
-        setCategoryForm({ name: '', type: '收入', warehouse: '' });
+        setCategoryForm({ name: '', type: '收入', warehouse: '', accountingSubjectId: '' });
         fetchCategories();
       } else {
         const err = await res.json();
@@ -952,6 +962,24 @@ export default function CashFlowPage() {
                       </select>
                     </div>
                   </div>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        會計科目
+                        <a href="/accounting-subjects" className="text-xs text-blue-600 hover:underline ml-1">（管理科目）</a>
+                      </label>
+                      <select
+                        value={categoryForm.accountingSubjectId}
+                        onChange={(e) => setCategoryForm({ ...categoryForm, accountingSubjectId: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="">不指定</option>
+                        {accountingSubjects.map(s => (
+                          <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <button type="submit" className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm">儲存</button>
                     <button type="button" onClick={() => setShowCategoryForm(false)} className="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 text-sm">取消</button>
@@ -968,6 +996,7 @@ export default function CashFlowPage() {
                   <thead className="bg-green-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
                       {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
@@ -977,6 +1006,13 @@ export default function CashFlowPage() {
                     {categories.filter(c => c.type === '收入').map(c => (
                       <tr key={c.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {c.accountingSubject ? (
+                            <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">未設定</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
@@ -984,7 +1020,23 @@ export default function CashFlowPage() {
                           </span>
                         </td>
                         {isLoggedIn && (
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-4 py-3 text-center flex gap-2 justify-center">
+                            <select
+                              value={c.accountingSubjectId || ''}
+                              onChange={(e) => {
+                                fetch(`/api/cashflow/categories/${c.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ accountingSubjectId: e.target.value || null })
+                                }).then(() => fetchCategories());
+                              }}
+                              className="text-xs border border-gray-300 rounded px-1 py-0.5"
+                            >
+                              <option value="">設定科目</option>
+                              {accountingSubjects.map(s => (
+                                <option key={s.id} value={s.id}>{s.code} {s.name}</option>
+                              ))}
+                            </select>
                             <button
                               onClick={() => handleDeleteCategory(c.id)}
                               className="text-red-600 hover:underline text-sm"
@@ -996,7 +1048,7 @@ export default function CashFlowPage() {
                       </tr>
                     ))}
                     {categories.filter(c => c.type === '收入').length === 0 && (
-                      <tr><td colSpan={isLoggedIn ? 4 : 3} className="px-4 py-4 text-center text-gray-500">尚無收入類別</td></tr>
+                      <tr><td colSpan={isLoggedIn ? 5 : 4} className="px-4 py-4 text-center text-gray-500">尚無收入類別</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1011,6 +1063,7 @@ export default function CashFlowPage() {
                   <thead className="bg-red-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
                       {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
@@ -1020,6 +1073,13 @@ export default function CashFlowPage() {
                     {categories.filter(c => c.type === '支出').map(c => (
                       <tr key={c.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {c.accountingSubject ? (
+                            <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">未設定</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
@@ -1027,7 +1087,23 @@ export default function CashFlowPage() {
                           </span>
                         </td>
                         {isLoggedIn && (
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-4 py-3 text-center flex gap-2 justify-center">
+                            <select
+                              value={c.accountingSubjectId || ''}
+                              onChange={(e) => {
+                                fetch(`/api/cashflow/categories/${c.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ accountingSubjectId: e.target.value || null })
+                                }).then(() => fetchCategories());
+                              }}
+                              className="text-xs border border-gray-300 rounded px-1 py-0.5"
+                            >
+                              <option value="">設定科目</option>
+                              {accountingSubjects.map(s => (
+                                <option key={s.id} value={s.id}>{s.code} {s.name}</option>
+                              ))}
+                            </select>
                             <button
                               onClick={() => handleDeleteCategory(c.id)}
                               className="text-red-600 hover:underline text-sm"
@@ -1039,7 +1115,7 @@ export default function CashFlowPage() {
                       </tr>
                     ))}
                     {categories.filter(c => c.type === '支出').length === 0 && (
-                      <tr><td colSpan={isLoggedIn ? 4 : 3} className="px-4 py-4 text-center text-gray-500">尚無支出類別</td></tr>
+                      <tr><td colSpan={isLoggedIn ? 5 : 4} className="px-4 py-4 text-center text-gray-500">尚無支出類別</td></tr>
                     )}
                   </tbody>
                 </table>

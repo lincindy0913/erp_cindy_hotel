@@ -113,6 +113,10 @@ export async function PUT(request, { params }) {
     if (data.contactPerson !== undefined) updateData.contactPerson = data.contactPerson || null;
     if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone || null;
     if (data.remark !== undefined) updateData.remark = data.remark || null;
+    if (data.collateral !== undefined) updateData.collateral = data.collateral || null;
+    if (data.guarantor !== undefined) updateData.guarantor = data.guarantor || null;
+    if (data.guarantorPhone !== undefined) updateData.guarantorPhone = data.guarantorPhone || null;
+    if (data.guarantorIdNo !== undefined) updateData.guarantorIdNo = data.guarantorIdNo || null;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.sortOrder !== undefined) {
       const so = parseInt(data.sortOrder, 10);

@@ -186,6 +186,7 @@ export async function PUT(request, { params }) {
     }
     if (data.note !== undefined) updateData.note = data.note || null;
     if (data.status !== undefined) updateData.status = data.status;
+    if (data.paymentOrderId !== undefined) updateData.paymentOrderId = data.paymentOrderId ? parseInt(data.paymentOrderId) : null;
 
     const updated = await prisma.loanMonthlyRecord.update({
       where: { id },

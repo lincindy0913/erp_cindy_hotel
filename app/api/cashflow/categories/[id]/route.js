@@ -16,11 +16,17 @@ export async function PUT(request, { params }) {
     if (data.name !== undefined) updateData.name = data.name.trim();
     if (data.type !== undefined) updateData.type = data.type;
     if (data.warehouse !== undefined) updateData.warehouse = data.warehouse || null;
+    if (data.accountingSubjectId !== undefined) updateData.accountingSubjectId = data.accountingSubjectId ? parseInt(data.accountingSubjectId) : null;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
     const category = await prisma.cashCategory.update({
       where: { id },
-      data: updateData
+      data: updateData,
+      include: {
+        accountingSubject: {
+          select: { id: true, code: true, name: true }
+        }
+      }
     });
 
     return NextResponse.json({

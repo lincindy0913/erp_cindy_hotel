@@ -426,19 +426,22 @@ model CashAccount {
 }
 
 model CashCategory {
-  id              Int      @id @default(autoincrement())
-  name            String   @db.VarChar(100)
-  type            String   @db.VarChar(10)
-  warehouse       String?  @db.VarChar(100)
-  isActive        Boolean  @default(true) @map("is_active")
-  isSystemDefault Boolean  @default(false) @map("is_system_default")
-  systemCode      String?  @map("system_code") @db.VarChar(50)
-  createdAt       DateTime @default(now()) @map("created_at")
+  id                   Int      @id @default(autoincrement())
+  name                 String   @db.VarChar(100)
+  type                 String   @db.VarChar(10)
+  warehouse            String?  @db.VarChar(100)
+  accountingSubjectId  Int?     @map("accounting_subject_id")
+  isActive             Boolean  @default(true) @map("is_active")
+  isSystemDefault      Boolean  @default(false) @map("is_system_default")
+  systemCode           String?  @map("system_code") @db.VarChar(50)
+  createdAt            DateTime @default(now()) @map("created_at")
 
-  transactions CashTransaction[]
+  accountingSubject AccountingSubject? @relation(fields: [accountingSubjectId], references: [id])
+  transactions      CashTransaction[]
 
   @@index([type])
   @@index([systemCode])
+  @@index([accountingSubjectId])
   @@map("cash_categories")
 }
 
@@ -506,6 +509,8 @@ model AccountingSubject {
   name        String   @db.VarChar(100)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+
+  cashCategories CashCategory[]
 
   @@index([category])
   @@index([code])
@@ -723,12 +728,15 @@ model PmsImportBatch {
   monthlyDebitTotal   Decimal? @map("monthly_debit_total") @db.Decimal(12, 2)
   importedBy          String?  @map("imported_by") @db.VarChar(255)
   importedAt          DateTime @default(now()) @map("imported_at")
+  verifiedBy          String?  @map("verified_by") @db.VarChar(255)
+  verifiedAt          DateTime? @map("verified_at")
 
   records PmsIncomeRecord[]
 
   @@unique([warehouse, businessDate])
   @@index([warehouse])
   @@index([businessDate])
+  @@index([status])
   @@map("pms_import_batches")
 }
 
@@ -754,6 +762,54 @@ model PmsIncomeRecord {
   @@index([importBatchId])
   @@index([entryType])
   @@map("pms_income_records")
+}
+
+// ============================================
+// PMS 收入付款方式設定 (income → cashflow)
+// ============================================
+
+/// PMS借方收入（現金、信用卡、轉帳等）→ 存簿帳戶對應設定（依館別）
+model PmsPaymentMethodConfig {
+  id                  Int      @id @default(autoincrement())
+  warehouse           String   @default("") @db.VarChar(100)  // 館別（如麗格）；空字串表示舊版預設
+  pmsColumnName       String   @map("pms_column_name") @db.VarChar(100)  // e.g. 現金收入, 信用卡收入, 轉帳收入
+  cashAccountId       Int?     @map("cash_account_id")
+  settlementDelayDays Int      @default(0) @map("settlement_delay_days")  // 信用卡入帳延遲天數
+  feePercentage       Decimal  @default(0) @map("fee_percentage") @db.Decimal(5, 2)  // 手續費比例 (e.g. 2.5%)
+  feeAccountingCode   String?  @map("fee_accounting_code") @db.VarChar(20)
+  isActive            Boolean  @default(true) @map("is_active")
+  note                String?  @db.VarChar(500)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([warehouse, pmsColumnName])
+  @@map("pms_payment_method_configs")
+}
+
+// ============================================
+// PMS 月度結算追蹤
+// ============================================
+
+/// PMS 月度結算（核對 → 結算 → 入帳）
+model PmsMonthlySettlement {
+  id               Int       @id @default(autoincrement())
+  warehouse        String    @db.VarChar(100)
+  settlementMonth  String    @map("settlement_month") @db.VarChar(7)  // 2026-03
+  status           String    @default("待核對") @db.VarChar(20)       // 待核對 → 已核對 → 已結算
+  creditTotal      Decimal   @default(0) @map("credit_total") @db.Decimal(12, 2)
+  debitTotal       Decimal   @default(0) @map("debit_total") @db.Decimal(12, 2)
+  batchCount       Int       @default(0) @map("batch_count")
+  verifiedBy       String?   @map("verified_by") @db.VarChar(255)
+  verifiedAt       DateTime? @map("verified_at")
+  settledBy        String?   @map("settled_by") @db.VarChar(255)
+  settledAt        DateTime? @map("settled_at")
+  note             String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@unique([warehouse, settlementMonth])
+  @@index([status])
+  @@map("pms_monthly_settlements")
 }
 
 // ============================================
@@ -834,6 +890,10 @@ model LoanMaster {
   principalSubjectId  Int?     @map("principal_subject_id")
   interestSubjectId   Int?     @map("interest_subject_id")
   autoDebit           Boolean  @default(true) @map("auto_debit")
+  collateral          String?  @db.VarChar(500)                          // 擔保物
+  guarantor           String?  @db.VarChar(100)                          // 保證人/要保人
+  guarantorPhone      String?  @map("guarantor_phone") @db.VarChar(50)  // 保證人電話
+  guarantorIdNo       String?  @map("guarantor_id_no") @db.VarChar(20)  // 保證人身分證
   contactPerson       String?  @map("contact_person") @db.VarChar(100)
   contactPhone        String?  @map("contact_phone") @db.VarChar(50)
   remark              String?  @db.Text
@@ -888,6 +948,7 @@ model LoanMonthlyRecord {
   confirmedAt         DateTime? @map("confirmed_at")
   confirmedBy         String?  @map("confirmed_by") @db.VarChar(255)
   expenseId           Int?     @map("expense_id")
+  paymentOrderId      Int?     @map("payment_order_id")  // 連結出納付款單
   note                String?  @db.Text
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
@@ -898,6 +959,7 @@ model LoanMonthlyRecord {
   @@index([loanId])
   @@index([recordYear, recordMonth])
   @@index([status])
+  @@index([paymentOrderId])
   @@map("loan_monthly_records")
 }
 

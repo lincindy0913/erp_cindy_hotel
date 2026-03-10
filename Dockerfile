@@ -14,6 +14,8 @@ RUN npm ci
 # App source and Next.js build (ensure public exists for runner)
 COPY . .
 RUN mkdir -p public
+# Alpine uses musl; ensure Next.js SWC binary is available for linux-x64-musl
+RUN npm install @next/swc-linux-x64-musl --save-optional
 RUN npm run build
 
 # Production stage

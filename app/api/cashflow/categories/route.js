@@ -12,7 +12,12 @@ export async function GET() {
   
   try {
     const categories = await prisma.cashCategory.findMany({
-      orderBy: [{ type: 'asc' }, { name: 'asc' }]
+      orderBy: [{ type: 'asc' }, { name: 'asc' }],
+      include: {
+        accountingSubject: {
+          select: { id: true, code: true, name: true, category: true, subcategory: true }
+        }
+      }
     });
 
     const result = categories.map(c => ({
@@ -46,7 +51,13 @@ export async function POST(request) {
         name: data.name.trim(),
         type: data.type,
         warehouse: data.warehouse || null,
+        accountingSubjectId: data.accountingSubjectId ? parseInt(data.accountingSubjectId) : null,
         isActive: true
+      },
+      include: {
+        accountingSubject: {
+          select: { id: true, code: true, name: true }
+        }
       }
     });
 

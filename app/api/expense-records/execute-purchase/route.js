@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission } from '@/lib/api-auth';
-import { PERMISSIONS } from '@/lib/permissions';
+import { requireSession } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +46,9 @@ async function generateNo(tx, model, prefix) {
 // POST: Execute purchase-type template
 // Creates: PurchaseMaster + optional SalesMaster + CommonExpenseRecord
 // Invoice validation: invoiceAmount = purchaseAmount + taxAmount - supplierDiscount
+// 登入即可執行（採購頁快速執行）
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
   try {
@@ -70,9 +70,7 @@ export async function POST(request) {
     if (!data.items || data.items.length === 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請至少新增一筆進貨品項', 400);
     }
-    if (!data.createdBy?.trim()) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少建立者資訊', 400);
-    }
+    const createdBy = (data.createdBy && String(data.createdBy).trim()) || auth.session?.user?.name || auth.session?.user?.email || '系統';
 
     // Calculate purchase totals
     const purchaseAmount = data.items.reduce((sum, item) => {
@@ -223,10 +221,10 @@ export async function POST(request) {
           purchaseNo: purchaseNo,
           salesNo: salesMaster?.salesNo || null,
           status: '已確認',
-          confirmedBy: data.createdBy.trim(),
+          confirmedBy: createdBy,
           confirmedAt: new Date(),
           note: data.note || null,
-          createdBy: data.createdBy.trim(),
+          createdBy: createdBy,
           entryLines: {
             create: [
               {

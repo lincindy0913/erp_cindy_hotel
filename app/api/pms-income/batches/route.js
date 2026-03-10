@@ -35,12 +35,17 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
     const year = searchParams.get('year');
     const month = searchParams.get('month');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
 
     const where = {};
     if (warehouse) where.warehouse = warehouse;
 
-    // Filter by year/month using businessDate string pattern
-    if (year && month) {
+    // Filter by date range (for settlement)
+    if (startDate && endDate) {
+      where.businessDate = { gte: startDate, lte: endDate };
+    } else if (year && month) {
+      // Filter by year/month using businessDate string pattern
       const monthStr = String(month).padStart(2, '0');
       where.businessDate = { startsWith: `${year}-${monthStr}` };
     } else if (year) {

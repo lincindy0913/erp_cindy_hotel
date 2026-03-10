@@ -139,6 +139,7 @@ export async function POST(request) {
 
     const fee = data.hasFee ? (parseFloat(data.fee) || 0) : 0;
     const sourceType = data.sourceType || 'manual';
+    const sourceRecordId = data.sourceRecordId ? parseInt(data.sourceRecordId) : null;
 
     // Validate transfer requires destination account
     if (data.type === '移轉') {
@@ -172,6 +173,7 @@ export async function POST(request) {
             description: data.description || null,
             transferAccountId: parseInt(data.transferAccountId),
             sourceType,
+            sourceRecordId,
             status: '已確認'
           }
         });
@@ -200,6 +202,7 @@ export async function POST(request) {
             transferAccountId: parseInt(data.accountId),
             linkedTransactionId: outTx.id,
             sourceType,
+            sourceRecordId,
             status: '已確認'
           }
         });
@@ -235,6 +238,7 @@ export async function POST(request) {
             paymentTerms: data.paymentTerms || null,
             description: data.description || null,
             sourceType,
+            sourceRecordId,
             status: '已確認'
           }
         });

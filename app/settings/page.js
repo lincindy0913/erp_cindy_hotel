@@ -452,6 +452,7 @@ export default function SettingsPage() {
   const [taxRate, setTaxRate] = useState('5');
   const [invoiceTitles, setInvoiceTitles] = useState([]);
   const [newInvoiceTitle, setNewInvoiceTitle] = useState('');
+  const [newInvoiceTaxId, setNewInvoiceTaxId] = useState('');
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [newPaymentMethod, setNewPaymentMethod] = useState('');
 
@@ -776,10 +777,11 @@ export default function SettingsPage() {
       const res = await fetch('/api/settings/invoice-titles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newInvoiceTitle.trim() }),
+        body: JSON.stringify({ title: newInvoiceTitle.trim(), taxId: newInvoiceTaxId.trim() || null }),
       });
       if (res.ok) {
         setNewInvoiceTitle('');
+        setNewInvoiceTaxId('');
         await fetchInvoiceTitles();
         showToast('發票抬頭已新增');
       } else {
@@ -1469,8 +1471,16 @@ export default function SettingsPage() {
               value={newInvoiceTitle}
               onChange={e => setNewInvoiceTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addInvoiceTitle()}
-              placeholder="輸入發票抬頭名稱..."
+              placeholder="發票抬頭名稱..."
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
+            />
+            <input
+              type="text"
+              value={newInvoiceTaxId}
+              onChange={e => setNewInvoiceTaxId(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addInvoiceTitle()}
+              placeholder="統一編號（選填）"
+              className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
             />
             <button
               onClick={addInvoiceTitle}
@@ -1485,7 +1495,10 @@ export default function SettingsPage() {
             <div className="space-y-2">
               {invoiceTitles.map((item) => (
                 <div key={item.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-gray-100">
-                  <span className="text-sm text-gray-700">{item.title}</span>
+                  <div>
+                    <span className="text-sm text-gray-700 font-medium">{item.title}</span>
+                    {item.taxId && <span className="text-xs text-gray-400 ml-2">({item.taxId})</span>}
+                  </div>
                   <button
                     onClick={() => deleteInvoiceTitle(item.id)}
                     className="text-red-500 hover:text-red-700 text-sm font-medium transition-colors"

@@ -16,6 +16,8 @@ const TABS = [
 
 const STATUS_BADGES = {
   '暫估': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  '待出納': 'bg-orange-100 text-orange-800 border-orange-300',
+  '已預付': 'bg-blue-100 text-blue-800 border-blue-300',
   '已核實': 'bg-green-100 text-green-800 border-green-300',
   '跳過': 'bg-gray-100 text-gray-600 border-gray-300',
   '已結清': 'bg-blue-100 text-blue-800 border-blue-300'
@@ -99,6 +101,7 @@ export default function LoansPage() {
     repaymentType: '本息攤還', repaymentDay: '20',
     startDate: '', endDate: '', deductAccountId: '',
     contactPerson: '', contactPhone: '', remark: '', sortOrder: '0',
+    collateral: '', guarantor: '', guarantorPhone: '', guarantorIdNo: '',
     status: '使用中'
   });
 
@@ -116,7 +119,7 @@ export default function LoansPage() {
   useEffect(() => {
     if (activeTab === 'monthly') {
       if (loans.length === 0) fetchAll();
-      fetchMonthlyRecords();
+      autoSetupMonthly();
     }
   }, [activeTab, monthlyYear, monthlyMonth]);
 
@@ -185,6 +188,38 @@ export default function LoansPage() {
     }
   }
 
+  // ============ AUTO MONTHLY SETUP ============
+
+  async function autoSetupMonthly() {
+    try {
+      // 1. Auto-generate records for current month (if not already existing)
+      await fetch('/api/loans/records/auto-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: monthlyYear, month: monthlyMonth })
+      });
+
+      // 2. Auto-push records due within 10 days to cashier
+      await fetch('/api/loans/records/auto-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: monthlyYear, month: monthlyMonth, daysBeforeDue: 10 })
+      });
+
+      // 3. Sync cashier execution status back
+      await fetch('/api/loans/records/sync-cashier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: monthlyYear, month: monthlyMonth })
+      });
+    } catch (e) {
+      console.error('自動設定月度記錄錯誤:', e);
+    }
+
+    // Finally, fetch the updated records
+    fetchMonthlyRecords();
+  }
+
   // ============ LOAN CRUD ============
 
   function openAddLoan() {
@@ -196,6 +231,7 @@ export default function LoansPage() {
       repaymentType: '本息攤還', repaymentDay: '20',
       startDate: '', endDate: '', deductAccountId: '',
       contactPerson: '', contactPhone: '', remark: '', sortOrder: '0',
+      collateral: '', guarantor: '', guarantorPhone: '', guarantorIdNo: '',
       status: '使用中'
     });
     setShowLoanModal(true);
@@ -212,6 +248,8 @@ export default function LoansPage() {
       startDate: loan.startDate, endDate: loan.endDate,
       deductAccountId: String(loan.deductAccountId),
       contactPerson: loan.contactPerson || '', contactPhone: loan.contactPhone || '',
+      collateral: loan.collateral || '', guarantor: loan.guarantor || '',
+      guarantorPhone: loan.guarantorPhone || '', guarantorIdNo: loan.guarantorIdNo || '',
       remark: loan.remark || '', sortOrder: String(loan.sortOrder),
       status: loan.status || '使用中'
     });
@@ -403,7 +441,8 @@ export default function LoansPage() {
           transferAccountId: transferTargetAccount.id,
           amount,
           description: transferForm.description,
-          sourceType: 'loan_predeposit',
+          sourceType: transferForm._sourceType || 'loan_predeposit',
+          sourceRecordId: transferForm._sourceRecordId || null,
           hasFee: false
         })
       });
@@ -414,12 +453,137 @@ export default function LoansPage() {
       }
       alert(`已成功移轉 ${formatCurrency(amount)} 至 ${transferTargetAccount.name}`);
       setShowTransferModal(false);
-      fetchAll(); // refresh account balances
+      // If linked to a record, update status to 已預付
+      if (transferForm._recordId) {
+        try {
+          await fetch(`/api/loans/records/${transferForm._recordId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: '已預付' })
+          });
+        } catch (_) { /* ignore */ }
+      }
+      fetchAll();
+      fetchMonthlyRecords();
     } catch (e) {
       alert('移轉失敗: ' + e.message);
     } finally {
       setTransfering(false);
     }
+  }
+
+  // ============ PUSH TO CASHIER (推送出納) ============
+
+  function getDaysUntilDue(dueDate) {
+    if (!dueDate) return null;
+    const due = new Date(dueDate + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+  }
+
+  async function pushToCashier(record) {
+    const loan = loans.find(l => l.id === record.loanId);
+    if (!loan) return;
+    const acctId = record.deductAccountId || loan.deductAccountId;
+    const acct = accounts.find(a => a.id === acctId);
+    if (!acct) {
+      alert('找不到扣款帳戶');
+      return;
+    }
+    if (!confirm(`確定推送「${loan.loanName}」(預估 ${formatCurrency(record.estimatedTotal)}) 至出納？`)) return;
+
+    try {
+      // 1. Create PaymentOrder so cashier can see it
+      const payRes = await fetch('/api/payment-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceIds: [],
+          supplierName: `${loan.bankName} — ${loan.loanName}`,
+          warehouse: loan.warehouse || null,
+          paymentMethod: '匯款',
+          amount: record.estimatedTotal,
+          discount: 0,
+          netAmount: record.estimatedTotal,
+          dueDate: record.dueDate,
+          accountId: acctId,
+          note: `貸款還款預存 — ${loan.loanCode} ${record.recordYear}/${String(record.recordMonth).padStart(2, '0')} (暫估${formatCurrency(record.estimatedTotal)})`,
+          status: '待出納'
+        })
+      });
+      if (!payRes.ok) {
+        const err = await payRes.json();
+        alert(err?.error?.message || err?.error || '建立付款單失敗');
+        return;
+      }
+
+      const payData = await payRes.json();
+
+      // 2. Update loan record status to 待出納, link paymentOrderId
+      await fetch(`/api/loans/records/${record.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: '待出納', paymentOrderId: payData.id })
+      });
+
+      alert(`已推送至出納，出納可在「出納管理」頁面查看並執行付款`);
+      fetchMonthlyRecords();
+    } catch (e) {
+      alert('推送失敗: ' + e.message);
+    }
+  }
+
+  async function batchPushToCashier() {
+    const dueRecords = monthlyRecords.filter(r => {
+      if (r.status !== '暫估') return false;
+      const days = getDaysUntilDue(r.dueDate);
+      return days !== null && days <= 7;
+    });
+    if (dueRecords.length === 0) {
+      alert('目前沒有7天內到期且未推送的記錄');
+      return;
+    }
+    if (!confirm(`共 ${dueRecords.length} 筆即將到期，確定全部推送出納？\n將為每筆建立付款單。`)) return;
+    let pushed = 0;
+    let failed = 0;
+    for (const rec of dueRecords) {
+      const loan = loans.find(l => l.id === rec.loanId);
+      if (!loan) { failed++; continue; }
+      const acctId = rec.deductAccountId || loan.deductAccountId;
+      try {
+        // Create PaymentOrder
+        const payRes = await fetch('/api/payment-orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invoiceIds: [],
+            supplierName: `${loan.bankName} — ${loan.loanName}`,
+            warehouse: loan.warehouse || null,
+            paymentMethod: '匯款',
+            amount: rec.estimatedTotal,
+            discount: 0,
+            netAmount: rec.estimatedTotal,
+            dueDate: rec.dueDate,
+            accountId: acctId,
+            note: `貸款還款預存 — ${loan.loanCode} ${rec.recordYear}/${String(rec.recordMonth).padStart(2, '0')}`,
+            status: '待出納'
+          })
+        });
+        if (!payRes.ok) { failed++; continue; }
+        const payData = await payRes.json();
+
+        // Update record status and link paymentOrderId
+        await fetch(`/api/loans/records/${rec.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: '待出納', paymentOrderId: payData.id })
+        });
+        pushed++;
+      } catch (_) { failed++; }
+    }
+    alert(`已推送 ${pushed} 筆至出納${failed > 0 ? `，${failed} 筆失敗` : ''}`);
+    fetchMonthlyRecords();
   }
 
   // ============ COMPUTED VALUES ============
@@ -433,7 +597,7 @@ export default function LoansPage() {
 
   const activeLoans = loans.filter(l => l.status === '使用中');
   const totalBalance = activeLoans.reduce((sum, l) => sum + l.currentBalance, 0);
-  const thisMonthDue = monthlyRecords.filter(r => r.status === '暫估').length;
+  const thisMonthDue = monthlyRecords.filter(r => r.status === '暫估' || r.status === '待出納').length;
   const overdueLoans = activeLoans.filter(l => {
     const end = new Date(l.endDate);
     return end < now;
@@ -685,13 +849,20 @@ export default function LoansPage() {
       <div>
         {/* Workflow Guide */}
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
-          <p className="text-sm font-medium text-indigo-800 mb-2">貸款還款流程：</p>
+          <p className="text-sm font-medium text-indigo-800 mb-2">貸款還款流程（5步驟）：</p>
           <ol className="text-xs text-indigo-700 space-y-1 list-decimal list-inside">
             <li><b>批次建立暫估</b> — 系統自動計算每筆貸款本月預估的本金和利息</li>
-            <li><b>出納預存款</b> — 下方「帳戶資金彙總」可直接快速移轉資金至扣款帳戶</li>
-            <li><b>等待利息單</b> — 銀行扣款後取得正式利息單</li>
-            <li><b>核實回填</b> — 點「核實」填入實際本金與利息 → 系統自動建立現金流支出 → 帳戶餘額與貸款餘額同步更新</li>
+            <li><b>推送出納</b> — 繳款日前7天，將付款資訊推送至出納（狀態變為「待出納」）</li>
+            <li><b>出納預付</b> — 出納從其他帳戶移轉預估金額至扣款帳戶（狀態變為「已預付」）</li>
+            <li><b>等待利息單</b> — 銀行扣款後取得正式利息單，確認實際本金與利息</li>
+            <li><b>核實回填</b> — 點「核實」填入實際金額 → 系統自動建立現金流支出 → 帳戶餘額與貸款餘額同步更新</li>
           </ol>
+          <div className="mt-2 flex items-center gap-2 text-xs text-indigo-600">
+            <span className="inline-block w-2 h-2 rounded-full bg-yellow-400"></span>暫估
+            <span className="inline-block w-2 h-2 rounded-full bg-orange-400 ml-2"></span>待出納
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-400 ml-2"></span>已預付
+            <span className="inline-block w-2 h-2 rounded-full bg-green-400 ml-2"></span>已核實
+          </div>
         </div>
 
         {/* Month Selector & Actions */}
@@ -708,11 +879,21 @@ export default function LoansPage() {
             ))}
           </select>
           <div className="flex-1" />
-          {isLoggedIn && (
-            <button onClick={openBatchModal} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors">
-              批次建立暫估
-            </button>
-          )}
+          {isLoggedIn && (() => {
+            const dueCount = monthlyRecords.filter(r => r.status === '暫估' && getDaysUntilDue(r.dueDate) !== null && getDaysUntilDue(r.dueDate) <= 7).length;
+            return (
+              <div className="flex gap-2">
+                {dueCount > 0 && (
+                  <button onClick={batchPushToCashier} className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-700 transition-colors animate-pulse">
+                    批次推送出納 ({dueCount}筆即將到期)
+                  </button>
+                )}
+                <button onClick={openBatchModal} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors">
+                  批次建立暫估
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ====== ACCOUNT FUND SUMMARY ====== */}
@@ -801,25 +982,21 @@ export default function LoansPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">貸款編號</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">貸款名稱</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">扣款帳戶</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">還款日</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">狀態</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">暫估本金</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">暫估利息</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">暫估合計</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">實際本金</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">實際利息</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">實際合計</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">差異</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">操作</th>
+                  <th className="text-left px-3 py-3 font-medium text-gray-600">貸款名稱</th>
+                  <th className="text-left px-3 py-3 font-medium text-gray-600">扣款帳戶</th>
+                  <th className="text-center px-3 py-3 font-medium text-gray-600">繳款倒數</th>
+                  <th className="text-center px-3 py-3 font-medium text-gray-600">狀態</th>
+                  <th className="text-right px-3 py-3 font-medium text-gray-600">暫估合計</th>
+                  <th className="text-right px-3 py-3 font-medium text-gray-600">實際合計</th>
+                  <th className="text-right px-3 py-3 font-medium text-gray-600">差異</th>
+                  <th className="text-center px-3 py-3 font-medium text-gray-600">現金流狀態</th>
+                  <th className="text-center px-3 py-3 font-medium text-gray-600">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {activeLoansForMonth.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="text-center py-8 text-gray-400">
+                    <td colSpan={9} className="text-center py-8 text-gray-400">
                       暫無使用中的貸款，請先在「貸款總覽」新增貸款
                     </td>
                   </tr>
@@ -827,13 +1004,28 @@ export default function LoansPage() {
                   const rec = recordMap[loan.id];
                   const diff = rec && rec.status === '已核實' && rec.actualTotal != null
                     ? rec.estimatedTotal - rec.actualTotal : null;
+                  const daysLeft = rec ? getDaysUntilDue(rec.dueDate) : null;
+                  const dueColor = daysLeft === null ? '' : daysLeft < 0 ? 'text-red-600 font-bold' : daysLeft <= 3 ? 'text-red-600 font-bold animate-pulse' : daysLeft <= 7 ? 'text-orange-600 font-bold' : 'text-gray-600';
+                  const dueLabel = daysLeft === null ? '-' : daysLeft < 0 ? `已逾期${Math.abs(daysLeft)}天` : daysLeft === 0 ? '今日到期' : `${daysLeft}天`;
+
                   return (
-                    <tr key={loan.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-xs text-indigo-600">{loan.loanCode}</td>
-                      <td className="px-4 py-3 font-medium">{loan.loanName}</td>
-                      <td className="px-4 py-3 text-xs">{loan.deductAccount?.name || '-'}</td>
-                      <td className="px-4 py-3 text-center">{rec ? formatDate(rec.dueDate) : `每月${loan.repaymentDay}日`}</td>
-                      <td className="px-4 py-3 text-center">
+                    <tr key={loan.id} className={`hover:bg-gray-50 ${daysLeft !== null && daysLeft <= 3 && rec?.status === '暫估' ? 'bg-red-50' : ''}`}>
+                      <td className="px-3 py-3">
+                        <div className="font-medium text-sm">{loan.loanName}</div>
+                        <div className="text-xs text-gray-400">{loan.loanCode} | {loan.bankName}</div>
+                      </td>
+                      <td className="px-3 py-3 text-xs">{loan.deductAccount?.name || '-'}</td>
+                      <td className="px-3 py-3 text-center">
+                        {rec ? (
+                          <div>
+                            <div className={`text-sm ${dueColor}`}>{dueLabel}</div>
+                            <div className="text-xs text-gray-400">{formatDate(rec.dueDate)}</div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">每月{loan.repaymentDay}日</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center">
                         {rec ? (
                           <span className={`inline-block px-2 py-1 rounded text-xs font-medium border ${STATUS_BADGES[rec.status] || 'bg-gray-100'}`}>
                             {rec.status}
@@ -842,31 +1034,82 @@ export default function LoansPage() {
                           <span className="text-gray-400 text-xs">未建立</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">{rec ? formatCurrency(rec.estimatedPrincipal) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono">{rec ? formatCurrency(rec.estimatedInterest) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono font-medium">{rec ? formatCurrency(rec.estimatedTotal) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{rec?.actualPrincipal != null ? formatCurrency(rec.actualPrincipal) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{rec?.actualInterest != null ? formatCurrency(rec.actualInterest) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono font-medium text-green-700">{rec?.actualTotal != null ? formatCurrency(rec.actualTotal) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-xs">
+                      <td className="px-3 py-3 text-right font-mono text-sm">
+                        {rec ? (
+                          <div>
+                            <div>{formatCurrency(rec.estimatedTotal)}</div>
+                            <div className="text-xs text-gray-400">本{formatCurrency(rec.estimatedPrincipal)} 息{formatCurrency(rec.estimatedInterest)}</div>
+                          </div>
+                        ) : '-'}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-sm text-green-700">
+                        {rec?.actualTotal != null ? (
+                          <div>
+                            <div>{formatCurrency(rec.actualTotal)}</div>
+                            <div className="text-xs text-gray-500">本{formatCurrency(rec.actualPrincipal)} 息{formatCurrency(rec.actualInterest)}</div>
+                          </div>
+                        ) : '-'}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
                         {diff != null ? (
                           <span className={diff > 0 ? 'text-orange-600' : diff < 0 ? 'text-red-600' : 'text-gray-400'}>
                             {diff > 0 ? '+' : ''}{formatCurrency(diff)}
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-3 py-2 text-center">
+                        {rec ? (
+                          <div className="space-y-1">
+                            {rec.preDeposit && (
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                                <span>預付</span>
+                                <span className="font-mono">{formatCurrency(rec.preDeposit.amount)}</span>
+                              </div>
+                            )}
+                            {rec.paymentTxns && rec.paymentTxns.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 border border-green-200">
+                                <span>扣款</span>
+                                <span className="font-mono">{formatCurrency(rec.paymentTxns.reduce((s, t) => s + t.amount, 0))}</span>
+                              </div>
+                            )}
+                            {!rec.preDeposit && (!rec.paymentTxns || rec.paymentTxns.length === 0) && (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                          </div>
+                        ) : '-'}
+                      </td>
+                      <td className="px-3 py-3 text-center">
                         {isLoggedIn && (
-                          <div className="flex gap-1 justify-center">
+                          <div className="flex flex-col gap-1 items-center">
                             {rec && rec.status === '暫估' && (
                               <>
-                                <button onClick={() => openConfirmModal(rec)} className="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">
+                                <button onClick={() => pushToCashier(rec)} className="bg-orange-500 text-white px-2 py-1 rounded text-xs hover:bg-orange-600 w-full">
+                                  推送出納
+                                </button>
+                                <div className="flex gap-1">
+                                  <button onClick={() => openConfirmModal(rec)} className="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">
+                                    核實
+                                  </button>
+                                  <button onClick={() => deleteRecord(rec)} className="text-red-600 hover:text-red-800 text-xs px-1 py-1 rounded hover:bg-red-50">
+                                    刪除
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                            {rec && rec.status === '待出納' && (
+                              <>
+                                <button onClick={() => pushToCashier(rec)} className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 w-full">
+                                  預付移轉
+                                </button>
+                                <button onClick={() => openConfirmModal(rec)} className="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 w-full">
                                   核實
                                 </button>
-                                <button onClick={() => deleteRecord(rec)} className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded hover:bg-red-50">
-                                  刪除
-                                </button>
                               </>
+                            )}
+                            {rec && rec.status === '已預付' && (
+                              <button onClick={() => openConfirmModal(rec)} className="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 w-full">
+                                核實（利息單已到）
+                              </button>
                             )}
                             {rec && rec.status === '已核實' && (
                               <button onClick={() => deleteRecord(rec)} className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded hover:bg-red-50">
@@ -884,30 +1127,36 @@ export default function LoansPage() {
                 })}
               </tbody>
               {monthlyRecords.length > 0 && (() => {
-                const totalEstP = monthlyRecords.reduce((s, r) => s + r.estimatedPrincipal, 0);
-                const totalEstI = monthlyRecords.reduce((s, r) => s + r.estimatedInterest, 0);
                 const totalEstT = monthlyRecords.reduce((s, r) => s + r.estimatedTotal, 0);
                 const confirmedRecs = monthlyRecords.filter(r => r.actualTotal != null);
-                const totalActP = confirmedRecs.reduce((s, r) => s + (r.actualPrincipal || 0), 0);
-                const totalActI = confirmedRecs.reduce((s, r) => s + (r.actualInterest || 0), 0);
                 const totalActT = confirmedRecs.reduce((s, r) => s + (r.actualTotal || 0), 0);
-                const totalDiff = confirmedRecs.reduce((s, r) => s + (r.estimatedTotal - (r.actualTotal || 0)), 0);
+                const totalPreDeposit = monthlyRecords.reduce((s, r) => s + (r.preDeposit ? r.preDeposit.amount : 0), 0);
+                const statusCounts = {};
+                monthlyRecords.forEach(r => { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
                 return (
                   <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                     <tr className="font-medium">
-                      <td colSpan={5} className="px-4 py-3 text-right text-gray-600">合計:</td>
-                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(totalEstP)}</td>
-                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(totalEstI)}</td>
-                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(totalEstT)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(totalActP)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(totalActI)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(totalActT)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-xs">
+                      <td colSpan={2} className="px-3 py-3 text-right text-gray-600">
+                        <div className="flex gap-2 justify-end text-xs">
+                          {Object.entries(statusCounts).map(([st, cnt]) => (
+                            <span key={st} className={`px-2 py-0.5 rounded border ${STATUS_BADGES[st] || 'bg-gray-100'}`}>{st}: {cnt}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td colSpan={2} className="px-3 py-3 text-right text-gray-600 text-sm">合計 ({monthlyRecords.length}筆):</td>
+                      <td className="px-3 py-3 text-right font-mono">{formatCurrency(totalEstT)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-green-700">{formatCurrency(totalActT)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
                         {confirmedRecs.length > 0 ? (
-                          <span className={totalDiff > 0 ? 'text-orange-600' : totalDiff < 0 ? 'text-red-600' : 'text-gray-400'}>
-                            {totalDiff > 0 ? '+' : ''}{formatCurrency(totalDiff)}
+                          <span className={totalEstT - totalActT > 0 ? 'text-orange-600' : 'text-red-600'}>
+                            {totalEstT - totalActT > 0 ? '+' : ''}{formatCurrency(totalEstT - totalActT)}
                           </span>
                         ) : '-'}
+                      </td>
+                      <td className="px-3 py-3 text-center text-xs">
+                        {totalPreDeposit > 0 && (
+                          <span className="text-blue-600 font-mono">預付: {formatCurrency(totalPreDeposit)}</span>
+                        )}
                       </td>
                       <td></td>
                     </tr>
@@ -1359,6 +1608,43 @@ export default function LoansPage() {
                 <input
                   type="text" value={loanForm.contactPhone}
                   onChange={e => setLoanForm({ ...loanForm, contactPhone: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Row 9: Collateral & Guarantor */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">擔保物</label>
+              <input
+                type="text" value={loanForm.collateral}
+                onChange={e => setLoanForm({ ...loanForm, collateral: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                placeholder="例：土地、建物、設備等"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">保證人/要保人</label>
+                <input
+                  type="text" value={loanForm.guarantor}
+                  onChange={e => setLoanForm({ ...loanForm, guarantor: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">保證人電話</label>
+                <input
+                  type="text" value={loanForm.guarantorPhone}
+                  onChange={e => setLoanForm({ ...loanForm, guarantorPhone: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">保證人身分證</label>
+                <input
+                  type="text" value={loanForm.guarantorIdNo}
+                  onChange={e => setLoanForm({ ...loanForm, guarantorIdNo: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>

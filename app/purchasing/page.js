@@ -54,6 +54,7 @@ export default function PurchasingPage() {
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
   const [invoices, setInvoices] = useState([]); // 發票資料（用於判斷發票狀態）
+  const [invoiceTitles, setInvoiceTitles] = useState([]); // 發票抬頭選項（來自設定）
 
   // 進銷存每月費用分頁
   const [purchasePageTab, setPurchasePageTab] = useState('orders'); // 'orders' | 'monthlyExpense'
@@ -96,13 +97,35 @@ export default function PurchasingPage() {
   });
   const warehousesList = Object.keys(warehouseDepartments);
 
+  async function fetchInvoiceTitles() {
+    try {
+      const res = await fetch('/api/settings/invoice-titles', { credentials: 'include' });
+      const data = await res.json().catch(() => []);
+      if (res.ok && Array.isArray(data)) {
+        setInvoiceTitles(data);
+      } else if (res.ok && data && !Array.isArray(data)) {
+        setInvoiceTitles(data.titles || data.data || []);
+      } else {
+        setInvoiceTitles([]);
+      }
+    } catch (err) {
+      console.error('載入發票抬頭失敗:', err);
+      setInvoiceTitles([]);
+    }
+  }
+
   useEffect(() => {
     fetchSuppliers();
     fetchProducts();
     fetchPurchases();
     fetchWarehouseDepartments();
     fetchInvoices();
+    fetchInvoiceTitles();
   }, []);
+
+  useEffect(() => {
+    if (purchasePageTab === 'monthlyExpense') fetchInvoiceTitles();
+  }, [purchasePageTab]);
 
   async function fetchExpenseTemplates() {
     try {
@@ -323,47 +346,56 @@ export default function PurchasingPage() {
       const invAmt = parseFloat(executeExpenseForm.invoiceAmount) || 0;
       const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
       const discountAmt = parseFloat(executeExpenseForm.supplierDiscount) || 0;
-      if (invAmt <= 0) { alert('請輸入發票金額'); setSubmittingExpense(false); return; }
+      if (invAmt <= 0) { alert('請輸入發票金額'); return; }
       const expected = purchaseTotal + taxAmt - discountAmt;
       if (Math.abs(invAmt - expected) > 0.01) {
         alert(`發票金額不符！\n發票金額: ${invAmt.toLocaleString()}\n應為: 進貨金額 ${purchaseTotal.toLocaleString()} + 營業稅 ${taxAmt.toLocaleString()} - 廠商折讓 ${discountAmt.toLocaleString()} = ${expected.toLocaleString()}`);
-        setSubmittingExpense(false);
         return;
       }
     }
 
     setSubmittingExpense(true);
     try {
+      const payload = {
+        templateId: parseInt(selectedExpenseTemplateId, 10),
+        warehouse: executeExpenseForm.warehouse,
+        expenseMonth: executeExpenseForm.expenseMonth,
+        supplierId: parseInt(executeExpenseForm.supplierId, 10),
+        supplierName: executeExpenseForm.supplierName,
+        paymentTerms: executeExpenseForm.paymentTerms || '月結',
+        taxType: executeExpenseForm.taxType || null,
+        department: executeExpenseForm.department || '',
+        items: validItems.map(item => ({
+          productId: parseInt(item.productId, 10),
+          quantity: parseInt(item.quantity, 10) || 1,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          note: item.note || ''
+        })),
+        invoiceNo: executeExpenseForm.invoiceNo || null,
+        invoiceDate: executeExpenseForm.invoiceDate || null,
+        invoiceTitle: executeExpenseForm.invoiceTitle || null,
+        invoiceAmount: hasInvoice ? parseFloat(executeExpenseForm.invoiceAmount) : null,
+        taxAmount: hasInvoice ? (parseFloat(executeExpenseForm.taxAmount) || 0) : null,
+        supplierDiscount: hasInvoice ? (parseFloat(executeExpenseForm.supplierDiscount) || 0) : null,
+        createdBy: session?.user?.name || session?.user?.email || '系統',
+        note: executeExpenseForm.note || null,
+        allowDuplicate: false
+      };
       const res = await fetch('/api/expense-records/execute-purchase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: parseInt(selectedExpenseTemplateId),
-          warehouse: executeExpenseForm.warehouse,
-          expenseMonth: executeExpenseForm.expenseMonth,
-          supplierId: parseInt(executeExpenseForm.supplierId),
-          supplierName: executeExpenseForm.supplierName,
-          paymentTerms: executeExpenseForm.paymentTerms || '月結',
-          taxType: executeExpenseForm.taxType || null,
-          department: executeExpenseForm.department || '',
-          items: validItems.map(item => ({
-            productId: parseInt(item.productId),
-            quantity: parseInt(item.quantity) || 1,
-            unitPrice: parseFloat(item.unitPrice) || 0,
-            note: item.note || ''
-          })),
-          invoiceNo: executeExpenseForm.invoiceNo || null,
-          invoiceDate: executeExpenseForm.invoiceDate || null,
-          invoiceTitle: executeExpenseForm.invoiceTitle || null,
-          invoiceAmount: hasInvoice ? parseFloat(executeExpenseForm.invoiceAmount) : null,
-          taxAmount: hasInvoice ? (parseFloat(executeExpenseForm.taxAmount) || 0) : null,
-          supplierDiscount: hasInvoice ? (parseFloat(executeExpenseForm.supplierDiscount) || 0) : null,
-          createdBy: session?.user?.name || session?.user?.email || '系統',
-          note: executeExpenseForm.note || null,
-          allowDuplicate: false
-        })
+        credentials: 'include',
+        body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (_) {
+        const text = await res.text();
+        setSubmittingExpense(false);
+        alert(`執行失敗 (${res.status})：回應無法解析。請確認已登入並重試。`);
+        return;
+      }
       if (res.ok) {
         alert(data.message || '已建立進銷存每月費用記錄');
         setSelectedExpenseTemplateId('');
@@ -386,11 +418,49 @@ export default function PurchasingPage() {
         });
         if (monthlyExpenseSubTab !== 'records') setMonthlyExpenseSubTab('records');
         fetchExpenseRecords();
+      } else if (res.status === 409 && data?.error?.details?.duplicate) {
+        if (confirm((data?.error?.message || '此月份已有記錄') + '\n\n是否仍要再建立一筆？')) {
+          payload.allowDuplicate = true;
+          const res2 = await fetch('/api/expense-records/execute-purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          });
+          const data2 = await res2.json().catch(() => ({}));
+          if (res2.ok) {
+            alert(data2.message || '已建立');
+            setSelectedExpenseTemplateId('');
+            setExecuteExpenseForm({
+              warehouse: '',
+              expenseMonth: new Date().toISOString().slice(0, 7),
+              supplierId: '',
+              supplierName: '',
+              paymentTerms: '月結',
+              taxType: '',
+              department: '',
+              items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }],
+              invoiceNo: '',
+              invoiceDate: '',
+              invoiceTitle: '',
+              invoiceAmount: '',
+              taxAmount: '',
+              supplierDiscount: '',
+              note: ''
+            });
+            if (monthlyExpenseSubTab !== 'records') setMonthlyExpenseSubTab('records');
+            fetchExpenseRecords();
+          } else {
+            const msg = data2?.error?.message ?? (typeof data2?.error === 'string' ? data2.error : null) ?? '執行失敗';
+            alert(msg);
+          }
+        }
       } else {
-        alert(data.error || '執行失敗');
+        const msg = data?.error?.message ?? (typeof data?.error === 'string' ? data.error : null) ?? '執行失敗';
+        alert(msg);
       }
     } catch (err) {
-      alert('執行失敗: ' + err.message);
+      alert('執行失敗: ' + (err?.message || String(err)));
     }
     setSubmittingExpense(false);
   }
@@ -533,12 +603,8 @@ export default function PurchasingPage() {
     }
   }
 
-  // 產品搜尋過濾（選擇廠商後只顯示該廠商的產品）
+  // 產品搜尋過濾（產品與廠商為獨立資料，不互相篩選）
   const filteredProducts = products.filter(p => {
-    // 如果已選擇廠商，只顯示該廠商的產品
-    if (formData.supplierId) {
-      if (p.supplierId !== parseInt(formData.supplierId)) return false;
-    }
     if (!productSearch.trim()) return true;
     const keyword = productSearch.toLowerCase().trim();
     return (
@@ -728,9 +794,9 @@ export default function PurchasingPage() {
 
   async function fetchProducts() {
     try {
-      const response = await fetch('/api/products');
-      const data = await response.json();
-      setProducts(Array.isArray(data) ? data : []);
+      const response = await fetch('/api/products', { credentials: 'include' });
+      const data = await response.json().catch(() => []);
+      setProducts(Array.isArray(data) ? data : (data?.products || []));
     } catch (error) {
       console.error('取得產品列表失敗:', error);
       setProducts([]);
@@ -1013,10 +1079,6 @@ export default function PurchasingPage() {
                               setFormData(prev => ({ ...prev, supplierId: s.id.toString(), paymentTerms: s.paymentTerms || '月結' }));
                               setSupplierSearch(s.name);
                               setShowSupplierDropdown(false);
-                              // 切換廠商時清空已選的產品搜尋
-                              setProductSearch('');
-                              setNewItem({ productId: '', quantity: '', unitPrice: '', note: '' });
-                              setRecentPurchases([]);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
                               formData.supplierId === s.id.toString() ? 'bg-blue-50 text-blue-700' : ''
@@ -2027,12 +2089,42 @@ export default function PurchasingPage() {
                   </div>
                 </div>
 
-                {/* Auto-filled supplier info (read-only, from template) */}
-                {selectedExpenseTemplateId && executeExpenseForm.supplierId && (
-                  <div className="bg-gray-50 rounded-lg p-3 mb-4 flex flex-wrap gap-6 text-sm">
-                    <div><span className="text-gray-500">廠商：</span><span className="font-medium">{executeExpenseForm.supplierName}</span></div>
-                    <div><span className="text-gray-500">付款方式：</span><span className="font-medium">{executeExpenseForm.paymentTerms || '月結'}</span></div>
-                    {executeExpenseForm.taxType && <div><span className="text-gray-500">稅別：</span><span className="font-medium">{executeExpenseForm.taxType}</span></div>}
+                {/* Supplier selection */}
+                {selectedExpenseTemplateId && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
+                      <select
+                        value={executeExpenseForm.supplierId}
+                        onChange={e => {
+                          const sid = e.target.value;
+                          const s = suppliers.find(s => s.id === parseInt(sid));
+                          setExecuteExpenseForm(prev => ({
+                            ...prev,
+                            supplierId: sid,
+                            supplierName: s ? s.name : '',
+                            paymentTerms: s?.paymentTerms || prev.paymentTerms
+                          }));
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      >
+                        <option value="">選擇廠商</option>
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
+                      <input value={executeExpenseForm.paymentTerms}
+                        onChange={e => setExecuteExpenseForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="月結" />
+                    </div>
+                    {executeExpenseForm.taxType && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
+                        <input value={executeExpenseForm.taxType} readOnly
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2124,10 +2216,34 @@ export default function PurchasingPage() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票抬頭</label>
-                          <input value={executeExpenseForm.invoiceTitle}
-                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceTitle: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="公司名稱" />
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            發票抬頭
+                            {invoiceTitles.length === 0 && (
+                              <a href="/settings" className="text-xs text-blue-600 hover:underline ml-1">（請先至設定新增）</a>
+                            )}
+                          </label>
+                          <select
+                            value={invoiceTitles.some(t => t.title === executeExpenseForm.invoiceTitle) ? executeExpenseForm.invoiceTitle : (executeExpenseForm.invoiceTitle ? '__other__' : '')}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setExecuteExpenseForm(prev => ({ ...prev, invoiceTitle: v === '__other__' ? '' : v }));
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          >
+                            <option value="">請選擇</option>
+                            {invoiceTitles.map(t => (
+                              <option key={t.id} value={t.title}>{t.title}{t.taxId ? ` (${t.taxId})` : ''}</option>
+                            ))}
+                            <option value="__other__">其他（手動輸入）</option>
+                          </select>
+                          {(executeExpenseForm.invoiceTitle && !invoiceTitles.some(t => t.title === executeExpenseForm.invoiceTitle)) && (
+                            <input
+                              value={executeExpenseForm.invoiceTitle}
+                              onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceTitle: e.target.value }))}
+                              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="輸入發票抬頭"
+                            />
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">

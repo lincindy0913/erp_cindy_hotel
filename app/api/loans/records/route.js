@@ -49,6 +49,28 @@ export async function GET(request) {
       orderBy: [{ recordYear: 'desc' }, { recordMonth: 'desc' }, { loanId: 'asc' }]
     });
 
+    // Fetch pre-deposit and payment transactions linked to these records
+    const recordIds = records.map(r => r.id);
+    const linkedTxns = recordIds.length > 0 ? await prisma.cashTransaction.findMany({
+      where: {
+        sourceRecordId: { in: recordIds },
+        sourceType: { in: ['loan_predeposit', 'loan_payment'] }
+      },
+      select: {
+        id: true, sourceRecordId: true, sourceType: true, type: true,
+        transactionNo: true, transactionDate: true, amount: true, description: true
+      }
+    }) : [];
+
+    // Group transactions by record ID
+    const txByRecord = {};
+    for (const tx of linkedTxns) {
+      if (!txByRecord[tx.sourceRecordId]) txByRecord[tx.sourceRecordId] = [];
+      txByRecord[tx.sourceRecordId].push({
+        ...tx, amount: Number(tx.amount)
+      });
+    }
+
     const result = records.map(r => ({
       ...r,
       estimatedPrincipal: Number(r.estimatedPrincipal),
@@ -61,6 +83,8 @@ export async function GET(request) {
         ...r.loan,
         annualRate: Number(r.loan.annualRate)
       } : null,
+      preDeposit: (txByRecord[r.id] || []).find(t => t.sourceType === 'loan_predeposit') || null,
+      paymentTxns: (txByRecord[r.id] || []).filter(t => t.sourceType === 'loan_payment'),
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
       confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,

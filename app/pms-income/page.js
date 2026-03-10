@@ -11,9 +11,11 @@ const WAREHOUSES = ['麗格', '麗軒', '民宿'];
 const TABS = [
   { key: 'overview', label: '每日匯入總覽' },
   { key: 'records', label: '收入記錄明細' },
+  { key: 'settlement', label: '月度核對結算' },
   { key: 'statistics', label: '月度統計報表' },
   { key: 'travelAgency', label: '旅行社佣金配置' },
   { key: 'manualCommission', label: '每月手動代訂' },
+  { key: 'paymentConfig', label: '收入帳戶設定' },
   { key: 'mapping', label: 'PMS 科目對應設定' }
 ];
 
@@ -131,6 +133,22 @@ function PmsIncomePage() {
   const [showConfirmCommissionModal, setShowConfirmCommissionModal] = useState(false);
   const [confirmCommissionForm, setConfirmCommissionForm] = useState({ accountId: '', transactionDate: '' });
   const [selectedManualIds, setSelectedManualIds] = useState([]);
+
+  // Payment method config state（依館別設定）
+  const [paymentConfigs, setPaymentConfigs] = useState([]);
+  const [paymentConfigAccounts, setPaymentConfigAccounts] = useState([]);
+  const [paymentConfigWarehouse, setPaymentConfigWarehouse] = useState('');
+  const [paymentConfigBuildings, setPaymentConfigBuildings] = useState([]);
+
+  // Settlement tab state
+  const [settlementWarehouse, setSettlementWarehouse] = useState('麗格');
+  const [settlementYearMonth, setSettlementYearMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [settlementBatches, setSettlementBatches] = useState([]);
+  const [settlementStatus, setSettlementStatus] = useState(null);
+  const [settling, setSettling] = useState(false);
 
   // ========================
   // Tab switching
@@ -287,6 +305,164 @@ function PmsIncomePage() {
       fetchManualAccounts();
     }
   }, [activeTab, manualMonth, fetchManualEntries, fetchManualAccounts]);
+
+  // ========================
+  // Payment config tab
+  // ========================
+  const fetchPaymentConfigs = useCallback(async () => {
+    try {
+      const [cfgRes, acctRes, whRes] = await Promise.all([
+        fetch('/api/pms-income/payment-method-config'),
+        fetch('/api/cashflow/accounts'),
+        fetch('/api/warehouse-departments').catch(() => null)
+      ]);
+      if (cfgRes.ok) {
+        const data = await cfgRes.json();
+        setPaymentConfigs(Array.isArray(data) ? data : []);
+      }
+      if (acctRes.ok) {
+        const data = await acctRes.json();
+        setPaymentConfigAccounts(Array.isArray(data) ? data.filter(a => a.isActive) : []);
+      }
+      if (whRes && whRes.ok) {
+        const whData = await whRes.json();
+        const list = Array.isArray(whData?.list) ? whData.list : [];
+        const buildings = list.filter(x => x.type === 'building').map(x => x.name);
+        setPaymentConfigBuildings(buildings);
+        if (buildings.length > 0) {
+          setPaymentConfigWarehouse(prev => (prev && buildings.includes(prev) ? prev : buildings[0]));
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'paymentConfig') fetchPaymentConfigs();
+  }, [activeTab, fetchPaymentConfigs]);
+
+  // ========================
+  // Settlement tab
+  // ========================
+  const fetchSettlementData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const ym = settlementYearMonth;
+      const [y, m] = ym.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      const startDate = `${ym}-01`;
+      const endDate = `${ym}-${String(lastDay).padStart(2, '0')}`;
+
+      const [batchRes, statusRes] = await Promise.all([
+        fetch(`/api/pms-income/batches?warehouse=${settlementWarehouse}&startDate=${startDate}&endDate=${endDate}`),
+        fetch(`/api/pms-income/settle?warehouse=${settlementWarehouse}&yearMonth=${ym}`)
+      ]);
+      if (batchRes.ok) {
+        const data = await batchRes.json();
+        setSettlementBatches(Array.isArray(data) ? data : []);
+      }
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        setSettlementStatus(Array.isArray(data) && data.length > 0 ? data[0] : null);
+      } else {
+        setSettlementStatus(null);
+      }
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [settlementWarehouse, settlementYearMonth]);
+
+  useEffect(() => {
+    if (activeTab === 'settlement') fetchSettlementData();
+  }, [activeTab, fetchSettlementData]);
+
+  async function handleVerifyMonth() {
+    if (!confirm(`確定要核對 ${settlementWarehouse} ${settlementYearMonth} 的所有批次嗎？`)) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/pms-income/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify_month',
+          warehouse: settlementWarehouse,
+          yearMonth: settlementYearMonth
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(data.message || '核對完成');
+        fetchSettlementData();
+      } else {
+        setError(data.error?.message || data.error || '核對失敗');
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  }
+
+  async function handleSettleMonth() {
+    if (!confirm(`確定要結算 ${settlementWarehouse} ${settlementYearMonth} 嗎？\n結算後將自動建立現金流交易（收入、信用卡手續費等）。`)) return;
+    setSettling(true);
+    try {
+      const res = await fetch('/api/pms-income/settle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          warehouse: settlementWarehouse,
+          yearMonth: settlementYearMonth
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(data.message || '結算完成');
+        fetchSettlementData();
+      } else {
+        setError(data.error?.message || data.error || '結算失敗');
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setSettling(false);
+  }
+
+  async function handleVerifyBatches(batchIds) {
+    try {
+      const res = await fetch('/api/pms-income/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify_batches', batchIds })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(data.message);
+        fetchSettlementData();
+      } else {
+        setError(data.error?.message || data.error || '核對失敗');
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleSavePaymentConfig(cfg) {
+    try {
+      const payload = { ...cfg, warehouse: paymentConfigWarehouse ?? '' };
+      const res = await fetch('/api/pms-income/payment-method-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setSuccess('已儲存');
+        fetchPaymentConfigs();
+      } else {
+        const data = await res.json();
+        setError(data.error?.message || data.error || '儲存失敗');
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   // ========================
   // Upload handlers
@@ -1020,6 +1196,7 @@ function PmsIncomePage() {
                         <th className="px-3 py-2 font-medium text-right">借方合計</th>
                         <th className="px-3 py-2 font-medium text-right">差額</th>
                         <th className="px-3 py-2 font-medium text-center">筆數</th>
+                        <th className="px-3 py-2 font-medium text-center">狀態</th>
                         <th className="px-3 py-2 font-medium">匯入時間</th>
                         <th className="px-3 py-2 font-medium text-center">操作</th>
                       </tr>
@@ -1037,6 +1214,13 @@ function PmsIncomePage() {
                             {formatNumber(batch.difference)}
                           </td>
                           <td className="px-3 py-2 text-center">{batch.recordCount}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              batch.status === '已結算' ? 'bg-green-100 text-green-700' :
+                              batch.status === '已核對' ? 'bg-blue-100 text-blue-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>{batch.status}</span>
+                          </td>
                           <td className="px-3 py-2 text-xs text-gray-500">
                             {batch.importedAt ? new Date(batch.importedAt).toLocaleString('zh-TW') : '-'}
                           </td>
@@ -1179,6 +1363,157 @@ function PmsIncomePage() {
                     {renderPagination()}
                   </div>
                 </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab: 月度核對結算 */}
+        {/* ============================== */}
+        {activeTab === 'settlement' && (
+          <div className="space-y-4">
+            {/* Workflow Guide */}
+            <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+              <p className="text-sm font-medium text-teal-800 mb-2">PMS 收入結算流程：</p>
+              <ol className="text-xs text-teal-700 space-y-1 list-decimal list-inside">
+                <li><b>每日匯入</b> — 匯入 PMS 日報表（狀態：已匯入）</li>
+                <li><b>會計核對</b> — 飯店會計核對整月資料正確後，點「核對整月」（狀態：已核對）</li>
+                <li><b>月度結算</b> — 核對完成後，點「結算入帳」→ 系統自動建立現金流收入（現金、信用卡、轉帳各別入帳）</li>
+              </ol>
+              <div className="mt-2 flex items-center gap-2 text-xs text-teal-600">
+                <span className="inline-block w-2 h-2 rounded-full bg-yellow-400"></span>已匯入
+                <span className="inline-block w-2 h-2 rounded-full bg-blue-400 ml-2"></span>已核對
+                <span className="inline-block w-2 h-2 rounded-full bg-green-400 ml-2"></span>已結算
+              </div>
+              <p className="text-xs text-teal-600 mt-2">
+                <b>注意：</b>結算前請先到「收入帳戶設定」設定各付款方式（現金、信用卡、轉帳）對應的存簿帳戶、手續費比例、入帳延遲天數。
+              </p>
+            </div>
+
+            {/* Controls */}
+            <div className="bg-white rounded-lg shadow-sm border p-4 flex flex-wrap gap-3 items-center">
+              <select value={settlementWarehouse} onChange={e => setSettlementWarehouse(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm">
+                {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+              <input type="month" value={settlementYearMonth} onChange={e => setSettlementYearMonth(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm" />
+              <button onClick={fetchSettlementData} className="px-3 py-2 text-sm border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50">查詢</button>
+              <div className="flex-1" />
+
+              {/* Status & Actions */}
+              {settlementStatus ? (
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    settlementStatus.status === '已結算' ? 'bg-green-100 text-green-700 border border-green-300' :
+                    settlementStatus.status === '已核對' ? 'bg-blue-100 text-blue-700 border border-blue-300' :
+                    'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                  }`}>{settlementStatus.status}</span>
+                  {settlementStatus.status === '已核對' && (
+                    <button onClick={handleSettleMonth} disabled={settling}
+                      className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                      {settling ? '結算中...' : '結算入帳'}
+                    </button>
+                  )}
+                  {settlementStatus.status === '已結算' && (
+                    <span className="text-xs text-gray-500">
+                      結算者: {settlementStatus.settledBy} | {settlementStatus.settledAt ? new Date(settlementStatus.settledAt).toLocaleString('zh-TW') : ''}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {settlementBatches.filter(b => b.status === '已匯入').length > 0 && (
+                    <button onClick={handleVerifyMonth}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+                      核對整月
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Settlement Summary */}
+            {settlementStatus && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-teal-500">
+                  <p className="text-xs text-gray-500">批次數量</p>
+                  <p className="text-xl font-bold text-teal-700">{settlementStatus.batchCount}</p>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500">
+                  <p className="text-xs text-gray-500">貸方合計（收入）</p>
+                  <p className="text-xl font-bold text-green-700">{formatNumber(settlementStatus.creditTotal)}</p>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-amber-500">
+                  <p className="text-xs text-gray-500">借方合計（付款方式）</p>
+                  <p className="text-xl font-bold text-amber-700">{formatNumber(settlementStatus.debitTotal)}</p>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-blue-500">
+                  <p className="text-xs text-gray-500">核對者</p>
+                  <p className="text-sm font-medium text-blue-700">{settlementStatus.verifiedBy || '-'}</p>
+                  <p className="text-xs text-gray-400">{settlementStatus.verifiedAt ? new Date(settlementStatus.verifiedAt).toLocaleString('zh-TW') : ''}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Batches Table */}
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="px-4 py-3 border-b bg-gray-50">
+                <h3 className="text-sm font-bold text-gray-700">
+                  {settlementWarehouse} — {settlementYearMonth} 批次列表 ({settlementBatches.length}筆)
+                </h3>
+              </div>
+              {settlementBatches.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">此月份無匯入批次</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">營業日期</th>
+                        <th className="px-3 py-2 text-right font-medium">貸方</th>
+                        <th className="px-3 py-2 text-right font-medium">借方</th>
+                        <th className="px-3 py-2 text-right font-medium">差額</th>
+                        <th className="px-3 py-2 text-center font-medium">筆數</th>
+                        <th className="px-3 py-2 text-center font-medium">狀態</th>
+                        <th className="px-3 py-2 text-center font-medium">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {settlementBatches.map(b => (
+                        <tr key={b.id} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-2">{b.businessDate}</td>
+                          <td className="px-3 py-2 text-right font-mono text-teal-700">{formatNumber(b.creditTotal)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-amber-700">{formatNumber(b.debitTotal)}</td>
+                          <td className={`px-3 py-2 text-right font-mono ${Math.abs(Number(b.difference)) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatNumber(b.difference)}
+                          </td>
+                          <td className="px-3 py-2 text-center">{b.recordCount}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              b.status === '已結算' ? 'bg-green-100 text-green-700' :
+                              b.status === '已核對' ? 'bg-blue-100 text-blue-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>{b.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {b.status === '已匯入' && (
+                              <button onClick={() => handleVerifyBatches([b.id])}
+                                className="text-blue-600 hover:text-blue-800 text-xs hover:underline">核對</button>
+                            )}
+                            {b.status === '已核對' && (
+                              <span className="text-xs text-gray-400">已核對</span>
+                            )}
+                            {b.status === '已結算' && (
+                              <span className="text-xs text-green-600">已結算</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
@@ -1497,6 +1832,143 @@ function PmsIncomePage() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab: 收入帳戶設定 */}
+        {/* ============================== */}
+        {activeTab === 'paymentConfig' && (
+          <div className="space-y-4">
+            <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+              <p className="text-sm font-medium text-teal-800 mb-1">收入帳戶設定說明：</p>
+              <p className="text-xs text-teal-700">
+                依<strong>館別</strong>設定 PMS 借方收入（現金、信用卡、轉帳等）對應的存簿帳戶。結算時系統會依該館別的設定自動建立現金流交易。
+                <br />信用卡收入可設定入帳延遲天數（銀行撥款通常延遲3~7天）和手續費比例（手續費會自動建立支出交易）。館別請至「設定 → 館別設定」新增。
+              </p>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="px-4 py-3 border-b bg-gray-50 flex flex-wrap items-center gap-3">
+                <h3 className="text-sm font-bold text-gray-700">借方收入 → 存簿帳戶對應</h3>
+                <label className="text-sm text-gray-600">館別：</label>
+                <select
+                  value={paymentConfigWarehouse}
+                  onChange={e => setPaymentConfigWarehouse(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                >
+                  {paymentConfigBuildings.length === 0 ? (
+                    <option value="">請先至設定新增館別</option>
+                  ) : (
+                    paymentConfigBuildings.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium">PMS 收入項目</th>
+                      <th className="px-4 py-2 text-left font-medium">對應存簿帳戶</th>
+                      <th className="px-4 py-2 text-center font-medium">入帳延遲(天)</th>
+                      <th className="px-4 py-2 text-center font-medium">手續費(%)</th>
+                      <th className="px-4 py-2 text-center font-medium">啟用</th>
+                      <th className="px-4 py-2 text-center font-medium">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DEFAULT_PMS_COLUMNS.filter(c => c.entryType === '借方').map(col => {
+                      const existing = paymentConfigs.find(p => (p.warehouse ?? '') === paymentConfigWarehouse && p.pmsColumnName === col.pmsColumnName);
+                      return (
+                        <tr key={col.pmsColumnName} className="border-t hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="font-medium">{col.pmsColumnName}</div>
+                            <div className="text-xs text-gray-400">{col.accountingCode} - {col.accountingName}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <select
+                              value={existing?.cashAccountId || ''}
+                              onChange={e => handleSavePaymentConfig({
+                                pmsColumnName: col.pmsColumnName,
+                                cashAccountId: e.target.value || null,
+                                settlementDelayDays: existing?.settlementDelayDays || 0,
+                                feePercentage: existing?.feePercentage || 0,
+                                isActive: existing?.isActive !== false
+                              })}
+                              className="w-full border rounded px-2 py-1.5 text-sm"
+                            >
+                              <option value="">未設定</option>
+                              {paymentConfigAccounts.map(a => (
+                                <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input type="number" min="0" max="30"
+                              value={existing?.settlementDelayDays || 0}
+                              onChange={e => handleSavePaymentConfig({
+                                pmsColumnName: col.pmsColumnName,
+                                cashAccountId: existing?.cashAccountId || null,
+                                settlementDelayDays: parseInt(e.target.value) || 0,
+                                feePercentage: existing?.feePercentage || 0,
+                                isActive: existing?.isActive !== false
+                              })}
+                              className="w-16 border rounded px-2 py-1.5 text-sm text-center"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input type="number" min="0" max="10" step="0.1"
+                              value={existing?.feePercentage || 0}
+                              onChange={e => handleSavePaymentConfig({
+                                pmsColumnName: col.pmsColumnName,
+                                cashAccountId: existing?.cashAccountId || null,
+                                settlementDelayDays: existing?.settlementDelayDays || 0,
+                                feePercentage: parseFloat(e.target.value) || 0,
+                                isActive: existing?.isActive !== false
+                              })}
+                              className="w-20 border rounded px-2 py-1.5 text-sm text-center"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input type="checkbox"
+                              checked={existing?.isActive !== false}
+                              onChange={e => handleSavePaymentConfig({
+                                pmsColumnName: col.pmsColumnName,
+                                cashAccountId: existing?.cashAccountId || null,
+                                settlementDelayDays: existing?.settlementDelayDays || 0,
+                                feePercentage: existing?.feePercentage || 0,
+                                isActive: e.target.checked
+                              })}
+                              className="rounded"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {existing ? (
+                              <span className="text-xs text-green-600">已設定</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">未設定</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Guide for credit card setup */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="text-sm font-bold text-amber-800 mb-2">信用卡收入設定建議</h4>
+              <ul className="text-xs text-amber-700 space-y-1 list-disc list-inside">
+                <li><b>對應存簿：</b>選擇銀行帳戶（信用卡款項撥入的帳戶）</li>
+                <li><b>入帳延遲：</b>一般為 3~7 天（依銀行撥款時間），結算時交易日期 = 月底 + 延遲天數</li>
+                <li><b>手續費：</b>例如 2.5%，系統會自動建立一筆手續費支出（從同一帳戶扣除）</li>
+                <li><b>現金/轉帳收入：</b>延遲設0天，手續費設0%</li>
+              </ul>
             </div>
           </div>
         )}

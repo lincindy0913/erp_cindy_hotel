@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
-  const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.PURCHASING_VIEW, PERMISSIONS.PURCHASING_CREATE, PERMISSIONS.INVENTORY_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {
