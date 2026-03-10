@@ -82,36 +82,54 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.LOAN_CREATE);
+  const auth = await requireAnyPermission([PERMISSIONS.LOAN_CREATE, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
     const data = await request.json();
 
-    if (!data.loanName || !data.ownerType || !data.bankName || !data.originalAmount || !data.annualRate || !data.startDate || !data.endDate || !data.repaymentType || !data.repaymentDay || !data.deductAccountId) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '貸款名稱、持有人類型、銀行名稱、貸款金額、年利率、起迄日、還款方式、還款日、扣款帳戶為必填', 400);
+    if (!data.loanName || !String(data.loanName).trim()) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫貸款名稱', 400);
+    }
+    if (!data.bankName || !String(data.bankName).trim()) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫銀行名稱', 400);
+    }
+    const originalAmount = parseFloat(data.originalAmount);
+    if (isNaN(originalAmount) || originalAmount <= 0) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫有效的貸款金額', 400);
+    }
+    const annualRate = parseFloat(data.annualRate);
+    if (data.annualRate !== '' && data.annualRate !== null && data.annualRate !== undefined && isNaN(annualRate)) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫有效的年利率', 400);
+    }
+    if (!data.startDate) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇起日', 400);
+    if (!data.endDate) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇迄日', 400);
+    if (!data.repaymentType) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇還款方式', 400);
+    if (!data.deductAccountId) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇扣款帳戶（請至設定或現金流管理新增存簿）', 400);
     }
 
     const loanCode = await generateLoanCode();
-    const originalAmount = parseFloat(data.originalAmount);
+    const rateNum = parseFloat(data.annualRate);
+    const repaymentDayNum = parseInt(data.repaymentDay, 10) || 1;
 
     const result = await prisma.$transaction(async (tx) => {
       const loan = await tx.loanMaster.create({
         data: {
           loanCode,
-          loanName: data.loanName,
-          ownerType: data.ownerType,
-          ownerName: data.ownerName || null,
-          warehouse: data.warehouse || null,
-          bankName: data.bankName,
-          bankBranch: data.bankBranch || null,
+          loanName: String(data.loanName).trim(),
+          ownerType: data.ownerType || '公司',
+          ownerName: data.ownerName && String(data.ownerName).trim() ? String(data.ownerName).trim() : null,
+          warehouse: data.warehouse && String(data.warehouse).trim() ? String(data.warehouse).trim() : null,
+          bankName: String(data.bankName).trim(),
+          bankBranch: data.bankBranch && String(data.bankBranch).trim() ? String(data.bankBranch).trim() : null,
           loanType: data.loanType || '一般貸款',
           originalAmount,
           currentBalance: originalAmount,
-          annualRate: parseFloat(data.annualRate),
+          annualRate: isNaN(rateNum) ? 0 : rateNum,
           rateType: data.rateType || '固定利率',
-          repaymentType: data.repaymentType,
-          repaymentDay: parseInt(data.repaymentDay),
+          repaymentType: data.repaymentType || '本息攤還',
+          repaymentDay: repaymentDayNum,
           startDate: data.startDate,
           endDate: data.endDate,
           deductAccountId: parseInt(data.deductAccountId),
@@ -122,15 +140,16 @@ export async function POST(request) {
           contactPhone: data.contactPhone || null,
           remark: data.remark || null,
           status: '使用中',
-          sortOrder: data.sortOrder || 0
+          sortOrder: parseInt(data.sortOrder) || 0
         }
       });
 
       // Create initial rate history record
+      const rateForHistory = parseFloat(data.annualRate);
       await tx.loanRateHistory.create({
         data: {
           loanId: loan.id,
-          annualRate: parseFloat(data.annualRate),
+          annualRate: isNaN(rateForHistory) ? 0 : rateForHistory,
           effectiveDate: data.startDate,
           note: '初始利率'
         }

@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -28,7 +28,7 @@ export async function GET() {
       prisma.expense.count(),
       prisma.user.count(),
       prisma.cashAccount.count().catch(() => 0),
-      prisma.loan.count().catch(() => 0),
+      prisma.loanMaster.count().catch(() => 0),
     ]);
 
     return NextResponse.json({

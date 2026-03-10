@@ -68,8 +68,9 @@ export async function PUT(request, { params }) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請輸入範本名稱', 400);
     }
 
+    const templateType = data.templateType || existing.templateType || 'fixed';
     const hasEntryLines = data.entryLines && data.entryLines.length > 0;
-    if (existing.templateType === 'fixed' && !hasEntryLines) {
+    if (templateType === 'fixed' && !hasEntryLines) {
       return createErrorResponse('VALIDATION_FAILED', '請至少新增一筆會計分錄', 400);
     }
 
@@ -80,14 +81,20 @@ export async function PUT(request, { params }) {
       const updatePayload = {
         name: data.name.trim(),
         description: data.description?.trim() || null,
+        templateType: data.templateType || existing.templateType || 'fixed',
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         warehouse: data.warehouse?.trim() || null,
         defaultSupplierId: data.defaultSupplierId ? parseInt(data.defaultSupplierId) : null,
         paymentMethod: data.paymentMethod?.trim() || null,
+        defaultTaxType: data.defaultTaxType?.trim() || null,
         isActive: data.isActive !== false,
         sortOrder: data.sortOrder || 0,
       };
-      if (existing.templateType === 'fixed') {
+      // Purchase type: save purchaseItems as JSON
+      if ((data.templateType || existing.templateType) === 'purchase') {
+        updatePayload.purchaseItems = Array.isArray(data.purchaseItems) ? data.purchaseItems : null;
+      }
+      if ((data.templateType || existing.templateType) === 'fixed') {
         updatePayload.warehouseAccountMap = Array.isArray(data.warehouseAccountMap) ? data.warehouseAccountMap : null;
         updatePayload.warehouseAmounts = Array.isArray(data.warehouseAmounts) ? data.warehouseAmounts : null;
         updatePayload.defaultDebitCode = data.defaultDebitCode?.trim() || null;

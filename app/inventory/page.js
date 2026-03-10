@@ -64,7 +64,7 @@ export default function InventoryPage() {
       const res = await fetch('/api/warehouse-departments');
       if (res.ok) {
         const data = await res.json();
-        const names = Object.keys(typeof data === 'object' ? data : {});
+        const names = data && data.byName ? Object.keys(data.byName) : Object.keys(typeof data === 'object' ? data : {});
         setWarehouses(names);
         if (names.length > 0 && !warehouse) setWarehouse(names[0]);
       }

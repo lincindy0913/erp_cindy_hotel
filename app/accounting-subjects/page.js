@@ -18,6 +18,8 @@ export default function AccountingSubjectsPage() {
     code: '',
     name: ''
   });
+  const [customCategory, setCustomCategory] = useState('');
+  const [customSubcategory, setCustomSubcategory] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -36,9 +38,17 @@ export default function AccountingSubjectsPage() {
     try {
       const res = await fetch('/api/accounting-subjects');
       const data = await res.json();
-      setSubjects(data);
+      if (!res.ok) {
+        setSubjects([]);
+        setError(data?.error?.message || '無法載入會計科目');
+        return;
+      }
+      setSubjects(Array.isArray(data) ? data : []);
+      setError('');
     } catch (err) {
       console.error('Failed to fetch:', err);
+      setSubjects([]);
+      setError('無法載入會計科目');
     } finally {
       setLoading(false);
     }
@@ -47,23 +57,38 @@ export default function AccountingSubjectsPage() {
   const handleAdd = async (e) => {
     e.preventDefault();
     setError('');
+    const actualCategory = formData.category === '__custom__' ? customCategory.trim() : String(formData.category || '').trim();
+    const actualSubcategory = formData.subcategory === '__custom__' ? customSubcategory.trim() : String(formData.subcategory || '').trim();
+    const payload = {
+      category: actualCategory,
+      subcategory: actualSubcategory,
+      code: String(formData.code || '').trim(),
+      name: String(formData.name || '').trim()
+    };
+    if (!payload.category || !payload.subcategory) {
+      setError('請輸入分類與類別');
+      return;
+    }
     try {
       const res = await fetch('/api/accounting-subjects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || '新增失敗');
+        const msg = data?.error?.message || (typeof data?.error === 'string' ? data.error : '新增失敗');
+        setError(msg);
         return;
       }
       setSuccessMsg('新增成功');
       setFormData({ category: '', subcategory: '', code: '', name: '' });
+      setCustomCategory('');
+      setCustomSubcategory('');
       setShowAddForm(false);
       fetchSubjects();
     } catch (err) {
-      setError('新增失敗');
+      setError('新增失敗，請稍後再試');
     }
   };
 
@@ -80,15 +105,16 @@ export default function AccountingSubjectsPage() {
     }
   };
 
+  const list = Array.isArray(subjects) ? subjects : [];
   // 取得所有不重複的分類
-  const categories = [...new Set(subjects.map(s => s.category))];
+  const categories = [...new Set(list.map(s => s.category).filter(Boolean))];
 
   // 篩選
-  const filtered = subjects.filter(s => {
+  const filtered = list.filter(s => {
     const matchSearch = !searchKeyword ||
-      s.code.includes(searchKeyword) ||
-      s.name.includes(searchKeyword) ||
-      s.subcategory.includes(searchKeyword);
+      (s.code && s.code.includes(searchKeyword)) ||
+      (s.name && s.name.includes(searchKeyword)) ||
+      (s.subcategory && s.subcategory.includes(searchKeyword));
     const matchCategory = !filterCategory || s.category === filterCategory;
     return matchSearch && matchCategory;
   });
@@ -96,7 +122,7 @@ export default function AccountingSubjectsPage() {
   // 按分類分組
   const grouped = {};
   filtered.forEach(s => {
-    const key = `${s.category} - ${s.subcategory}`;
+    const key = `${s.category || ''} - ${s.subcategory || ''}`;
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(s);
   });
@@ -108,7 +134,7 @@ export default function AccountingSubjectsPage() {
 
   // 根據已選分類找出對應的類別
   const subcategoriesForSelected = formData.category
-    ? [...new Set(subjects.filter(s => s.category === formData.category).map(s => s.subcategory))]
+    ? [...new Set(list.filter(s => s.category === formData.category).map(s => s.subcategory).filter(Boolean))]
     : [];
 
   return (
@@ -120,7 +146,7 @@ export default function AccountingSubjectsPage() {
           <h2 className="text-xl font-bold text-gray-800">會計科目管理</h2>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">
-              共 {subjects.length} 筆科目
+              共 {list.length} 筆科目
             </span>
             {isLoggedIn && (
               <button
@@ -133,7 +159,12 @@ export default function AccountingSubjectsPage() {
           </div>
         </div>
 
-        {/* 成功訊息 */}
+        {/* 錯誤／成功訊息 */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
         {successMsg && (
           <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
             {successMsg}
@@ -167,9 +198,11 @@ export default function AccountingSubjectsPage() {
                 {formData.category === '__custom__' && (
                   <input
                     type="text"
+                    value={customCategory}
                     placeholder="輸入新分類"
                     className="w-full border rounded-lg px-3 py-2 text-sm mt-2"
-                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    required
                   />
                 )}
               </div>
@@ -190,9 +223,11 @@ export default function AccountingSubjectsPage() {
                 {formData.subcategory === '__custom__' && (
                   <input
                     type="text"
+                    value={customSubcategory}
                     placeholder="輸入新類別"
                     className="w-full border rounded-lg px-3 py-2 text-sm mt-2"
-                    onChange={(e) => setFormData(prev => ({ ...prev, subcategory: e.target.value }))}
+                    onChange={(e) => setCustomSubcategory(e.target.value)}
+                    required
                   />
                 )}
               </div>
@@ -256,7 +291,7 @@ export default function AccountingSubjectsPage() {
           <div className="text-center py-12 text-gray-500">載入中...</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
-            {subjects.length === 0 ? '尚無會計科目資料' : '無符合條件的資料'}
+            {list.length === 0 ? '尚無會計科目資料' : '無符合條件的資料'}
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">

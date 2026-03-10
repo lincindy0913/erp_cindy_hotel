@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 const SECTIONS = [
   { key: 'master-data', label: '基礎主資料', icon: '📋' },
   { key: 'warehouses', label: '倉庫設定', icon: '🏪' },
+  { key: 'departments', label: '館別設定', icon: '🏢' },
   { key: 'finance', label: '財務參數', icon: '💰' },
   { key: 'pms-mapping', label: 'PMS 科目對應', icon: '🔗' },
   { key: 'expense-categories', label: '費用分類管理', icon: '📂' },
@@ -256,7 +257,8 @@ function CashCountConfigSection({ showToast }) {
         await fetchCcData();
         showToast('盤點設定已更新');
       } else {
-        showToast('更新失敗', 'error');
+        const data = await res.json().catch(() => ({}));
+        showToast(data?.error?.message || '更新失敗', 'error');
       }
     } catch {
       showToast('更新失敗', 'error');
@@ -457,8 +459,10 @@ export default function SettingsPage() {
   const [warehouseData, setWarehouseData] = useState({});
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [newWarehouse, setNewWarehouse] = useState('');
+  const [selectedBuildingForStorage, setSelectedBuildingForStorage] = useState('');
   const [newDeptWarehouse, setNewDeptWarehouse] = useState('');
   const [newDeptName, setNewDeptName] = useState('');
+  const [newBuilding, setNewBuilding] = useState('');
 
   // Expense categories state
   const [expenseCategories, setExpenseCategories] = useState([]);
@@ -669,9 +673,9 @@ export default function SettingsPage() {
       }
       if (warehouseRes && warehouseRes.ok) {
         const data = await warehouseRes.json();
-        counts.warehouses = data && typeof data === 'object' && !Array.isArray(data)
-          ? Object.keys(data).length
-          : Array.isArray(data) ? data.length : 0;
+        if (data && typeof data === 'object') {
+          counts.warehouses = data.list ? data.list.length : (data.byName ? Object.keys(data.byName).length : Object.keys(data).length);
+        }
       }
 
       setMasterDataCounts(counts);
@@ -757,7 +761,8 @@ export default function SettingsPage() {
       if (res.ok) {
         showToast('稅率已儲存');
       } else {
-        showToast('儲存稅率失敗', 'error');
+        const data = await res.json().catch(() => ({}));
+        showToast(data?.error?.message || '儲存稅率失敗', 'error');
       }
     } catch (err) {
       showToast('儲存稅率失敗', 'error');
@@ -778,7 +783,8 @@ export default function SettingsPage() {
         await fetchInvoiceTitles();
         showToast('發票抬頭已新增');
       } else {
-        showToast('新增發票抬頭失敗', 'error');
+        const data = await res.json().catch(() => ({}));
+        showToast(data?.error?.message || '新增發票抬頭失敗', 'error');
       }
     } catch (err) {
       showToast('新增發票抬頭失敗', 'error');
@@ -793,7 +799,8 @@ export default function SettingsPage() {
         await fetchInvoiceTitles();
         showToast('發票抬頭已刪除');
       } else {
-        showToast('刪除失敗', 'error');
+        const data = await res.json().catch(() => ({}));
+        showToast(data?.error?.message || '刪除失敗', 'error');
       }
     } catch (err) {
       showToast('刪除失敗', 'error');
@@ -813,7 +820,8 @@ export default function SettingsPage() {
         await fetchPaymentMethods();
         showToast('付款方式已新增');
       } else {
-        showToast('新增付款方式失敗', 'error');
+        const data = await res.json().catch(() => ({}));
+        showToast(data?.error?.message || '新增付款方式失敗', 'error');
       }
     } catch (err) {
       showToast('新增付款方式失敗', 'error');
@@ -829,7 +837,7 @@ export default function SettingsPage() {
         showToast('付款方式已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error || '刪除失敗', 'error');
+        showToast(data?.error?.message || '刪除失敗', 'error');
       }
     } catch (err) {
       showToast('刪除失敗', 'error');
@@ -872,7 +880,7 @@ export default function SettingsPage() {
         showToast(editingCategoryId ? '分類已更新' : '分類已新增');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error || '儲存分類失敗', 'error');
+        showToast(data?.error?.message || '儲存分類失敗', 'error');
       }
     } catch (err) {
       showToast('儲存分類失敗', 'error');
@@ -903,7 +911,7 @@ export default function SettingsPage() {
         showToast('分類已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error || '刪除失敗', 'error');
+        showToast(data?.error?.message || '刪除失敗', 'error');
       }
     } catch (err) {
       showToast('刪除失敗', 'error');
@@ -926,7 +934,9 @@ export default function SettingsPage() {
       if (allOk) {
         showToast('通知設定已儲存');
       } else {
-        showToast('部分設定儲存失敗', 'error');
+        const failed = results.find(r => !r.ok);
+        const data = failed ? await failed.json().catch(() => ({})) : {};
+        showToast(data?.error?.message || '部分設定儲存失敗', 'error');
       }
     } catch (err) {
       showToast('儲存通知設定失敗', 'error');
@@ -967,7 +977,7 @@ export default function SettingsPage() {
         showToast('對應規則已更新');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error || '更新失敗', 'error');
+        showToast(data?.error?.message || '更新失敗', 'error');
       }
     } catch {
       showToast('更新失敗', 'error');
@@ -997,7 +1007,7 @@ export default function SettingsPage() {
         showToast('對應規則已新增');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error || '新增失敗', 'error');
+        showToast(data?.error?.message || '新增失敗', 'error');
       }
     } catch {
       showToast('新增失敗', 'error');
@@ -1014,7 +1024,7 @@ export default function SettingsPage() {
         showToast('對應規則已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error || '刪除失敗', 'error');
+        showToast(data?.error?.message || '刪除失敗', 'error');
       }
     } catch {
       showToast('刪除失敗', 'error');
@@ -1043,30 +1053,40 @@ export default function SettingsPage() {
       const res = await fetch('/api/warehouse-departments');
       if (res.ok) {
         const data = await res.json();
-        setWarehouseData(typeof data === 'object' ? data : {});
+        if (data && Array.isArray(data.list)) {
+          setWarehouseData({ list: data.list, byName: data.byName || {} });
+        } else if (typeof data === 'object' && data !== null && !data.list) {
+          setWarehouseData({
+            list: Object.entries(data).map(([name, depts]) => ({ id: 0, name, type: 'storage', departments: depts || [] })),
+            byName: data,
+          });
+        } else {
+          setWarehouseData({ list: [], byName: {} });
+        }
       }
     } catch { /* ignore */ }
     setWarehouseLoading(false);
   }
 
   useEffect(() => {
-    if (activeSection === 'warehouses') {
+    if (activeSection === 'warehouses' || activeSection === 'departments') {
       fetchWarehouses();
     }
   }, [activeSection]);
 
-  async function addWarehouse() {
+  async function addStorageLocation() {
+    if (!selectedBuildingForStorage) { showToast('請先選擇館別', 'error'); return; }
     if (!newWarehouse.trim()) { showToast('請輸入倉庫名稱', 'error'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'addWarehouse', name: newWarehouse.trim() }),
+        body: JSON.stringify({ action: 'addStorageLocation', buildingId: parseInt(selectedBuildingForStorage), name: newWarehouse.trim() }),
       });
       const result = await res.json();
-      if (res.ok) {
-        setWarehouseData(typeof result === 'object' ? result : {});
+      if (res.ok && result.list) {
+        setWarehouseData({ list: result.list, byName: result.byName || {} });
         setNewWarehouse('');
         showToast(`倉庫「${newWarehouse.trim()}」已新增`);
       } else {
@@ -1076,8 +1096,51 @@ export default function SettingsPage() {
     setSaving(false);
   }
 
+  async function deleteStorageLocation(id, name) {
+    if (!confirm(`確定刪除倉庫「${name}」？`)) return;
+    try {
+      const res = await fetch('/api/warehouse-departments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteStorageLocation', id }),
+      });
+      const result = await res.json();
+      if (res.ok && result.list) {
+        setWarehouseData({ list: result.list, byName: result.byName || {} });
+        showToast(`倉庫「${name}」已刪除`);
+      } else {
+        showToast(result.error?.message || '刪除失敗', 'error');
+      }
+    } catch { showToast('刪除失敗', 'error'); }
+  }
+
+  async function addBuilding() {
+    if (!newBuilding.trim()) { showToast('請輸入館別名稱', 'error'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/warehouse-departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'addWarehouse', name: newBuilding.trim(), type: 'building' }),
+      });
+      const result = await res.json();
+      if (res.ok && result.list) {
+        setWarehouseData({ list: result.list, byName: result.byName || {} });
+        setNewBuilding('');
+        showToast(`館別「${newBuilding.trim()}」已新增`);
+      } else if (res.ok) {
+        fetchWarehouses();
+        setNewBuilding('');
+        showToast(`館別「${newBuilding.trim()}」已新增`);
+      } else {
+        showToast(result.error?.message || '新增失敗', 'error');
+      }
+    } catch { showToast('新增失敗', 'error'); }
+    setSaving(false);
+  }
+
   async function addDepartmentToWarehouse() {
-    if (!newDeptWarehouse || !newDeptName.trim()) { showToast('請選擇倉庫並輸入部門名稱', 'error'); return; }
+    if (!newDeptWarehouse || !newDeptName.trim()) { showToast('請選擇館別並輸入部門名稱', 'error'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/warehouse-departments', {
@@ -1086,8 +1149,12 @@ export default function SettingsPage() {
         body: JSON.stringify({ action: 'addDepartment', warehouse: newDeptWarehouse, name: newDeptName.trim() }),
       });
       const result = await res.json();
-      if (res.ok) {
-        setWarehouseData(typeof result === 'object' ? result : {});
+      if (res.ok && result.list) {
+        setWarehouseData({ list: result.list, byName: result.byName || {} });
+        setNewDeptName('');
+        showToast(`部門「${newDeptName.trim()}」已新增`);
+      } else if (res.ok) {
+        fetchWarehouses();
         setNewDeptName('');
         showToast(`部門「${newDeptName.trim()}」已新增`);
       } else {
@@ -1098,7 +1165,7 @@ export default function SettingsPage() {
   }
 
   async function deleteWarehouse(name) {
-    if (!confirm(`確定刪除倉庫「${name}」？底下的部門也會一併刪除。`)) return;
+    if (!confirm(`確定刪除「${name}」？`)) return;
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -1106,9 +1173,12 @@ export default function SettingsPage() {
         body: JSON.stringify({ action: 'deleteWarehouse', name }),
       });
       const result = await res.json();
-      if (res.ok) {
-        setWarehouseData(typeof result === 'object' ? result : {});
-        showToast(`倉庫「${name}」已刪除`);
+      if (res.ok && result.list) {
+        setWarehouseData({ list: result.list, byName: result.byName || {} });
+        showToast(`已刪除「${name}」`);
+      } else if (res.ok) {
+        fetchWarehouses();
+        showToast(`已刪除「${name}」`);
       } else {
         showToast(result.error?.message || '刪除失敗', 'error');
       }
@@ -1124,8 +1194,11 @@ export default function SettingsPage() {
         body: JSON.stringify({ action: 'deleteDepartment', warehouse, name: deptName }),
       });
       const result = await res.json();
-      if (res.ok) {
-        setWarehouseData(typeof result === 'object' ? result : {});
+      if (res.ok && result.list) {
+        setWarehouseData({ list: result.list, byName: result.byName || {} });
+        showToast(`部門「${deptName}」已刪除`);
+      } else if (res.ok) {
+        fetchWarehouses();
         showToast(`部門「${deptName}」已刪除`);
       } else {
         showToast(result.error?.message || '刪除失敗', 'error');
@@ -1134,45 +1207,114 @@ export default function SettingsPage() {
   }
 
   function renderWarehousesSection() {
-    const warehouses = Object.keys(warehouseData);
+    const list = Array.isArray(warehouseData.list) ? warehouseData.list : [];
+    const buildings = list.filter(x => x.type === 'building' && !x.parentId);
     return (
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">倉庫（館別）管理</h3>
-          <p className="text-sm text-gray-500 mb-4">設定庫存所屬的倉庫／館別，領用與調撥單將依此進行。庫存查詢、領用、調撥、盤點皆需選擇倉庫。</p>
-          <div className="flex gap-3 mb-4">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4">倉庫管理</h3>
+          <p className="text-sm text-gray-500 mb-4">倉庫為館別內的實體儲存地點。請先至「館別設定」新增館別，再於此設定各館別的倉庫位置。</p>
+          <div className="flex gap-3 mb-4 flex-wrap items-center">
+            <select
+              value={selectedBuildingForStorage}
+              onChange={e => setSelectedBuildingForStorage(e.target.value)}
+              className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 text-sm"
+            >
+              <option value="">選擇館別</option>
+              {buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
             <input
               type="text"
               value={newWarehouse}
               onChange={e => setNewWarehouse(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addWarehouse()}
-              placeholder="例如：麗格、麗軒、總倉"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
+              onKeyDown={e => e.key === 'Enter' && addStorageLocation()}
+              placeholder="倉庫名稱，例如：地下室、備品室、2F倉庫"
+              className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
             />
             <button
-              onClick={addWarehouse}
-              disabled={saving || !newWarehouse.trim()}
+              onClick={addStorageLocation}
+              disabled={saving || !selectedBuildingForStorage || !newWarehouse.trim()}
               className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 text-sm font-medium"
             >
               新增倉庫
             </button>
           </div>
-          <div className="flex gap-3 mb-4">
+          {warehouseLoading ? (
+            <p className="text-sm text-gray-500">載入中...</p>
+          ) : buildings.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">尚無館別，請先至「館別設定」新增館別（如：麗格）</p>
+          ) : (
+            <div className="space-y-3">
+              {buildings.map(b => {
+                const storageLocations = list.filter(x => x.type === 'storage' && x.parentId === b.id);
+                return (
+                  <div key={b.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
+                      <span className="font-medium text-gray-800">{b.name}（館別）</span>
+                    </div>
+                    <div className="px-4 py-3">
+                      {storageLocations.length === 0 ? (
+                        <p className="text-sm text-gray-400">尚無倉庫位置</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {storageLocations.map(loc => (
+                            <span key={loc.id} className="inline-flex items-center gap-1 px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm">
+                              {loc.name}
+                              <button onClick={() => deleteStorageLocation(loc.id, loc.name)} className="ml-1 text-green-400 hover:text-red-500 leading-none" title="刪除倉庫">×</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-sm text-amber-800">範例：館別「麗格」底下可設倉庫「地下室」、「備品室」、「2F倉庫」、「小倉庫」。</p>
+        </div>
+      </div>
+    );
+  }
+
+  function renderDepartmentsSection() {
+    const list = Array.isArray(warehouseData.list) ? warehouseData.list : [];
+    const byName = warehouseData.byName || {};
+    const buildings = list.filter(x => x.type === 'building');
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-700 mb-4">館別設定</h3>
+          <p className="text-sm text-gray-500 mb-4">館別指建築／據點（如麗格），部門為該館別下的單位（如行政部、管理部、房務部）。請先新增館別，再為該館別新增部門。</p>
+          <div className="flex gap-3 mb-4 flex-wrap items-center">
+            <input
+              type="text"
+              value={newBuilding}
+              onChange={e => setNewBuilding(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addBuilding()}
+              placeholder="新增館別，例如：麗格"
+              className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 text-sm"
+            />
+            <button type="button" onClick={addBuilding} disabled={saving || !newBuilding.trim()} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 text-sm font-medium">新增館別</button>
+          </div>
+          <div className="flex gap-3 mb-4 flex-wrap items-center">
             <select
               value={newDeptWarehouse}
               onChange={e => setNewDeptWarehouse(e.target.value)}
               className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 text-sm"
             >
-              <option value="">選擇倉庫</option>
-              {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+              <option value="">選擇館別</option>
+              {buildings.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
             </select>
             <input
               type="text"
               value={newDeptName}
               onChange={e => setNewDeptName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addDepartmentToWarehouse()}
-              placeholder="部門名稱，例如：總務部"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 text-sm"
+              placeholder="部門名稱，例如：行政部、管理部、房務部"
+              className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 text-sm"
             />
             <button
               onClick={addDepartmentToWarehouse}
@@ -1184,25 +1326,25 @@ export default function SettingsPage() {
           </div>
           {warehouseLoading ? (
             <p className="text-sm text-gray-500">載入中...</p>
-          ) : warehouses.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">尚無倉庫，請先新增倉庫</p>
+          ) : buildings.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">尚無館別，請先新增館別（如：麗格）</p>
           ) : (
             <div className="space-y-3">
-              {warehouses.map(wh => (
-                <div key={wh} className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                    <span className="font-medium text-gray-800">{wh}</span>
-                    <button onClick={() => deleteWarehouse(wh)} className="text-xs text-red-500 hover:text-red-700 hover:underline">刪除倉庫</button>
+              {buildings.map(b => (
+                <div key={b.name} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
+                    <span className="font-medium text-gray-800">{b.name}（館別）</span>
+                    <button type="button" onClick={() => deleteWarehouse(b.name)} className="text-xs text-red-500 hover:text-red-700 hover:underline">刪除館別</button>
                   </div>
                   <div className="px-4 py-3">
-                    {(warehouseData[wh] || []).length === 0 ? (
+                    {(byName[b.name] || []).length === 0 ? (
                       <p className="text-sm text-gray-400">尚無部門</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
-                        {(warehouseData[wh] || []).map(dept => (
+                        {(byName[b.name] || []).map(dept => (
                           <span key={dept} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm">
                             {dept}
-                            <button onClick={() => deleteDepartment(wh, dept)} className="ml-1 text-blue-400 hover:text-red-500 leading-none" title="刪除部門">×</button>
+                            <button onClick={() => deleteDepartment(b.name, dept)} className="ml-1 text-blue-400 hover:text-red-500 leading-none" title="刪除部門">×</button>
                           </span>
                         ))}
                       </div>
@@ -1214,7 +1356,7 @@ export default function SettingsPage() {
           )}
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-sm text-amber-800">提示：倉庫設定後，請在「庫存」頁面依倉庫查詢並進行領用、調撥、盤點作業。</p>
+          <p className="text-sm text-amber-800">範例：館別「麗格」底下可設部門「行政部」、「管理部」、「房務部」。</p>
         </div>
       </div>
     );
@@ -2102,6 +2244,8 @@ export default function SettingsPage() {
     switch (activeSection) {
       case 'warehouses':
         return renderWarehousesSection();
+      case 'departments':
+        return renderDepartmentsSection();
       case 'master-data':
         return renderMasterDataSection();
       case 'finance':
@@ -2203,7 +2347,9 @@ export default function SettingsPage() {
               <div className="h-1 w-16 bg-gray-600 rounded mt-2"></div>
             </div>
 
-            {renderContent()}
+            <div id={activeSection}>
+              {renderContent()}
+            </div>
           </div>
         </div>
       </div>

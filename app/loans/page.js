@@ -31,6 +31,7 @@ const OWNER_TYPES = ['公司', '個人'];
 const RATE_TYPES = ['固定利率', '浮動利率'];
 const REPAYMENT_TYPES = ['本息攤還', '本金攤還', '到期還本', '按月付息'];
 const LOAN_TYPES = ['一般貸款', '房屋貸款', '設備貸款', '週轉金', '其他'];
+const LOAN_STATUSES = ['使用中', '已結清', '已停用'];
 
 function formatCurrency(val) {
   if (val === null || val === undefined) return '-';
@@ -83,6 +84,12 @@ export default function LoansPage() {
   const [confirmingRecord, setConfirmingRecord] = useState(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchLoanIds, setBatchLoanIds] = useState([]);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferForm, setTransferForm] = useState({
+    sourceAccountId: '', amount: '', description: '', transactionDate: ''
+  });
+  const [transferTargetAccount, setTransferTargetAccount] = useState(null);
+  const [transfering, setTransfering] = useState(false);
 
   // Loan form
   const [loanForm, setLoanForm] = useState({
@@ -91,7 +98,8 @@ export default function LoansPage() {
     originalAmount: '', annualRate: '', rateType: '固定利率',
     repaymentType: '本息攤還', repaymentDay: '20',
     startDate: '', endDate: '', deductAccountId: '',
-    contactPerson: '', contactPhone: '', remark: '', sortOrder: '0'
+    contactPerson: '', contactPhone: '', remark: '', sortOrder: '0',
+    status: '使用中'
   });
 
   // Confirm form
@@ -106,7 +114,10 @@ export default function LoansPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'monthly') fetchMonthlyRecords();
+    if (activeTab === 'monthly') {
+      if (loans.length === 0) fetchAll();
+      fetchMonthlyRecords();
+    }
   }, [activeTab, monthlyYear, monthlyMonth]);
 
   useEffect(() => {
@@ -131,7 +142,9 @@ export default function LoansPage() {
 
       setLoans(Array.isArray(loansData) ? loansData : []);
       setAccounts(Array.isArray(accountsData) ? accountsData : []);
-      setWarehouses(Array.isArray(whData) ? whData.map(w => w.name) : []);
+      const whList = whData && whData.list ? whData.list : (Array.isArray(whData) ? whData : []);
+      const buildingNames = whList.filter(w => w.type === 'building' || (!w.parentId && !w.type)).map(w => w.name);
+      setWarehouses(buildingNames.length > 0 ? buildingNames : whList.filter(w => !w.parentId).map(w => w.name));
     } catch (e) {
       console.error('載入資料錯誤:', e);
     }
@@ -182,7 +195,8 @@ export default function LoansPage() {
       originalAmount: '', annualRate: '', rateType: '固定利率',
       repaymentType: '本息攤還', repaymentDay: '20',
       startDate: '', endDate: '', deductAccountId: '',
-      contactPerson: '', contactPhone: '', remark: '', sortOrder: '0'
+      contactPerson: '', contactPhone: '', remark: '', sortOrder: '0',
+      status: '使用中'
     });
     setShowLoanModal(true);
   }
@@ -198,14 +212,22 @@ export default function LoansPage() {
       startDate: loan.startDate, endDate: loan.endDate,
       deductAccountId: String(loan.deductAccountId),
       contactPerson: loan.contactPerson || '', contactPhone: loan.contactPhone || '',
-      remark: loan.remark || '', sortOrder: String(loan.sortOrder)
+      remark: loan.remark || '', sortOrder: String(loan.sortOrder),
+      status: loan.status || '使用中'
     });
     setShowLoanModal(true);
   }
 
   async function saveLoan() {
-    if (!loanForm.loanName || !loanForm.bankName || !loanForm.originalAmount || !loanForm.annualRate || !loanForm.startDate || !loanForm.endDate || !loanForm.deductAccountId) {
-      alert('請填寫所有必填欄位');
+    const missing = [];
+    if (!loanForm.loanName) missing.push('貸款名稱');
+    if (!loanForm.bankName) missing.push('銀行名稱');
+    if (!loanForm.originalAmount) missing.push('貸款金額');
+    if (!loanForm.startDate) missing.push('起始日');
+    if (!loanForm.endDate) missing.push('到期日');
+    if (!loanForm.deductAccountId) missing.push('扣款帳戶');
+    if (missing.length > 0) {
+      alert(`請填寫必填欄位：${missing.join('、')}`);
       return;
     }
     try {
@@ -218,13 +240,14 @@ export default function LoansPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '儲存失敗');
+        const msg = err?.error?.message || (typeof err?.error === 'string' ? err.error : '儲存失敗');
+        alert(msg);
         return;
       }
       setShowLoanModal(false);
       fetchAll();
     } catch (e) {
-      alert('儲存失敗: ' + e.message);
+      alert('儲存失敗: ' + (e.message || '請稍後再試'));
     }
   }
 
@@ -341,6 +364,64 @@ export default function LoansPage() {
     }
   }
 
+  // ============ QUICK TRANSFER (預存款) ============
+
+  function openTransferModal(targetAcct, suggestedAmount) {
+    setTransferTargetAccount(targetAcct);
+    setTransferForm({
+      sourceAccountId: '',
+      amount: String(Math.max(0, Math.ceil(suggestedAmount))),
+      description: `貸款扣款預存 → ${targetAcct.name}`,
+      transactionDate: new Date().toISOString().split('T')[0]
+    });
+    setShowTransferModal(true);
+  }
+
+  async function executeTransfer() {
+    if (!transferForm.sourceAccountId || !transferForm.amount || !transferTargetAccount) {
+      alert('請填寫來源帳戶和金額');
+      return;
+    }
+    if (parseInt(transferForm.sourceAccountId) === transferTargetAccount.id) {
+      alert('來源帳戶與目的帳戶不可相同');
+      return;
+    }
+    const amount = parseFloat(transferForm.amount);
+    if (amount <= 0) {
+      alert('金額必須大於零');
+      return;
+    }
+    setTransfering(true);
+    try {
+      const res = await fetch('/api/cashflow/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionDate: transferForm.transactionDate,
+          type: '移轉',
+          accountId: parseInt(transferForm.sourceAccountId),
+          transferAccountId: transferTargetAccount.id,
+          amount,
+          description: transferForm.description,
+          sourceType: 'loan_predeposit',
+          hasFee: false
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err?.error?.message || err?.error || '移轉失敗');
+        return;
+      }
+      alert(`已成功移轉 ${formatCurrency(amount)} 至 ${transferTargetAccount.name}`);
+      setShowTransferModal(false);
+      fetchAll(); // refresh account balances
+    } catch (e) {
+      alert('移轉失敗: ' + e.message);
+    } finally {
+      setTransfering(false);
+    }
+  }
+
   // ============ COMPUTED VALUES ============
 
   const filteredLoans = loans.filter(l => {
@@ -434,6 +515,7 @@ export default function LoansPage() {
       {showLoanModal && renderLoanModal()}
       {showConfirmModal && renderConfirmModal()}
       {showBatchModal && renderBatchModal()}
+      {showTransferModal && renderTransferModal()}
     </div>
   );
 
@@ -569,12 +651,49 @@ export default function LoansPage() {
 
   function renderMonthlyTab() {
     const activeLoansForMonth = loans.filter(l => l.status === '使用中');
-    // Map records by loanId for quick lookup
     const recordMap = {};
     monthlyRecords.forEach(r => { recordMap[r.loanId] = r; });
 
+    // ---- Account Summary: group by deductAccountId ----
+    const acctMap = {};
+    for (const loan of activeLoansForMonth) {
+      const acctId = loan.deductAccountId;
+      if (!acctMap[acctId]) {
+        const acct = accounts.find(a => a.id === acctId);
+        acctMap[acctId] = {
+          account: acct || { id: acctId, name: loan.deductAccount?.name || `帳戶#${acctId}`, currentBalance: 0 },
+          loanCount: 0,
+          estimatedTotal: 0,
+          confirmedTotal: 0,
+          pendingTotal: 0,
+        };
+      }
+      acctMap[acctId].loanCount++;
+      const rec = recordMap[loan.id];
+      if (rec) {
+        acctMap[acctId].estimatedTotal += rec.estimatedTotal || 0;
+        if (rec.status === '已核實') {
+          acctMap[acctId].confirmedTotal += rec.actualTotal || 0;
+        } else {
+          acctMap[acctId].pendingTotal += rec.estimatedTotal || 0;
+        }
+      }
+    }
+    const acctSummaries = Object.values(acctMap).sort((a, b) => b.pendingTotal - a.pendingTotal);
+
     return (
       <div>
+        {/* Workflow Guide */}
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
+          <p className="text-sm font-medium text-indigo-800 mb-2">貸款還款流程：</p>
+          <ol className="text-xs text-indigo-700 space-y-1 list-decimal list-inside">
+            <li><b>批次建立暫估</b> — 系統自動計算每筆貸款本月預估的本金和利息</li>
+            <li><b>出納預存款</b> — 下方「帳戶資金彙總」可直接快速移轉資金至扣款帳戶</li>
+            <li><b>等待利息單</b> — 銀行扣款後取得正式利息單</li>
+            <li><b>核實回填</b> — 點「核實」填入實際本金與利息 → 系統自動建立現金流支出 → 帳戶餘額與貸款餘額同步更新</li>
+          </ol>
+        </div>
+
         {/* Month Selector & Actions */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center">
           <label className="text-sm font-medium text-gray-600">年月:</label>
@@ -596,6 +715,86 @@ export default function LoansPage() {
           )}
         </div>
 
+        {/* ====== ACCOUNT FUND SUMMARY ====== */}
+        {acctSummaries.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-3">帳戶資金彙總 — {monthlyYear}年{monthlyMonth}月</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {acctSummaries.map(s => {
+                const balance = Number(s.account.currentBalance || 0);
+                const shortage = s.pendingTotal - balance;
+                const isInsufficient = s.pendingTotal > 0 && shortage > 0;
+                const isOk = s.pendingTotal > 0 && shortage <= 0;
+                return (
+                  <div key={s.account.id} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${isInsufficient ? 'border-red-500' : isOk ? 'border-green-500' : 'border-gray-300'}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">{s.account.name}</p>
+                        <p className="text-xs text-gray-400">{s.loanCount} 筆貸款</p>
+                      </div>
+                      {isInsufficient && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-300 animate-pulse">
+                          餘額不足
+                        </span>
+                      )}
+                      {isOk && s.pendingTotal > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-300">
+                          餘額充足
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">帳戶餘額</span>
+                        <span className="font-mono font-bold text-gray-800">{formatCurrency(balance)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">本月待扣 (未核實)</span>
+                        <span className="font-mono font-medium text-yellow-700">{formatCurrency(s.pendingTotal)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">已核實扣款</span>
+                        <span className="font-mono text-green-700">{formatCurrency(s.confirmedTotal)}</span>
+                      </div>
+                      <div className="border-t pt-1 flex justify-between">
+                        <span className="text-gray-500 font-medium">差額 (餘額 - 待扣)</span>
+                        <span className={`font-mono font-bold ${shortage > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {shortage > 0 ? `-${formatCurrency(shortage)}` : `+${formatCurrency(Math.abs(shortage))}`}
+                        </span>
+                      </div>
+                    </div>
+                    {isLoggedIn && isInsufficient && (
+                      <button
+                        onClick={() => openTransferModal(s.account, shortage)}
+                        className="mt-3 w-full bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
+                      >
+                        快速預存 {formatCurrency(Math.ceil(shortage))}
+                      </button>
+                    )}
+                    {isLoggedIn && !isInsufficient && s.pendingTotal > 0 && (
+                      <button
+                        onClick={() => openTransferModal(s.account, 0)}
+                        className="mt-3 w-full border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors"
+                      >
+                        追加預存
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {acctSummaries.some(s => s.pendingTotal > 0 && (s.pendingTotal - Number(s.account.currentBalance || 0)) > 0) && (
+              <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                <span className="text-red-500 text-lg leading-none">!</span>
+                <div className="text-xs text-red-700">
+                  <b>注意：</b>有帳戶餘額不足以支付本月預估貸款扣款。請盡速從其他帳戶移轉資金，避免銀行扣款失敗。
+                  點擊上方「快速預存」按鈕可直接移轉。
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Monthly Matrix */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -613,16 +812,21 @@ export default function LoansPage() {
                   <th className="text-right px-4 py-3 font-medium text-gray-600">實際本金</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">實際利息</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-600">實際合計</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">差異</th>
                   <th className="text-center px-4 py-3 font-medium text-gray-600">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {activeLoansForMonth.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="text-center py-8 text-gray-400">暫無使用中的貸款</td>
+                    <td colSpan={13} className="text-center py-8 text-gray-400">
+                      暫無使用中的貸款，請先在「貸款總覽」新增貸款
+                    </td>
                   </tr>
                 ) : activeLoansForMonth.map(loan => {
                   const rec = recordMap[loan.id];
+                  const diff = rec && rec.status === '已核實' && rec.actualTotal != null
+                    ? rec.estimatedTotal - rec.actualTotal : null;
                   return (
                     <tr key={loan.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-mono text-xs text-indigo-600">{loan.loanCode}</td>
@@ -641,9 +845,16 @@ export default function LoansPage() {
                       <td className="px-4 py-3 text-right font-mono">{rec ? formatCurrency(rec.estimatedPrincipal) : '-'}</td>
                       <td className="px-4 py-3 text-right font-mono">{rec ? formatCurrency(rec.estimatedInterest) : '-'}</td>
                       <td className="px-4 py-3 text-right font-mono font-medium">{rec ? formatCurrency(rec.estimatedTotal) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{rec?.actualPrincipal !== null ? formatCurrency(rec.actualPrincipal) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono text-green-700">{rec?.actualInterest !== null ? formatCurrency(rec.actualInterest) : '-'}</td>
-                      <td className="px-4 py-3 text-right font-mono font-medium text-green-700">{rec?.actualTotal !== null ? formatCurrency(rec.actualTotal) : '-'}</td>
+                      <td className="px-4 py-3 text-right font-mono text-green-700">{rec?.actualPrincipal != null ? formatCurrency(rec.actualPrincipal) : '-'}</td>
+                      <td className="px-4 py-3 text-right font-mono text-green-700">{rec?.actualInterest != null ? formatCurrency(rec.actualInterest) : '-'}</td>
+                      <td className="px-4 py-3 text-right font-mono font-medium text-green-700">{rec?.actualTotal != null ? formatCurrency(rec.actualTotal) : '-'}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {diff != null ? (
+                          <span className={diff > 0 ? 'text-orange-600' : diff < 0 ? 'text-red-600' : 'text-gray-400'}>
+                            {diff > 0 ? '+' : ''}{formatCurrency(diff)}
+                          </span>
+                        ) : '-'}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         {isLoggedIn && (
                           <div className="flex gap-1 justify-center">
@@ -672,20 +883,37 @@ export default function LoansPage() {
                   );
                 })}
               </tbody>
-              {monthlyRecords.length > 0 && (
-                <tfoot className="bg-gray-50 border-t-2 border-gray-200">
-                  <tr className="font-medium">
-                    <td colSpan={5} className="px-4 py-3 text-right text-gray-600">合計:</td>
-                    <td className="px-4 py-3 text-right font-mono">{formatCurrency(monthlyRecords.reduce((s, r) => s + r.estimatedPrincipal, 0))}</td>
-                    <td className="px-4 py-3 text-right font-mono">{formatCurrency(monthlyRecords.reduce((s, r) => s + r.estimatedInterest, 0))}</td>
-                    <td className="px-4 py-3 text-right font-mono">{formatCurrency(monthlyRecords.reduce((s, r) => s + r.estimatedTotal, 0))}</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(monthlyRecords.filter(r => r.actualPrincipal !== null).reduce((s, r) => s + (r.actualPrincipal || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(monthlyRecords.filter(r => r.actualInterest !== null).reduce((s, r) => s + (r.actualInterest || 0), 0))}</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(monthlyRecords.filter(r => r.actualTotal !== null).reduce((s, r) => s + (r.actualTotal || 0), 0))}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              )}
+              {monthlyRecords.length > 0 && (() => {
+                const totalEstP = monthlyRecords.reduce((s, r) => s + r.estimatedPrincipal, 0);
+                const totalEstI = monthlyRecords.reduce((s, r) => s + r.estimatedInterest, 0);
+                const totalEstT = monthlyRecords.reduce((s, r) => s + r.estimatedTotal, 0);
+                const confirmedRecs = monthlyRecords.filter(r => r.actualTotal != null);
+                const totalActP = confirmedRecs.reduce((s, r) => s + (r.actualPrincipal || 0), 0);
+                const totalActI = confirmedRecs.reduce((s, r) => s + (r.actualInterest || 0), 0);
+                const totalActT = confirmedRecs.reduce((s, r) => s + (r.actualTotal || 0), 0);
+                const totalDiff = confirmedRecs.reduce((s, r) => s + (r.estimatedTotal - (r.actualTotal || 0)), 0);
+                return (
+                  <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                    <tr className="font-medium">
+                      <td colSpan={5} className="px-4 py-3 text-right text-gray-600">合計:</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(totalEstP)}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(totalEstI)}</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(totalEstT)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(totalActP)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(totalActI)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-green-700">{formatCurrency(totalActT)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-xs">
+                        {confirmedRecs.length > 0 ? (
+                          <span className={totalDiff > 0 ? 'text-orange-600' : totalDiff < 0 ? 'text-red-600' : 'text-gray-400'}>
+                            {totalDiff > 0 ? '+' : ''}{formatCurrency(totalDiff)}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
           </div>
         </div>
@@ -1011,11 +1239,11 @@ export default function LoansPage() {
             {/* Row 5: Rate */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">年利率 (%) *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">年利率 (%)</label>
                 <input
                   type="number" step="0.01" value={loanForm.annualRate}
                   onChange={e => setLoanForm({ ...loanForm, annualRate: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：2.5"
+                  className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0 表示無利息"
                 />
               </div>
               <div>
@@ -1081,6 +1309,41 @@ export default function LoansPage() {
               </div>
             </div>
 
+            {/* Row 7.5: Status (edit mode) */}
+            {editingLoan && (
+              <div className="border-t pt-4 mt-2">
+                <h4 className="text-sm font-bold text-gray-700 mb-3">貸款狀態管理</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">貸款狀態</label>
+                    <select value={loanForm.status} onChange={e => setLoanForm({ ...loanForm, status: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                      {LOAN_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    {loanForm.status === '已結清' && (
+                      <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">
+                        設為「已結清」後，此貸款將不會出現在本月還款的批次建立中。
+                      </p>
+                    )}
+                    {loanForm.status === '已停用' && (
+                      <p className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2">
+                        設為「已停用」後，此貸款將不會出現在本月還款中。
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {loanForm.status === '已結清' && (
+                  <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-xs text-yellow-800">
+                      <b>借新還舊：</b>若此貸款已由新貸款取代，請先將此貸款設為「已結清」，
+                      再新增一筆新貸款。新貸款的「貸款金額」填入新借入金額，備註欄可註明「借新還舊，原貸款：{editingLoan.loanCode}」。
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Row 8: Contact */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1127,10 +1390,19 @@ export default function LoansPage() {
   // ============ MODAL: CONFIRM PAYMENT ============
 
   function renderConfirmModal() {
-    const estTotal = (parseFloat(confirmForm.actualPrincipal) || 0) + (parseFloat(confirmForm.actualInterest) || 0);
+    const actualTotal = (parseFloat(confirmForm.actualPrincipal) || 0) + (parseFloat(confirmForm.actualInterest) || 0);
+    const estTotal = confirmingRecord ? confirmingRecord.estimatedTotal : 0;
+    const diff = estTotal - actualTotal;
+
+    // Find the deduction account and check balance
+    const deductAcctId = confirmingRecord?.deductAccountId || confirmingRecord?.loan?.deductAccountId;
+    const deductAcct = accounts.find(a => a.id === deductAcctId);
+    const acctBalance = deductAcct ? Number(deductAcct.currentBalance || 0) : 0;
+    const balanceAfter = acctBalance - actualTotal;
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
           <div className="border-b px-6 py-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">核實還款</h3>
@@ -1146,11 +1418,31 @@ export default function LoansPage() {
             {/* Show estimated for reference */}
             {confirmingRecord && (
               <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                <p className="text-gray-500">暫估參考:</p>
+                <p className="text-gray-500 font-medium">暫估參考:</p>
                 <div className="flex gap-4 mt-1">
                   <span>本金: <b>{formatCurrency(confirmingRecord.estimatedPrincipal)}</b></span>
                   <span>利息: <b>{formatCurrency(confirmingRecord.estimatedInterest)}</b></span>
                   <span>合計: <b>{formatCurrency(confirmingRecord.estimatedTotal)}</b></span>
+                </div>
+              </div>
+            )}
+
+            {/* Account balance info */}
+            {deductAcct && (
+              <div className={`rounded-lg p-3 text-sm ${balanceAfter < 0 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={balanceAfter < 0 ? 'text-red-700 font-medium' : 'text-blue-700 font-medium'}>
+                    扣款帳戶: {deductAcct.name}
+                  </span>
+                  {balanceAfter < 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-300">
+                      餘額不足
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-4 mt-1 text-xs">
+                  <span>目前餘額: <b className="font-mono">{formatCurrency(acctBalance)}</b></span>
+                  <span>核實後餘額: <b className={`font-mono ${balanceAfter < 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(balanceAfter)}</b></span>
                 </div>
               </div>
             )}
@@ -1174,9 +1466,25 @@ export default function LoansPage() {
               </div>
             </div>
 
-            <div className="bg-indigo-50 rounded-lg p-3 text-center">
-              <span className="text-sm text-gray-600">實際合計: </span>
-              <span className="text-lg font-bold text-indigo-700">{formatCurrency(estTotal)}</span>
+            {/* Actual total + difference display */}
+            <div className="rounded-lg p-3 bg-indigo-50 flex items-center justify-between">
+              <div>
+                <span className="text-sm text-gray-600">實際合計: </span>
+                <span className="text-lg font-bold text-indigo-700">{formatCurrency(actualTotal)}</span>
+              </div>
+              {actualTotal > 0 && (
+                <div className="text-right">
+                  <span className="text-xs text-gray-500">暫估差異: </span>
+                  <span className={`text-sm font-bold ${diff > 0 ? 'text-orange-600' : diff < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                    {diff > 0 ? '+' : ''}{formatCurrency(diff)}
+                  </span>
+                  {diff !== 0 && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {diff > 0 ? '實際 < 暫估，帳戶留有餘額' : '實際 > 暫估，超出預期'}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1283,6 +1591,119 @@ export default function LoansPage() {
                 建立暫估
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ MODAL: QUICK TRANSFER (預存款) ============
+
+  function renderTransferModal() {
+    const sourceAcct = accounts.find(a => a.id === parseInt(transferForm.sourceAccountId));
+    const sourceBalance = sourceAcct ? Number(sourceAcct.currentBalance || 0) : 0;
+    const transferAmt = parseFloat(transferForm.amount) || 0;
+    const sourceAfter = sourceBalance - transferAmt;
+    const targetBalance = transferTargetAccount ? Number(transferTargetAccount.currentBalance || 0) : 0;
+    const targetAfter = targetBalance + transferAmt;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+          <div className="border-b px-6 py-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-800">快速預存款</h3>
+              <button onClick={() => setShowTransferModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            {transferTargetAccount && (
+              <p className="text-sm text-gray-500 mt-1">
+                移轉資金至：<b>{transferTargetAccount.name}</b>（目前餘額: {formatCurrency(targetBalance)}）
+              </p>
+            )}
+          </div>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">來源帳戶 *</label>
+              <select
+                value={transferForm.sourceAccountId}
+                onChange={e => setTransferForm({ ...transferForm, sourceAccountId: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">請選擇來源帳戶</option>
+                {accounts.filter(a => a.isActive && a.id !== transferTargetAccount?.id).map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.type}) — 餘額: {formatCurrency(Number(a.currentBalance || 0))}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {sourceAcct && (
+              <div className={`rounded-lg p-3 text-xs ${sourceAfter < 0 ? 'bg-red-50 border border-red-200' : 'bg-gray-50'}`}>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">來源帳戶餘額</span>
+                  <span className="font-mono font-bold">{formatCurrency(sourceBalance)}</span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-gray-500">移轉後餘額</span>
+                  <span className={`font-mono font-bold ${sourceAfter < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {formatCurrency(sourceAfter)}
+                  </span>
+                </div>
+                {sourceAfter < 0 && (
+                  <p className="text-red-600 font-medium mt-1">來源帳戶餘額不足</p>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">移轉金額 *</label>
+                <input
+                  type="number" value={transferForm.amount}
+                  onChange={e => setTransferForm({ ...transferForm, amount: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">交易日期</label>
+                <input
+                  type="date" value={transferForm.transactionDate}
+                  onChange={e => setTransferForm({ ...transferForm, transactionDate: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {transferAmt > 0 && transferTargetAccount && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">目的帳戶移轉後餘額</span>
+                  <span className="font-mono font-bold text-green-700">{formatCurrency(targetAfter)}</span>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">說明</label>
+              <input
+                type="text" value={transferForm.description}
+                onChange={e => setTransferForm({ ...transferForm, description: e.target.value })}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <div className="bg-gray-50 border-t px-6 py-4 rounded-b-2xl flex justify-end gap-3">
+            <button onClick={() => setShowTransferModal(false)} className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm">
+              取消
+            </button>
+            <button
+              onClick={executeTransfer}
+              disabled={transfering}
+              className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >
+              {transfering ? '處理中...' : '確認移轉'}
+            </button>
           </div>
         </div>
       </div>

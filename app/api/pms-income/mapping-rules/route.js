@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 // GET - 取得所有 PMS 科目對應規則
 export async function GET() {
-  const auth = await requirePermission(PERMISSIONS.PMS_VIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -74,7 +74,7 @@ export async function POST(request) {
 
 // PUT - 更新 PMS 科目對應規則
 export async function PUT(request) {
-  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  const auth = await requireAnyPermission([PERMISSIONS.PMS_IMPORT, PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -113,7 +113,7 @@ export async function PUT(request) {
 
 // DELETE - 刪除 PMS 科目對應規則 (僅限非系統預設)
 export async function DELETE(request) {
-  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  const auth = await requireAnyPermission([PERMISSIONS.PMS_IMPORT, PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {

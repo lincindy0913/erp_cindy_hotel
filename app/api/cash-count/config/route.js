@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/cash-count/config - Get all CashCountConfig records (one per cash account)
 // Optional query param: ?accountId=X to get a single config
 export async function GET(request) {
-  const auth = await requirePermission(PERMISSIONS.CASH_COUNT_VIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.CASH_COUNT_VIEW, PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -113,7 +113,7 @@ export async function GET(request) {
 // PUT /api/cash-count/config - Create or update CashCountConfig for an account
 // Body: { accountId, countFrequency?, alertAfterDays?, shortageThreshold?, requireDualReview? }
 export async function PUT(request) {
-  const auth = await requirePermission(PERMISSIONS.CASH_COUNT_REVIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.CASH_COUNT_REVIEW, PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {

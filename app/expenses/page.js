@@ -154,10 +154,12 @@ export default function ExpensesPage() {
 
       setTemplates(Array.isArray(templatesData) ? templatesData : []);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      const whList = warehousesData && typeof warehousesData === 'object' && !Array.isArray(warehousesData)
-        ? Object.keys(warehousesData)
-        : Array.isArray(warehousesData)
-          ? warehousesData.map(w => w.name || w)
+      const whList = warehousesData && warehousesData.byName
+        ? Object.keys(warehousesData.byName)
+        : warehousesData && typeof warehousesData === 'object' && !Array.isArray(warehousesData)
+          ? Object.keys(warehousesData)
+          : Array.isArray(warehousesData)
+            ? warehousesData.map(w => w.name || w)
           : [];
       setWarehouses(whList);
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : (suppliersData?.suppliers || []));

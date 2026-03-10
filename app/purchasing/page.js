@@ -80,9 +80,20 @@ export default function PurchasingPage() {
     invoiceNo: '',
     invoiceDate: '',
     invoiceTitle: '',
+    invoiceAmount: '',
+    taxAmount: '',
+    supplierDiscount: '',
     note: ''
   });
   const [submittingExpense, setSubmittingExpense] = useState(false);
+  // Template CRUD state
+  const [showExpTemplateForm, setShowExpTemplateForm] = useState(false);
+  const [editingExpTemplate, setEditingExpTemplate] = useState(null);
+  const [expTemplateForm, setExpTemplateForm] = useState({
+    name: '', description: '', warehouse: '',
+    defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
+    purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
+  });
   const warehousesList = Object.keys(warehouseDepartments);
 
   useEffect(() => {
@@ -133,7 +144,7 @@ export default function PurchasingPage() {
   function handleSelectExpenseTemplate(tmplId) {
     setSelectedExpenseTemplateId(tmplId);
     if (!tmplId) {
-      setExecuteExpenseForm(prev => ({ ...prev, items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }] }));
+      setExecuteExpenseForm(prev => ({ ...prev, items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }], supplierId: '', supplierName: '', invoiceNo: '', invoiceDate: '', invoiceTitle: '', invoiceAmount: '', taxAmount: '', supplierDiscount: '' }));
       return;
     }
     const tmpl = expenseTemplates.find(t => t.id === parseInt(tmplId));
@@ -152,10 +163,115 @@ export default function PurchasingPage() {
       warehouse: tmpl.warehouse || prev.warehouse,
       supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
       supplierName: supplier ? supplier.name : '',
-      paymentTerms: tmpl.paymentMethod || '月結',
+      paymentTerms: supplier?.paymentTerms || tmpl.paymentMethod || '月結',
       taxType: tmpl.defaultTaxType || '',
-      items
+      items,
+      invoiceNo: '',
+      invoiceDate: '',
+      invoiceTitle: '',
+      invoiceAmount: '',
+      taxAmount: '',
+      supplierDiscount: ''
     }));
+  }
+
+  // ====== Template CRUD ======
+  function resetExpTemplateForm() {
+    setExpTemplateForm({
+      name: '', description: '', warehouse: '',
+      defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
+      purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
+    });
+    setEditingExpTemplate(null);
+    setShowExpTemplateForm(false);
+  }
+
+  function handleEditExpTemplate(tmpl) {
+    setEditingExpTemplate(tmpl);
+    const supplier = suppliers.find(s => s.id === tmpl.defaultSupplierId);
+    setExpTemplateForm({
+      name: tmpl.name || '',
+      description: tmpl.description || '',
+      warehouse: tmpl.warehouse || '',
+      defaultSupplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
+      paymentMethod: tmpl.paymentMethod || supplier?.paymentTerms || '',
+      defaultTaxType: tmpl.defaultTaxType || '',
+      purchaseItems: Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
+        ? tmpl.purchaseItems.map(item => ({
+            productId: String(item.productId || ''),
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
+            note: item.note || ''
+          }))
+        : [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
+    });
+    setShowExpTemplateForm(true);
+  }
+
+  async function handleSaveExpTemplate() {
+    if (!expTemplateForm.name.trim()) { alert('請輸入範本名稱'); return; }
+    if (!expTemplateForm.defaultSupplierId) { alert('請選擇廠商'); return; }
+    const validItems = expTemplateForm.purchaseItems.filter(item => item.productId);
+    if (validItems.length === 0) { alert('請至少新增一筆進貨品項'); return; }
+
+    const body = {
+      name: expTemplateForm.name.trim(),
+      description: expTemplateForm.description?.trim() || null,
+      templateType: 'purchase',
+      warehouse: expTemplateForm.warehouse || null,
+      defaultSupplierId: parseInt(expTemplateForm.defaultSupplierId),
+      paymentMethod: expTemplateForm.paymentMethod || '月結',
+      defaultTaxType: expTemplateForm.defaultTaxType || null,
+      purchaseItems: validItems.map(item => ({
+        productId: parseInt(item.productId),
+        quantity: parseInt(item.quantity) || 1,
+        unitPrice: parseFloat(item.unitPrice) || 0,
+        note: item.note || ''
+      })),
+      isActive: true
+    };
+
+    try {
+      const url = editingExpTemplate
+        ? `/api/expense-templates/${editingExpTemplate.id}`
+        : '/api/expense-templates';
+      const method = editingExpTemplate ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        alert(editingExpTemplate ? '範本更新成功' : '範本新增成功');
+        resetExpTemplateForm();
+        fetchExpenseTemplates();
+      } else {
+        const err = await res.json();
+        alert(err.error || '儲存失敗');
+      }
+    } catch (err) {
+      alert('儲存失敗: ' + err.message);
+    }
+  }
+
+  async function handleDeleteExpTemplate(id) {
+    if (!confirm('確定要刪除此範本嗎？')) return;
+    try {
+      const res = await fetch(`/api/expense-templates/${id}`, { method: 'DELETE' });
+      if (res.ok) { alert('範本已刪除'); fetchExpenseTemplates(); }
+      else { const err = await res.json(); alert(err.error || '刪除失敗'); }
+    } catch (err) { alert('刪除失敗: ' + err.message); }
+  }
+
+  async function handleToggleExpTemplateActive(tmpl) {
+    try {
+      const res = await fetch(`/api/expense-templates/${tmpl.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...tmpl, isActive: !tmpl.isActive, purchaseItems: tmpl.purchaseItems || [] })
+      });
+      if (res.ok) fetchExpenseTemplates();
+    } catch (err) { alert('更新失敗'); }
   }
 
   function updateExecuteExpenseItem(idx, field, value) {
@@ -163,6 +279,19 @@ export default function PurchasingPage() {
       ...prev,
       items: prev.items.map((item, i) => i === idx ? { ...item, [field]: value } : item)
     }));
+  }
+
+  // Calculate execute form purchase total
+  function getExecPurchaseTotal() {
+    return executeExpenseForm.items.reduce((sum, item) => {
+      return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
+    }, 0);
+  }
+
+  // Auto-calculate tax amount based on taxType
+  function calcTaxAmount(purchaseAmt, taxType) {
+    if (taxType === '應稅') return Math.round(purchaseAmt * 0.05);
+    return 0;
   }
 
   async function handleExecutePurchaseExpense() {
@@ -187,6 +316,22 @@ export default function PurchasingPage() {
       alert('請選擇廠商');
       return;
     }
+    // If invoice info provided, validate invoice amount = purchase + tax - discount
+    const purchaseTotal = getExecPurchaseTotal();
+    const hasInvoice = !!(executeExpenseForm.invoiceNo?.trim());
+    if (hasInvoice) {
+      const invAmt = parseFloat(executeExpenseForm.invoiceAmount) || 0;
+      const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
+      const discountAmt = parseFloat(executeExpenseForm.supplierDiscount) || 0;
+      if (invAmt <= 0) { alert('請輸入發票金額'); setSubmittingExpense(false); return; }
+      const expected = purchaseTotal + taxAmt - discountAmt;
+      if (Math.abs(invAmt - expected) > 0.01) {
+        alert(`發票金額不符！\n發票金額: ${invAmt.toLocaleString()}\n應為: 進貨金額 ${purchaseTotal.toLocaleString()} + 營業稅 ${taxAmt.toLocaleString()} - 廠商折讓 ${discountAmt.toLocaleString()} = ${expected.toLocaleString()}`);
+        setSubmittingExpense(false);
+        return;
+      }
+    }
+
     setSubmittingExpense(true);
     try {
       const res = await fetch('/api/expense-records/execute-purchase', {
@@ -210,6 +355,9 @@ export default function PurchasingPage() {
           invoiceNo: executeExpenseForm.invoiceNo || null,
           invoiceDate: executeExpenseForm.invoiceDate || null,
           invoiceTitle: executeExpenseForm.invoiceTitle || null,
+          invoiceAmount: hasInvoice ? parseFloat(executeExpenseForm.invoiceAmount) : null,
+          taxAmount: hasInvoice ? (parseFloat(executeExpenseForm.taxAmount) || 0) : null,
+          supplierDiscount: hasInvoice ? (parseFloat(executeExpenseForm.supplierDiscount) || 0) : null,
           createdBy: session?.user?.name || session?.user?.email || '系統',
           note: executeExpenseForm.note || null,
           allowDuplicate: false
@@ -231,6 +379,9 @@ export default function PurchasingPage() {
           invoiceNo: '',
           invoiceDate: '',
           invoiceTitle: '',
+          invoiceAmount: '',
+          taxAmount: '',
+          supplierDiscount: '',
           note: ''
         });
         if (monthlyExpenseSubTab !== 'records') setMonthlyExpenseSubTab('records');
@@ -294,7 +445,7 @@ export default function PurchasingPage() {
     try {
       const response = await fetch('/api/warehouse-departments');
       const data = await response.json();
-      setWarehouseDepartments(data || {});
+      setWarehouseDepartments((data && data.byName) ? data.byName : (data || {}));
     } catch (error) {
       console.error('取得館別部門失敗:', error);
     }
@@ -310,7 +461,7 @@ export default function PurchasingPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setWarehouseDepartments(data);
+        setWarehouseDepartments((data && data.byName) ? data.byName : data);
         setNewWarehouseName('');
       } else {
         const error = await response.json();
@@ -331,7 +482,7 @@ export default function PurchasingPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setWarehouseDepartments(data);
+        setWarehouseDepartments((data && data.byName) ? data.byName : data);
         if (formData.warehouse === name) {
           setFormData({ ...formData, warehouse: '', department: '' });
         }
@@ -351,7 +502,7 @@ export default function PurchasingPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setWarehouseDepartments(data);
+        setWarehouseDepartments((data && data.byName) ? data.byName : data);
         setNewDeptName('');
       } else {
         const error = await response.json();
@@ -372,7 +523,7 @@ export default function PurchasingPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        setWarehouseDepartments(data);
+        setWarehouseDepartments((data && data.byName) ? data.byName : data);
         if (formData.warehouse === warehouse && formData.department === deptName) {
           setFormData({ ...formData, department: '' });
         }
@@ -796,18 +947,9 @@ export default function PurchasingPage() {
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-sm font-medium text-gray-700">
-                      館別 *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowWarehouseManager(!showWarehouseManager)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      管理選項
-                    </button>
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    館別 *（<a href="/settings#warehouses" className="text-xs text-blue-600 hover:underline">設定</a>）
+                  </label>
                   <select
                     required
                     value={formData.warehouse}
@@ -842,107 +984,6 @@ export default function PurchasingPage() {
                   </select>
                 </div>
 
-                {/* 館別/部門管理面板 */}
-                {showWarehouseManager && (
-                  <div className="col-span-2 border border-gray-300 rounded-lg p-4 bg-gray-50">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="text-sm font-semibold text-gray-700">館別 / 部門管理</h4>
-                      <button
-                        type="button"
-                        onClick={() => setShowWarehouseManager(false)}
-                        className="text-gray-400 hover:text-gray-600 text-sm"
-                      >
-                        收起
-                      </button>
-                    </div>
-
-                    {/* 新增館別 */}
-                    <div className="flex gap-2 mb-3">
-                      <input
-                        type="text"
-                        placeholder="輸入新館別名稱..."
-                        value={newWarehouseName}
-                        onChange={(e) => setNewWarehouseName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddWarehouse())}
-                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddWarehouse}
-                        className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                      >
-                        新增館別
-                      </button>
-                    </div>
-
-                    {/* 新增部門 */}
-                    <div className="flex gap-2 mb-4">
-                      <select
-                        value={newDeptWarehouse}
-                        onChange={(e) => setNewDeptWarehouse(e.target.value)}
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">選擇館別</option>
-                        {Object.keys(warehouseDepartments).map(w => (
-                          <option key={w} value={w}>{w}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="輸入新部門名稱..."
-                        value={newDeptName}
-                        onChange={(e) => setNewDeptName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddDepartment())}
-                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddDepartment}
-                        disabled={!newDeptWarehouse}
-                        className={`px-4 py-1.5 text-sm rounded-lg ${newDeptWarehouse ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-                      >
-                        新增部門
-                      </button>
-                    </div>
-
-                    {/* 現有選項列表 */}
-                    <div className="space-y-2">
-                      {Object.entries(warehouseDepartments).map(([warehouse, departments]) => (
-                        <div key={warehouse} className="bg-white rounded-lg border border-gray-200 p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-semibold text-gray-800">{warehouse}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteWarehouse(warehouse)}
-                              className="text-xs text-red-500 hover:text-red-700"
-                            >
-                              刪除館別
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {departments.length > 0 ? departments.map(dept => (
-                              <span key={dept} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
-                                {dept}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteDepartment(warehouse, dept)}
-                                  className="text-blue-400 hover:text-red-500 font-bold ml-0.5"
-                                >
-                                  x
-                                </button>
-                              </span>
-                            )) : (
-                              <span className="text-xs text-gray-400">尚無部門</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {Object.keys(warehouseDepartments).length === 0 && (
-                        <p className="text-xs text-gray-400 text-center py-2">尚無館別資料</p>
-                      )}
-                    </div>
-                  </div>
-                )}
                 <div className="relative supplier-search-container">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     廠商 *
@@ -1755,28 +1796,202 @@ export default function PurchasingPage() {
 
             {monthlyExpenseSubTab === 'templates' && (
               <div className="bg-white rounded-lg border p-4">
-                <p className="text-gray-600 text-sm mb-4">進銷存每月費用範本（類型：採購）。可於 <a href="/expenses" className="text-orange-600 hover:underline">費用頁</a> 的「進銷存每月費用」分頁管理範本，或在此選擇範本後於「快速執行」執行。</p>
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-gray-600 text-sm">依廠商建立每月固定進貨範本，執行時自動帶入廠商與品項。</p>
+                  <button type="button" onClick={() => { resetExpTemplateForm(); setShowExpTemplateForm(true); }}
+                    className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 text-sm font-medium">
+                    + 新增範本
+                  </button>
+                </div>
+
+                {/* Template Form */}
+                {showExpTemplateForm && (
+                  <div className="border border-orange-200 rounded-lg p-4 mb-4 bg-orange-50">
+                    <h4 className="text-md font-semibold mb-3">{editingExpTemplate ? '編輯範本' : '新增範本'}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">範本名稱 *</label>
+                        <input value={expTemplateForm.name}
+                          onChange={e => setExpTemplateForm(p => ({ ...p, name: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="例: OO食品每月進貨" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
+                        <select value={expTemplateForm.defaultSupplierId}
+                          onChange={e => {
+                            const sid = e.target.value;
+                            const s = suppliers.find(s => s.id === parseInt(sid));
+                            setExpTemplateForm(p => ({ ...p, defaultSupplierId: sid, paymentMethod: s?.paymentTerms || p.paymentMethod }));
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                          <option value="">選擇廠商</option>
+                          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">付款方式 (連動廠商)</label>
+                        <input value={expTemplateForm.paymentMethod}
+                          onChange={e => setExpTemplateForm(p => ({ ...p, paymentMethod: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="月結" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">預設館別</label>
+                        <select value={expTemplateForm.warehouse}
+                          onChange={e => setExpTemplateForm(p => ({ ...p, warehouse: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                          <option value="">不限</option>
+                          {warehousesList.map(w => <option key={w} value={w}>{w}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
+                        <select value={expTemplateForm.defaultTaxType}
+                          onChange={e => setExpTemplateForm(p => ({ ...p, defaultTaxType: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                          <option value="">不指定</option>
+                          <option value="應稅">應稅</option>
+                          <option value="免稅">免稅</option>
+                          <option value="零稅率">零稅率</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">說明</label>
+                        <input value={expTemplateForm.description}
+                          onChange={e => setExpTemplateForm(p => ({ ...p, description: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="範本說明..." />
+                      </div>
+                    </div>
+                    {/* Product Items Table */}
+                    <h5 className="text-sm font-semibold mb-2">預設進貨品項</h5>
+                    <table className="w-full border-collapse border border-gray-300 text-sm mb-2">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
+                          <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
+                          <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
+                          <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
+                          <th className="border border-gray-300 px-2 py-2 w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expTemplateForm.purchaseItems.map((item, idx) => (
+                          <tr key={idx}>
+                            <td className="border border-gray-300 px-2 py-1">
+                              <select value={item.productId}
+                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, productId: e.target.value } : it) }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                <option value="">選擇商品</option>
+                                {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
+                              </select>
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              <input type="number" min={1} value={item.quantity}
+                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it) }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              <input type="number" step="0.01" value={item.unitPrice}
+                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, unitPrice: e.target.value } : it) }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 text-right font-medium">
+                              {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              <input value={item.note}
+                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, note: e.target.value } : it) }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 text-center">
+                              {expTemplateForm.purchaseItems.length > 1 && (
+                                <button type="button" onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.filter((_, i) => i !== idx) }))}
+                                  className="text-red-500 hover:text-red-700 text-lg">✕</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-50">
+                          <td colSpan={3} className="border border-gray-300 px-2 py-2 text-right font-semibold">合計</td>
+                          <td className="border border-gray-300 px-2 py-2 text-right font-bold">
+                            {expTemplateForm.purchaseItems.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unitPrice) || 0), 0).toLocaleString()}
+                          </td>
+                          <td colSpan={2} className="border border-gray-300 px-2 py-2"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                    <button type="button"
+                      onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: [...p.purchaseItems, { productId: '', quantity: 1, unitPrice: '', note: '' }] }))}
+                      className="text-sm text-orange-600 hover:underline mb-3">
+                      + 新增品項
+                    </button>
+                    <div className="flex gap-2 justify-end mt-2">
+                      <button type="button" onClick={resetExpTemplateForm}
+                        className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100">取消</button>
+                      <button type="button" onClick={handleSaveExpTemplate}
+                        className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 font-medium">
+                        {editingExpTemplate ? '更新範本' : '儲存範本'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Template List */}
                 <table className="w-full border-collapse border border-gray-300 text-sm">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border border-gray-300 px-2 py-2 text-left">範本名稱</th>
+                      <th className="border border-gray-300 px-2 py-2 text-left">廠商</th>
+                      <th className="border border-gray-300 px-2 py-2 text-left">付款方式</th>
                       <th className="border border-gray-300 px-2 py-2 text-left">館別</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">預設廠商</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">啟用</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center">品項數</th>
+                      <th className="border border-gray-300 px-2 py-2 text-right">預估金額</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center">狀態</th>
+                      <th className="border border-gray-300 px-2 py-2 text-center">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {expenseTemplates.map(t => (
-                      <tr key={t.id}>
-                        <td className="border border-gray-300 px-2 py-2">{t.name}</td>
-                        <td className="border border-gray-300 px-2 py-2">{t.warehouse || '-'}</td>
-                        <td className="border border-gray-300 px-2 py-2">{suppliers.find(s => s.id === t.defaultSupplierId)?.name || '-'}</td>
-                        <td className="border border-gray-300 px-2 py-2">{t.isActive !== false ? '是' : '否'}</td>
-                      </tr>
-                    ))}
+                    {expenseTemplates.map(t => {
+                      const itemCount = Array.isArray(t.purchaseItems) ? t.purchaseItems.length : 0;
+                      const totalAmt = Array.isArray(t.purchaseItems) ? t.purchaseItems.reduce((s, i) => s + (i.quantity || 0) * (i.unitPrice || 0), 0) : 0;
+                      return (
+                        <tr key={t.id} className={t.isActive === false ? 'opacity-50' : ''}>
+                          <td className="border border-gray-300 px-2 py-2">
+                            <div className="font-medium">{t.name}</div>
+                            {t.description && <div className="text-xs text-gray-500">{t.description}</div>}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-2">{suppliers.find(s => s.id === t.defaultSupplierId)?.name || '-'}</td>
+                          <td className="border border-gray-300 px-2 py-2">{t.paymentMethod || '-'}</td>
+                          <td className="border border-gray-300 px-2 py-2">{t.warehouse || '不限'}</td>
+                          <td className="border border-gray-300 px-2 py-2 text-center">{itemCount}</td>
+                          <td className="border border-gray-300 px-2 py-2 text-right">{totalAmt > 0 ? totalAmt.toLocaleString() : '-'}</td>
+                          <td className="border border-gray-300 px-2 py-2 text-center">
+                            <span className={`px-2 py-0.5 rounded text-xs ${t.isActive !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {t.isActive !== false ? '啟用' : '停用'}
+                            </span>
+                          </td>
+                          <td className="border border-gray-300 px-2 py-2 text-center">
+                            <div className="flex gap-1 justify-center flex-wrap">
+                              <button type="button" onClick={() => handleEditExpTemplate(t)}
+                                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 text-blue-600">編輯</button>
+                              <button type="button" onClick={() => handleToggleExpTemplateActive(t)}
+                                className={`px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 ${t.isActive !== false ? 'text-red-600' : 'text-green-600'}`}>
+                                {t.isActive !== false ? '停用' : '啟用'}
+                              </button>
+                              <button type="button" onClick={() => handleDeleteExpTemplate(t.id)}
+                                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 text-red-600">刪除</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-                {expenseTemplates.length === 0 && <p className="text-gray-500 mt-2">尚無進銷存每月費用範本，請至 <a href="/expenses" className="text-orange-600 hover:underline">費用</a> 頁新增。</p>}
+                {expenseTemplates.length === 0 && !showExpTemplateForm && <p className="text-gray-500 mt-2">尚無進銷存每月費用範本，請點擊上方「+ 新增範本」建立。</p>}
               </div>
             )}
 
@@ -1785,12 +2000,10 @@ export default function PurchasingPage() {
                 <h3 className="text-lg font-semibold mb-4">快速執行</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">範本 *</label>
-                    <select
-                      value={selectedExpenseTemplateId}
+                    <label className="block text-sm font-medium text-gray-700 mb-1">選擇範本 *</label>
+                    <select value={selectedExpenseTemplateId}
                       onChange={e => handleSelectExpenseTemplate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    >
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                       <option value="">-- 選擇範本 --</option>
                       {expenseTemplates.filter(t => t.isActive !== false).map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
@@ -1799,123 +2012,224 @@ export default function PurchasingPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
-                    <select
-                      value={executeExpenseForm.warehouse}
+                    <select value={executeExpenseForm.warehouse}
                       onChange={e => setExecuteExpenseForm(prev => ({ ...prev, warehouse: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    >
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                       <option value="">選擇館別</option>
-                      {warehousesList.map(w => (
-                        <option key={w} value={w}>{w}</option>
-                      ))}
+                      {warehousesList.map(w => <option key={w} value={w}>{w}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">費用月份 *</label>
-                    <input
-                      type="month"
-                      value={executeExpenseForm.expenseMonth}
+                    <input type="month" value={executeExpenseForm.expenseMonth}
                       onChange={e => setExecuteExpenseForm(prev => ({ ...prev, expenseMonth: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    />
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
-                    <select
-                      value={executeExpenseForm.supplierId}
-                      onChange={e => {
-                        const s = suppliers.find(s => s.id === parseInt(e.target.value));
-                        setExecuteExpenseForm(prev => ({ ...prev, supplierId: e.target.value, supplierName: s?.name || '' }));
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    >
-                      <option value="">選擇廠商</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+
+                {/* Auto-filled supplier info (read-only, from template) */}
+                {selectedExpenseTemplateId && executeExpenseForm.supplierId && (
+                  <div className="bg-gray-50 rounded-lg p-3 mb-4 flex flex-wrap gap-6 text-sm">
+                    <div><span className="text-gray-500">廠商：</span><span className="font-medium">{executeExpenseForm.supplierName}</span></div>
+                    <div><span className="text-gray-500">付款方式：</span><span className="font-medium">{executeExpenseForm.paymentTerms || '月結'}</span></div>
+                    {executeExpenseForm.taxType && <div><span className="text-gray-500">稅別：</span><span className="font-medium">{executeExpenseForm.taxType}</span></div>}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
-                    <select
-                      value={executeExpenseForm.taxType}
-                      onChange={e => setExecuteExpenseForm(prev => ({ ...prev, taxType: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    >
-                      <option value="">不指定</option>
-                      <option value="應稅">應稅</option>
-                      <option value="免稅">免稅</option>
-                      <option value="零稅率">零稅率</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold mb-2">進貨品項</h4>
-                  <table className="w-full border-collapse border border-gray-300 text-sm">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
-                        <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
-                        <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
-                        <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {executeExpenseForm.items.map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="border border-gray-300 px-2 py-1">
-                            <select
-                              value={item.productId}
-                              onChange={e => updateExecuteExpenseItem(idx, 'productId', e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                            >
-                              <option value="">選擇商品</option>
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="border border-gray-300 px-2 py-1">
-                            <input type="number" min={1} value={item.quantity}
-                              onChange={e => updateExecuteExpenseItem(idx, 'quantity', e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                          </td>
-                          <td className="border border-gray-300 px-2 py-1">
-                            <input type="number" step="0.01" value={item.unitPrice}
-                              onChange={e => updateExecuteExpenseItem(idx, 'unitPrice', e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                          </td>
-                          <td className="border border-gray-300 px-2 py-1 text-right">
-                            {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
-                          </td>
-                          <td className="border border-gray-300 px-2 py-1">
-                            <input value={item.note}
-                              onChange={e => updateExecuteExpenseItem(idx, 'note', e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <button
-                    type="button"
-                    onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: [...prev.items, { productId: '', quantity: 1, unitPrice: '', note: '' }] }))}
-                    className="mt-2 text-sm text-orange-600 hover:underline"
-                  >
-                    + 新增品項
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleExecutePurchaseExpense}
-                  disabled={submittingExpense}
-                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                >
-                  {submittingExpense ? '執行中...' : '執行並建立記錄'}
-                </button>
+                )}
+
+                {selectedExpenseTemplateId && (
+                  <>
+                    {/* Product Items */}
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold mb-2">進貨品項</h4>
+                      <table className="w-full border-collapse border border-gray-300 text-sm">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
+                            <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
+                            <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
+                            <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
+                            <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
+                            <th className="border border-gray-300 px-2 py-2 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {executeExpenseForm.items.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <select value={item.productId}
+                                  onChange={e => updateExecuteExpenseItem(idx, 'productId', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                  <option value="">選擇商品</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
+                                </select>
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <input type="number" min={1} value={item.quantity}
+                                  onChange={e => updateExecuteExpenseItem(idx, 'quantity', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <input type="number" step="0.01" value={item.unitPrice}
+                                  onChange={e => updateExecuteExpenseItem(idx, 'unitPrice', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1 text-right font-medium">
+                                {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <input value={item.note}
+                                  onChange={e => updateExecuteExpenseItem(idx, 'note', e.target.value)}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1 text-center">
+                                {executeExpenseForm.items.length > 1 && (
+                                  <button type="button" onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))}
+                                    className="text-red-500 hover:text-red-700 text-lg">✕</button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50">
+                            <td colSpan={3} className="border border-gray-300 px-2 py-2 text-right font-semibold">進貨金額合計</td>
+                            <td className="border border-gray-300 px-2 py-2 text-right font-bold text-lg">
+                              {getExecPurchaseTotal().toLocaleString()}
+                            </td>
+                            <td colSpan={2} className="border border-gray-300 px-2 py-2"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                      <button type="button"
+                        onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: [...prev.items, { productId: '', quantity: 1, unitPrice: '', note: '' }] }))}
+                        className="mt-2 text-sm text-orange-600 hover:underline">
+                        + 新增品項
+                      </button>
+                    </div>
+
+                    {/* Invoice Section */}
+                    <div className="border-2 border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
+                      <h4 className="text-md font-semibold mb-3 text-blue-800">發票資訊（填寫後會同時建立發票記錄）</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票號碼</label>
+                          <input value={executeExpenseForm.invoiceNo}
+                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceNo: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="例: AB-12345678" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票日期</label>
+                          <input type="date" value={executeExpenseForm.invoiceDate}
+                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票抬頭</label>
+                          <input value={executeExpenseForm.invoiceTitle}
+                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceTitle: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="公司名稱" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">營業稅類型</label>
+                          <select value={executeExpenseForm.taxType}
+                            onChange={e => {
+                              const newTaxType = e.target.value;
+                              const purchaseAmt = getExecPurchaseTotal();
+                              const autoTax = calcTaxAmount(purchaseAmt, newTaxType);
+                              const discount = parseFloat(executeExpenseForm.supplierDiscount) || 0;
+                              setExecuteExpenseForm(prev => ({
+                                ...prev,
+                                taxType: newTaxType,
+                                taxAmount: String(autoTax),
+                                invoiceAmount: String(purchaseAmt + autoTax - discount)
+                              }));
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="">不指定</option>
+                            <option value="應稅">應稅 (5%)</option>
+                            <option value="免稅">免稅</option>
+                            <option value="零稅率">零稅率</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">營業稅金額</label>
+                          <input type="number" step="1" value={executeExpenseForm.taxAmount}
+                            onChange={e => {
+                              const taxAmt = parseFloat(e.target.value) || 0;
+                              const purchaseAmt = getExecPurchaseTotal();
+                              const discount = parseFloat(executeExpenseForm.supplierDiscount) || 0;
+                              setExecuteExpenseForm(prev => ({
+                                ...prev,
+                                taxAmount: e.target.value,
+                                invoiceAmount: String(purchaseAmt + taxAmt - discount)
+                              }));
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">廠商折讓金額</label>
+                          <input type="number" step="1" value={executeExpenseForm.supplierDiscount}
+                            onChange={e => {
+                              const discount = parseFloat(e.target.value) || 0;
+                              const purchaseAmt = getExecPurchaseTotal();
+                              const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
+                              setExecuteExpenseForm(prev => ({
+                                ...prev,
+                                supplierDiscount: e.target.value,
+                                invoiceAmount: String(purchaseAmt + taxAmt - discount)
+                              }));
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票金額</label>
+                          <input type="number" step="1" value={executeExpenseForm.invoiceAmount}
+                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceAmount: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-bold" placeholder="0" />
+                        </div>
+                      </div>
+                      {/* Validation display */}
+                      {executeExpenseForm.invoiceNo?.trim() && (() => {
+                        const purchaseAmt = getExecPurchaseTotal();
+                        const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
+                        const discount = parseFloat(executeExpenseForm.supplierDiscount) || 0;
+                        const invAmt = parseFloat(executeExpenseForm.invoiceAmount) || 0;
+                        const expected = purchaseAmt + taxAmt - discount;
+                        const isValid = Math.abs(invAmt - expected) < 0.01;
+                        return (
+                          <div className={`text-sm p-2 rounded ${isValid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            驗證：進貨金額 {purchaseAmt.toLocaleString()} + 營業稅 {taxAmt.toLocaleString()} - 廠商折讓 {discount.toLocaleString()} = {expected.toLocaleString()}
+                            {isValid ? ' ✓ 與發票金額一致' : ` ✗ 發票金額 ${invAmt.toLocaleString()} 不符`}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Note */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                      <input value={executeExpenseForm.note}
+                        onChange={e => setExecuteExpenseForm(prev => ({ ...prev, note: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="選填" />
+                    </div>
+
+                    {/* Data flow info */}
+                    <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600">
+                      <strong>執行後資料流向：</strong>
+                      <br />→ 進貨管理：自動建立進貨單 (PUR-XXXXXX)
+                      {executeExpenseForm.invoiceNo?.trim() && <><br />→ 發票管理：自動建立發票記錄 (INV-XXXXXX)</>}
+                      <br />→ 費用記錄：建立本筆費用執行記錄 (EXP-XXXXXX)
+                    </div>
+
+                    <button type="button" onClick={handleExecutePurchaseExpense}
+                      disabled={submittingExpense}
+                      className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50 font-medium">
+                      {submittingExpense ? '執行中...' : '執行並建立記錄'}
+                    </button>
+                  </>
+                )}
               </div>
             )}
 

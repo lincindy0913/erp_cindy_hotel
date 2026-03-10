@@ -54,8 +54,12 @@ export default function FundManagementPage() {
     try {
       const res = await fetch('/api/warehouse-departments');
       const data = await res.json();
-      if (Array.isArray(data)) {
+      if (data && data.list) {
+        setWarehouses(data.list.map(w => w.name));
+      } else if (Array.isArray(data)) {
         setWarehouses(data.map(w => w.name));
+      } else if (data && data.byName) {
+        setWarehouses(Object.keys(data.byName));
       }
     } catch (err) {
       console.error('Failed to fetch warehouses:', err);

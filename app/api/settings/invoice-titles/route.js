@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -51,6 +51,26 @@ export async function POST(request) {
     return NextResponse.json(newTitle, { status: 201 });
   } catch (error) {
     console.error('建立發票抬頭錯誤:', error);
+    return handleApiError(error);
+  }
+}
+
+export async function DELETE(request) {
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
+  if (!auth.ok) return auth.response;
+
+  const { searchParams } = new URL(request.url);
+  const id = parseInt(searchParams.get('id'));
+  if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 ID', 400);
+
+  try {
+    await prisma.invoiceTitle.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('刪除發票抬頭錯誤:', error);
     return handleApiError(error);
   }
 }

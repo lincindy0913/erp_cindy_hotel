@@ -22,7 +22,13 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  const auth = await requireAnyPermission([
+    PERMISSIONS.PURCHASING_EDIT,
+    PERMISSIONS.PURCHASING_CREATE,
+    PERMISSIONS.PURCHASING_VIEW,
+    PERMISSIONS.SETTINGS_EDIT,
+    PERMISSIONS.SETTINGS_VIEW,
+  ]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -34,18 +40,18 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
 
-    if (!data.name || !data.taxId || !data.contact || !data.personInCharge || !data.phone) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：廠商名稱、統一編號、聯絡人、負責人、聯絡電話', 400);
+    if (!data.name || !String(data.name).trim()) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫廠商名稱', 400);
     }
 
     const updated = await prisma.supplier.update({
       where: { id },
       data: {
-        name: data.name,
-        taxId: data.taxId || null,
-        contact: data.contact,
-        personInCharge: data.personInCharge || null,
-        phone: data.phone,
+        name: String(data.name).trim(),
+        taxId: data.taxId && String(data.taxId).trim() ? String(data.taxId).trim() : null,
+        contact: data.contact && String(data.contact).trim() ? String(data.contact).trim() : null,
+        personInCharge: data.personInCharge && String(data.personInCharge).trim() ? String(data.personInCharge).trim() : null,
+        phone: data.phone && String(data.phone).trim() ? String(data.phone).trim() : null,
         address: data.address || null,
         email: data.email || null,
         paymentTerms: data.paymentTerms || '月結',
@@ -63,7 +69,12 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  const auth = await requireAnyPermission([
+    PERMISSIONS.PURCHASING_EDIT,
+    PERMISSIONS.PURCHASING_CREATE,
+    PERMISSIONS.PURCHASING_VIEW,
+    PERMISSIONS.SETTINGS_EDIT,
+  ]);
   if (!auth.ok) return auth.response;
   
   try {

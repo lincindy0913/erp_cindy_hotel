@@ -12,6 +12,8 @@ const TABS = [
   { key: 'overview', label: '每日匯入總覽' },
   { key: 'records', label: '收入記錄明細' },
   { key: 'statistics', label: '月度統計報表' },
+  { key: 'travelAgency', label: '旅行社佣金配置' },
+  { key: 'manualCommission', label: '每月手動代訂' },
   { key: 'mapping', label: 'PMS 科目對應設定' }
 ];
 
@@ -103,6 +105,32 @@ function PmsIncomePage() {
 
   // Mapping tab state
   const [mappingRules, setMappingRules] = useState([]);
+
+  // 旅行社佣金配置 (spec26)
+  const [travelAgencyConfigs, setTravelAgencyConfigs] = useState([]);
+  const [showTravelAgencyModal, setShowTravelAgencyModal] = useState(false);
+  const [editingTravelAgency, setEditingTravelAgency] = useState(null);
+  const [travelAgencyForm, setTravelAgencyForm] = useState({
+    companyName: '', agencyCode: '', commissionPercentage: '', paymentType: 'NONE', dataSource: 'AUTO',
+    paymentDueDay: '', paymentMethod: '', isActive: true,
+  });
+
+  // 每月手動代訂 (spec26)
+  const [manualMonth, setManualMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [manualEntries, setManualEntries] = useState([]);
+  const [showManualEntryModal, setShowManualEntryModal] = useState(false);
+  const [manualEntryForm, setManualEntryForm] = useState({
+    agencyName: '', agencyCode: '', totalRoomRent: '', roomNights: '', commissionPercentage: '',
+    commissionAmount: '', arOrAp: 'AP', remarks: '',
+  });
+  const [editingManualEntry, setEditingManualEntry] = useState(null);
+  const [manualAccounts, setManualAccounts] = useState([]);
+  const [showConfirmCommissionModal, setShowConfirmCommissionModal] = useState(false);
+  const [confirmCommissionForm, setConfirmCommissionForm] = useState({ accountId: '', transactionDate: '' });
+  const [selectedManualIds, setSelectedManualIds] = useState([]);
 
   // ========================
   // Tab switching
@@ -216,6 +244,49 @@ function PmsIncomePage() {
   useEffect(() => {
     if (activeTab === 'mapping') fetchMappingRules();
   }, [activeTab, fetchMappingRules]);
+
+  const fetchTravelAgencyConfigs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/pms-income/travel-agency-config');
+      if (res.ok) {
+        const data = await res.json();
+        setTravelAgencyConfigs(Array.isArray(data) ? data : []);
+      }
+    } catch { setTravelAgencyConfigs([]); }
+  }, []);
+
+  const fetchManualEntries = useCallback(async () => {
+    if (!manualMonth) return;
+    try {
+      const res = await fetch(`/api/pms-income/monthly-manual-commission?month=${manualMonth}`);
+      if (res.ok) {
+        const data = await res.json();
+        setManualEntries(Array.isArray(data) ? data : []);
+        setSelectedManualIds([]);
+      }
+    } catch { setManualEntries([]); }
+  }, [manualMonth]);
+
+  const fetchManualAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cashflow/accounts');
+      if (res.ok) {
+        const data = await res.json();
+        setManualAccounts(Array.isArray(data) ? data.filter(a => a.isActive) : []);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'travelAgency') fetchTravelAgencyConfigs();
+  }, [activeTab, fetchTravelAgencyConfigs]);
+
+  useEffect(() => {
+    if (activeTab === 'manualCommission') {
+      fetchManualEntries();
+      fetchManualAccounts();
+    }
+  }, [activeTab, manualMonth, fetchManualEntries, fetchManualAccounts]);
 
   // ========================
   // Upload handlers
@@ -1274,7 +1345,164 @@ function PmsIncomePage() {
         )}
 
         {/* ============================== */}
-        {/* Tab 4: Mapping */}
+        {/* Tab: 旅行社佣金配置 (spec26) */}
+        {/* ============================== */}
+        {activeTab === 'travelAgency' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-700">旅行社／代訂中心佣金配置</h3>
+                <button type="button" onClick={() => { setEditingTravelAgency(null); setTravelAgencyForm({ companyName: '', agencyCode: '', commissionPercentage: '', paymentType: 'NONE', dataSource: 'AUTO', paymentDueDay: '', paymentMethod: '', isActive: true }); setShowTravelAgencyModal(true); }}
+                  className="px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">＋ 新增</button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">設定應收(AR)／應付(AP)／無(NONE)，以及數據源：自動提取(AUTO)或每月手動輸入(MANUAL)。</p>
+              {loading ? <div className="text-center py-8 text-gray-400">載入中...</div> : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium">公司名稱</th>
+                      <th className="px-3 py-2 font-medium">代碼</th>
+                      <th className="px-3 py-2 font-medium">佣金%</th>
+                      <th className="px-3 py-2 font-medium">應收/應付</th>
+                      <th className="px-3 py-2 font-medium">數據源</th>
+                      <th className="px-3 py-2 font-medium text-center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {travelAgencyConfigs.map((c) => (
+                      <tr key={c.id} className="border-t hover:bg-gray-50">
+                        <td className="px-3 py-2">{c.companyName}</td>
+                        <td className="px-3 py-2 text-gray-600">{c.agencyCode || '—'}</td>
+                        <td className="px-3 py-2">{Number(c.commissionPercentage)}%</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded text-xs ${c.paymentType === 'AR' ? 'bg-teal-100 text-teal-800' : c.paymentType === 'AP' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
+                            {c.paymentType === 'AR' ? 'AR(應收)' : c.paymentType === 'AP' ? 'AP(應付)' : 'NONE'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{c.dataSource === 'MANUAL' ? '手動' : '自動'}</td>
+                        <td className="px-3 py-2 text-center">
+                          <button type="button" onClick={() => { setEditingTravelAgency(c); setTravelAgencyForm({ companyName: c.companyName, agencyCode: c.agencyCode || '', commissionPercentage: String(c.commissionPercentage), paymentType: c.paymentType, dataSource: c.dataSource, paymentDueDay: c.paymentDueDay != null ? String(c.paymentDueDay) : '', paymentMethod: c.paymentMethod || '', isActive: c.isActive }); setShowTravelAgencyModal(true); }} className="text-teal-600 hover:underline text-xs">編輯</button>
+                          <button type="button" onClick={async () => { if (!confirm('確定刪除？')) return; try { const r = await fetch(`/api/pms-income/travel-agency-config/${c.id}`, { method: 'DELETE' }); if (r.ok) fetchTravelAgencyConfigs(); else setError((await r.json())?.error?.message || '刪除失敗'); } catch (e) { setError(e.message); } }} className="ml-2 text-red-500 hover:underline text-xs">刪除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab: 每月手動代訂 (spec26) */}
+        {/* ============================== */}
+        {activeTab === 'manualCommission' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="text-sm font-bold text-gray-700">每月代訂中心佣金輸入</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">結算月份：</span>
+                  <input type="text" value={manualMonth} onChange={e => setManualMonth(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="202603" className="w-24 border rounded px-2 py-1 text-sm" />
+                  <button type="button" onClick={fetchManualEntries} className="px-3 py-1 text-sm border border-teal-300 text-teal-700 rounded hover:bg-teal-50">查詢</button>
+                  <button type="button" onClick={() => { setEditingManualEntry(null); setManualEntryForm({ agencyName: '', agencyCode: '', totalRoomRent: '', roomNights: '', commissionPercentage: '', commissionAmount: '', arOrAp: 'AP', remarks: '' }); setShowManualEntryModal(true); }}
+                    className="px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">＋ 新增代訂記錄</button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">無法從 PMS 自動提取的代訂中心，於此手動輸入當月房租與佣金，系統自動計算應收/應付。確認無誤後可送出至現金流。</p>
+              {loading ? <div className="text-center py-8 text-gray-400">載入中...</div> : (
+                <>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left">
+                        <th className="px-2 py-2 w-8">
+                          <input type="checkbox"
+                            checked={manualEntries.filter(e => e.status === 'DRAFT').length > 0 && selectedManualIds.length === manualEntries.filter(e => e.status === 'DRAFT').length}
+                            onChange={e => {
+                              if (e.target.checked) setSelectedManualIds(manualEntries.filter(x => x.status === 'DRAFT').map(x => x.id));
+                              else setSelectedManualIds([]);
+                            }}
+                          />
+                        </th>
+                        <th className="px-3 py-2 font-medium">代訂中心</th>
+                        <th className="px-3 py-2 font-medium text-right">房租總額</th>
+                        <th className="px-3 py-2 font-medium text-right">房晚</th>
+                        <th className="px-3 py-2 font-medium text-right">佣金%</th>
+                        <th className="px-3 py-2 font-medium text-right">佣金金額</th>
+                        <th className="px-3 py-2 font-medium">應收/應付</th>
+                        <th className="px-3 py-2 font-medium text-right">淨額</th>
+                        <th className="px-3 py-2 font-medium text-center">狀態</th>
+                        <th className="px-3 py-2 text-center">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualEntries.map((entry) => (
+                        <tr key={entry.id} className={`border-t hover:bg-gray-50 ${entry.status !== 'DRAFT' ? 'bg-gray-50/50' : ''}`}>
+                          <td className="px-2 py-2">
+                            {entry.status === 'DRAFT' ? (
+                              <input type="checkbox"
+                                checked={selectedManualIds.includes(entry.id)}
+                                onChange={e => {
+                                  if (e.target.checked) setSelectedManualIds(prev => [...prev, entry.id]);
+                                  else setSelectedManualIds(prev => prev.filter(id => id !== entry.id));
+                                }}
+                              />
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-2">{entry.agencyName}</td>
+                          <td className="px-3 py-2 text-right">{formatNumber(entry.totalRoomRent)}</td>
+                          <td className="px-3 py-2 text-right">{entry.roomNights}</td>
+                          <td className="px-3 py-2 text-right">{Number(entry.commissionPercentage)}%</td>
+                          <td className="px-3 py-2 text-right">{formatNumber(entry.commissionAmount)}</td>
+                          <td className="px-3 py-2">{entry.arOrAp === 'AR' ? '應收' : entry.arOrAp === 'AP' ? '應付' : '—'}</td>
+                          <td className="px-3 py-2 text-right font-medium">{formatNumber(entry.netAmount)}</td>
+                          <td className="px-3 py-2 text-center">
+                            {entry.status === 'DRAFT' && <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">草稿</span>}
+                            {entry.status === 'SUBMITTED' && <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">已送出</span>}
+                            {entry.status === 'VERIFIED' && <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">已核實</span>}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {entry.status === 'DRAFT' ? (
+                              <>
+                                <button type="button" onClick={() => { setEditingManualEntry(entry); setManualEntryForm({ agencyName: entry.agencyName, agencyCode: entry.agencyCode || '', totalRoomRent: String(entry.totalRoomRent), roomNights: String(entry.roomNights), commissionPercentage: String(entry.commissionPercentage), commissionAmount: String(entry.commissionAmount), arOrAp: entry.arOrAp, remarks: entry.remarks || '' }); setShowManualEntryModal(true); }} className="text-teal-600 hover:underline text-xs">編輯</button>
+                                <button type="button" onClick={async () => { if (!confirm('確定刪除？')) return; try { const r = await fetch(`/api/pms-income/monthly-manual-commission/${entry.id}`, { method: 'DELETE' }); if (r.ok) fetchManualEntries(); else setError((await r.json())?.error?.message || '刪除失敗'); } catch (err) { setError(err.message); } }} className="ml-2 text-red-500 hover:underline text-xs">刪除</button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-400">已送出</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {manualEntries.length > 0 && (
+                    <div className="mt-4 pt-4 border-t flex items-center justify-between flex-wrap gap-3">
+                      <div className="text-sm text-gray-600">
+                        小計：{manualEntries.length} 筆 · 房租合計 {formatNumber(manualEntries.reduce((s, e) => s + Number(e.totalRoomRent), 0))} · 佣金合計 {formatNumber(manualEntries.reduce((s, e) => s + Number(e.commissionAmount), 0))} · 應付合計 {formatNumber(manualEntries.filter(e => e.arOrAp === 'AP').reduce((s, e) => s + Number(e.netAmount), 0))}
+                      </div>
+                      {selectedManualIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            setConfirmCommissionForm({ accountId: '', transactionDate: today });
+                            setShowConfirmCommissionModal(true);
+                          }}
+                          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                        >
+                          確認送出至現金流（{selectedManualIds.length} 筆）
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================== */}
+        {/* Tab: Mapping */}
         {/* ============================== */}
         {activeTab === 'mapping' && (
           <div className="space-y-4">
@@ -1329,6 +1557,217 @@ function PmsIncomePage() {
       {/* Modals */}
       {renderUploadModal()}
       {renderAddModal()}
+
+      {/* 旅行社佣金配置 新增/編輯 Modal */}
+      {showTravelAgencyModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{editingTravelAgency ? '編輯旅行社配置' : '新增旅行社配置'}</h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="block text-gray-600 mb-1">公司名稱 *</label>
+                <input value={travelAgencyForm.companyName} onChange={e => setTravelAgencyForm(f => ({ ...f, companyName: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 booking.com" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">代碼</label>
+                <input value={travelAgencyForm.agencyCode} onChange={e => setTravelAgencyForm(f => ({ ...f, agencyCode: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 TA-01" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">佣金 % *</label>
+                <input type="number" step="0.01" value={travelAgencyForm.commissionPercentage} onChange={e => setTravelAgencyForm(f => ({ ...f, commissionPercentage: e.target.value }))} className="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">應收/應付</label>
+                <select value={travelAgencyForm.paymentType} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentType: e.target.value }))} className="w-full border rounded px-3 py-2">
+                  <option value="NONE">NONE（無佣金）</option>
+                  <option value="AR">AR（應收）</option>
+                  <option value="AP">AP（應付）</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">數據源</label>
+                <select value={travelAgencyForm.dataSource} onChange={e => setTravelAgencyForm(f => ({ ...f, dataSource: e.target.value }))} className="w-full border rounded px-3 py-2">
+                  <option value="AUTO">AUTO（自動提取）</option>
+                  <option value="MANUAL">MANUAL（每月手動輸入）</option>
+                </select>
+              </div>
+              {travelAgencyForm.paymentType === 'AP' && (
+                <>
+                  <div>
+                    <label className="block text-gray-600 mb-1">應付日（每月幾號）</label>
+                    <input type="number" min="1" max="28" value={travelAgencyForm.paymentDueDay} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentDueDay: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="5" />
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 mb-1">支付方式</label>
+                    <input value={travelAgencyForm.paymentMethod} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="銀行轉帳" />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowTravelAgencyModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">取消</button>
+              <button type="button" onClick={async () => {
+                if (!travelAgencyForm.companyName.trim()) { setError('請填寫公司名稱'); return; }
+                try {
+                  const url = editingTravelAgency ? `/api/pms-income/travel-agency-config/${editingTravelAgency.id}` : '/api/pms-income/travel-agency-config';
+                  const method = editingTravelAgency ? 'PUT' : 'POST';
+                  const body = { ...travelAgencyForm, commissionPercentage: parseFloat(travelAgencyForm.commissionPercentage) || 0, paymentDueDay: travelAgencyForm.paymentDueDay ? parseInt(travelAgencyForm.paymentDueDay, 10) : null };
+                  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                  if (r.ok) { setShowTravelAgencyModal(false); setSuccess('已儲存'); fetchTravelAgencyConfigs(); }
+                  else setError((await r.json())?.error?.message || '儲存失敗');
+                } catch (e) { setError(e.message); }
+              }} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 確認送出至現金流 Modal */}
+      {showConfirmCommissionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">確認送出至現金流</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              已選擇 <strong>{selectedManualIds.length}</strong> 筆代訂佣金記錄，確認後將自動建立現金流交易並影響存簿餘額。
+            </p>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="block text-gray-600 mb-1">交易日期 *</label>
+                <input type="date" value={confirmCommissionForm.transactionDate} onChange={e => setConfirmCommissionForm(f => ({ ...f, transactionDate: e.target.value }))} className="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">存簿帳戶 *</label>
+                <select value={confirmCommissionForm.accountId} onChange={e => setConfirmCommissionForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2">
+                  <option value="">請選擇帳戶</option>
+                  {manualAccounts.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
+                <p className="font-medium mb-1">送出後影響：</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li>應付（AP）佣金 → 現金流「支出」，存簿餘額減少</li>
+                  <li>應收（AR）佣金 → 現金流「收入」，存簿餘額增加</li>
+                  <li>記錄狀態由「草稿」變更為「已送出」，不可再編輯</li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowConfirmCommissionModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">取消</button>
+              <button type="button" disabled={!confirmCommissionForm.accountId || !confirmCommissionForm.transactionDate} onClick={async () => {
+                try {
+                  const res = await fetch('/api/pms-income/monthly-manual-commission/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      entryIds: selectedManualIds,
+                      accountId: parseInt(confirmCommissionForm.accountId),
+                      transactionDate: confirmCommissionForm.transactionDate,
+                    }),
+                  });
+                  const result = await res.json();
+                  if (res.ok) {
+                    setShowConfirmCommissionModal(false);
+                    setSelectedManualIds([]);
+                    setSuccess(result.message || '已送出至現金流');
+                    fetchManualEntries();
+                  } else {
+                    setError(result.error?.message || '送出失敗');
+                  }
+                } catch (e) { setError(e.message); }
+              }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">確認送出</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 每月手動代訂 新增/編輯 Modal */}
+      {showManualEntryModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{editingManualEntry ? '編輯代訂記錄' : '新增代訂中心記錄'}（{manualMonth || '請選月份'}）</h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="block text-gray-600 mb-1">代訂中心名稱 *</label>
+                <input value={manualEntryForm.agencyName} onChange={e => setManualEntryForm(f => ({ ...f, agencyName: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 林董代訂(湯總)" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">本月房租總額 *</label>
+                <input type="number" step="0.01" value={manualEntryForm.totalRoomRent} onChange={e => { const v = e.target.value; setManualEntryForm(f => ({ ...f, totalRoomRent: v })); }} className="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">房晚數</label>
+                <input type="number" value={manualEntryForm.roomNights} onChange={e => setManualEntryForm(f => ({ ...f, roomNights: e.target.value }))} className="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">佣金 %</label>
+                <input type="number" step="0.01" value={manualEntryForm.commissionPercentage} onChange={e => setManualEntryForm(f => ({ ...f, commissionPercentage: e.target.value }))} className="w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">應收/應付</label>
+                <select value={manualEntryForm.arOrAp} onChange={e => setManualEntryForm(f => ({ ...f, arOrAp: e.target.value }))} className="w-full border rounded px-3 py-2">
+                  <option value="AP">AP（應付）</option>
+                  <option value="AR">AR（應收）</option>
+                  <option value="NONE">NONE</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-600 mb-1">備註</label>
+                <input value={manualEntryForm.remarks} onChange={e => setManualEntryForm(f => ({ ...f, remarks: e.target.value }))} className="w-full border rounded px-3 py-2" />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowManualEntryModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">取消</button>
+              <button type="button" onClick={async () => {
+                if (!manualMonth || manualMonth.length !== 6) { setError('請填寫結算月份（格式 202603）'); return; }
+                if (!manualEntryForm.agencyName.trim()) { setError('請填寫代訂中心名稱'); return; }
+                const totalRoomRent = parseFloat(manualEntryForm.totalRoomRent) || 0;
+                const pct = parseFloat(manualEntryForm.commissionPercentage) || 0;
+                const commissionAmount = Math.round(totalRoomRent * (pct / 100) * 100) / 100;
+                try {
+                  if (editingManualEntry) {
+                    const r = await fetch(`/api/pms-income/monthly-manual-commission/${editingManualEntry.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        agencyName: manualEntryForm.agencyName.trim(),
+                        agencyCode: manualEntryForm.agencyCode.trim() || null,
+                        totalRoomRent,
+                        roomNights: parseInt(manualEntryForm.roomNights, 10) || 0,
+                        commissionPercentage: pct,
+                        commissionAmount,
+                        arOrAp: manualEntryForm.arOrAp,
+                        remarks: manualEntryForm.remarks.trim() || null,
+                      }),
+                    });
+                    if (r.ok) { setShowManualEntryModal(false); setSuccess('已更新'); fetchManualEntries(); }
+                    else setError((await r.json())?.error?.message || '更新失敗');
+                  } else {
+                    const r = await fetch('/api/pms-income/monthly-manual-commission', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        settlementMonth: manualMonth,
+                        agencyName: manualEntryForm.agencyName.trim(),
+                        agencyCode: manualEntryForm.agencyCode.trim() || null,
+                        totalRoomRent,
+                        roomNights: parseInt(manualEntryForm.roomNights, 10) || 0,
+                        commissionPercentage: pct,
+                        commissionAmount,
+                        arOrAp: manualEntryForm.arOrAp,
+                        remarks: manualEntryForm.remarks.trim() || null,
+                      }),
+                    });
+                    if (r.ok) { setShowManualEntryModal(false); setSuccess('已新增'); fetchManualEntries(); }
+                    else setError((await r.json())?.error?.message || '新增失敗');
+                  }
+                } catch (e) { setError(e.message); }
+              }} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700">儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

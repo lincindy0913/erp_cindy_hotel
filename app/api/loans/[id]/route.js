@@ -71,7 +71,7 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.LOAN_CREATE);
+  const auth = await requireAnyPermission([PERMISSIONS.LOAN_CREATE, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -91,13 +91,22 @@ export async function PUT(request, { params }) {
     if (data.bankName !== undefined) updateData.bankName = data.bankName;
     if (data.bankBranch !== undefined) updateData.bankBranch = data.bankBranch || null;
     if (data.loanType !== undefined) updateData.loanType = data.loanType;
-    if (data.annualRate !== undefined) updateData.annualRate = parseFloat(data.annualRate);
+    if (data.annualRate !== undefined) {
+      const r = parseFloat(data.annualRate);
+      if (!isNaN(r)) updateData.annualRate = r;
+    }
     if (data.rateType !== undefined) updateData.rateType = data.rateType;
     if (data.repaymentType !== undefined) updateData.repaymentType = data.repaymentType;
-    if (data.repaymentDay !== undefined) updateData.repaymentDay = parseInt(data.repaymentDay);
+    if (data.repaymentDay !== undefined) {
+      const rd = parseInt(data.repaymentDay, 10);
+      if (!isNaN(rd)) updateData.repaymentDay = rd;
+    }
     if (data.startDate !== undefined) updateData.startDate = data.startDate;
     if (data.endDate !== undefined) updateData.endDate = data.endDate;
-    if (data.deductAccountId !== undefined) updateData.deductAccountId = parseInt(data.deductAccountId);
+    if (data.deductAccountId !== undefined) {
+      const aid = parseInt(data.deductAccountId, 10);
+      if (!isNaN(aid)) updateData.deductAccountId = aid;
+    }
     if (data.principalSubjectId !== undefined) updateData.principalSubjectId = data.principalSubjectId ? parseInt(data.principalSubjectId) : null;
     if (data.interestSubjectId !== undefined) updateData.interestSubjectId = data.interestSubjectId ? parseInt(data.interestSubjectId) : null;
     if (data.autoDebit !== undefined) updateData.autoDebit = data.autoDebit;
@@ -105,7 +114,10 @@ export async function PUT(request, { params }) {
     if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone || null;
     if (data.remark !== undefined) updateData.remark = data.remark || null;
     if (data.status !== undefined) updateData.status = data.status;
-    if (data.sortOrder !== undefined) updateData.sortOrder = parseInt(data.sortOrder);
+    if (data.sortOrder !== undefined) {
+      const so = parseInt(data.sortOrder, 10);
+      if (!isNaN(so)) updateData.sortOrder = so;
+    }
 
     const updated = await prisma.loanMaster.update({
       where: { id },

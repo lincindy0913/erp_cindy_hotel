@@ -94,14 +94,21 @@ model Supplier {
 
 model Warehouse {
   id          Int          @id @default(autoincrement())
-  name        String       @unique @db.VarChar(100)
+  name        String       @db.VarChar(100)
   code        String?      @db.VarChar(20)
+  /// storage=倉庫(實體儲存地點，如地下室、備品室、2F倉庫)；building=館別(如麗格，底下有部門與倉庫)
+  type        String       @default("storage") @db.VarChar(20)
+  parentId    Int?         @map("parent_id")
   isActive    Boolean      @default(true) @map("is_active")
   sortOrder   Int?         @map("sort_order")
   createdAt   DateTime     @default(now()) @map("created_at")
 
+  parent      Warehouse?   @relation("WarehouseChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Warehouse[]  @relation("WarehouseChildren")
   departments Department[]
 
+  @@unique([parentId, name])
+  @@index([type])
   @@map("warehouses")
 }
 
@@ -747,6 +754,58 @@ model PmsIncomeRecord {
   @@index([importBatchId])
   @@index([entryType])
   @@map("pms_income_records")
+}
+
+// ============================================
+// 旅行社佣金管理 (spec26)
+// ============================================
+
+/// 旅行社/代訂中心佣金配置：應收(AR)/應付(AP)/無(NONE)，數據源 AUTO 或 MANUAL
+model TravelAgencyCommissionConfig {
+  id                    Int      @id @default(autoincrement())
+  companyName           String   @map("company_name") @db.VarChar(255)
+  agencyCode            String?  @map("agency_code") @db.VarChar(50)
+  commissionPercentage  Decimal  @map("commission_percentage") @db.Decimal(5, 2)
+  paymentType           String   @map("payment_type") @db.VarChar(10)   // AR | AP | NONE
+  dataSource            String   @default("AUTO") @map("data_source") @db.VarChar(20)  // AUTO | MANUAL
+  paymentDueDay         Int?     @map("payment_due_day")   // 應付日（每月幾號）
+  paymentMethod         String?  @map("payment_method") @db.VarChar(50)
+  isActive              Boolean  @default(true) @map("is_active")
+  sortOrder             Int      @default(0) @map("sort_order")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@index([dataSource])
+  @@index([paymentType])
+  @@map("travel_agency_commission_configs")
+}
+
+/// 每月手動代訂中心佣金輸入（MANUAL 數據源）
+model MonthlyManualCommissionEntry {
+  id                    Int      @id @default(autoincrement())
+  settlementMonth       String   @map("settlement_month") @db.VarChar(6)   // 202603
+  agencyName            String   @map("agency_name") @db.VarChar(255)
+  agencyCode            String?  @map("agency_code") @db.VarChar(50)
+  totalRoomRent         Decimal  @map("total_room_rent") @db.Decimal(12, 2)
+  roomNights            Int      @map("room_nights")
+  commissionPercentage  Decimal  @map("commission_percentage") @db.Decimal(5, 2)
+  commissionAmount      Decimal  @map("commission_amount") @db.Decimal(12, 2)
+  arOrAp                String   @map("ar_or_ap") @db.VarChar(10)   // AR | AP | NONE
+  netAmount             Decimal  @map("net_amount") @db.Decimal(12, 2)
+  remarks               String?  @db.Text
+  status                String   @default("DRAFT") @db.VarChar(20)  // DRAFT | SUBMITTED | VERIFIED | APPROVED | PAID
+  submittedBy           Int?     @map("submitted_by")
+  submittedAt           DateTime? @map("submitted_at")
+  verifiedBy            Int?     @map("verified_by")
+  verifiedAt            DateTime? @map("verified_at")
+  approvedBy            Int?     @map("approved_by")
+  approvedAt            DateTime? @map("approved_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@index([settlementMonth])
+  @@index([status])
+  @@map("monthly_manual_commission_entries")
 }
 
 // ============================================

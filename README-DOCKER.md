@@ -35,10 +35,19 @@ docker compose down
 docker compose down -v
 ```
 
+## 備份與還原
+
+- 備份檔案會寫入本機 `./backup-data/`（已掛載進容器），重建容器後仍可保留。
+- 若有舊的 **Tier1 全量備份檔（.dump）**，可依 `scripts/restore-from-dump.md` 用 `pg_restore` 還原到目前 Docker 的資料庫。
+- 若從未做過備份或備份檔已不存在，則無法從系統內撈回已刪除的 volume 資料。
+
 ## 種子資料（可選）
 
-若需匯入種子資料，可於啟動後執行：
+若需匯入種子資料，可於啟動後在本機（需可連到 DB）執行：
 
 ```bash
-docker compose exec app npx prisma db seed
+# 本機需已設定 DATABASE_URL=postgresql://erp:erp_secret@localhost:5432/erp
+npm run db:seed
+# 或
+npx prisma db seed
 ```

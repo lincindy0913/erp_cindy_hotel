@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// GET - 取得所有會計科目
+// GET - 取得所有會計科目（登入即可檢視）
 export async function GET() {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  const { requireSession } = await import('@/lib/api-auth');
+  const auth = await requireSession();
   if (!auth.ok) return auth.response;
   
   try {
@@ -23,7 +24,7 @@ export async function GET() {
 
 // POST - 新增會計科目
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -53,9 +54,12 @@ export async function POST(request) {
     }
 
     // 單筆新增
-    const { category, subcategory, code, name } = body;
+    const category = body.category != null ? String(body.category).trim() : '';
+    const subcategory = body.subcategory != null ? String(body.subcategory).trim() : '';
+    const code = body.code != null ? String(body.code).trim() : '';
+    const name = body.name != null ? String(body.name).trim() : '';
     if (!category || !subcategory || !code || !name) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '所有欄位皆為必填', 400);
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫分類、類別、代碼與名稱', 400);
     }
 
     const existing = await prisma.accountingSubject.findUnique({ where: { code } });

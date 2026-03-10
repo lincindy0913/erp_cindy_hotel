@@ -4,12 +4,15 @@ services:
     build: .
     ports:
       - "3000:3000"
+    volumes:
+      - ./backup-data:/app/backup-data
     environment:
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
       - DATABASE_URL=${DATABASE_URL}
       - NEXTAUTH_URL=http://localhost:3000
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
+      - BACKUP_ROOT=/app/backup-data
     restart: unless-stopped
 
   pgadmin:

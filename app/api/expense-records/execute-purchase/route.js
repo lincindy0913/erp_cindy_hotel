@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 // Helper: generate sequence number with prefix
-async function generateNo(tx, model, prefix, field = 'purchaseNo') {
+async function generateNo(tx, model, prefix) {
   const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
   const fullPrefix = `${prefix}-${today}-`;
 
@@ -46,6 +46,7 @@ async function generateNo(tx, model, prefix, field = 'purchaseNo') {
 
 // POST: Execute purchase-type template
 // Creates: PurchaseMaster + optional SalesMaster + CommonExpenseRecord
+// Invoice validation: invoiceAmount = purchaseAmount + taxAmount - supplierDiscount
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
   if (!auth.ok) return auth.response;
@@ -73,10 +74,34 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少建立者資訊', 400);
     }
 
-    // Calculate totals
-    const totalAmount = data.items.reduce((sum, item) => {
+    // Calculate purchase totals
+    const purchaseAmount = data.items.reduce((sum, item) => {
       return sum + (parseFloat(item.quantity) * parseFloat(item.unitPrice));
     }, 0);
+
+    // Invoice validation (if invoice info provided)
+    const hasInvoice = !!(data.invoiceNo?.trim());
+    let invoiceAmount = 0;
+    let taxAmount = 0;
+    let supplierDiscount = 0;
+
+    if (hasInvoice) {
+      invoiceAmount = parseFloat(data.invoiceAmount) || 0;
+      taxAmount = parseFloat(data.taxAmount) || 0;
+      supplierDiscount = parseFloat(data.supplierDiscount) || 0;
+
+      if (invoiceAmount <= 0) {
+        return createErrorResponse('VALIDATION_FAILED', '發票金額必須大於 0', 400);
+      }
+
+      // Validate: invoiceAmount = purchaseAmount + taxAmount - supplierDiscount
+      const expectedInvoice = purchaseAmount + taxAmount - supplierDiscount;
+      if (Math.abs(invoiceAmount - expectedInvoice) > 0.01) {
+        return createErrorResponse('VALIDATION_FAILED',
+          `發票金額不符：發票金額 ${invoiceAmount.toLocaleString()} ≠ 進貨金額 ${purchaseAmount.toLocaleString()} + 營業稅 ${taxAmount.toLocaleString()} - 廠商折讓 ${supplierDiscount.toLocaleString()} = ${expectedInvoice.toLocaleString()}`,
+          400);
+      }
+    }
 
     // Check for duplicate
     const duplicate = await prisma.commonExpenseRecord.findFirst({
@@ -96,7 +121,7 @@ export async function POST(request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const purchaseDate = `${data.expenseMonth}-01`;
+      const purchaseDate = data.purchaseDate || `${data.expenseMonth}-01`;
       const supplierId = parseInt(data.supplierId);
 
       // 1. Create PurchaseMaster + PurchaseDetail
@@ -110,9 +135,9 @@ export async function POST(request) {
           purchaseDate,
           paymentTerms: data.paymentTerms || '月結',
           taxType: data.taxType || null,
-          amount: totalAmount,
-          tax: 0,
-          totalAmount: totalAmount,
+          amount: purchaseAmount,
+          tax: taxAmount,
+          totalAmount: purchaseAmount + taxAmount,
           status: '待入庫',
           details: {
             create: data.items.map(item => ({
@@ -142,9 +167,9 @@ export async function POST(request) {
         }
       }
 
-      // 3. Optionally create SalesMaster (invoice) if invoice info provided
+      // 3. Create SalesMaster (invoice) if invoice info provided
       let salesMaster = null;
-      if (data.invoiceNo?.trim()) {
+      if (hasInvoice) {
         const salesNo = await generateNo(tx, 'salesMaster', 'INV');
         salesMaster = await tx.salesMaster.create({
           data: {
@@ -153,14 +178,15 @@ export async function POST(request) {
             invoiceDate: data.invoiceDate || purchaseDate,
             invoiceTitle: data.invoiceTitle || null,
             taxType: data.taxType || null,
-            invoiceAmount: totalAmount,
-            amount: totalAmount,
-            tax: 0,
-            totalAmount: totalAmount,
+            invoiceAmount: invoiceAmount,
+            supplierDiscount: supplierDiscount,
+            amount: purchaseAmount,
+            tax: taxAmount,
+            totalAmount: invoiceAmount,
             status: '待核銷',
             details: {
-              create: data.items.map(item => ({
-                purchaseItemId: `${purchaseMaster.id}-${item.productId}`,
+              create: data.items.map((item, idx) => ({
+                purchaseItemId: `${purchaseMaster.id}-${idx}`,
                 purchaseId: purchaseMaster.id,
                 purchaseNo: purchaseNo,
                 purchaseDate: purchaseDate,
@@ -178,6 +204,7 @@ export async function POST(request) {
       }
 
       // 4. Create CommonExpenseRecord
+      const totalDebit = hasInvoice ? invoiceAmount : purchaseAmount;
       const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
       const record = await tx.commonExpenseRecord.create({
         data: {
@@ -189,8 +216,8 @@ export async function POST(request) {
           supplierId,
           supplierName: data.supplierName || null,
           paymentMethod: data.paymentTerms || '月結',
-          totalDebit: totalAmount,
-          totalCredit: totalAmount,
+          totalDebit: totalDebit,
+          totalCredit: totalDebit,
           purchaseMasterId: purchaseMaster.id,
           salesMasterId: salesMaster?.id || null,
           purchaseNo: purchaseNo,
@@ -207,7 +234,7 @@ export async function POST(request) {
                 accountingCode: '5100',
                 accountingName: '進貨成本',
                 summary: `${data.supplierName || '廠商'} - 每月進貨費用 ${data.expenseMonth}`,
-                amount: totalAmount,
+                amount: totalDebit,
                 sortOrder: 0
               },
               {
@@ -215,7 +242,7 @@ export async function POST(request) {
                 accountingCode: '2100',
                 accountingName: '應付帳款',
                 summary: `${data.supplierName || '廠商'} - 每月進貨費用 ${data.expenseMonth}`,
-                amount: totalAmount,
+                amount: totalDebit,
                 sortOrder: 1
               }
             ]
@@ -231,7 +258,10 @@ export async function POST(request) {
         record,
         purchaseNo,
         salesNo: salesMaster?.salesNo || null,
-        totalAmount
+        purchaseAmount,
+        invoiceAmount: hasInvoice ? invoiceAmount : null,
+        taxAmount: hasInvoice ? taxAmount : null,
+        supplierDiscount: hasInvoice ? supplierDiscount : null
       };
     });
 
@@ -245,7 +275,11 @@ export async function POST(request) {
       confirmedAt: result.record.confirmedAt?.toISOString() || null,
       linkedPurchaseNo: result.purchaseNo,
       linkedSalesNo: result.salesNo,
-      totalAmount: result.totalAmount
+      purchaseAmount: result.purchaseAmount,
+      invoiceAmount: result.invoiceAmount,
+      taxAmount: result.taxAmount,
+      supplierDiscount: result.supplierDiscount,
+      message: `執行成功！進貨單: ${result.purchaseNo}${result.salesNo ? `, 發票: ${result.salesNo}` : ''}`
     }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

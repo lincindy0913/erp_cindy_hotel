@@ -137,7 +137,7 @@ export default function CashFlowPage() {
     try {
       const res = await fetch('/api/warehouse-departments');
       const data = await res.json();
-      setWarehouses(Object.keys(data));
+      setWarehouses(data && data.byName ? Object.keys(data.byName) : Object.keys(data || {}));
     } catch { setWarehouses(['麗格', '麗軒', '民宿']); }
   }
 

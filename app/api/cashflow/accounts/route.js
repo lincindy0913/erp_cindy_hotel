@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission } from '@/lib/api-auth';
+import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +31,7 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const auth = await requirePermission(PERMISSIONS.CASHFLOW_CREATE);
+    const auth = await requireAnyPermission([PERMISSIONS.CASHFLOW_CREATE, PERMISSIONS.SETTINGS_EDIT]);
     if (!auth.ok) return auth.response;
 
     const data = await request.json();

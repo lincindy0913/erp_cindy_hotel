@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -23,7 +23,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -49,7 +49,7 @@ export async function POST(request) {
 }
 
 export async function PUT(request) {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -74,7 +74,7 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
-  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {

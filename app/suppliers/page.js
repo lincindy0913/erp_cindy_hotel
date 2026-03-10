@@ -47,6 +47,17 @@ export default function SuppliersPage() {
     fetchSuppliers();
   }, []);
 
+  useEffect(() => {
+    fetch('/api/settings/payment-methods')
+      .then(res => res.ok ? res.json() : [])
+      .then(list => {
+        if (Array.isArray(list) && list.length > 0) {
+          setPaymentTermsOptions(list.map(m => m.name));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // 點擊外部關閉選單
   useEffect(() => {
     function handleClickOutside(event) {
@@ -262,11 +273,12 @@ export default function SuppliersPage() {
         setContracts([]);
         await fetchSuppliers();
       } else {
-        const error = await response.json();
-        alert(`${isEditing ? '更新' : '新增'}失敗：` + (error.error || '未知錯誤'));
+        const error = await response.json().catch(() => ({}));
+        const msg = error?.error?.message || error?.error?.code || (typeof error?.error === 'string' ? error.error : '未知錯誤');
+        alert(`${isEditing ? '更新' : '新增'}失敗：${msg}`);
       }
-    } catch (error) {
-      console.error('操作失敗:', error);
+    } catch (err) {
+      console.error('操作失敗:', err);
       alert('操作失敗，請稍後再試');
     }
   }
@@ -304,7 +316,8 @@ export default function SuppliersPage() {
         fetchSuppliers();
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || '未知錯誤'));
+        const msg = error?.error?.message || (typeof error?.error === 'string' ? error.error : '未知錯誤');
+        alert('刪除失敗：' + msg);
       }
     } catch (error) {
       console.error('刪除廠商失敗:', error);
@@ -368,7 +381,8 @@ export default function SuppliersPage() {
         await fetchContracts(editingSupplier.id);
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || '未知錯誤'));
+        const msg = error?.error?.message || (typeof error?.error === 'string' ? error.error : '未知錯誤');
+        alert('刪除失敗：' + msg);
       }
     } catch (error) {
       console.error('刪除合約失敗:', error);
@@ -569,14 +583,7 @@ export default function SuppliersPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  付款條件
-                  <button
-                    type="button"
-                    onClick={() => setShowTermsManager(!showTermsManager)}
-                    className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
-                  >
-                    管理選項
-                  </button>
+                  付款條件（<a href="/settings#finance" className="text-blue-600 hover:underline text-xs">設定</a>）
                 </label>
                 <select value={formData.paymentTerms}
                   onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
@@ -585,65 +592,6 @@ export default function SuppliersPage() {
                     <option key={term} value={term}>{term}</option>
                   ))}
                 </select>
-                {showTermsManager && (
-                  <div className="mt-2 bg-gray-50 border border-gray-300 rounded-lg p-3">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-semibold text-gray-700">管理付款條件選項</span>
-                      <button type="button" onClick={() => setShowTermsManager(false)} className="text-gray-400 hover:text-gray-600 text-xs">關閉</button>
-                    </div>
-                    <div className="flex gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={newTermName}
-                        onChange={(e) => setNewTermName(e.target.value)}
-                        placeholder="輸入新付款條件"
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const trimmed = newTermName.trim();
-                            if (trimmed && !paymentTermsOptions.includes(trimmed)) {
-                              setPaymentTermsOptions([...paymentTermsOptions, trimmed]);
-                              setNewTermName('');
-                            }
-                          }
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const trimmed = newTermName.trim();
-                          if (trimmed && !paymentTermsOptions.includes(trimmed)) {
-                            setPaymentTermsOptions([...paymentTermsOptions, trimmed]);
-                            setNewTermName('');
-                          }
-                        }}
-                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                      >
-                        新增
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {paymentTermsOptions.map(term => (
-                        <span key={term} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border rounded-full text-xs">
-                          {term}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPaymentTermsOptions(paymentTermsOptions.filter(t => t !== term));
-                              if (formData.paymentTerms === term) {
-                                setFormData({ ...formData, paymentTerms: paymentTermsOptions[0] || '' });
-                              }
-                            }}
-                            className="text-red-400 hover:text-red-600"
-                          >
-                            x
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">付款狀態</label>
