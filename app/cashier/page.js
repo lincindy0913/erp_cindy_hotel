@@ -432,7 +432,7 @@ export default function CashierPage() {
                         <td className="px-4 py-3 text-right font-medium">
                           NT$ {Number(order.netAmount).toLocaleString()}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate" title={order.note || ''}>{order.note || '-'}</td>
+                        <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate" title={order.summary || ''}>{order.summary || '-'}</td>
                         <td className="px-4 py-3 text-gray-500 max-w-[120px] truncate" title={order.note || ''}>{order.note || '-'}</td>
                         <td className="px-4 py-3 text-gray-500">
                           {new Date(order.createdAt).toLocaleDateString('zh-TW')}
@@ -497,9 +497,13 @@ export default function CashierPage() {
                                     <div className="text-xs text-gray-500 mb-1">應付金額</div>
                                     <div className="font-bold text-lg text-amber-700">NT$ {Number(order.netAmount).toLocaleString()}</div>
                                   </div>
-                                  <div className="md:col-span-2">
+                                  <div>
                                     <div className="text-xs text-gray-500 mb-1">摘要</div>
-                                    <div className="font-medium text-gray-800">{order.note || '-'}</div>
+                                    <div className="font-medium text-gray-800">{order.summary || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500 mb-1">備註</div>
+                                    <div className="text-gray-600">{order.note || '-'}</div>
                                   </div>
                                 </div>
                                 {order.checkNo && (

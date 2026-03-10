@@ -96,6 +96,7 @@ export async function POST(request) {
           checkAccount: checkAccountName,
           checkIssueDate: data.checkIssueDate || null,
           checkDueDate: data.checkDueDate || null,
+          summary: data.summary || null,
           note: data.note || null,
           status: data.status === '待出納' ? '待出納' : '草稿',
           createdBy: session?.user?.email || null,

@@ -105,7 +105,7 @@ export async function POST(request) {
         const r = await prisma.$transaction(async (tx) => {
           const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
           const po = await tx.paymentOrder.create({
-            data: { orderNo, invoiceIds: [], supplierId: null, supplierName: null, warehouse: wh, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, note: `固定費用 - ${data.expenseMonth}`, status: '待出納', createdBy: data.createdBy.trim() }
+            data: { orderNo, invoiceIds: [], supplierId: null, supplierName: null, warehouse: wh, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, summary: `${template.name} — ${wh} ${data.expenseMonth}`, note: data.note || null, status: '待出納', createdBy: data.createdBy.trim() }
           });
           const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
           const rec = await tx.commonExpenseRecord.create({
@@ -240,7 +240,8 @@ export async function POST(request) {
               discount: 0,
               netAmount: amount,
               dueDate: data.dueDate || null,
-              note: `固定費用 - ${data.expenseMonth}`,
+              summary: `${template.name} — ${wh} ${data.expenseMonth}`,
+              note: data.note || null,
               status: '待出納',
               createdBy: data.createdBy.trim()
             }
@@ -378,7 +379,8 @@ export async function POST(request) {
           discount: 0,
           netAmount: debitTotal,
           dueDate: data.dueDate || null,
-          note: `固定費用 - ${data.expenseMonth}`,
+          summary: `${template.name} — ${data.warehouse.trim()} ${data.expenseMonth}`,
+          note: data.note || null,
           status: '待出納',
           createdBy: data.createdBy.trim()
         }

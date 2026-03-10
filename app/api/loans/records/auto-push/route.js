@@ -98,7 +98,8 @@ export async function POST(request) {
             netAmount: amount,
             dueDate: rec.dueDate,
             accountId: acctId,
-            note: `貸款還款預存 — ${loan.loanCode} ${rec.recordYear}/${String(rec.recordMonth).padStart(2, '0')} (暫估${amount.toLocaleString()}) [自動推送]`,
+            summary: `貸款還款 — ${loan.loanCode} ${loan.loanName} ${rec.recordYear}/${String(rec.recordMonth).padStart(2, '0')}`,
+            note: `暫估${amount.toLocaleString()} [自動推送]`,
             status: '待出納',
             createdBy: userName
           }

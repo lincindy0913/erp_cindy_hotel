@@ -1726,6 +1726,7 @@ model PaymentOrder {
   checkAccount   String?   @map("check_account") @db.VarChar(100)
   checkIssueDate String?   @map("check_issue_date") @db.VarChar(20)
   checkDueDate   String?   @map("check_due_date") @db.VarChar(20)
+  summary        String?   @db.VarChar(500)
   note           String?   @db.Text
   status         String    @default("待出納") @db.VarChar(20)
   createdBy      String?   @map("created_by") @db.VarChar(255)

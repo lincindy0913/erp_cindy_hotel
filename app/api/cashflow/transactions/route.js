@@ -91,7 +91,7 @@ export async function GET(request) {
       where,
       include: {
         account: { select: { id: true, name: true, type: true, warehouse: true } },
-        category: { select: { id: true, name: true, type: true } },
+        category: { select: { id: true, name: true, type: true, warehouse: true, accountingSubject: { select: { code: true, name: true } } } },
         transferAccount: { select: { id: true, name: true, type: true, warehouse: true } }
       },
       orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }]

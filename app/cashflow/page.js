@@ -65,7 +65,8 @@ export default function CashFlowPage() {
     endDate: new Date().toISOString().split('T')[0],
     warehouse: '',
     type: '',
-    accountId: ''
+    accountId: '',
+    sourceType: ''
   });
 
   // Report state
@@ -128,6 +129,7 @@ export default function CashFlowPage() {
       if (txFilter.warehouse) params.append('warehouse', txFilter.warehouse);
       if (txFilter.type) params.append('type', txFilter.type);
       if (txFilter.accountId) params.append('accountId', txFilter.accountId);
+      if (txFilter.sourceType) params.append('sourceType', txFilter.sourceType);
 
       const res = await fetch(`/api/cashflow/transactions?${params.toString()}`);
       const data = await res.json();
@@ -553,7 +555,7 @@ export default function CashFlowPage() {
           <div>
             {/* Filters */}
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
                   <input
@@ -604,6 +606,28 @@ export default function CashFlowPage() {
                   >
                     <option value="">全部</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse}-{a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">來源</label>
+                  <select
+                    value={txFilter.sourceType}
+                    onChange={(e) => setTxFilter({ ...txFilter, sourceType: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">全部</option>
+                    <option value="pms_income_settlement">PMS結算</option>
+                    <option value="pms_income_fee">PMS手續費</option>
+                    <option value="pms_manual_commission">PMS佣金</option>
+                    <option value="cashier_payment">出納付款</option>
+                    <option value="loan_payment">貸款還款</option>
+                    <option value="rental_income">租賃收入</option>
+                    <option value="fixed_expense">固定費用</option>
+                    <option value="common_expense">一般費用</option>
+                    <option value="check_payment">支票</option>
+                    <option value="cash_count_adjustment">盤點調整</option>
+                    <option value="reversal">沖銷</option>
+                    <option value="manual">手動</option>
                   </select>
                 </div>
               </div>
@@ -851,13 +875,14 @@ export default function CashFlowPage() {
                     <th className="px-3 py-3 text-right text-sm font-medium text-gray-700">金額</th>
                     <th className="px-3 py-3 text-right text-sm font-medium text-gray-700">手續費</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">備註</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">來源</th>
                     {isLoggedIn && <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={isLoggedIn ? 11 : 10} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={isLoggedIn ? 12 : 11} className="px-4 py-8 text-center text-gray-500">
                         尚無交易紀錄，請先查詢或新增交易
                       </td>
                     </tr>
@@ -877,7 +902,16 @@ export default function CashFlowPage() {
                         </td>
                         <td className="px-3 py-2 text-sm">{tx.warehouse || '-'}</td>
                         <td className="px-3 py-2 text-sm">{tx.account ? `${tx.account.name}` : '-'}</td>
-                        <td className="px-3 py-2 text-sm">{tx.category?.name || '-'}</td>
+                        <td className="px-3 py-2 text-sm">
+                          {tx.category ? (
+                            <div>
+                              <div>{tx.category.name}</div>
+                              {tx.category.accountingSubject && (
+                                <div className="text-xs text-gray-400 font-mono">{tx.category.accountingSubject.code}</div>
+                              )}
+                            </div>
+                          ) : '-'}
+                        </td>
                         <td className="px-3 py-2 text-sm font-mono">{tx.paymentNo || '-'}</td>
                         <td className={`px-3 py-2 text-sm text-right font-semibold ${
                           tx.type === '收入' || tx.type === '移轉入' ? 'text-green-600' : 'text-red-600'
@@ -889,6 +923,46 @@ export default function CashFlowPage() {
                         </td>
                         <td className="px-3 py-2 text-sm truncate max-w-[150px]" title={tx.description || ''}>
                           {tx.description || '-'}
+                        </td>
+                        <td className="px-3 py-2 text-sm">
+                          {tx.sourceType ? (
+                            <span className={`px-1.5 py-0.5 rounded text-xs ${
+                              tx.sourceType.startsWith('pms_') ? 'bg-teal-100 text-teal-700' :
+                              tx.sourceType === 'cashier_payment' ? 'bg-amber-100 text-amber-700' :
+                              tx.sourceType.startsWith('loan_') ? 'bg-purple-100 text-purple-700' :
+                              tx.sourceType.startsWith('rental_') ? 'bg-indigo-100 text-indigo-700' :
+                              tx.sourceType.startsWith('fixed_') || tx.sourceType.includes('expense') ? 'bg-orange-100 text-orange-700' :
+                              tx.sourceType.startsWith('check_') ? 'bg-cyan-100 text-cyan-700' :
+                              tx.sourceType.startsWith('cash_count') ? 'bg-pink-100 text-pink-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {{
+                                pms_income_settlement: 'PMS結算',
+                                pms_income_fee: 'PMS手續費',
+                                pms_manual_commission: 'PMS佣金',
+                                cashier_payment: '出納付款',
+                                loan_payment: '貸款還款',
+                                rental_income: '租賃收入',
+                                rental_deposit_in: '租賃押金收',
+                                rental_deposit_out: '租賃押金退',
+                                rental_maintenance: '租賃維修',
+                                rental_tax: '租賃稅費',
+                                fixed_expense: '固定費用',
+                                common_expense: '一般費用',
+                                purchase_expense: '採購費用',
+                                check_payment: '支票付款',
+                                check_receipt: '支票收款',
+                                check_bounce: '支票退票',
+                                cash_count_adjustment: '盤點調整',
+                                cash_count_shortage: '盤點短缺',
+                                reversal: '沖銷',
+                                reconciliation_adjustment: '對帳調整',
+                                manual: '手動',
+                              }[tx.sourceType] || tx.sourceType}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">手動</span>
+                          )}
                         </td>
                         {isLoggedIn && (
                           <td className="px-3 py-2 text-center">
@@ -998,6 +1072,7 @@ export default function CashFlowPage() {
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">交易筆數</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
                       {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
                     </tr>
@@ -1005,7 +1080,10 @@ export default function CashFlowPage() {
                   <tbody className="divide-y divide-gray-200">
                     {categories.filter(c => c.type === '收入').map(c => (
                       <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
+                        <td className="px-4 py-3 text-sm font-medium">
+                          {c.name}
+                          {c.isSystemDefault && <span className="ml-1 text-xs text-gray-400">(系統)</span>}
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           {c.accountingSubject ? (
                             <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
@@ -1014,6 +1092,7 @@ export default function CashFlowPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
+                        <td className="px-4 py-3 text-sm text-right font-medium">{c._count?.transactions || 0}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                             {c.isActive ? '啟用' : '停用'}
@@ -1048,7 +1127,7 @@ export default function CashFlowPage() {
                       </tr>
                     ))}
                     {categories.filter(c => c.type === '收入').length === 0 && (
-                      <tr><td colSpan={isLoggedIn ? 5 : 4} className="px-4 py-4 text-center text-gray-500">尚無收入類別</td></tr>
+                      <tr><td colSpan={isLoggedIn ? 6 : 5} className="px-4 py-4 text-center text-gray-500">尚無收入類別</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1065,6 +1144,7 @@ export default function CashFlowPage() {
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">交易筆數</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
                       {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
                     </tr>
@@ -1072,7 +1152,10 @@ export default function CashFlowPage() {
                   <tbody className="divide-y divide-gray-200">
                     {categories.filter(c => c.type === '支出').map(c => (
                       <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
+                        <td className="px-4 py-3 text-sm font-medium">
+                          {c.name}
+                          {c.isSystemDefault && <span className="ml-1 text-xs text-gray-400">(系統)</span>}
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           {c.accountingSubject ? (
                             <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
@@ -1081,6 +1164,7 @@ export default function CashFlowPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
+                        <td className="px-4 py-3 text-sm text-right font-medium">{c._count?.transactions || 0}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                             {c.isActive ? '啟用' : '停用'}
@@ -1115,7 +1199,7 @@ export default function CashFlowPage() {
                       </tr>
                     ))}
                     {categories.filter(c => c.type === '支出').length === 0 && (
-                      <tr><td colSpan={isLoggedIn ? 5 : 4} className="px-4 py-4 text-center text-gray-500">尚無支出類別</td></tr>
+                      <tr><td colSpan={isLoggedIn ? 6 : 5} className="px-4 py-4 text-center text-gray-500">尚無支出類別</td></tr>
                     )}
                   </tbody>
                 </table>

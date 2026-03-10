@@ -16,7 +16,8 @@ export async function GET() {
       include: {
         accountingSubject: {
           select: { id: true, code: true, name: true, category: true, subcategory: true }
-        }
+        },
+        _count: { select: { transactions: true } }
       }
     });
 

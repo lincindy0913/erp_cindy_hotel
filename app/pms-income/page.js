@@ -1483,6 +1483,7 @@ function PmsIncomePage() {
                           <th className="px-3 py-2 font-medium">科目代碼</th>
                           <th className="px-3 py-2 font-medium">科目名稱</th>
                           <th className="px-3 py-2 font-medium">批次</th>
+                          <th className="px-3 py-2 font-medium">結算狀態</th>
                           <th className="px-3 py-2 font-medium">備註</th>
                           <th className="px-3 py-2 font-medium text-center">操作</th>
                         </tr>
@@ -1509,6 +1510,19 @@ function PmsIncomePage() {
                             <td className="px-3 py-2 text-xs text-gray-600">{rec.accountingCode}</td>
                             <td className="px-3 py-2 text-xs text-gray-600">{rec.accountingName}</td>
                             <td className="px-3 py-2 text-xs text-gray-400">{rec.importBatch?.batchNo || '手動'}</td>
+                            <td className="px-3 py-2">
+                              {rec.importBatch?.status ? (
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  rec.importBatch.status === '已結算' ? 'bg-green-100 text-green-800' :
+                                  rec.importBatch.status === '已核對' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {rec.importBatch.status}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-xs text-gray-400 max-w-[100px] truncate">{rec.note || '-'}</td>
                             <td className="px-3 py-2 text-center">
                               <button onClick={() => handleDeleteRecord(rec.id)}

@@ -92,7 +92,8 @@ export async function POST(request) {
               netAmount: commissionAmount,
               dueDate: transactionDate,
               accountId: acctId,
-              note: `${monthLabel} ${entry.agencyName} 代訂佣金（應付）- 來源：PMS佣金管理`,
+              summary: `${monthLabel} ${entry.agencyName} 代訂佣金（應付）`,
+              note: '來源：PMS佣金管理',
               status: '待出納',
               createdBy: userName
             }

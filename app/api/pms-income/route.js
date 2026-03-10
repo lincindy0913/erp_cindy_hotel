@@ -38,7 +38,7 @@ export async function GET(request) {
         where,
         include: {
           importBatch: {
-            select: { id: true, batchNo: true, fileName: true }
+            select: { id: true, batchNo: true, fileName: true, status: true }
           }
         },
         orderBy: [{ businessDate: 'desc' }, { id: 'desc' }],
