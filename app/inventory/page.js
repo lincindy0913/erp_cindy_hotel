@@ -364,7 +364,6 @@ export default function InventoryPage() {
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">產品</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫</th>
                     <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">進貨</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">銷貨</th>
                     <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">領用</th>
                     <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">調出</th>
                     <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">調入</th>
@@ -375,16 +374,15 @@ export default function InventoryPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {inventoryLoading ? (
-                    <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
+                    <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
                   ) : inventory.length === 0 ? (
-                    <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-500">尚無庫存資料</td></tr>
+                    <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-500">尚無庫存資料</td></tr>
                   ) : (
                     inventory.map((item, i) => (
                       <tr key={item.productId || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-3 text-sm">{item.product?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm">{warehouse || item.product?.warehouseLocation || '-'}</td>
                         <td className="px-4 py-3 text-sm text-right">{item.purchaseQty ?? item.purchaseIncr ?? '-'}</td>
-                        <td className="px-4 py-3 text-sm text-right">{item.salesQty ?? item.salesIncr ?? '-'}</td>
                         <td className="px-4 py-3 text-sm text-right">{item.requisitionQty ?? '-'}</td>
                         <td className="px-4 py-3 text-sm text-right">{item.transferOutQty ?? '-'}</td>
                         <td className="px-4 py-3 text-sm text-right">{item.transferInQty ?? '-'}</td>

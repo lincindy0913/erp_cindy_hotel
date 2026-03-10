@@ -88,31 +88,14 @@ export async function GET(request) {
         purchaseIncrMap.set(key, (purchaseIncrMap.get(key) || 0) + (d.quantity || 0));
       });
 
-      // Post-snapshot sales
-      const postSales = await prisma.salesDetail.findMany({
-        where: {
-          salesMaster: {
-            invoiceDate: { gt: snapshotEndDate },
-          },
-        },
-        include: {
-          salesMaster: { select: { invoiceDate: true } },
-        },
-      });
-
-      const salesIncrMap = new Map();
-      postSales.forEach(d => {
-        const key = `${d.productId}_default`;
-        salesIncrMap.set(key, (salesIncrMap.get(key) || 0) + (d.quantity || 0));
-      });
+      // 不扣銷貨：流程為進貨入庫 → 領用/調撥扣數量
 
       inventory = products.map((product, index) => {
         const key = `${product.id}_${warehouse || 'default'}`;
         const snapshot = snapshotMap.get(key);
         const closingQty = snapshot ? Number(snapshot.closingQty) : 0;
         const purchaseIncr = purchaseIncrMap.get(key) || 0;
-        const salesIncr = salesIncrMap.get(key) || 0;
-        const currentQty = closingQty + purchaseIncr - salesIncr;
+        const currentQty = closingQty + purchaseIncr;
         const threshold = product.lowStockThreshold || 10;
 
         return {
@@ -120,7 +103,7 @@ export async function GET(request) {
           productId: product.id,
           snapshotQty: closingQty,
           purchaseIncr,
-          salesIncr,
+          salesIncr: 0,
           currentQty,
           product: {
             id: product.id, name: product.name, code: product.code,
@@ -151,18 +134,7 @@ export async function GET(request) {
         }
       });
 
-      const salesWhere = wh ? { warehouse: wh } : {};
-      const salesDetails = await prisma.salesDetail.findMany({
-        where: Object.keys(salesWhere).length ? salesWhere : {},
-      });
-      const salesQtyMap = new Map();
-      salesDetails.forEach(d => {
-        const w = d.warehouse || 'default';
-        if (!wh || w === wh) {
-          const pid = d.productId;
-          if (pid) salesQtyMap.set(pid, (salesQtyMap.get(pid) || 0) + (d.quantity || 0));
-        }
-      });
+      // 不扣銷貨：進貨入庫後僅以領用、調撥扣數量
 
       // 領用：減庫存
       const reqWhere = wh ? { warehouse: wh } : {};
@@ -197,12 +169,11 @@ export async function GET(request) {
 
       inventory = products.map((product, index) => {
         const purchaseQty = purchaseQtyMap.get(product.id) || 0;
-        const salesQty = salesQtyMap.get(product.id) || 0;
         const reqQty = reqQtyMap.get(product.id) || 0;
         const outQty = transferOutMap.get(product.id) || 0;
         const inQty = transferInMap.get(product.id) || 0;
         const adjQty = countDiffMap.get(product.id) || 0;
-        const currentQty = purchaseQty - salesQty - reqQty - outQty + inQty + adjQty;
+        const currentQty = purchaseQty - reqQty - outQty + inQty + adjQty;
         const threshold = product.lowStockThreshold || 10;
 
         return {
@@ -210,7 +181,7 @@ export async function GET(request) {
           productId: product.id,
           beginningQty: 0,
           purchaseQty,
-          salesQty,
+          salesQty: 0,
           requisitionQty: reqQty,
           transferOutQty: outQty,
           transferInQty: inQty,
