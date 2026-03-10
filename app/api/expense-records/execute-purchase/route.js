@@ -261,7 +261,7 @@ export async function POST(request) {
         taxAmount: hasInvoice ? taxAmount : null,
         supplierDiscount: hasInvoice ? supplierDiscount : null
       };
-    });
+    }, { timeout: 30000 });
 
     return NextResponse.json({
       ...result.record,

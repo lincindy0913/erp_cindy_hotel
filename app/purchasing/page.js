@@ -87,6 +87,8 @@ export default function PurchasingPage() {
     note: ''
   });
   const [submittingExpense, setSubmittingExpense] = useState(false);
+  const [paymentMethodOptions, setPaymentMethodOptions] = useState([]);
+  const [warehouseList, setWarehouseList] = useState([]);
   // Template CRUD state
   const [showExpTemplateForm, setShowExpTemplateForm] = useState(false);
   const [editingExpTemplate, setEditingExpTemplate] = useState(null);
@@ -95,7 +97,20 @@ export default function PurchasingPage() {
     defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
     purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
   });
-  const warehousesList = Object.keys(warehouseDepartments);
+  // 館別（building type）— for 館別 selectors
+  const warehousesList = warehouseList.filter(w => w.type === 'building').map(w => w.name);
+  // 倉庫位置（storage type）— for 入庫倉庫 selectors
+  const storageLocationsList = warehouseList.filter(w => w.type === 'storage').map(w => w.name);
+
+  async function fetchPaymentMethods() {
+    try {
+      const res = await fetch('/api/settings/payment-methods', { credentials: 'include' });
+      const data = await res.json().catch(() => []);
+      if (res.ok && Array.isArray(data)) setPaymentMethodOptions(data.map(m => m.name));
+    } catch (err) {
+      console.error('載入付款方式失敗:', err);
+    }
+  }
 
   async function fetchInvoiceTitles() {
     try {
@@ -121,6 +136,7 @@ export default function PurchasingPage() {
     fetchWarehouseDepartments();
     fetchInvoices();
     fetchInvoiceTitles();
+    fetchPaymentMethods();
   }, []);
 
   useEffect(() => {
@@ -516,6 +532,7 @@ export default function PurchasingPage() {
       const response = await fetch('/api/warehouse-departments');
       const data = await response.json();
       setWarehouseDepartments((data && data.byName) ? data.byName : (data || {}));
+      if (data && Array.isArray(data.list)) setWarehouseList(data.list);
     } catch (error) {
       console.error('取得館別部門失敗:', error);
     }
@@ -1023,7 +1040,7 @@ export default function PurchasingPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">請先選擇館別...</option>
-                    {Object.keys(warehouseDepartments).map(w => (
+                    {warehousesList.map(w => (
                       <option key={w} value={w}>{w}</option>
                     ))}
                   </select>
@@ -1230,7 +1247,7 @@ export default function PurchasingPage() {
                                     className="px-2 py-1 rounded text-xs border border-gray-300 bg-white focus:ring-1 focus:ring-blue-500"
                                   >
                                     <option value="">選擇倉庫</option>
-                                    {Object.keys(warehouseDepartments).map(w => (
+                                    {storageLocationsList.map(w => (
                                       <option key={w} value={w}>{w}</option>
                                     ))}
                                   </select>
@@ -1390,7 +1407,7 @@ export default function PurchasingPage() {
                               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                               <option value="">選擇入庫倉庫</option>
-                              {Object.keys(warehouseDepartments).map(w => (
+                              {storageLocationsList.map(w => (
                                 <option key={w} value={w}>{w}</option>
                               ))}
                             </select>
@@ -2114,9 +2131,14 @@ export default function PurchasingPage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
-                      <input value={executeExpenseForm.paymentTerms}
+                      <select value={executeExpenseForm.paymentTerms}
                         onChange={e => setExecuteExpenseForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="月結" />
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                        <option value="">請選擇付款方式</option>
+                        {(paymentMethodOptions.length > 0 ? paymentMethodOptions : ['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']).map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
                     </div>
                     {executeExpenseForm.taxType && (
                       <div>
