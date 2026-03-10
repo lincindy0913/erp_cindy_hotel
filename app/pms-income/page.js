@@ -79,6 +79,10 @@ function PmsIncomePage() {
   const [uploadOccupancyRate, setUploadOccupancyRate] = useState('');
   const [uploadAvgRoomRate, setUploadAvgRoomRate] = useState('');
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [excelParsing, setExcelParsing] = useState(false);
+  const [overviewBuildings, setOverviewBuildings] = useState([]);
+  /** 上傳前選擇的館別（Excel 上傳與手動匯入皆以此為預設） */
+  const [overviewUploadWarehouse, setOverviewUploadWarehouse] = useState(WAREHOUSES[0] || '麗格');
 
   // Records tab state
   const [records, setRecords] = useState([]);
@@ -182,6 +186,26 @@ function PmsIncomePage() {
   useEffect(() => {
     if (activeTab === 'overview') fetchOverviewData();
   }, [activeTab, fetchOverviewData]);
+
+  // 每日匯入總覽：取得館別列表，並同步「上傳前選擇館別」
+  useEffect(() => {
+    if (activeTab !== 'overview') return;
+    fetch('/api/warehouse-departments')
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data?.list) ? data.list : [];
+        const buildings = list.filter(x => x.type === 'building').map(x => x.name);
+        const listToUse = buildings.length > 0 ? buildings : WAREHOUSES;
+        setOverviewBuildings(listToUse);
+        if (!overviewUploadWarehouse || !listToUse.includes(overviewUploadWarehouse)) {
+          setOverviewUploadWarehouse(listToUse[0] || '麗格');
+        }
+      })
+      .catch(() => {
+        setOverviewBuildings(WAREHOUSES);
+        if (!overviewUploadWarehouse) setOverviewUploadWarehouse(WAREHOUSES[0] || '麗格');
+      });
+  }, [activeTab]);
 
   // ========================
   // Records tab data fetching
@@ -516,12 +540,17 @@ function PmsIncomePage() {
       const res = await fetch('/api/pms-income/batches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        credentials: 'include'
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || '匯入失敗');
+        let errMsg = '匯入失敗';
+        try {
+          const errData = await res.json();
+          errMsg = errData.error?.message || errData.error?.code || (typeof errData.error === 'string' ? errData.error : errMsg);
+        } catch (_) {}
+        throw new Error(errMsg);
       }
 
       const result = await res.json();
@@ -536,14 +565,66 @@ function PmsIncomePage() {
     }
   };
 
+  const buildingList = overviewBuildings.length > 0 ? overviewBuildings : WAREHOUSES;
+  const selectedWarehouseForUpload = overviewUploadWarehouse && buildingList.includes(overviewUploadWarehouse)
+    ? overviewUploadWarehouse
+    : (buildingList[0] || '麗格');
+
   const resetUploadForm = () => {
-    setUploadWarehouse('麗格');
+    setUploadWarehouse(selectedWarehouseForUpload);
     setUploadDate(new Date().toISOString().split('T')[0]);
     setUploadFileName('');
     setUploadRecords(DEFAULT_PMS_COLUMNS.map(col => ({ ...col, amount: '' })));
     setUploadRoomCount('');
     setUploadOccupancyRate('');
     setUploadAvgRoomRate('');
+  };
+
+  // 上傳 Excel：解析後帶入表單，開啟 modal 供會計核對後確認存檔
+  const handleExcelUpload = async (file) => {
+    if (!file || !file.name) return;
+    const ext = (file.name || '').toLowerCase();
+    if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls')) {
+      setError('請上傳 Excel 檔案（.xlsx 或 .xls）');
+      return;
+    }
+    setExcelParsing(true);
+    setError('');
+    setSuccess('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/pms-income/parse-excel', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error?.message || data.error || '解析 Excel 失敗');
+        setExcelParsing(false);
+        return;
+      }
+      // 以「上傳前選擇的館別」為準
+      setUploadWarehouse(selectedWarehouseForUpload);
+      setUploadDate(data.businessDate || new Date().toISOString().split('T')[0]);
+      setUploadFileName(data.fileName || file.name);
+      setUploadRoomCount(data.roomCount ?? '');
+      setUploadOccupancyRate(data.occupancyRate ?? '');
+      setUploadAvgRoomRate(data.avgRoomRate ?? '');
+      if (Array.isArray(data.records) && data.records.length > 0) {
+        setUploadRecords(prev => prev.map(p => {
+          const fromExcel = data.records.find(r => r.pmsColumnName === p.pmsColumnName);
+          return fromExcel ? { ...p, amount: fromExcel.amount != null ? String(fromExcel.amount) : '' } : p;
+        }));
+      }
+      setShowUploadModal(true);
+      setSuccess('已從 Excel 帶入資料，請核對後按「確認匯入」存檔。');
+    } catch (err) {
+      setError('上傳或解析失敗：' + (err.message || err));
+    } finally {
+      setExcelParsing(false);
+    }
   };
 
   // ========================
@@ -792,7 +873,9 @@ function PmsIncomePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
                 <select value={uploadWarehouse} onChange={e => setUploadWarehouse(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
-                  {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+                  {(overviewBuildings.length ? overviewBuildings : WAREHOUSES).map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -889,6 +972,8 @@ function PmsIncomePage() {
             </div>
 
             {error && <div className="text-red-600 text-sm bg-red-50 px-3 py-2 rounded">{error}</div>}
+
+            <p className="text-xs text-gray-500">請會計核對上方資料無誤後，再按「確認匯入」存檔。</p>
 
             {/* Actions */}
             <div className="flex justify-end gap-3 pt-2">
@@ -1138,13 +1223,90 @@ function PmsIncomePage() {
                   <span>快取啟用中</span>
                 </div>
               </div>
-              <button onClick={() => setShowUploadModal(true)}
-                className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  id="pms-excel-upload"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleExcelUpload(f);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('pms-excel-upload')?.click()}
+                  disabled={excelParsing}
+                  className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  {excelParsing ? '解析中...' : '上傳 Excel 日報表'}
+                </button>
+                <button onClick={() => {
+                  setUploadWarehouse(selectedWarehouseForUpload);
+                  setShowUploadModal(true);
+                }}
+                  className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  匯入 PMS 日報表
+                </button>
+              </div>
+            </div>
+
+            {/* 上傳 Excel：先選館別再上傳（頂列已有按鈕，此區可拖曳或再次點選） */}
+            <div className="bg-white rounded-lg shadow-sm border-2 border-amber-100 p-4">
+              <h3 className="text-sm font-bold text-teal-800 mb-2 flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 text-lg">↑</span>
+                上傳 Excel（日營業報表）
+              </h3>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <label className="text-sm font-medium text-gray-700">上傳前請選擇館別：</label>
+                <select
+                  value={selectedWarehouseForUpload}
+                  onChange={e => setOverviewUploadWarehouse(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                >
+                  {buildingList.map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-500">此檔案將匯入至「{selectedWarehouseForUpload}」</span>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('pms-excel-upload')?.click()}
+                  disabled={excelParsing}
+                  className="ml-2 px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {excelParsing ? '解析中...' : '選擇檔案'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">上傳後系統會自動帶入營業日期、各科目金額與房間數／住房率／平均房價，請會計核對無誤後再按「確認匯入」存檔。</p>
+              <div
+                className="border-2 border-dashed border-amber-200 rounded-lg p-6 text-center bg-amber-50/50 hover:bg-amber-50 transition-colors cursor-pointer"
+                onClick={() => document.getElementById('pms-excel-upload')?.click()}
+                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-amber-400', 'bg-amber-50'); }}
+                onDragLeave={e => { e.preventDefault(); e.currentTarget.classList.remove('border-amber-400', 'bg-amber-50'); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.classList.remove('border-amber-400', 'bg-amber-50');
+                  const f = e.dataTransfer?.files?.[0];
+                  if (f) handleExcelUpload(f);
+                }}
+              >
+                <svg className="w-10 h-10 text-amber-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                匯入 PMS 日報表
-              </button>
+                <span className="text-sm font-medium text-amber-800 block">
+                  {excelParsing ? '解析中...' : '點此或拖曳 Excel 檔案至此（.xlsx / .xls）'}
+                </span>
+              </div>
             </div>
 
             {/* Summary cards */}

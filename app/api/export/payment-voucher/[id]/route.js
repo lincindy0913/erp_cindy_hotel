@@ -89,11 +89,13 @@ export async function GET(request, { params }) {
       }
     }
 
-    // Generate the PDF using jsPDF
+    // Generate the PDF using jsPDF (中文字體避免亂碼)
     const { default: jsPDF } = await import('jspdf');
     await import('jspdf-autotable');
+    const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    addCJKFontToDoc(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 15;
 
@@ -408,8 +410,10 @@ async function generateLegacyPdf(payment, paymentId) {
 
   const { default: jsPDF } = await import('jspdf');
   await import('jspdf-autotable');
+  const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  addCJKFontToDoc(doc);
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
 

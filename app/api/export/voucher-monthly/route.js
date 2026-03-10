@@ -135,9 +135,10 @@ export async function GET(request) {
       }
     }
 
-    // Generate PDF
+    // Generate PDF (spec23: 中文字體 Noto Sans CJK / WenQuanYi 避免亂碼)
     const { default: jsPDF } = await import('jspdf');
     await import('jspdf-autotable');
+    const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
 
     const isLandscape = orientation === 'landscape';
     const doc = new jsPDF({
@@ -145,6 +146,7 @@ export async function GET(request) {
       unit: 'mm',
       format: 'a4'
     });
+    addCJKFontToDoc(doc);
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();

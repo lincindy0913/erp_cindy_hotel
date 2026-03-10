@@ -14,6 +14,8 @@ RUN npm ci
 # App source and Next.js build (ensure public exists for runner)
 COPY . .
 RUN mkdir -p public
+# PDF 傳票中文字型（避免亂碼）
+RUN mkdir -p lib/fonts && (node scripts/download-pdf-font.js || true)
 # Alpine uses musl; ensure Next.js SWC binary is available for linux-x64-musl
 RUN npm install @next/swc-linux-x64-musl --save-optional
 RUN npm run build
@@ -44,6 +46,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./
+# 傳票 PDF 中文字型
+COPY --from=builder /app/lib/fonts ./lib/fonts
 
 USER nextjs
 

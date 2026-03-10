@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission, requireAnyPermission, requireSession } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -80,9 +80,9 @@ export async function GET(request) {
   }
 }
 
-// POST: Handle PMS report upload and import
+// POST: Handle PMS report upload and import（登入即可存檔，供會計確認匯入）
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.PMS_IMPORT);
+  const auth = await requireSession();
   if (!auth.ok) return auth.response;
   
   try {
