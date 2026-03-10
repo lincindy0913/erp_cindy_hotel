@@ -503,9 +503,6 @@ export default function CashierPage() {
                                     支票號碼: {order.checkNo} | 開票賬戶: {order.checkAccount || '-'}
                                   </div>
                                 )}
-                                {order.note && (
-                                  <div className="mt-2 text-sm text-gray-500">備註: {order.note}</div>
-                                )}
                               </div>
 
                               {/* Rejected info */}
@@ -722,7 +719,9 @@ export default function CashierPage() {
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款單號</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">廠商</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款方式</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">摘要</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">金額</th>
                   </tr>
                 </thead>
@@ -731,12 +730,14 @@ export default function CashierPage() {
                     <tr key={o.id}>
                       <td className="px-3 py-2 font-medium text-amber-800">{o.orderNo}</td>
                       <td className="px-3 py-2">{o.supplierName || '-'}</td>
+                      <td className="px-3 py-2">{o.warehouse || '-'}</td>
                       <td className="px-3 py-2">{o.paymentMethod}</td>
+                      <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.note || ''}>{o.note || '-'}</td>
                       <td className="px-3 py-2 text-right font-medium">NT$ {Number(o.netAmount).toLocaleString()}</td>
                     </tr>
                   ))}
                   <tr className="bg-amber-50 font-bold">
-                    <td colSpan="3" className="px-3 py-2 text-right">合計</td>
+                    <td colSpan="5" className="px-3 py-2 text-right">合計</td>
                     <td className="px-3 py-2 text-right text-amber-700">NT$ {selectedTotal.toLocaleString()}</td>
                   </tr>
                 </tbody>
@@ -955,20 +956,24 @@ export default function CashierPage() {
                   </div>
                 </div>
 
-                {/* Report Table */}
+                {/* Report Table: (1) 付款單號+廠商+館別+付款方式+摘要 (2) 出納單號+執行日期+資金帳戶和金額+備註 */}
                 <div className="p-4">
+                  <div className="text-xs text-gray-600 mb-2 no-print">
+                    列印內容：(1) 付款單號、廠商、館別、付款方式、摘要 (2) 出納單號、執行日期、支出帳戶與金額、備註
+                  </div>
                   <table className="w-full text-xs border-collapse report-table">
                     <thead>
                       <tr className="border-b-2 border-gray-800">
                         <th className="py-1.5 px-2 text-left font-semibold w-8">#</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">執行日期</th>
                         <th className="py-1.5 px-2 text-left font-semibold">付款單號</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">出納單號</th>
                         <th className="py-1.5 px-2 text-left font-semibold">廠商</th>
                         <th className="py-1.5 px-2 text-left font-semibold">館別</th>
                         <th className="py-1.5 px-2 text-left font-semibold">付款方式</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">帳戶</th>
-                        <th className="py-1.5 px-2 text-right font-semibold">實付金額</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">摘要</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">出納單號</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">執行日期</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">支出帳戶</th>
+                        <th className="py-1.5 px-2 text-right font-semibold">金額</th>
                         <th className="py-1.5 px-2 text-left font-semibold">備註</th>
                       </tr>
                     </thead>
@@ -979,24 +984,25 @@ export default function CashierPage() {
                         return (
                           <tr key={order.id} className="border-b border-gray-200">
                             <td className="py-1.5 px-2 text-gray-500">{idx + 1}</td>
-                            <td className="py-1.5 px-2">{exec?.executionDate || '-'}</td>
                             <td className="py-1.5 px-2 font-medium">{order.orderNo}</td>
-                            <td className="py-1.5 px-2">{exec?.executionNo || '-'}</td>
                             <td className="py-1.5 px-2">{order.supplierName || '-'}</td>
                             <td className="py-1.5 px-2">{order.warehouse || '-'}</td>
                             <td className="py-1.5 px-2">{exec?.paymentMethod || order.paymentMethod}</td>
+                            <td className="py-1.5 px-2 max-w-[140px] truncate" title={order.note || ''}>{order.note || '-'}</td>
+                            <td className="py-1.5 px-2">{exec?.executionNo || '-'}</td>
+                            <td className="py-1.5 px-2">{exec?.executionDate || '-'}</td>
                             <td className="py-1.5 px-2">{acct?.name || '-'}</td>
                             <td className="py-1.5 px-2 text-right font-medium">
                               {Number(exec?.actualAmount ?? order.netAmount).toLocaleString()}
                             </td>
-                            <td className="py-1.5 px-2 text-gray-500 max-w-[120px] truncate">{exec?.note || order.note || ''}</td>
+                            <td className="py-1.5 px-2 text-gray-500 max-w-[120px] truncate" title={exec?.note || ''}>{exec?.note || '-'}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-gray-800 font-bold">
-                        <td colSpan="8" className="py-2 px-2 text-right">合計</td>
+                        <td colSpan="9" className="py-2 px-2 text-right">合計</td>
                         <td className="py-2 px-2 text-right text-lg">NT$ {reportTotal.toLocaleString()}</td>
                         <td></td>
                       </tr>
