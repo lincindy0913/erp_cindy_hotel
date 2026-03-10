@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
-export default function InvoicePage() {
+function InvoicePageInner() {
   const router = useRouter();
   const { data: session } = useSession();
   const isLoggedIn = !!session;
@@ -66,6 +66,29 @@ export default function InvoicePage() {
     fetchInvoices();
     fetchSystemTaxRate();
   }, []);
+
+  // 從網址 ?edit=id 連動開啟編輯表單（例如從財務頁「發票號」或「編輯」點入）
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) return;
+    const id = parseInt(editId, 10);
+    if (Number.isNaN(id)) return;
+    let cancelled = false;
+    fetch(`/api/sales/${id}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(invoice => {
+        if (cancelled || !invoice) return;
+        if (['草稿', '待出納', '已付款'].includes(invoice.paymentStatus)) {
+          alert(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`);
+          return;
+        }
+        handleEdit(invoice);
+        setShowAddForm(true);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [searchParams.get('edit')]);
 
   async function fetchSystemTaxRate() {
     try {
@@ -317,6 +340,11 @@ export default function InvoicePage() {
   }
 
   function handleEdit(invoice) {
+    // 若發票付款狀態為草稿 / 待出納 / 已付款，不可再修改
+    if (['草稿', '待出納', '已付款'].includes(invoice.paymentStatus)) {
+      alert(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`);
+      return;
+    }
     setEditingInvoice(invoice);
     setFormData({
       invoiceNo: invoice.invoiceNo || '',
@@ -941,11 +969,12 @@ export default function InvoicePage() {
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-1 rounded text-xs ${
-                            invoice.status === '已核銷' ? 'bg-green-100 text-green-800' :
-                            invoice.status === '待核銷' ? 'bg-yellow-100 text-yellow-800' :
+                            invoice.paymentStatus === '已付款' ? 'bg-green-100 text-green-800' :
+                            invoice.paymentStatus === '待出納' ? 'bg-yellow-100 text-yellow-800' :
+                            invoice.paymentStatus === '草稿' ? 'bg-gray-100 text-gray-800' :
                             'bg-red-100 text-red-800'
                           }`}>
-                            {invoice.status || '待核銷'}
+                            {invoice.paymentStatus || '未付款'}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -958,12 +987,14 @@ export default function InvoicePage() {
                             </button>
                             {isLoggedIn && (
                               <>
-                                <button
-                                  onClick={() => handleEdit(invoice)}
-                                  className="text-green-600 hover:underline text-sm"
-                                >
-                                  編輯
-                                </button>
+                                {!['草稿', '待出納', '已付款'].includes(invoice.paymentStatus) && (
+                                  <button
+                                    onClick={() => handleEdit(invoice)}
+                                    className="text-green-600 hover:underline text-sm"
+                                  >
+                                    編輯
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleDelete(invoice.id)}
                                   className="text-red-600 hover:underline text-sm"
@@ -1095,5 +1126,13 @@ export default function InvoicePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function InvoicePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">載入中...</div>}>
+      <InvoicePageInner />
+    </Suspense>
   );
 }

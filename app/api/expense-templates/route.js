@@ -117,6 +117,8 @@ export async function POST(request) {
           accountingName: line.accountingName || '',
           summary: line.summary?.trim() || null,
           defaultAmount: line.defaultAmount ? parseFloat(line.defaultAmount) : null,
+          supplierId: line.supplierId ? parseInt(line.supplierId) : null,
+          supplierName: line.supplierName?.trim() || null,
           warehouse: line.warehouse?.trim() || null,
           paymentMethod: line.paymentMethod?.trim() || null,
           accountId: line.accountId ? parseInt(line.accountId) : null,

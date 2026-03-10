@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation';
 
 const ANALYTICS_TABS = [
   { key: 'price', label: '價格分析' },
+  { key: 'pnl-warehouse', label: '館別損益表' },
   { key: 'supplier-risk', label: '供應商風險' },
   { key: 'payables', label: '應付帳齡' },
   { key: 'cashflow-forecast', label: '現金流預測' },
@@ -48,6 +49,17 @@ export default function AnalyticsPage() {
   });
   const [reportApproving, setReportApproving] = useState(false);
 
+  // 館別損益表（從 cashflow 依會計科目彙總）
+  const [pnlByWarehouse, setPnlByWarehouse] = useState(null);
+  const [pnlWarehouseLoading, setPnlWarehouseLoading] = useState(false);
+  const [pnlStartDate, setPnlStartDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [pnlEndDate, setPnlEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [pnlWarehouseFilter, setPnlWarehouseFilter] = useState('');
+
   useEffect(() => {
     fetchProducts();
     fetchPriceComparison();
@@ -59,7 +71,25 @@ export default function AnalyticsPage() {
     if (activeTab === 'payables' && !payablesAging) fetchPayablesAging();
     if (activeTab === 'cashflow-forecast' && !cashForecast) fetchCashForecast();
     if (activeTab === 'business-report') fetchBusinessReport(reportMonth);
+    if (activeTab === 'pnl-warehouse') fetchPnlByWarehouse();
   }, [activeTab]);
+
+  async function fetchPnlByWarehouse() {
+    setPnlWarehouseLoading(true);
+    setPnlByWarehouse(null);
+    try {
+      const params = new URLSearchParams({ startDate: pnlStartDate, endDate: pnlEndDate });
+      if (pnlWarehouseFilter.trim()) params.set('warehouse', pnlWarehouseFilter.trim());
+      const res = await fetch(`/api/analytics/pnl-by-warehouse?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPnlByWarehouse(data);
+      }
+    } catch (e) {
+      console.error('取得館別損益表失敗:', e);
+    }
+    setPnlWarehouseLoading(false);
+  }
 
   useEffect(() => {
     if (selectedProduct) {
@@ -309,6 +339,112 @@ export default function AnalyticsPage() {
             ) : (
               <div className="text-center py-12 text-gray-400">無法載入供應商風險資料</div>
             )}
+          </div>
+        )}
+
+        {/* 館別損益表（從 cashflow 依會計科目） */}
+        {activeTab === 'pnl-warehouse' && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-4 mb-4">
+              <label className="text-sm text-gray-600">區間</label>
+              <input
+                type="date"
+                value={pnlStartDate}
+                onChange={e => setPnlStartDate(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm"
+              />
+              <span className="text-gray-400">～</span>
+              <input
+                type="date"
+                value={pnlEndDate}
+                onChange={e => setPnlEndDate(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm"
+              />
+              <label className="text-sm text-gray-600 ml-2">館別篩選（選填）</label>
+              <input
+                type="text"
+                value={pnlWarehouseFilter}
+                onChange={e => setPnlWarehouseFilter(e.target.value)}
+                placeholder="留空＝全部"
+                className="px-3 py-1.5 border rounded-lg text-sm w-32"
+              />
+              <button
+                onClick={fetchPnlByWarehouse}
+                disabled={pnlWarehouseLoading}
+                className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700 disabled:opacity-50"
+              >
+                {pnlWarehouseLoading ? '查詢中…' : '查詢'}
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">
+              資料來源：<Link href="/cashflow" className="text-cyan-600 hover:underline">現金流</Link>（含租屋收入、PMS 收入、貸款支出、出納支出等），依館別與會計科目彙總。
+            </p>
+            {pnlWarehouseLoading ? (
+              <div className="text-center py-12 text-gray-500">載入館別損益表中…</div>
+            ) : pnlByWarehouse?.byWarehouse?.length > 0 ? (
+              <div className="space-y-8">
+                {pnlByWarehouse.byWarehouse.map((row, idx) => (
+                  <div key={idx} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center">
+                      <h3 className="font-medium text-gray-700">館別：{row.warehouse}</h3>
+                      <div className="flex gap-6 text-sm">
+                        <span className="text-green-600">收入合計 NT$ {Number(row.totalIncome || 0).toLocaleString()}</span>
+                        <span className="text-red-600">支出合計 NT$ {Number(row.totalExpense || 0).toLocaleString()}</span>
+                        <span className="font-medium">損益 NT$ {Number(row.netProfit || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-6 p-4">
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-2">收入（按會計科目）</h4>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left">
+                              <th className="py-2 pr-2">會計科目</th>
+                              <th className="py-2 text-right">金額</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(row.incomeBySubject || []).map((item, i) => (
+                              <tr key={i} className="border-b border-gray-100">
+                                <td className="py-1.5 pr-2">{item.subject?.name ?? item.name ?? '-'}</td>
+                                <td className="py-1.5 text-right text-green-700">NT$ {Number(item.amount || 0).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                            {(!row.incomeBySubject || row.incomeBySubject.length === 0) && (
+                              <tr><td colSpan={2} className="py-2 text-gray-400">無</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-medium text-gray-500 mb-2">支出（按會計科目）</h4>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left">
+                              <th className="py-2 pr-2">會計科目</th>
+                              <th className="py-2 text-right">金額</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(row.expenseBySubject || []).map((item, i) => (
+                              <tr key={i} className="border-b border-gray-100">
+                                <td className="py-1.5 pr-2">{item.subject?.name ?? item.name ?? '-'}</td>
+                                <td className="py-1.5 text-right text-red-700">NT$ {Number(item.amount || 0).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                            {(!row.expenseBySubject || row.expenseBySubject.length === 0) && (
+                              <tr><td colSpan={2} className="py-2 text-gray-400">無</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : pnlByWarehouse && (!pnlByWarehouse.byWarehouse || pnlByWarehouse.byWarehouse.length === 0) ? (
+              <div className="text-center py-12 text-gray-400">此區間無現金流資料，請調整日期或館別後再查詢。</div>
+            ) : null}
           </div>
         )}
 

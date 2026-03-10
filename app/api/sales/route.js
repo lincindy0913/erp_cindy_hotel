@@ -16,6 +16,30 @@ export async function GET(request) {
       orderBy: { id: 'asc' }
     });
 
+    // 依付款單狀態計算每張發票的「付款狀態」
+    const paymentOrders = await prisma.paymentOrder.findMany({
+      where: {
+        status: { in: ['草稿', '待出納', '已執行'] }
+      },
+      select: {
+        invoiceIds: true,
+        status: true
+      }
+    });
+
+    function getPaymentStatusForInvoice(invoiceId) {
+      const idNum = Number(invoiceId);
+      const related = paymentOrders.filter(o => {
+        if (!Array.isArray(o.invoiceIds)) return false;
+        return o.invoiceIds.some(id => Number(id) === idNum || id === invoiceId);
+      });
+      if (related.length === 0) return '未付款';
+      if (related.some(o => o.status === '已執行')) return '已付款';
+      if (related.some(o => o.status === '待出納')) return '待出納';
+      if (related.some(o => o.status === '草稿')) return '草稿';
+      return '未付款';
+    }
+
     const result = sales.map(s => ({
       id: s.id,
       salesNo: s.salesNo,
@@ -29,6 +53,7 @@ export async function GET(request) {
       tax: Number(s.tax),
       totalAmount: Number(s.totalAmount),
       status: s.status,
+      paymentStatus: getPaymentStatusForInvoice(s.id),
       items: s.details.map(d => ({
         purchaseItemId: d.purchaseItemId,
         purchaseId: d.purchaseId,

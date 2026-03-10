@@ -25,7 +25,7 @@ export default function CashierPage() {
 
   // Batch selection
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
-  const [batchAccountId, setBatchAccountId] = useState('');
+  const [batchAccounts, setBatchAccounts] = useState([{ accountId: '', amount: '' }]);
   const [batchExecutionDate, setBatchExecutionDate] = useState(new Date().toISOString().split('T')[0]);
   const [batchNote, setBatchNote] = useState('');
   const [batchExecuting, setBatchExecuting] = useState(false);
@@ -110,66 +110,79 @@ export default function CashierPage() {
     selectedByMethod[method].orders.push(o);
   });
 
+  // Batch accounts helpers
+  const batchAccountsTotal = batchAccounts.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+  const batchAmountDiff = Math.round((selectedTotal - batchAccountsTotal) * 100) / 100;
+
   async function handleBatchExecute() {
     if (selectedOrderIds.size === 0) {
       alert('請至少勾選一筆付款單');
       return;
     }
-    if (!batchAccountId) {
-      alert('請選擇付款帳戶');
+    const validAccounts = batchAccounts.filter(a => a.accountId && parseFloat(a.amount) > 0);
+    if (validAccounts.length === 0) {
+      alert('請新增至少一個資金帳戶並輸入金額');
+      return;
+    }
+    if (Math.abs(batchAmountDiff) > 0.01) {
+      alert(`資金帳戶總額 NT$ ${batchAccountsTotal.toLocaleString()} 與付款單總額 NT$ ${selectedTotal.toLocaleString()} 不符，差額 NT$ ${batchAmountDiff.toLocaleString()}`);
       return;
     }
 
-    const confirmMsg = `確定要批次執行 ${selectedOrderIds.size} 筆付款單？\n總金額：NT$ ${selectedTotal.toLocaleString()}`;
+    // Check duplicate accounts
+    const accIds = validAccounts.map(a => a.accountId);
+    if (new Set(accIds).size !== accIds.length) {
+      alert('不可重複選擇相同帳戶');
+      return;
+    }
+
+    const accountSummary = validAccounts.map(a => {
+      const acct = accounts.find(ac => ac.id === parseInt(a.accountId));
+      return `${acct?.name || '帳戶'}: NT$ ${parseFloat(a.amount).toLocaleString()}`;
+    }).join('\n');
+
+    const confirmMsg = `確定要批次執行 ${selectedOrderIds.size} 筆付款單？\n總金額：NT$ ${selectedTotal.toLocaleString()}\n\n資金來源：\n${accountSummary}`;
     if (!confirm(confirmMsg)) return;
 
     setBatchExecuting(true);
-    const results = [];
-    const errors = [];
+    try {
+      const res = await fetch('/api/cashier/batch-execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderIds: Array.from(selectedOrderIds),
+          accounts: validAccounts.map(a => ({
+            accountId: parseInt(a.accountId),
+            amount: parseFloat(a.amount),
+          })),
+          executionDate: batchExecutionDate,
+          note: batchNote || '批次執行',
+        }),
+      });
 
-    for (const order of selectedOrders) {
+      let result;
       try {
-        const res = await fetch('/api/cashier/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            paymentOrderId: order.id,
-            executionDate: batchExecutionDate,
-            actualAmount: Number(order.netAmount),
-            accountId: batchAccountId,
-            paymentMethod: order.paymentMethod,
-            note: batchNote || `批次執行`,
-          }),
-        });
-        if (res.ok) {
-          const result = await res.json();
-          results.push({ orderNo: order.orderNo, ...result });
-          setExecutionResults(prev => ({
-            ...prev,
-            [order.id]: {
-              executionNo: result.executionNo,
-              cashTransactionNo: result.cashTransactionNo,
-            }
-          }));
-        } else {
-          const err = await res.json();
-          errors.push({ orderNo: order.orderNo, error: err.error || err.message || '執行失敗' });
-        }
+        result = await res.json();
       } catch {
-        errors.push({ orderNo: order.orderNo, error: '網路錯誤' });
+        alert(`批次執行失敗 (HTTP ${res.status})：伺服器回應無法解析`);
+        setBatchExecuting(false);
+        return;
       }
+      if (res.ok) {
+        alert(result.message || '批次執行成功');
+        setSelectedOrderIds(new Set());
+        setBatchAccounts([{ accountId: '', amount: '' }]);
+        fetchOrders();
+        fetchAccounts();
+      } else {
+        const msg = result?.error?.message || result?.error?.details?.message || result?.message || JSON.stringify(result);
+        alert(`批次執行失敗：${msg}`);
+      }
+    } catch (err) {
+      console.error('Batch execute error:', err);
+      alert('批次執行失敗: ' + (err?.message || String(err)));
     }
-
     setBatchExecuting(false);
-    setSelectedOrderIds(new Set());
-
-    let msg = `批次執行完成！\n成功：${results.length} 筆`;
-    if (errors.length > 0) {
-      msg += `\n失敗：${errors.length} 筆`;
-      errors.forEach(e => { msg += `\n  - ${e.orderNo}: ${e.error}`; });
-    }
-    alert(msg);
-    fetchOrders();
   }
 
   async function handleExecute(e, order) {
@@ -238,10 +251,69 @@ export default function CashierPage() {
     }
   }
 
+  // Report tab state
+  const [reportDateFrom, setReportDateFrom] = useState(new Date().toISOString().split('T')[0]);
+  const [reportDateTo, setReportDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [reportData, setReportData] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  async function fetchReportData() {
+    setReportLoading(true);
+    try {
+      const res = await fetch('/api/payment-orders');
+      const data = await res.json();
+      const allOrders = Array.isArray(data) ? data : [];
+      // Filter executed orders with execution date in range
+      const filtered = allOrders.filter(o => {
+        if (o.status !== '已執行') return false;
+        const exec = o.executions?.[0];
+        if (!exec) return false;
+        const execDate = exec.executionDate;
+        return execDate >= reportDateFrom && execDate <= reportDateTo;
+      });
+      // Sort by execution date
+      filtered.sort((a, b) => {
+        const da = a.executions?.[0]?.executionDate || '';
+        const db = b.executions?.[0]?.executionDate || '';
+        return da.localeCompare(db);
+      });
+      setReportData(filtered);
+    } catch { setReportData([]); }
+    setReportLoading(false);
+  }
+
+  // Group report data by payment method
+  const reportByMethod = {};
+  reportData.forEach(o => {
+    const exec = o.executions?.[0];
+    const method = exec?.paymentMethod || o.paymentMethod || '未指定';
+    if (!reportByMethod[method]) reportByMethod[method] = { count: 0, total: 0 };
+    reportByMethod[method].count++;
+    reportByMethod[method].total += Number(exec?.actualAmount ?? o.netAmount);
+  });
+  const reportTotal = reportData.reduce((sum, o) => {
+    const exec = o.executions?.[0];
+    return sum + Number(exec?.actualAmount ?? o.netAmount);
+  }, 0);
+
+  // Group report data by account
+  const reportByAccount = {};
+  reportData.forEach(o => {
+    const exec = o.executions?.[0];
+    if (!exec) return;
+    const accId = exec.accountId;
+    const acct = accounts.find(a => a.id === accId);
+    const accName = acct ? `${acct.name} (${acct.type})` : `帳戶#${accId}`;
+    if (!reportByAccount[accName]) reportByAccount[accName] = { count: 0, total: 0 };
+    reportByAccount[accName].count++;
+    reportByAccount[accName].total += Number(exec.actualAmount);
+  });
+
   const TABS = [
     { key: 'pending', label: `待執行 (${pendingOrders.length})` },
     { key: 'executed', label: `已執行 (${executedOrders.length})` },
     { key: 'rejected', label: `已退回 (${rejectedOrders.length})` },
+    { key: 'report', label: '出納報表' },
   ];
 
   function getDisplayOrders() {
@@ -264,7 +336,7 @@ export default function CashierPage() {
         <h2 className="text-2xl font-bold text-amber-800 mb-6">出納作業</h2>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        {activeTab !== 'report' && <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-amber-500">
             <p className="text-sm text-gray-500">待執行</p>
             <p className="text-2xl font-bold text-amber-700">{pendingOrders.length}</p>
@@ -279,7 +351,7 @@ export default function CashierPage() {
               NT$ {pendingOrders.reduce((s, o) => s + o.netAmount, 0).toLocaleString()}
             </p>
           </div>
-        </div>
+        </div>}
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4">
@@ -296,7 +368,7 @@ export default function CashierPage() {
         </div>
 
         {/* Orders Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        {activeTab !== 'report' && <div className="bg-white rounded-lg shadow overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">載入中...</div>
           ) : displayOrders.length === 0 ? (
@@ -410,12 +482,20 @@ export default function CashierPage() {
                                     <div className="font-semibold">{order.supplierName || '-'}</div>
                                   </div>
                                   <div>
+                                    <div className="text-xs text-gray-500 mb-1">館別</div>
+                                    <div className="font-semibold">{order.warehouse || '-'}</div>
+                                  </div>
+                                  <div>
                                     <div className="text-xs text-gray-500 mb-1">付款方式</div>
                                     <div className="font-semibold">{order.paymentMethod}</div>
                                   </div>
                                   <div>
                                     <div className="text-xs text-gray-500 mb-1">應付金額</div>
                                     <div className="font-bold text-lg text-amber-700">NT$ {Number(order.netAmount).toLocaleString()}</div>
+                                  </div>
+                                  <div className="md:col-span-2">
+                                    <div className="text-xs text-gray-500 mb-1">摘要</div>
+                                    <div className="font-medium text-gray-800">{order.note || '-'}</div>
                                   </div>
                                 </div>
                                 {order.checkNo && (
@@ -606,7 +686,7 @@ export default function CashierPage() {
               </tbody>
             </table>
           )}
-        </div>
+        </div>}
 
         {/* Batch Execution Panel - only show on pending tab when items selected */}
         {isPendingTab && selectedOrderIds.size > 0 && (
@@ -664,38 +744,12 @@ export default function CashierPage() {
             </div>
 
             {/* Batch execution form */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">執行日期</label>
                 <input type="date" value={batchExecutionDate}
                   onChange={e => setBatchExecutionDate(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">付款帳戶 *</label>
-                <select value={batchAccountId}
-                  onChange={e => setBatchAccountId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
-                  <option value="">-- 選擇帳戶 --</option>
-                  {accounts.filter(a => a.isActive).map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.type}) - 餘額 NT$ {Number(a.currentBalance).toLocaleString()}
-                    </option>
-                  ))}
-                </select>
-                {batchAccountId && (() => {
-                  const acct = accounts.find(a => a.id === parseInt(batchAccountId));
-                  if (acct) {
-                    const remaining = Number(acct.currentBalance) - selectedTotal;
-                    return (
-                      <p className={`text-xs mt-1 ${remaining < 0 ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                        執行後餘額：NT$ {remaining.toLocaleString()}
-                        {remaining < 0 && ' (餘額不足！)'}
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
@@ -706,18 +760,120 @@ export default function CashierPage() {
               </div>
             </div>
 
+            {/* Multiple funding accounts */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">資金帳戶 *</label>
+                <button type="button"
+                  onClick={() => setBatchAccounts(prev => [...prev, { accountId: '', amount: '' }])}
+                  className="text-sm text-amber-600 hover:text-amber-800 font-medium">
+                  + 新增帳戶
+                </button>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">帳戶</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-40">支出金額</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-36">帳戶餘額</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-36">執行後餘額</th>
+                      <th className="px-3 py-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {batchAccounts.map((ba, idx) => {
+                      const acct = ba.accountId ? accounts.find(a => a.id === parseInt(ba.accountId)) : null;
+                      const currentBal = acct ? Number(acct.currentBalance) : 0;
+                      const payAmount = parseFloat(ba.amount) || 0;
+                      const afterBal = currentBal - payAmount;
+                      // Already selected account IDs (excluding current row)
+                      const usedIds = batchAccounts.filter((_, i) => i !== idx).map(a => a.accountId).filter(Boolean);
+                      return (
+                        <tr key={idx}>
+                          <td className="px-3 py-2">
+                            <select value={ba.accountId}
+                              onChange={e => {
+                                const newAccounts = [...batchAccounts];
+                                newAccounts[idx] = { ...newAccounts[idx], accountId: e.target.value };
+                                setBatchAccounts(newAccounts);
+                              }}
+                              className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                              <option value="">-- 選擇帳戶 --</option>
+                              {accounts.filter(a => a.isActive && !usedIds.includes(String(a.id))).map(a => (
+                                <option key={a.id} value={a.id}>
+                                  {a.name} ({a.type})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <input type="number" step="0.01" min="0"
+                              value={ba.amount}
+                              onChange={e => {
+                                const newAccounts = [...batchAccounts];
+                                newAccounts[idx] = { ...newAccounts[idx], amount: e.target.value };
+                                setBatchAccounts(newAccounts);
+                              }}
+                              placeholder="0"
+                              className="w-full border rounded px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-500">
+                            {acct ? `NT$ ${currentBal.toLocaleString()}` : '-'}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-medium ${acct && afterBal < 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                            {acct ? `NT$ ${afterBal.toLocaleString()}` : '-'}
+                            {acct && afterBal < 0 && <span className="text-xs ml-1">(不足)</span>}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {batchAccounts.length > 1 && (
+                              <button type="button"
+                                onClick={() => setBatchAccounts(prev => prev.filter((_, i) => i !== idx))}
+                                className="text-red-400 hover:text-red-600 text-lg leading-none">
+                                &times;
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-50 font-semibold">
+                      <td className="px-3 py-2 text-right">合計</td>
+                      <td className="px-3 py-2 text-right">NT$ {batchAccountsTotal.toLocaleString()}</td>
+                      <td colSpan="3" className="px-3 py-2"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              {/* Validation message */}
+              {batchAccounts.some(a => a.accountId) && (
+                <div className={`mt-2 text-sm p-2 rounded ${
+                  Math.abs(batchAmountDiff) < 0.01
+                    ? 'bg-green-50 text-green-700'
+                    : 'bg-red-50 text-red-700'
+                }`}>
+                  {Math.abs(batchAmountDiff) < 0.01
+                    ? `資金帳戶合計 NT$ ${batchAccountsTotal.toLocaleString()} = 付款單總額 NT$ ${selectedTotal.toLocaleString()} ✓`
+                    : `差額 NT$ ${batchAmountDiff.toLocaleString()}（付款單總額 NT$ ${selectedTotal.toLocaleString()} − 帳戶合計 NT$ ${batchAccountsTotal.toLocaleString()}）`
+                  }
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setSelectedOrderIds(new Set())}
+                onClick={() => { setSelectedOrderIds(new Set()); setBatchAccounts([{ accountId: '', amount: '' }]); }}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
               >
                 取消選取
               </button>
               <button
                 onClick={handleBatchExecute}
-                disabled={batchExecuting || !batchAccountId}
+                disabled={batchExecuting || Math.abs(batchAmountDiff) > 0.01 || !batchAccounts.some(a => a.accountId)}
                 className={`px-6 py-2 rounded-lg text-sm font-medium ${
-                  batchExecuting || !batchAccountId
+                  batchExecuting || Math.abs(batchAmountDiff) > 0.01 || !batchAccounts.some(a => a.accountId)
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-amber-600 text-white hover:bg-amber-700'
                 }`}
@@ -727,7 +883,191 @@ export default function CashierPage() {
             </div>
           </div>
         )}
+        {/* Report Tab */}
+        {activeTab === 'report' && (
+          <div className="print-area">
+            {/* Filter controls - hidden when printing */}
+            <div className="bg-white rounded-lg shadow p-4 mb-4 no-print">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
+                  <input type="date" value={reportDateFrom}
+                    onChange={e => setReportDateFrom(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+                  <input type="date" value={reportDateTo}
+                    onChange={e => setReportDateTo(e.target.value)}
+                    className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
+                </div>
+                <button onClick={fetchReportData}
+                  disabled={reportLoading}
+                  className="bg-amber-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50 font-medium">
+                  {reportLoading ? '查詢中...' : '查詢'}
+                </button>
+                {reportData.length > 0 && (
+                  <button onClick={() => window.print()}
+                    className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 font-medium flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    列印報表
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Printable Report */}
+            {reportData.length > 0 && (
+              <div className="print-content bg-white rounded-lg shadow" id="cashier-report">
+                {/* Report Header */}
+                <div className="p-6 pb-2 border-b">
+                  <h2 className="text-xl font-bold text-center mb-1">出納執行報表</h2>
+                  <p className="text-center text-sm text-gray-600 mb-3">
+                    報表期間：{reportDateFrom} 至 {reportDateTo}
+                  </p>
+                  <div className="flex justify-between text-xs text-gray-500 mb-2">
+                    <span>列印日期：{new Date().toLocaleDateString('zh-TW')} {new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>共 {reportData.length} 筆，總金額 NT$ {reportTotal.toLocaleString()}</span>
+                  </div>
+
+                  {/* Summary by payment method & account */}
+                  <div className="grid grid-cols-2 gap-4 mb-2">
+                    <div>
+                      <div className="text-xs font-semibold text-gray-600 mb-1">依付款方式</div>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(reportByMethod).map(([method, info]) => (
+                          <span key={method} className="text-xs bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                            {method}：{info.count} 筆 / NT$ {info.total.toLocaleString()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-gray-600 mb-1">依資金帳戶</div>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(reportByAccount).map(([accName, info]) => (
+                          <span key={accName} className="text-xs bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                            {accName}：{info.count} 筆 / NT$ {info.total.toLocaleString()}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Report Table */}
+                <div className="p-4">
+                  <table className="w-full text-xs border-collapse report-table">
+                    <thead>
+                      <tr className="border-b-2 border-gray-800">
+                        <th className="py-1.5 px-2 text-left font-semibold w-8">#</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">執行日期</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">付款單號</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">出納單號</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">廠商</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">館別</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">付款方式</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">帳戶</th>
+                        <th className="py-1.5 px-2 text-right font-semibold">實付金額</th>
+                        <th className="py-1.5 px-2 text-left font-semibold">備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportData.map((order, idx) => {
+                        const exec = order.executions?.[0];
+                        const acct = exec ? accounts.find(a => a.id === exec.accountId) : null;
+                        return (
+                          <tr key={order.id} className="border-b border-gray-200">
+                            <td className="py-1.5 px-2 text-gray-500">{idx + 1}</td>
+                            <td className="py-1.5 px-2">{exec?.executionDate || '-'}</td>
+                            <td className="py-1.5 px-2 font-medium">{order.orderNo}</td>
+                            <td className="py-1.5 px-2">{exec?.executionNo || '-'}</td>
+                            <td className="py-1.5 px-2">{order.supplierName || '-'}</td>
+                            <td className="py-1.5 px-2">{order.warehouse || '-'}</td>
+                            <td className="py-1.5 px-2">{exec?.paymentMethod || order.paymentMethod}</td>
+                            <td className="py-1.5 px-2">{acct?.name || '-'}</td>
+                            <td className="py-1.5 px-2 text-right font-medium">
+                              {Number(exec?.actualAmount ?? order.netAmount).toLocaleString()}
+                            </td>
+                            <td className="py-1.5 px-2 text-gray-500 max-w-[120px] truncate">{exec?.note || order.note || ''}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-800 font-bold">
+                        <td colSpan="8" className="py-2 px-2 text-right">合計</td>
+                        <td className="py-2 px-2 text-right text-lg">NT$ {reportTotal.toLocaleString()}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* Signature lines */}
+                <div className="p-6 pt-8">
+                  <div className="grid grid-cols-3 gap-8 text-sm">
+                    <div className="text-center">
+                      <div className="border-b border-gray-400 pb-8 mb-2"></div>
+                      <div className="text-gray-600">製表人</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="border-b border-gray-400 pb-8 mb-2"></div>
+                      <div className="text-gray-600">覆核人</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="border-b border-gray-400 pb-8 mb-2"></div>
+                      <div className="text-gray-600">核准人</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!reportLoading && reportData.length === 0 && (
+              <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                請選擇日期區間後按「查詢」
+              </div>
+            )}
+          </div>
+        )}
       </main>
+
+      {/* Print styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-area, .print-area * {
+            visibility: visible;
+          }
+          .print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .print-content {
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          .report-table {
+            font-size: 10pt;
+          }
+          .report-table th, .report-table td {
+            padding: 4px 6px;
+          }
+          @page {
+            size: A4 landscape;
+            margin: 10mm 12mm;
+          }
+        }
+      `}</style>
     </div>
   );
 }

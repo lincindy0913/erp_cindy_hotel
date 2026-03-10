@@ -17,15 +17,16 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
     const paymentTerms = searchParams.get('paymentTerms');
 
-    // 取得所有已付款的發票ID
-    const allPayments = await prisma.payment.findMany({
+    // 只呈現「未付款」：排除已在任一付款單（草稿/待出納/已執行）的發票
+    const paymentOrders = await prisma.paymentOrder.findMany({
+      where: { status: { in: ['草稿', '待出納', '已執行'] } },
       select: { invoiceIds: true }
     });
-    const paidInvoiceIds = new Set();
-    allPayments.forEach(payment => {
-      const ids = payment.invoiceIds;
+    const inPaymentOrPaidIds = new Set();
+    paymentOrders.forEach(order => {
+      const ids = order.invoiceIds;
       if (Array.isArray(ids)) {
-        ids.forEach(id => paidInvoiceIds.add(id));
+        ids.forEach(id => inPaymentOrPaidIds.add(Number(id)));
       }
     });
 
@@ -38,8 +39,8 @@ export async function GET(request) {
     const unpaidInvoices = [];
 
     for (const invoice of sales) {
-      // 排除已付款
-      if (paidInvoiceIds.has(invoice.id)) continue;
+      // 排除：已在付款單（草稿/待出納/已執行）的發票，只保留真正未付款的
+      if (inPaymentOrPaidIds.has(invoice.id)) continue;
 
       // 從明細取得廠商和館別資訊
       let invoiceSupplierId = null;

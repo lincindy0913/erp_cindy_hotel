@@ -71,6 +71,12 @@ export async function POST(request) {
     const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
 
     const isCheck = data.paymentMethod === '支票';
+    const checkAccountId = data.checkAccountId ? parseInt(data.checkAccountId) : null;
+    let checkAccountName = data.checkAccount || null;
+    if (isCheck && checkAccountId) {
+      const acc = await prisma.cashAccount.findUnique({ where: { id: checkAccountId }, select: { name: true } });
+      if (acc) checkAccountName = acc.name;
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.paymentOrder.create({
@@ -87,7 +93,7 @@ export async function POST(request) {
           dueDate: data.dueDate || null,
           accountId: data.accountId ? parseInt(data.accountId) : null,
           checkNo: data.checkNo || null,
-          checkAccount: data.checkAccount || null,
+          checkAccount: checkAccountName,
           checkIssueDate: data.checkIssueDate || null,
           checkDueDate: data.checkDueDate || null,
           note: data.note || null,
@@ -96,7 +102,7 @@ export async function POST(request) {
         },
       });
 
-      // 支票付款：自動建立 Check 記錄
+      // 支票付款：自動建立 Check 記錄（開票帳戶連動資金帳戶 → sourceAccountId）
       let check = null;
       if (isCheck) {
         const chkDateStr = now.toISOString().split('T')[0].replace(/-/g, '');
@@ -112,7 +118,7 @@ export async function POST(request) {
         }
         const checkNo = `${chkPrefix}${String(maxChkSeq + 1).padStart(4, '0')}`;
         const checkNumber = `PAY-${orderNo}`;
-        const dueDate = now.toISOString().split('T')[0];
+        const dueDate = data.checkDueDate || now.toISOString().split('T')[0];
 
         check = await tx.check.create({
           data: {
@@ -120,7 +126,7 @@ export async function POST(request) {
             checkType: 'payable',
             checkNumber,
             amount: data.netAmount,
-            issueDate: now.toISOString().split('T')[0],
+            issueDate: data.checkIssueDate || now.toISOString().split('T')[0],
             dueDate,
             status: 'pending',
             drawerType: 'company',
@@ -129,6 +135,7 @@ export async function POST(request) {
             paymentId: order.id,
             invoiceIds: data.invoiceIds,
             warehouse: data.warehouse || null,
+            sourceAccountId: checkAccountId || undefined,
             note: `自動建立 - 付款單 ${orderNo}`,
             createdBy: session?.user?.email || null,
           },

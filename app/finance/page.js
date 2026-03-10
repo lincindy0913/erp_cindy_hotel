@@ -56,7 +56,7 @@ export default function PaymentPage() {
     checkIssueDate: '',
     checkDate: '',
     checkNo: '',
-    checkAccount: '',
+    checkAccountId: '',
     note: '',
     discount: '',
     paymentAmount: '',
@@ -82,7 +82,7 @@ export default function PaymentPage() {
     }
   }, [orders]);
 
-  // 當勾選的發票變動時，自動更新付款金額
+  // 當勾選的發票變動時，自動更新付款金額（含支票金額）
   useEffect(() => {
     if (selectedInvoiceIds.size > 0) {
       const total = parseFloat(calculateTotal()) || 0;
@@ -93,6 +93,28 @@ export default function PaymentPage() {
       }));
     }
   }, [selectedInvoiceIds]);
+
+  const FINANCE_LAST_CHECK_KEY = 'finance_lastCheck';
+  function getLastCheckValues() {
+    try {
+      const raw = typeof window !== 'undefined' && window.localStorage.getItem(FINANCE_LAST_CHECK_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+  function saveLastCheckValues(data) {
+    try {
+      if (typeof window !== 'undefined' && data) {
+        window.localStorage.setItem(FINANCE_LAST_CHECK_KEY, JSON.stringify({
+          checkIssueDate: data.checkIssueDate || '',
+          checkDate: data.checkDate || '',
+          checkNo: data.checkNo || '',
+          checkAccountId: data.checkAccountId || ''
+        }));
+      }
+    } catch (_) {}
+  }
 
   async function fetchOrders() {
     try {
@@ -255,6 +277,29 @@ export default function PaymentPage() {
 
     const isCheck = formData.paymentMethod === '支票';
 
+    if (isCheck) {
+      if (!formData.checkIssueDate?.trim()) {
+        alert('請填寫付款(開票)日期');
+        return;
+      }
+      if (!formData.checkDate?.trim()) {
+        alert('請填寫支票日期');
+        return;
+      }
+      if (!formData.checkNo?.trim()) {
+        alert('請填寫支票號碼');
+        return;
+      }
+      if (!formData.checkAccountId) {
+        alert('請選擇開票帳戶（資金帳戶）');
+        return;
+      }
+      if (!formData.paymentAmount || parseFloat(formData.paymentAmount) <= 0) {
+        alert('請先勾選發票，支票金額將自動帶入勾選發票的加總金額');
+        return;
+      }
+    }
+
     try {
       const orderData = {
         invoiceIds: Array.from(selectedInvoiceIds),
@@ -270,11 +315,11 @@ export default function PaymentPage() {
       };
 
       if (isCheck) {
-        // 支票：傳送支票相關欄位，後端會自動建立 Check 記錄
+        // 支票：傳送支票相關欄位，後端會自動建立 Check 記錄；開票帳戶連動資金帳戶
         orderData.checkIssueDate = formData.checkIssueDate || null;
         orderData.checkDueDate = formData.checkDate || null;
         orderData.checkNo = formData.checkNo || null;
-        orderData.checkAccount = formData.checkAccount || null;
+        orderData.checkAccountId = formData.checkAccountId ? parseInt(formData.checkAccountId) : null;
       } else {
         // 非支票：付款日期、付款帳戶
         orderData.dueDate = formData.paymentDate || null;
@@ -289,6 +334,7 @@ export default function PaymentPage() {
 
       if (response.ok) {
         const result = await response.json();
+        if (isCheck) saveLastCheckValues(formData);
         const checkMsg = result.linkedCheckNo ? `\n已自動建立支票記錄：${result.linkedCheckNo}` : '';
         alert(`付款單建立成功（草稿）！${checkMsg}`);
         setShowAddForm(false);
@@ -314,7 +360,7 @@ export default function PaymentPage() {
       checkIssueDate: '',
       checkDate: '',
       checkNo: '',
-      checkAccount: '',
+      checkAccountId: '',
       note: '',
       discount: '',
       paymentAmount: '',
@@ -525,14 +571,6 @@ export default function PaymentPage() {
                     setSelectedInvoiceIds(new Set());
                     setUnpaidInvoices([]);
                     resetFilterAndForm();
-                    const latestOrder = orders.length > 0 ? orders[0] : null;
-                    if (latestOrder) {
-                      setFormData(prev => ({
-                        ...prev,
-                        checkIssueDate: latestOrder.checkIssueDate || '',
-                        checkDate: latestOrder.checkDueDate || '',
-                      }));
-                    }
                   }
                 }}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
@@ -754,14 +792,18 @@ export default function PaymentPage() {
                               <td className="px-3 py-2 text-sm">{invoice.warehouse || '-'}</td>
                               <td className="px-3 py-2 text-sm">{invoice.invoiceTitle || '-'}</td>
                               <td className="px-3 py-2 text-sm">{invoice.supplierName || getSupplierName(invoice.supplierId)}</td>
-                              <td className="px-3 py-2 text-sm font-medium">{invoice.invoiceNo || invoice.salesNo}</td>
+                              <td className="px-3 py-2 text-sm font-medium">
+                                <Link href={`/sales?edit=${invoice.id}`} target="_blank" className="text-indigo-600 hover:underline">
+                                  {invoice.invoiceNo || invoice.salesNo}
+                                </Link>
+                              </td>
                               <td className="px-3 py-2 text-sm">{invoice.invoiceDate || invoice.salesDate}</td>
                               <td className="px-3 py-2 text-sm font-semibold">
                                 NT$ {parseFloat(invoice.totalAmount || (invoice.amount || 0) + (invoice.tax || 0)).toFixed(2)}
                               </td>
                               <td className="px-3 py-2 text-sm">
                                 <div className="flex gap-2">
-                                  <Link href="/sales" target="_blank" className="text-indigo-600 hover:underline text-sm">編輯</Link>
+                                  <Link href={`/sales?edit=${invoice.id}`} target="_blank" className="text-indigo-600 hover:underline text-sm">編輯</Link>
                                   <Link href={`/payment-voucher/${invoice.id}`} target="_blank" className="text-green-600 hover:underline text-sm">列印傳票</Link>
                                 </div>
                               </td>
@@ -802,7 +844,17 @@ export default function PaymentPage() {
                   <select
                     required
                     value={formData.paymentMethod}
-                    onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (next === '支票') {
+                        const last = getLastCheckValues();
+                        if (last && !formData.checkIssueDate && !formData.checkDate && !formData.checkNo && !formData.checkAccountId) {
+                          setFormData(prev => ({ ...prev, paymentMethod: next, ...last }));
+                          return;
+                        }
+                      }
+                      setFormData({ ...formData, paymentMethod: next });
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     {paymentMethodOptions.map(method => (
@@ -883,14 +935,79 @@ export default function PaymentPage() {
                 </h4>
 
                 {formData.paymentMethod === '支票' ? (
-                  /* 支票付款：不需填寫付款資訊，後續在支票管理頁處理 */
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <p className="text-sm text-amber-700 mb-2">
-                      支票付款將在儲存後自動建立支票記錄，請至
+                  /* 支票付款：付款(開票)日期、支票日期、支票號碼、開票帳戶、支票金額、會計折讓、備註 */
+                  <div className="space-y-4">
+                    <p className="text-sm text-amber-700">
+                      支票付款將在儲存後自動建立支票記錄，可至
                       <Link href="/checks" className="text-indigo-600 hover:underline font-semibold mx-1">支票管理</Link>
-                      頁面進行後續管理（兌現、到期追蹤等）。
+                      頁面追蹤兌現與到期。
                     </p>
-                    <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">付款(開票)日期 *</label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.checkIssueDate}
+                          onChange={(e) => setFormData({ ...formData, checkIssueDate: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">支票日期 *</label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.checkDate}
+                          onChange={(e) => setFormData({ ...formData, checkDate: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">支票號碼 *</label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.checkNo}
+                          onChange={(e) => setFormData({ ...formData, checkNo: e.target.value })}
+                          placeholder="請輸入支票號碼"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">開票帳戶 *</label>
+                        <select
+                          required
+                          value={formData.checkAccountId}
+                          onChange={(e) => setFormData({ ...formData, checkAccountId: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="">請選擇資金帳戶（開票帳戶）</option>
+                          {cashAccounts.map(acc => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name}{acc.warehouse ? ` (${acc.warehouse})` : ''} - {acc.type}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">連動「資金帳戶管理」設定</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">支票金額 *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          readOnly
+                          value={formData.paymentAmount}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                        />
+                        {selectedInvoiceIds.size > 0 && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            已依勾選發票總額 NT$ {calculateTotal()} - 折讓 NT$ {parseFloat(formData.discount || 0).toFixed(2)} 自動帶入
+                          </p>
+                        )}
+                      </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">會計折讓</label>
                         <input
@@ -911,24 +1028,6 @@ export default function PaymentPage() {
                           placeholder="0.00"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">付款金額 *</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          required
-                          value={formData.paymentAmount}
-                          onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                        {selectedInvoiceIds.size > 0 && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            發票總金額 NT$ {calculateTotal()} - 折讓 NT$ {parseFloat(formData.discount || 0).toFixed(2)} = NT$ {(parseFloat(calculateTotal()) - parseFloat(formData.discount || 0)).toFixed(2)}
-                          </p>
-                        )}
                       </div>
                       <div className="col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>

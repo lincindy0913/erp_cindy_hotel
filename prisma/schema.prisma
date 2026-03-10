@@ -1811,6 +1811,8 @@ model TemplateEntryLine {
   accountingName  String    @map("accounting_name") @db.VarChar(100)
   summary         String?   @db.VarChar(500)
   defaultAmount   Decimal?  @map("default_amount") @db.Decimal(15, 2)
+  supplierId      Int?      @map("supplier_id")    // 廠商（選填）
+  supplierName    String?   @map("supplier_name") @db.VarChar(255)
   warehouse       String?   @db.VarChar(100)       // 館別
   paymentMethod   String?   @map("payment_method") @db.VarChar(50)
   accountId       Int?      @map("account_id")     // 轉帳存簿 (CashAccount)

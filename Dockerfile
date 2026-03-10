@@ -27,6 +27,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
 # Install OpenSSL 3 for Prisma engine compatibility
 RUN apk add --no-cache openssl libssl3 libcrypto3
@@ -53,5 +54,9 @@ USER nextjs
 
 EXPOSE 3000
 
-# Wait for DB then run migrations and start server
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss 2>/dev/null; node server.js"]
+# Optional: Docker healthcheck (Railway uses deploy.healthcheckPath in railway.json)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+# Wait for DB then run migrations and start server (Railway/Docker)
+CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss 2>/dev/null; exec node server.js"]

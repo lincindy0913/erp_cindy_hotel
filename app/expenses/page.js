@@ -22,6 +22,8 @@ const EMPTY_ENTRY_LINE = {
   accountingName: '',
   summary: '',
   defaultAmount: '',
+  supplierId: '',      // 廠商（選填）
+  supplierName: '',
   warehouse: '',       // 館別
   paymentMethod: '',   // 付款方式
   accountId: ''        // 轉帳存簿 (CashAccount id)
@@ -64,7 +66,6 @@ export default function ExpensesPage() {
       { ...EMPTY_ENTRY_LINE, entryType: 'credit' }
     ],
     purchaseItems: [{ ...EMPTY_PURCHASE_ITEM }],
-    warehouseAccountMap: [],  // [{ warehouse, accountId }] 館別對應支出存簿
     defaultDebitCode: '5211', defaultDebitName: '薪資費用',
     defaultCreditCode: '1111', defaultCreditName: '現金'
   });
@@ -140,7 +141,7 @@ export default function ExpensesPage() {
         fetch('/api/warehouse-departments'),
         fetch('/api/suppliers?activeOnly=true'),
         fetch('/api/products'),
-        fetch('/api/settings/accounting-subjects'),
+        fetch('/api/accounting-subjects'),
         fetch('/api/cashflow/accounts').catch(() => ({ json: () => [] }))
       ]);
       const templatesData = await templatesRes.json();
@@ -216,7 +217,6 @@ export default function ExpensesPage() {
         { ...EMPTY_ENTRY_LINE, entryType: 'credit' }
       ],
     purchaseItems: [{ ...EMPTY_PURCHASE_ITEM }],
-    warehouseAccountMap: [],
     defaultDebitCode: '5211', defaultDebitName: '薪資費用',
       defaultCreditCode: '1111', defaultCreditName: '現金'
     });
@@ -241,6 +241,8 @@ export default function ExpensesPage() {
         accountingName: l.accountingName || '',
         summary: l.summary || '',
         defaultAmount: l.defaultAmount != null ? String(l.defaultAmount) : '',
+        supplierId: l.supplierId ? String(l.supplierId) : '',
+        supplierName: l.supplierName || '',
         warehouse: l.warehouse || '',
         paymentMethod: l.paymentMethod || '',
         accountId: l.accountId ? String(l.accountId) : ''
@@ -253,9 +255,6 @@ export default function ExpensesPage() {
             note: item.note || ''
           }))
         : [{ ...EMPTY_PURCHASE_ITEM }],
-      warehouseAccountMap: (Array.isArray(tmpl.warehouseAccountMap) && tmpl.warehouseAccountMap.length > 0)
-        ? tmpl.warehouseAccountMap.map(w => ({ warehouse: w.warehouse || '', accountId: w.accountId ? String(w.accountId) : '' }))
-        : (warehouses.length > 0 ? warehouses.map(w => ({ warehouse: w, accountId: '' })) : []),
       defaultDebitCode: tmpl.defaultDebitCode || '5211',
       defaultDebitName: tmpl.defaultDebitName || '薪資費用',
       defaultCreditCode: tmpl.defaultCreditCode || '1111',
@@ -278,6 +277,13 @@ export default function ExpensesPage() {
     }));
   }
 
+  function addEntryLineSingle() {
+    setTemplateForm(prev => ({
+      ...prev,
+      entryLines: [...prev.entryLines, { ...EMPTY_ENTRY_LINE, entryType: 'debit' }]
+    }));
+  }
+
   function removeEntryLine(idx) {
     setTemplateForm(prev => ({
       ...prev,
@@ -292,21 +298,22 @@ export default function ExpensesPage() {
     }));
   }
 
-  function getWarehouseAccount(wh) {
-    const w = (templateForm.warehouseAccountMap || []).find(x => x.warehouse === wh);
-    return w?.accountId ?? '';
-  }
-
-  function updateWarehouseAccount(wh, accountId) {
+  function updateEntryLineAccounting(idx, codeOrName, isCode) {
     setTemplateForm(prev => {
-      const list = [...(prev.warehouseAccountMap || [])];
-      const idx = list.findIndex(x => x.warehouse === wh);
-      if (idx >= 0) {
-        list[idx] = { ...list[idx], accountId };
-      } else {
-        list.push({ warehouse: wh, accountId });
-      }
-      return { ...prev, warehouseAccountMap: list };
+      const lines = prev.entryLines.map((l, i) => {
+        if (i !== idx) return l;
+        const subList = accountingSubjects;
+        if (isCode) {
+          const code = String(codeOrName).trim();
+          const sub = subList.find(s => String(s.code).trim() === code);
+          return { ...l, accountingCode: codeOrName, accountingName: sub ? (sub.name || '') : l.accountingName };
+        } else {
+          const name = String(codeOrName).trim();
+          const sub = subList.find(s => (s.name || '').trim() === name);
+          return { ...l, accountingName: codeOrName, accountingCode: sub ? (sub.code || '') : l.accountingCode };
+        }
+      });
+      return { ...prev, entryLines: lines };
     });
   }
 
@@ -360,7 +367,7 @@ export default function ExpensesPage() {
       }
       for (const line of templateForm.entryLines) {
         if (!line.accountingCode?.trim() || !line.accountingName?.trim()) {
-          alert('每筆分錄必須填寫科目代碼和科目名稱');
+          alert('每筆分錄必須填寫會計代碼和科目名稱');
           return;
         }
         if (!line.warehouse?.trim()) {
@@ -404,14 +411,13 @@ export default function ExpensesPage() {
         accountingName: l.accountingName,
         summary: l.summary,
         defaultAmount: l.defaultAmount,
+        supplierId: l.supplierId || null,
+        supplierName: l.supplierName || '',
         warehouse: l.warehouse,
         paymentMethod: l.paymentMethod,
         accountId: l.accountId || null,
         sortOrder: i
       }));
-      body.warehouseAccountMap = (templateForm.warehouseAccountMap || [])
-        .filter(w => w.warehouse && w.accountId)
-        .map(w => ({ warehouse: w.warehouse, accountId: parseInt(w.accountId) }));
       body.warehouseAmounts = null;
       body.defaultDebitCode = templateForm.defaultDebitCode || null;
       body.defaultDebitName = templateForm.defaultDebitName || null;
@@ -593,6 +599,8 @@ export default function ExpensesPage() {
           accountingName: l.accountingName,
           summary: summary || l.accountingName || '',
           amount: l.defaultAmount != null ? String(l.defaultAmount) : '',
+          supplierId: l.supplierId ? String(l.supplierId) : '',
+          supplierName: l.supplierName || '',
           warehouse: l.warehouse || '',
           paymentMethod: l.paymentMethod || '',
           accountId: l.accountId ? String(l.accountId) : '',
@@ -1033,18 +1041,18 @@ export default function ExpensesPage() {
                     </div>
                   )}
 
-                  {/* Fixed-type: 會計分錄（每筆自選館別、付款方式、轉帳存簿）+ 館別對應支出存簿 */}
+                  {/* Fixed-type: 會計分錄（每筆自選館別、付款方式、轉帳存簿）；不需設定借貸方，新增時一借一貸 */}
                   {mainTab === 'fixed' && (
                     <div style={{ marginBottom: 16 }}>
                       <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>會計分錄（每筆需選擇館別、付款方式；轉帳/匯款時選擇轉帳存簿）</h4>
                       <table style={tableStyle}>
                         <thead>
                           <tr>
-                            <th style={{ ...thStyle, width: 70 }}>借/貸</th>
-                            <th style={{ ...thStyle, width: 90 }}>科目代碼</th>
+                            <th style={{ ...thStyle, width: 90 }}>會計代碼</th>
                             <th style={{ ...thStyle, width: 100 }}>科目名稱</th>
                             <th style={{ ...thStyle, width: 120 }}>摘要</th>
                             <th style={{ ...thStyle, width: 90 }}>預設金額</th>
+                            <th style={{ ...thStyle, width: 140 }}>廠商</th>
                             <th style={{ ...thStyle, width: 90 }}>館別 *</th>
                             <th style={{ ...thStyle, width: 90 }}>付款方式 *</th>
                             <th style={{ ...thStyle, width: 130 }}>轉帳存簿</th>
@@ -1055,21 +1063,13 @@ export default function ExpensesPage() {
                           {templateForm.entryLines.map((line, idx) => (
                             <tr key={idx} style={{ background: line.entryType === 'debit' ? '#fff3e0' : '#e3f2fd' }}>
                               <td style={tdStyle}>
-                                <select value={line.entryType}
-                                  onChange={e => updateEntryLine(idx, 'entryType', e.target.value)}
-                                  style={{ ...inputStyle, marginBottom: 0 }}>
-                                  <option value="debit">借方</option>
-                                  <option value="credit">貸方</option>
-                                </select>
-                              </td>
-                              <td style={tdStyle}>
                                 <input value={line.accountingCode}
-                                  onChange={e => updateEntryLine(idx, 'accountingCode', e.target.value)}
-                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="科目代碼" />
+                                  onChange={e => updateEntryLineAccounting(idx, e.target.value, true)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="會計代碼" />
                               </td>
                               <td style={tdStyle}>
                                 <input value={line.accountingName}
-                                  onChange={e => updateEntryLine(idx, 'accountingName', e.target.value)}
+                                  onChange={e => updateEntryLineAccounting(idx, e.target.value, false)}
                                   style={{ ...inputStyle, marginBottom: 0 }} placeholder="科目名稱" />
                               </td>
                               <td style={tdStyle}>
@@ -1081,6 +1081,23 @@ export default function ExpensesPage() {
                                 <input type="number" value={line.defaultAmount}
                                   onChange={e => updateEntryLine(idx, 'defaultAmount', e.target.value)}
                                   style={{ ...inputStyle, marginBottom: 0, textAlign: 'right' }} step="0.01" placeholder="0" />
+                              </td>
+                              <td style={tdStyle}>
+                                <select value={line.supplierId}
+                                  onChange={e => {
+                                    const id = e.target.value;
+                                    const sup = suppliers.find(s => String(s.id) === id);
+                                    setTemplateForm(prev => ({
+                                      ...prev,
+                                      entryLines: prev.entryLines.map((l, i) => i === idx ? { ...l, supplierId: id, supplierName: sup ? sup.name || '' : '' } : l)
+                                    }));
+                                  }}
+                                  style={{ ...inputStyle, marginBottom: 0 }}>
+                                  <option value="">選擇廠商（選填）</option>
+                                  {suppliers.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                  ))}
+                                </select>
                               </td>
                               <td style={tdStyle}>
                                 <select value={line.warehouse}
@@ -1122,42 +1139,11 @@ export default function ExpensesPage() {
                         </tbody>
                       </table>
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                        <button onClick={() => addEntryLine('debit')}
-                          style={{ padding: '4px 12px', background: '#fff3e0', color: '#e65100', border: '1px solid #e65100', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
-                          + 借方
-                        </button>
-                        <button onClick={() => addEntryLine('credit')}
-                          style={{ padding: '4px 12px', background: '#e3f2fd', color: '#1565c0', border: '1px solid #1565c0', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
-                          + 貸方
+                        <button type="button" onClick={addEntryLineSingle}
+                          style={{ padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                          + 新增分錄
                         </button>
                       </div>
-
-                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, marginTop: 20 }}>館別對應支出存簿（轉帳時依館別帶入預設存簿，選填）</h4>
-                      <table style={{ ...tableStyle, maxWidth: 500 }}>
-                        <thead>
-                          <tr>
-                            <th style={thStyle}>館別</th>
-                            <th style={{ ...thStyle, width: 200 }}>支出存簿</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {warehouses.map(wh => (
-                            <tr key={wh}>
-                              <td style={tdStyle}>{wh}</td>
-                              <td style={tdStyle}>
-                                <select value={getWarehouseAccount(wh)}
-                                  onChange={e => updateWarehouseAccount(wh, e.target.value)}
-                                  style={{ ...inputStyle, marginBottom: 0 }}>
-                                  <option value="">不指定</option>
-                                  {cashAccounts.filter(a => a.warehouse === wh || !a.warehouse).map(a => (
-                                    <option key={a.id} value={a.id}>{a.name}</option>
-                                  ))}
-                                </select>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
                     </div>
                   )}
 
@@ -1465,9 +1451,10 @@ export default function ExpensesPage() {
                             <thead>
                               <tr>
                                 <th style={{ ...thStyle, width: 70 }}>借/貸</th>
-                                <th style={{ ...thStyle, width: 90 }}>科目代碼</th>
+                                <th style={{ ...thStyle, width: 90 }}>會計代碼</th>
                                 <th style={{ ...thStyle, width: 100 }}>科目名稱</th>
                                 <th style={{ ...thStyle, width: 120 }}>摘要</th>
+                                <th style={{ ...thStyle, width: 100 }}>廠商</th>
                                 <th style={{ ...thStyle, width: 90 }}>館別</th>
                                 <th style={{ ...thStyle, width: 90 }}>付款方式</th>
                                 <th style={{ ...thStyle, width: 120 }}>轉帳存簿</th>
@@ -1481,6 +1468,7 @@ export default function ExpensesPage() {
                                   <td style={tdStyle}>{line.accountingCode}</td>
                                   <td style={tdStyle}>{line.accountingName}</td>
                                   <td style={tdStyle}>{line.summary}</td>
+                                  <td style={tdStyle}>{line.supplierName || '—'}</td>
                                   <td style={tdStyle}>{line.warehouse || '—'}</td>
                                   <td style={tdStyle}>{line.paymentMethod || '—'}</td>
                                   <td style={tdStyle}>
@@ -1684,7 +1672,7 @@ export default function ExpensesPage() {
                                 <thead>
                                   <tr>
                                     <th style={{ ...thStyle, padding: '4px 8px' }}>借/貸</th>
-                                    <th style={{ ...thStyle, padding: '4px 8px' }}>科目代碼</th>
+                                    <th style={{ ...thStyle, padding: '4px 8px' }}>會計代碼</th>
                                     <th style={{ ...thStyle, padding: '4px 8px' }}>科目名稱</th>
                                     <th style={{ ...thStyle, padding: '4px 8px' }}>摘要</th>
                                     <th style={{ ...thStyle, padding: '4px 8px', textAlign: 'right' }}>金額</th>
