@@ -396,6 +396,8 @@ export default function CashierPage() {
                   <th className="px-4 py-3 text-left">館別</th>
                   <th className="px-4 py-3 text-left">付款方式</th>
                   <th className="px-4 py-3 text-right">金額</th>
+                  <th className="px-4 py-3 text-left">摘要</th>
+                  <th className="px-4 py-3 text-left">備註</th>
                   <th className="px-4 py-3 text-left">建立日期</th>
                   <th className="px-4 py-3 text-left">狀態</th>
                   <th className="px-4 py-3 text-center">操作</th>
@@ -407,7 +409,7 @@ export default function CashierPage() {
                   const exec = order.executions?.[0];
                   const storedResult = executionResults[order.id];
                   const isSelected = selectedOrderIds.has(order.id);
-                  const colSpan = isPendingTab ? 9 : 8;
+                  const colSpan = isPendingTab ? 11 : 10;
 
                   return (
                     <Fragment key={order.id}>
@@ -430,6 +432,8 @@ export default function CashierPage() {
                         <td className="px-4 py-3 text-right font-medium">
                           NT$ {Number(order.netAmount).toLocaleString()}
                         </td>
+                        <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate" title={order.note || ''}>{order.note || '-'}</td>
+                        <td className="px-4 py-3 text-gray-500 max-w-[120px] truncate" title={order.note || ''}>{order.note || '-'}</td>
                         <td className="px-4 py-3 text-gray-500">
                           {new Date(order.createdAt).toLocaleDateString('zh-TW')}
                         </td>
@@ -917,7 +921,7 @@ export default function CashierPage() {
               </div>
             </div>
 
-            {/* Printable Report */}
+            {/* Printable Report：兩段式表格 - 出納支出 + 付款帳戶 */}
             {reportData.length > 0 && (
               <div className="print-content bg-white rounded-lg shadow" id="cashier-report">
                 {/* Report Header */}
@@ -928,11 +932,9 @@ export default function CashierPage() {
                   </p>
                   <div className="flex justify-between text-xs text-gray-500 mb-2">
                     <span>列印日期：{new Date().toLocaleDateString('zh-TW')} {new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</span>
-                    <span>共 {reportData.length} 筆，總金額 NT$ {reportTotal.toLocaleString()}</span>
                   </div>
-
-                  {/* Summary by payment method & account */}
-                  <div className="grid grid-cols-2 gap-4 mb-2">
+                  {/* 依付款方式/依資金帳戶（僅畫面、不列印時顯示） */}
+                  <div className="grid grid-cols-2 gap-4 mb-2 no-print">
                     <div>
                       <div className="text-xs font-semibold text-gray-600 mb-1">依付款方式</div>
                       <div className="flex flex-wrap gap-2">
@@ -956,58 +958,85 @@ export default function CashierPage() {
                   </div>
                 </div>
 
-                {/* Report Table: (1) 付款單號+廠商+館別+付款方式+摘要 (2) 出納單號+執行日期+資金帳戶和金額+備註 */}
-                <div className="p-4">
-                  <div className="text-xs text-gray-600 mb-2 no-print">
-                    列印內容：(1) 付款單號、廠商、館別、付款方式、摘要 (2) 出納單號、執行日期、支出帳戶與金額、備註
+                <div className="p-4 space-y-6">
+                  {/* 第一段：出納支出 */}
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800 mb-2">出納支出</h3>
+                    <table className="w-full text-xs border-collapse report-table border border-gray-300">
+                      <thead>
+                        <tr className="bg-gray-100 border-b border-gray-300">
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">付款單號</th>
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">廠商</th>
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">館別</th>
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">付款方式</th>
+                          <th className="py-2 px-2 text-right font-semibold border-r border-gray-300">金額</th>
+                          <th className="py-2 px-2 text-left font-semibold">摘要</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportData.map((order) => {
+                          const exec = order.executions?.[0];
+                          const amount = Number(exec?.actualAmount ?? order.netAmount);
+                          return (
+                            <tr key={order.id} className="border-b border-gray-200">
+                              <td className="py-1.5 px-2 border-r border-gray-200 font-medium">{order.orderNo}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200">{order.supplierName || '-'}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200">{order.warehouse || '-'}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200">{exec?.paymentMethod || order.paymentMethod}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200 text-right font-medium">NT$ {amount.toLocaleString()}</td>
+                              <td className="py-1.5 px-2 whitespace-pre-wrap">{order.note || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-50 font-semibold border-t-2 border-gray-400">
+                          <td className="py-2 px-2 border-r border-gray-300" colSpan={4}>共{reportData.length}筆</td>
+                          <td className="py-2 px-2 text-right border-r border-gray-300">合計</td>
+                          <td className="py-2 px-2 text-right font-bold">NT$ {reportTotal.toLocaleString()}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
-                  <table className="w-full text-xs border-collapse report-table">
-                    <thead>
-                      <tr className="border-b-2 border-gray-800">
-                        <th className="py-1.5 px-2 text-left font-semibold w-8">#</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">付款單號</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">廠商</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">館別</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">付款方式</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">摘要</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">出納單號</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">執行日期</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">支出帳戶</th>
-                        <th className="py-1.5 px-2 text-right font-semibold">金額</th>
-                        <th className="py-1.5 px-2 text-left font-semibold">備註</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportData.map((order, idx) => {
-                        const exec = order.executions?.[0];
-                        const acct = exec ? accounts.find(a => a.id === exec.accountId) : null;
-                        return (
-                          <tr key={order.id} className="border-b border-gray-200">
-                            <td className="py-1.5 px-2 text-gray-500">{idx + 1}</td>
-                            <td className="py-1.5 px-2 font-medium">{order.orderNo}</td>
-                            <td className="py-1.5 px-2">{order.supplierName || '-'}</td>
-                            <td className="py-1.5 px-2">{order.warehouse || '-'}</td>
-                            <td className="py-1.5 px-2">{exec?.paymentMethod || order.paymentMethod}</td>
-                            <td className="py-1.5 px-2 max-w-[140px] truncate" title={order.note || ''}>{order.note || '-'}</td>
-                            <td className="py-1.5 px-2">{exec?.executionNo || '-'}</td>
-                            <td className="py-1.5 px-2">{exec?.executionDate || '-'}</td>
-                            <td className="py-1.5 px-2">{acct?.name || '-'}</td>
-                            <td className="py-1.5 px-2 text-right font-medium">
-                              {Number(exec?.actualAmount ?? order.netAmount).toLocaleString()}
-                            </td>
-                            <td className="py-1.5 px-2 text-gray-500 max-w-[120px] truncate" title={exec?.note || ''}>{exec?.note || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-gray-800 font-bold">
-                        <td colSpan="9" className="py-2 px-2 text-right">合計</td>
-                        <td className="py-2 px-2 text-right text-lg">NT$ {reportTotal.toLocaleString()}</td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
+
+                  {/* 第二段：付款帳戶 */}
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800 mb-2">付款帳戶</h3>
+                    <table className="w-full text-xs border-collapse report-table border border-gray-300">
+                      <thead>
+                        <tr className="bg-gray-100 border-b border-gray-300">
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">出納單號</th>
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">執行日期</th>
+                          <th className="py-2 px-2 text-left font-semibold border-r border-gray-300">資金帳戶</th>
+                          <th className="py-2 px-2 text-right font-semibold border-r border-gray-300">支出金額</th>
+                          <th className="py-2 px-2 text-left font-semibold">備註</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportData.map((order) => {
+                          const exec = order.executions?.[0];
+                          const acct = exec ? accounts.find(a => a.id === exec.accountId) : null;
+                          const amount = Number(exec?.actualAmount ?? order.netAmount);
+                          return (
+                            <tr key={order.id} className="border-b border-gray-200">
+                              <td className="py-1.5 px-2 border-r border-gray-200 font-medium">{exec?.executionNo || '-'}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200">{exec?.executionDate || '-'}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200">{acct?.name || '-'}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200 text-right font-medium">NT$ {amount.toLocaleString()}</td>
+                              <td className="py-1.5 px-2 whitespace-pre-wrap">{exec?.note || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-gray-50 font-semibold border-t-2 border-gray-400">
+                          <td className="py-2 px-2 border-r border-gray-300" colSpan={3}>共{reportData.length}筆</td>
+                          <td className="py-2 px-2 text-right border-r border-gray-300">合計</td>
+                          <td className="py-2 px-2 text-right font-bold">NT$ {reportTotal.toLocaleString()}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
 
                 {/* Signature lines */}
@@ -1040,7 +1069,7 @@ export default function CashierPage() {
         )}
       </main>
 
-      {/* Print styles */}
+      {/* Print styles：確保出納兩段表格與框線正確列印 */}
       <style jsx global>{`
         @media print {
           body * {
@@ -1054,6 +1083,7 @@ export default function CashierPage() {
             left: 0;
             top: 0;
             width: 100%;
+            background: white;
           }
           .no-print {
             display: none !important;
@@ -1061,12 +1091,28 @@ export default function CashierPage() {
           .print-content {
             box-shadow: none !important;
             border-radius: 0 !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
-          .report-table {
+          .print-content .report-table {
             font-size: 10pt;
+            border: 1px solid #333 !important;
           }
-          .report-table th, .report-table td {
+          .print-content .report-table th,
+          .print-content .report-table td {
             padding: 4px 6px;
+            border: 1px solid #333 !important;
+          }
+          .print-content .report-table thead tr {
+            background: #f3f4f6 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print-content .report-table tfoot tr {
+            background: #f9fafb !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           @page {
             size: A4 landscape;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -297,6 +298,7 @@ export async function POST(request) {
 
         if (differenceType === 'surplus') {
           // Surplus: actual > system, so add income to account
+          const surplusCatId = await getCategoryId(tx, 'cash_count_adjustment');
           const newTx = await tx.cashTransaction.create({
             data: {
               transactionNo: txNo,
@@ -304,6 +306,7 @@ export async function POST(request) {
               type: '收入',
               warehouse: account.warehouse || null,
               accountId,
+              categoryId: surplusCatId,
               amount: absDifference,
               fee: 0,
               hasFee: false,
@@ -315,6 +318,7 @@ export async function POST(request) {
           cashTransactionId = newTx.id;
         } else if (differenceType === 'shortage') {
           // Small shortage: system > actual, so create expense from account
+          const shortageCatId = await getCategoryId(tx, 'cash_count_shortage');
           const newTx = await tx.cashTransaction.create({
             data: {
               transactionNo: txNo,
@@ -322,6 +326,7 @@ export async function POST(request) {
               type: '支出',
               warehouse: account.warehouse || null,
               accountId,
+              categoryId: shortageCatId,
               amount: absDifference,
               fee: 0,
               hasFee: false,

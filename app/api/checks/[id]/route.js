@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -125,6 +126,7 @@ export async function PUT(request, { params }) {
       }
 
       // Create transaction
+      const categoryId = await getCategoryId(prisma, sourceType);
       const transaction = await prisma.cashTransaction.create({
         data: {
           transactionNo,
@@ -132,6 +134,7 @@ export async function PUT(request, { params }) {
           type: txType,
           warehouse: check.warehouse,
           accountId,
+          categoryId,
           amount: actualAmount,
           description: `支票兌現 - ${check.checkNo} (${check.checkNumber})`,
           sourceType,
@@ -189,6 +192,7 @@ export async function PUT(request, { params }) {
         }
 
         if (accountId) {
+          const bounceCatId = await getCategoryId(prisma, 'check_bounce');
           await prisma.cashTransaction.create({
             data: {
               transactionNo: reverseTransactionNo,
@@ -196,6 +200,7 @@ export async function PUT(request, { params }) {
               type: txType,
               warehouse: check.warehouse,
               accountId,
+              categoryId: bounceCatId,
               amount: Number(check.actualAmount || check.amount),
               description: `支票退票沖回 - ${check.checkNo} (${check.checkNumber})`,
               sourceType: 'check_bounce',

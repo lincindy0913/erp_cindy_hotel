@@ -4,6 +4,7 @@ import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +138,7 @@ export async function POST(request) {
       // Pre-generate number sequences
       const getExecNo = await generateNo(tx, 'cashierExecution', 'CSH', dateStr);
       const getTxNo = await generateNo(tx, 'cashTransaction', 'CF', dateStr);
+      const categoryId = await getCategoryId(tx, 'cashier_payment');
 
       const executions = [];
       const cashTransactions = [];
@@ -156,6 +158,7 @@ export async function POST(request) {
             type: '支出',
             warehouse: alloc.warehouse,
             accountId: alloc.accountId,
+            categoryId,
             amount: alloc.amount,
             description: `出納付款 - ${alloc.orderNo} - ${alloc.supplierName || ''}`,
             sourceType: 'cashier_payment',

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -146,6 +147,7 @@ export async function POST(request) {
             }
             const transactionNo = `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
 
+            const fixedCatId = await getCategoryId(tx, 'fixed_expense');
             const cashTx = await tx.cashTransaction.create({
               data: {
                 transactionNo,
@@ -153,6 +155,7 @@ export async function POST(request) {
                 type: '支出',
                 warehouse: wh,
                 accountId: accId,
+                categoryId: fixedCatId,
                 amount: debitTotal,
                 description: `固定費用 - ${orderNo} - ${data.expenseMonth}`,
                 sourceType: 'fixed_expense',

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -107,6 +108,7 @@ export async function POST(request) {
 
         // Create transaction
         const transactionNo = await generateTransactionNo(effectiveClearDate);
+        const categoryId = await getCategoryId(prisma, sourceType);
         const transaction = await prisma.cashTransaction.create({
           data: {
             transactionNo,
@@ -114,6 +116,7 @@ export async function POST(request) {
             type: txType,
             warehouse: check.warehouse,
             accountId,
+            categoryId,
             amount: Number(check.amount),
             description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
             sourceType,

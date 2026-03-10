@@ -4,6 +4,7 @@ import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,7 @@ export async function POST(request) {
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create CashTransaction
+      const categoryId = await getCategoryId(tx, 'cashier_payment');
       const cashTx = await tx.cashTransaction.create({
         data: {
           transactionNo: txNo,
@@ -60,6 +62,7 @@ export async function POST(request) {
           type: '支出',
           warehouse: order.warehouse,
           accountId: parseInt(accountId),
+          categoryId,
           amount: actualAmount,
           description: `出納付款 - ${order.orderNo} - ${order.supplierName || ''}`,
           sourceType: 'cashier_payment',

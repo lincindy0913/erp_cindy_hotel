@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -127,6 +128,7 @@ async function createExpenseCashTransaction(tx, record, template) {
   if (!account) return null;
 
   const templateName = template?.name || '常見費用';
+  const categoryId = await getCategoryId(tx, 'common_expense');
   const cashTx = await tx.cashTransaction.create({
     data: {
       transactionNo: txNo,
@@ -134,6 +136,7 @@ async function createExpenseCashTransaction(tx, record, template) {
       type: '支出',
       warehouse: record.warehouse,
       accountId: account.id,
+      categoryId,
       supplierId: record.supplierId,
       amount: Number(record.totalDebit),
       description: `常見費用 - ${templateName} - ${record.warehouse} - ${record.expenseMonth}`,
@@ -166,6 +169,7 @@ async function reverseExpenseCashTransaction(tx, recordId) {
       type: '收入',
       warehouse: cashTx.warehouse,
       accountId: cashTx.accountId,
+      categoryId: cashTx.categoryId,
       supplierId: cashTx.supplierId,
       amount: Number(cashTx.amount),
       description: `沖銷 - ${cashTx.description}`,

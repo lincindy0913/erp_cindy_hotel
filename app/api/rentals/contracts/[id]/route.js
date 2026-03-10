@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -101,12 +102,14 @@ export async function PUT(request, { params }) {
       const today = new Date().toISOString().split('T')[0];
       const transactionNo = await generateTransactionNo(today);
 
+      const depositInCatId = await getCategoryId(prisma, 'rental_deposit_in');
       const tx = await prisma.cashTransaction.create({
         data: {
           transactionNo,
           transactionDate: today,
           type: '收入',
           accountId,
+          categoryId: depositInCatId,
           amount: Number(existing.depositAmount),
           description: `押金收取 - 合約 ${existing.contractNo}`,
           sourceType: 'rental_deposit_in',
@@ -134,12 +137,14 @@ export async function PUT(request, { params }) {
       const today = new Date().toISOString().split('T')[0];
       const transactionNo = await generateTransactionNo(today);
 
+      const depositOutCatId = await getCategoryId(prisma, 'rental_deposit_out');
       const tx = await prisma.cashTransaction.create({
         data: {
           transactionNo,
           transactionDate: today,
           type: '支出',
           accountId,
+          categoryId: depositOutCatId,
           amount: Number(existing.depositAmount),
           description: `押金退還 - 合約 ${existing.contractNo}`,
           sourceType: 'rental_deposit_out',
@@ -171,6 +176,7 @@ export async function PUT(request, { params }) {
     if (body.depositAmount !== undefined) updateData.depositAmount = parseFloat(body.depositAmount);
     if (body.depositAccountId !== undefined) updateData.depositAccountId = body.depositAccountId ? parseInt(body.depositAccountId) : null;
     if (body.rentAccountId !== undefined) updateData.rentAccountId = parseInt(body.rentAccountId);
+    if (body.accountingSubjectId !== undefined) updateData.accountingSubjectId = body.accountingSubjectId ? parseInt(body.accountingSubjectId) : null;
     if (body.status !== undefined) updateData.status = body.status;
     if (body.autoRenew !== undefined) updateData.autoRenew = body.autoRenew;
     if (body.renewNotifyDays !== undefined) updateData.renewNotifyDays = parseInt(body.renewNotifyDays);

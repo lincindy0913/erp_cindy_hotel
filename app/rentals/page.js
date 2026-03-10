@@ -71,6 +71,7 @@ function RentalsPage() {
   const [taxes, setTaxes] = useState([]);
   const [maintenances, setMaintenances] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Search / filter states
@@ -99,14 +100,14 @@ function RentalsPage() {
   const [contractForm, setContractForm] = useState({
     propertyId: '', tenantId: '', startDate: '', endDate: '',
     monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
-    rentAccountId: '', status: 'pending', autoRenew: false, specialTerms: '', note: ''
+    rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false, specialTerms: '', note: ''
   });
 
   const [showTaxModal, setShowTaxModal] = useState(false);
   const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' });
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', note: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', note: '' });
 
   // Inline payment forms
   const [payingIncomeId, setPayingIncomeId] = useState(null);
@@ -143,7 +144,19 @@ function RentalsPage() {
 
   async function fetchAll() {
     setLoading(true);
-    await Promise.all([fetchSummary(), fetchAccounts(), fetchTenants(), fetchProperties()]);
+    await Promise.all([
+      fetchSummary(),
+      fetchAccounts(),
+      fetchTenants(),
+      fetchProperties(),
+      (async () => {
+        try {
+          const res = await fetch('/api/accounting-subjects');
+          const data = await res.json();
+          setAccountingSubjects(Array.isArray(data) ? data : []);
+        } catch { setAccountingSubjects([]); }
+      })()
+    ]);
     setLoading(false);
   }
 
@@ -315,7 +328,8 @@ function RentalsPage() {
         startDate: contract.startDate || '', endDate: contract.endDate || '',
         monthlyRent: contract.monthlyRent || '', paymentDueDay: contract.paymentDueDay || '5',
         depositAmount: contract.depositAmount || '', depositAccountId: contract.depositAccountId || '',
-        rentAccountId: contract.rentAccountId || '', status: contract.status || 'pending',
+        rentAccountId: contract.rentAccountId || '', accountingSubjectId: contract.accountingSubjectId ? String(contract.accountingSubjectId) : '',
+        status: contract.status || 'pending',
         autoRenew: contract.autoRenew || false, specialTerms: contract.specialTerms || '', note: contract.note || ''
       });
     } else {
@@ -323,19 +337,23 @@ function RentalsPage() {
       setContractForm({
         propertyId: '', tenantId: '', startDate: '', endDate: '',
         monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
-        rentAccountId: '', status: 'pending', autoRenew: false, specialTerms: '', note: ''
+        rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false, specialTerms: '', note: ''
       });
     }
     setShowContractModal(true);
   }
 
   async function saveContract() {
+    if (!contractForm.accountingSubjectId) {
+      alert('請選擇會計科目');
+      return;
+    }
     try {
       const url = editingContract ? `/api/rentals/contracts/${editingContract.id}` : '/api/rentals/contracts';
       const method = editingContract ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractForm) });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '儲存失敗');
+      if (!res.ok) return alert(data?.error?.message || data?.error || '儲存失敗');
       setShowContractModal(false);
       fetchContracts();
       fetchProperties();
@@ -438,13 +456,17 @@ function RentalsPage() {
 
   // ==================== MAINTENANCE ====================
   async function saveMaintenance() {
+    if (!maintenanceForm.accountingSubjectId) {
+      alert('請選擇會計科目');
+      return;
+    }
     try {
       const res = await fetch('/api/rentals/maintenance', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(maintenanceForm)
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '儲存失敗');
+      if (!res.ok) return alert(data?.error?.message || data?.error || '儲存失敗');
       setShowMaintenanceModal(false);
       fetchMaintenances();
     } catch (err) { alert('儲存失敗: ' + err.message); }
@@ -1044,7 +1066,7 @@ function RentalsPage() {
                     <option value="paid">已付</option>
                   </select>
                   <button onClick={fetchMaintenances} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={() => { setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', note: '' }); setShowMaintenanceModal(true); }}
+                  <button onClick={() => { setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', note: '' }); setShowMaintenanceModal(true); }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增維護
                   </button>
@@ -1327,6 +1349,14 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
+                  <label className="text-sm text-gray-600">會計科目 *</label>
+                  <select value={contractForm.accountingSubjectId} onChange={e => setContractForm(f => ({ ...f, accountingSubjectId: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="">請選擇會計科目</option>
+                    {accountingSubjects.map(s => <option key={s.id} value={s.id}>{s.code} - {s.name}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className="text-sm text-gray-600">狀態</label>
                   <select value={contractForm.status} onChange={e => setContractForm(f => ({ ...f, status: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
@@ -1441,6 +1471,14 @@ function RentalsPage() {
                   <label className="text-sm text-gray-600">金額 *</label>
                   <input type="number" value={maintenanceForm.amount} onChange={e => setMaintenanceForm(f => ({ ...f, amount: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">會計科目 *</label>
+                  <select value={maintenanceForm.accountingSubjectId} onChange={e => setMaintenanceForm(f => ({ ...f, accountingSubjectId: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="">請選擇會計科目</option>
+                    {accountingSubjects.map(s => <option key={s.id} value={s.id}>{s.code} - {s.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">備註</label>

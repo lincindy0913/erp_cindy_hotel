@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -117,12 +118,14 @@ export async function POST(request) {
         } else {
           // AR: 收入 — directly create cashflow (no cashier needed for income)
           const txNo = await generateTxNo(tx, transactionDate);
+          const commCatId = await getCategoryId(tx, 'pms_manual_commission');
           await tx.cashTransaction.create({
             data: {
               transactionNo: txNo,
               transactionDate,
               type: '收入',
               accountId: acctId,
+              categoryId: commCatId,
               amount: commissionAmount,
               fee: 0,
               hasFee: false,

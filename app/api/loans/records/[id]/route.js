@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryIdByCode } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -93,6 +94,9 @@ export async function PUT(request, { params }) {
           ? principalTxNo.replace(/(\d{4})$/, (m) => String(parseInt(m) + 1).padStart(4, '0'))
           : interestTxNo;
 
+        const principalCatId = await getCategoryIdByCode(tx, 'LOAN_PRINCIPAL');
+        const interestCatId = await getCategoryIdByCode(tx, 'LOAN_INTEREST');
+
         // Create CashTransaction for principal (支出)
         const principalTx = await tx.cashTransaction.create({
           data: {
@@ -101,6 +105,7 @@ export async function PUT(request, { params }) {
             type: '支出',
             warehouse: existing.loan.warehouse || null,
             accountId,
+            categoryId: principalCatId,
             amount: actualPrincipal,
             fee: 0,
             hasFee: false,
@@ -119,6 +124,7 @@ export async function PUT(request, { params }) {
             type: '支出',
             warehouse: existing.loan.warehouse || null,
             accountId,
+            categoryId: interestCatId,
             amount: actualInterest,
             fee: 0,
             hasFee: false,

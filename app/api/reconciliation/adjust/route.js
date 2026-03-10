@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -50,6 +51,7 @@ export async function POST(request) {
     const txDate = transactionDate || `${reconciliation.statementYear}-${String(reconciliation.statementMonth).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     // Create CashTransaction with sourceType='reconciliation_adjustment'
+    const reconCatId = await getCategoryId(prisma, 'reconciliation_adjustment');
     const transaction = await prisma.cashTransaction.create({
       data: {
         transactionNo,
@@ -57,6 +59,7 @@ export async function POST(request) {
         type: isIncome ? '收入' : '支出',
         warehouse: account.warehouse,
         accountId: parseInt(accountId),
+        categoryId: reconCatId,
         amount: absAmount,
         description: `[對帳調整] ${description}`,
         sourceType: 'reconciliation_adjustment',

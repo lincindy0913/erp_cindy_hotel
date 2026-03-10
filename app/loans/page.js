@@ -54,6 +54,7 @@ export default function LoansPage() {
   const [loans, setLoans] = useState([]);
   const [records, setRecords] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -100,6 +101,7 @@ export default function LoansPage() {
     originalAmount: '', annualRate: '', rateType: '固定利率',
     repaymentType: '本息攤還', repaymentDay: '20',
     startDate: '', endDate: '', deductAccountId: '',
+    principalSubjectId: '', interestSubjectId: '',
     contactPerson: '', contactPhone: '', remark: '', sortOrder: '0',
     collateral: '', guarantor: '', guarantorPhone: '', guarantorIdNo: '',
     status: '使用中'
@@ -134,17 +136,20 @@ export default function LoansPage() {
   async function fetchAll() {
     setLoading(true);
     try {
-      const [loansRes, accountsRes, whRes] = await Promise.all([
+      const [loansRes, accountsRes, whRes, subjectsRes] = await Promise.all([
         fetch('/api/loans'),
         fetch('/api/cashflow/accounts'),
-        fetch('/api/warehouse-departments')
+        fetch('/api/warehouse-departments'),
+        fetch('/api/accounting-subjects')
       ]);
       const loansData = await loansRes.json();
       const accountsData = await accountsRes.json();
       const whData = await whRes.json();
+      const subjectsData = await subjectsRes.json();
 
       setLoans(Array.isArray(loansData) ? loansData : []);
       setAccounts(Array.isArray(accountsData) ? accountsData : []);
+      setAccountingSubjects(Array.isArray(subjectsData) ? subjectsData : []);
       const whList = whData && whData.list ? whData.list : (Array.isArray(whData) ? whData : []);
       const buildingNames = whList.filter(w => w.type === 'building' || (!w.parentId && !w.type)).map(w => w.name);
       setWarehouses(buildingNames.length > 0 ? buildingNames : whList.filter(w => !w.parentId).map(w => w.name));
@@ -230,6 +235,7 @@ export default function LoansPage() {
       originalAmount: '', annualRate: '', rateType: '固定利率',
       repaymentType: '本息攤還', repaymentDay: '20',
       startDate: '', endDate: '', deductAccountId: '',
+      principalSubjectId: '', interestSubjectId: '',
       contactPerson: '', contactPhone: '', remark: '', sortOrder: '0',
       collateral: '', guarantor: '', guarantorPhone: '', guarantorIdNo: '',
       status: '使用中'
@@ -247,6 +253,8 @@ export default function LoansPage() {
       repaymentType: loan.repaymentType, repaymentDay: String(loan.repaymentDay),
       startDate: loan.startDate, endDate: loan.endDate,
       deductAccountId: String(loan.deductAccountId),
+      principalSubjectId: loan.principalSubjectId ? String(loan.principalSubjectId) : '',
+      interestSubjectId: loan.interestSubjectId ? String(loan.interestSubjectId) : '',
       contactPerson: loan.contactPerson || '', contactPhone: loan.contactPhone || '',
       collateral: loan.collateral || '', guarantor: loan.guarantor || '',
       guarantorPhone: loan.guarantorPhone || '', guarantorIdNo: loan.guarantorIdNo || '',
@@ -1555,6 +1563,36 @@ export default function LoansPage() {
                   onChange={e => setLoanForm({ ...loanForm, sortOrder: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0"
                 />
+              </div>
+            </div>
+
+            {/* Row 7.2: 會計科目（本金 / 利息） */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">本金會計科目</label>
+                <select
+                  value={loanForm.principalSubjectId}
+                  onChange={e => setLoanForm({ ...loanForm, principalSubjectId: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">請選擇（選填）</option>
+                  {accountingSubjects.map(s => (
+                    <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">利息會計科目</label>
+                <select
+                  value={loanForm.interestSubjectId}
+                  onChange={e => setLoanForm({ ...loanForm, interestSubjectId: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">請選擇（選填）</option>
+                  {accountingSubjects.map(s => (
+                    <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

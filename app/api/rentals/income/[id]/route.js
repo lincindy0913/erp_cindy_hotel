@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -100,12 +101,14 @@ export async function PUT(request, { params }) {
       : income.tenant.fullName;
 
     const transactionNo = await generateTransactionNo(actualDate);
+    const categoryId = await getCategoryId(prisma, 'rental_income');
     const tx = await prisma.cashTransaction.create({
       data: {
         transactionNo,
         transactionDate: actualDate,
         type: '收入',
         accountId: acctId,
+        categoryId,
         amount: parsedActual,
         description: `租金收入 - ${income.property.name} - ${tenantName} - ${income.incomeYear}/${income.incomeMonth}`,
         sourceType: 'rental_income',

@@ -69,10 +69,13 @@ export async function POST(request) {
   
   try {
     const body = await request.json();
-    const { propertyId, tenantId, startDate, endDate, monthlyRent, paymentDueDay, rentAccountId } = body;
+    const { propertyId, tenantId, startDate, endDate, monthlyRent, paymentDueDay, rentAccountId, accountingSubjectId } = body;
 
     if (!propertyId || !tenantId || !startDate || !endDate || !monthlyRent || !paymentDueDay || !rentAccountId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
+    }
+    if (!accountingSubjectId) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇會計科目', 400);
     }
 
     // Validate no overlapping active contract for same property
@@ -104,6 +107,7 @@ export async function POST(request) {
         depositAmount: body.depositAmount ? parseFloat(body.depositAmount) : 0,
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         rentAccountId: parseInt(rentAccountId),
+        accountingSubjectId: parseInt(accountingSubjectId),
         status: body.status || 'pending',
         autoRenew: body.autoRenew || false,
         renewNotifyDays: body.renewNotifyDays || 60,

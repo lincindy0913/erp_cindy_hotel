@@ -42,10 +42,13 @@ export async function POST(request) {
   
   try {
     const body = await request.json();
-    const { propertyId, maintenanceDate, category, amount } = body;
+    const { propertyId, maintenanceDate, category, amount, accountingSubjectId } = body;
 
     if (!propertyId || !maintenanceDate || !category || !amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
+    }
+    if (!accountingSubjectId) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇會計科目', 400);
     }
 
     const record = await prisma.rentalMaintenance.create({
@@ -54,6 +57,7 @@ export async function POST(request) {
         maintenanceDate,
         category,
         amount: parseFloat(amount),
+        accountingSubjectId: parseInt(accountingSubjectId),
         supplierId: body.supplierId ? parseInt(body.supplierId) : null,
         status: 'pending',
         note: body.note || null

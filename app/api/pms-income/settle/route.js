@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getCategoryId } from '@/lib/cash-category-helper';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -160,6 +161,7 @@ export async function POST(request) {
 
         // Create income transaction
         const txNo = await generateTransactionNo(tx, txDate);
+        const pmsCatId = await getCategoryId(tx, 'pms_income_settlement');
         const cashTx = await tx.cashTransaction.create({
           data: {
             transactionNo: txNo,
@@ -167,6 +169,7 @@ export async function POST(request) {
             type: '收入',
             warehouse,
             accountId,
+            categoryId: pmsCatId,
             amount: data.total,
             fee: fee,
             hasFee: fee > 0,
@@ -193,6 +196,7 @@ export async function POST(request) {
         // If there's a fee (credit card), create a separate expense transaction for the fee
         if (fee > 0) {
           const feeTxNo = await generateTransactionNo(tx, txDate);
+          const feeCatId = await getCategoryId(tx, 'pms_income_fee');
           await tx.cashTransaction.create({
             data: {
               transactionNo: feeTxNo,
@@ -200,6 +204,7 @@ export async function POST(request) {
               type: '支出',
               warehouse,
               accountId,
+              categoryId: feeCatId,
               amount: fee,
               fee: 0,
               hasFee: false,
