@@ -395,14 +395,14 @@ export default function LoansPage() {
       const res = await fetch('/api/loans/records/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: monthlyYear, month: monthlyMonth, loanIds: batchLoanIds })
+        body: JSON.stringify({ year: monthlyYear, month: monthlyMonth, loanIds: batchLoanIds, autoPush: true })
       });
       const result = await res.json();
       if (!res.ok) {
         alert(result.error || '批次建立失敗');
         return;
       }
-      alert(`成功建立 ${result.created} 筆，跳過 ${result.skipped} 筆`);
+      alert(result.message || `成功建立 ${result.created} 筆，跳過 ${result.skipped} 筆`);
       setShowBatchModal(false);
       fetchMonthlyRecords();
     } catch (e) {
@@ -857,13 +857,11 @@ export default function LoansPage() {
       <div>
         {/* Workflow Guide */}
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
-          <p className="text-sm font-medium text-indigo-800 mb-2">貸款還款流程（5步驟）：</p>
+          <p className="text-sm font-medium text-indigo-800 mb-2">貸款還款流程（3步驟）：</p>
           <ol className="text-xs text-indigo-700 space-y-1 list-decimal list-inside">
-            <li><b>批次建立暫估</b> — 系統自動計算每筆貸款本月預估的本金和利息</li>
-            <li><b>推送出納</b> — 繳款日前7天，將付款資訊推送至出納（狀態變為「待出納」）</li>
-            <li><b>出納預付</b> — 出納從其他帳戶移轉預估金額至扣款帳戶（狀態變為「已預付」）</li>
-            <li><b>等待利息單</b> — 銀行扣款後取得正式利息單，確認實際本金與利息</li>
-            <li><b>核實回填</b> — 點「核實」填入實際金額 → 系統自動建立現金流支出 → 帳戶餘額與貸款餘額同步更新</li>
+            <li><b>批次建立並推送出納</b> — 系統自動計算暫估金額，直接建立付款單送出納</li>
+            <li><b>出納付款</b> — 出納在「出納管理」執行付款 → 狀態自動變為「已預付」，金額同步回來</li>
+            <li><b>核實回填</b> — 收到銀行利息單後，點「核實」填入實際金額 → 帳戶餘額與貸款餘額同步更新</li>
           </ol>
           <div className="mt-2 flex items-center gap-2 text-xs text-indigo-600">
             <span className="inline-block w-2 h-2 rounded-full bg-yellow-400"></span>暫估
@@ -897,7 +895,7 @@ export default function LoansPage() {
                   </button>
                 )}
                 <button onClick={openBatchModal} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors">
-                  批次建立暫估
+                  批次建立並推送出納
                 </button>
               </div>
             );
@@ -1010,7 +1008,7 @@ export default function LoansPage() {
                   </tr>
                 ) : activeLoansForMonth.map(loan => {
                   const rec = recordMap[loan.id];
-                  const diff = rec && rec.status === '已核實' && rec.actualTotal != null
+                  const diff = rec && (rec.status === '已核實' || rec.status === '已預付') && rec.actualTotal != null
                     ? rec.estimatedTotal - rec.actualTotal : null;
                   const daysLeft = rec ? getDaysUntilDue(rec.dueDate) : null;
                   const dueColor = daysLeft === null ? '' : daysLeft < 0 ? 'text-red-600 font-bold' : daysLeft <= 3 ? 'text-red-600 font-bold animate-pulse' : daysLeft <= 7 ? 'text-orange-600 font-bold' : 'text-gray-600';
@@ -1105,14 +1103,9 @@ export default function LoansPage() {
                               </>
                             )}
                             {rec && rec.status === '待出納' && (
-                              <>
-                                <button onClick={() => pushToCashier(rec)} className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 w-full">
-                                  預付移轉
-                                </button>
-                                <button onClick={() => openConfirmModal(rec)} className="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 w-full">
-                                  核實
-                                </button>
-                              </>
+                              <div className="text-xs text-orange-600 font-medium">
+                                等待出納付款中...
+                              </div>
                             )}
                             {rec && rec.status === '已預付' && (
                               <button onClick={() => openConfirmModal(rec)} className="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 w-full">
@@ -1125,7 +1118,7 @@ export default function LoansPage() {
                               </button>
                             )}
                             {!rec && (
-                              <span className="text-gray-400 text-xs">請先批次建立</span>
+                              <span className="text-gray-400 text-xs">請先批次建立並推送</span>
                             )}
                           </div>
                         )}
@@ -1863,11 +1856,11 @@ export default function LoansPage() {
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
           <div className="sticky top-0 bg-white border-b px-6 py-4 rounded-t-2xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-800">批次建立暫估</h3>
+              <h3 className="text-lg font-bold text-gray-800">批次建立並推送出納</h3>
               <button onClick={() => setShowBatchModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
             <p className="text-sm text-gray-500 mt-1">
-              為 {monthlyYear}年{monthlyMonth}月 批次建立暫估記錄
+              為 {monthlyYear}年{monthlyMonth}月 批次建立暫估記錄並自動推送至出納
             </p>
           </div>
           <div className="p-6">
@@ -1912,7 +1905,7 @@ export default function LoansPage() {
                 取消
               </button>
               <button onClick={executeBatch} className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors">
-                建立暫估
+                建立並推送出納
               </button>
             </div>
           </div>

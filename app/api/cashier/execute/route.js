@@ -116,14 +116,19 @@ export async function POST(request) {
         data: { status: '已執行' },
       });
 
-      // 5. If this PaymentOrder is linked to a loan record, update it to 已預付
+      // 5. If this PaymentOrder is linked to a loan record, update it to 已預付 with actual amounts
       const linkedLoanRecord = await tx.loanMonthlyRecord.findFirst({
         where: { paymentOrderId: parseInt(paymentOrderId) }
       });
       if (linkedLoanRecord && linkedLoanRecord.status === '待出納') {
         await tx.loanMonthlyRecord.update({
           where: { id: linkedLoanRecord.id },
-          data: { status: '已預付' }
+          data: {
+            status: '已預付',
+            actualTotal: actualAmount,
+            actualDebitDate: executionDate,
+            deductAccountId: parseInt(accountId)
+          }
         });
       }
 

@@ -196,14 +196,21 @@ export async function POST(request) {
           data: { status: '已執行' },
         });
 
-        // Check linked loan records
+        // Check linked loan records — update status and actual amounts
         const linkedLoanRecord = await tx.loanMonthlyRecord.findFirst({
           where: { paymentOrderId: order.id },
         });
         if (linkedLoanRecord && linkedLoanRecord.status === '待出納') {
+          // Sum actual amounts allocated to this order
+          const orderAllocations = allocations.filter(a => a.orderId === order.id);
+          const totalActual = orderAllocations.reduce((s, a) => s + a.amount, 0);
           await tx.loanMonthlyRecord.update({
             where: { id: linkedLoanRecord.id },
-            data: { status: '已預付' },
+            data: {
+              status: '已預付',
+              actualTotal: totalActual,
+              actualDebitDate: executionDate,
+            },
           });
         }
       }

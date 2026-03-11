@@ -1,15 +1,30 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
+// Generate payment order number: PAY-YYYYMMDD-XXXX
+async function generateOrderNo(dateStr) {
+  const prefix = `PAY-${dateStr}-`;
+  const existing = await prisma.paymentOrder.findMany({
+    where: { orderNo: { startsWith: prefix } },
+    select: { orderNo: true }
+  });
+  let maxSeq = 0;
+  for (const item of existing) {
+    const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  return maxSeq;
+}
+
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.LOAN_CREATE);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const data = await request.json();
 
@@ -20,6 +35,7 @@ export async function POST(request) {
     const year = parseInt(data.year);
     const month = parseInt(data.month);
     const loanIds = data.loanIds.map(id => parseInt(id));
+    const autoPush = data.autoPush !== false; // default true: auto-push to cashier
 
     // Get all target loans
     const loans = await prisma.loanMaster.findMany({
@@ -46,7 +62,12 @@ export async function POST(request) {
     const existingLoanIds = new Set(existingRecords.map(r => r.loanId));
 
     const created = [];
+    const pushed = [];
     const skipped = [];
+
+    const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    let orderSeq = autoPush ? await generateOrderNo(todayStr) : 0;
+    const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
 
     for (const loan of loans) {
       if (existingLoanIds.has(loan.id)) {
@@ -59,8 +80,6 @@ export async function POST(request) {
       const annualRate = Number(loan.annualRate);
       const monthlyInterest = Math.round(currentBalance * (annualRate / 100) / 12);
 
-      // For principal estimation, use a simple approach:
-      // Total months remaining from loan term, divide remaining balance
       let estimatedPrincipal = 0;
       if (loan.endDate) {
         const endDate = new Date(loan.endDate);
@@ -71,7 +90,9 @@ export async function POST(request) {
 
       const repDay = Math.min(loan.repaymentDay, 28);
       const dueDate = `${year}-${String(month).padStart(2, '0')}-${String(repDay).padStart(2, '0')}`;
+      const estimatedTotal = estimatedPrincipal + monthlyInterest;
 
+      // Create record
       const record = await prisma.loanMonthlyRecord.create({
         data: {
           loanId: loan.id,
@@ -81,11 +102,55 @@ export async function POST(request) {
           status: '暫估',
           estimatedPrincipal,
           estimatedInterest: monthlyInterest,
-          estimatedTotal: estimatedPrincipal + monthlyInterest,
+          estimatedTotal,
           estimatedAt: new Date(),
           deductAccountId: loan.deductAccountId
         }
       });
+
+      // Auto-push to cashier: create PaymentOrder and update status
+      if (autoPush && estimatedTotal > 0 && loan.deductAccountId) {
+        try {
+          orderSeq++;
+          const orderNo = `PAY-${todayStr}-${String(orderSeq).padStart(4, '0')}`;
+
+          const paymentOrder = await prisma.paymentOrder.create({
+            data: {
+              orderNo,
+              invoiceIds: JSON.stringify([]),
+              supplierName: `${loan.bankName} — ${loan.loanName}`,
+              warehouse: loan.warehouse || null,
+              paymentMethod: '匯款',
+              amount: estimatedTotal,
+              discount: 0,
+              netAmount: estimatedTotal,
+              dueDate,
+              accountId: loan.deductAccountId,
+              summary: `貸款還款 — ${loan.loanCode} ${loan.loanName} ${year}/${String(month).padStart(2, '0')}`,
+              note: `暫估 ${estimatedTotal.toLocaleString()} [批次建立自動推送]`,
+              status: '待出納',
+              createdBy: userName
+            }
+          });
+
+          await prisma.loanMonthlyRecord.update({
+            where: { id: record.id },
+            data: {
+              status: '待出納',
+              paymentOrderId: paymentOrder.id
+            }
+          });
+
+          pushed.push({
+            loanName: loan.loanName,
+            orderNo: paymentOrder.orderNo,
+            amount: estimatedTotal
+          });
+        } catch (pushErr) {
+          console.error(`Auto-push failed for loan ${loan.loanCode}:`, pushErr.message);
+          // Record was created as 暫估, push failed — continue
+        }
+      }
 
       created.push({
         ...record,
@@ -97,11 +162,18 @@ export async function POST(request) {
       });
     }
 
+    const pushedMsg = pushed.length > 0
+      ? `，${pushed.length} 筆已自動推送至出納`
+      : '';
+
     return NextResponse.json({
       created: created.length,
       skipped: skipped.length,
+      pushed: pushed.length,
       records: created,
-      skippedDetails: skipped
+      skippedDetails: skipped,
+      pushedDetails: pushed,
+      message: `成功建立 ${created.length} 筆${pushedMsg}，跳過 ${skipped.length} 筆`
     }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

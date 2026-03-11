@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 // POST: Sync cashier execution status back to loan records
-// Checks PaymentOrders linked to loan records — if executed, mark as 已預付
+// Checks PaymentOrders linked to loan records — if executed, mark as 已預付 with actual amounts
 export async function POST(request) {
   const auth = await requireAnyPermission([PERMISSIONS.LOAN_VIEW, PERMISSIONS.LOAN_CREATE, PERMISSIONS.CASHFLOW_VIEW]);
   if (!auth.ok) return auth.response;
@@ -34,7 +34,12 @@ export async function POST(request) {
     // Get the linked PaymentOrders
     const orderIds = pendingRecords.map(r => r.paymentOrderId).filter(Boolean);
     const orders = await prisma.paymentOrder.findMany({
-      where: { id: { in: orderIds } }
+      where: { id: { in: orderIds } },
+      include: {
+        executions: {
+          select: { actualAmount: true, executionDate: true, accountId: true }
+        }
+      }
     });
     const orderMap = {};
     for (const o of orders) { orderMap[o.id] = o; }
@@ -46,14 +51,24 @@ export async function POST(request) {
       if (!order) continue;
 
       if (order.status === '已執行') {
+        // Sum actual amounts from all executions
+        const totalActual = order.executions.reduce((s, e) => s + Number(e.actualAmount), 0);
+        const latestExec = order.executions[order.executions.length - 1];
+
         await prisma.loanMonthlyRecord.update({
           where: { id: rec.id },
-          data: { status: '已預付' }
+          data: {
+            status: '已預付',
+            actualTotal: totalActual || Number(order.netAmount),
+            actualDebitDate: latestExec?.executionDate || null,
+            deductAccountId: latestExec?.accountId || rec.deductAccountId
+          }
         });
         synced.push({
           recordId: rec.id,
           loanId: rec.loanId,
           orderNo: order.orderNo,
+          actualTotal: totalActual,
           newStatus: '已預付'
         });
       }
