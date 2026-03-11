@@ -91,9 +91,22 @@ export async function POST(request) {
           .map((l, i) => ({ ...l, amount: parseFloat(l.amount) || 0, sortOrder: l.sortOrder ?? i }))
           .filter(l => l.amount > 0);
         if (whLines.length === 0) continue;
-        const debitTotal = whLines.filter(l => l.entryType === 'debit').reduce((s, l) => s + l.amount, 0);
-        const creditTotal = whLines.filter(l => l.entryType === 'credit').reduce((s, l) => s + l.amount, 0);
-        if (Math.abs(debitTotal - creditTotal) > 0.01 || debitTotal <= 0) continue;
+        let debitTotal = whLines.filter(l => l.entryType === 'debit').reduce((s, l) => s + l.amount, 0);
+        let creditTotal = whLines.filter(l => l.entryType === 'credit').reduce((s, l) => s + l.amount, 0);
+        if (debitTotal <= 0) continue;
+        // 若只有借方（無貸方），自動用範本預設貸方科目補上
+        if (creditTotal === 0 && debitTotal > 0) {
+          whLines.push({
+            entryType: 'credit',
+            accountingCode: template.defaultCreditCode || '1111',
+            accountingName: template.defaultCreditName || '現金',
+            summary: template.name || '',
+            amount: debitTotal,
+            sortOrder: whLines.length
+          });
+          creditTotal = debitTotal;
+        }
+        if (Math.abs(debitTotal - creditTotal) > 0.01) continue;
         const pm = whLines[0].paymentMethod || data.paymentMethod || '月結';
         const accId = whLines[0].accountId ? parseInt(whLines[0].accountId) : null;
 
@@ -336,16 +349,28 @@ export async function POST(request) {
     const debitTotal = data.entryLines
       .filter(l => l.entryType === 'debit')
       .reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
-    const creditTotal = data.entryLines
+    let creditTotal = data.entryLines
       .filter(l => l.entryType === 'credit')
       .reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
 
+    if (debitTotal <= 0) {
+      return createErrorResponse('VALIDATION_FAILED', '金額必須大於 0', 400);
+    }
+    // 若只有借方（無貸方），自動用範本預設貸方科目補上
+    if (creditTotal === 0 && debitTotal > 0) {
+      data.entryLines.push({
+        entryType: 'credit',
+        accountingCode: template.defaultCreditCode || '1111',
+        accountingName: template.defaultCreditName || '現金',
+        summary: template.name || '',
+        amount: debitTotal,
+        sortOrder: data.entryLines.length
+      });
+      creditTotal = debitTotal;
+    }
     if (Math.abs(debitTotal - creditTotal) > 0.01) {
       return createErrorResponse('VALIDATION_FAILED',
         `借貸不平衡：借方 ${debitTotal.toFixed(2)} ≠ 貸方 ${creditTotal.toFixed(2)}`, 400);
-    }
-    if (debitTotal <= 0) {
-      return createErrorResponse('VALIDATION_FAILED', '金額必須大於 0', 400);
     }
 
     const duplicate = await prisma.commonExpenseRecord.findFirst({
