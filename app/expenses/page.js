@@ -211,6 +211,17 @@ export default function ExpensesPage() {
 
   // Filter templates by current main tab type
   const filteredTemplates = useMemo(() => templates.filter(t => (t.templateType || 'fixed') === mainTab), [templates, mainTab]);
+  const activeTemplates = useMemo(() => filteredTemplates.filter(t => t.isActive), [filteredTemplates]);
+  const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
+  const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s])), [suppliers]);
+  const getProductName = useCallback((id) => {
+    const p = productMap.get(parseInt(id));
+    return p ? `${p.code} - ${p.name}` : id;
+  }, [productMap]);
+  const getSupplierName = useCallback((id) => {
+    const s = supplierMap.get(parseInt(id));
+    return s?.name || id;
+  }, [supplierMap]);
 
   // ====== Template CRUD ======
   function resetTemplateForm() {
@@ -837,18 +848,6 @@ export default function ExpensesPage() {
       </div>
     );
   }
-
-  const activeTemplates = useMemo(() => filteredTemplates.filter(t => t.isActive), [filteredTemplates]);
-  const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
-  const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s])), [suppliers]);
-  const getProductName = useCallback((id) => {
-    const p = productMap.get(parseInt(id));
-    return p ? `${p.code} - ${p.name}` : id;
-  }, [productMap]);
-  const getSupplierName = useCallback((id) => {
-    const s = supplierMap.get(parseInt(id));
-    return s?.name || id;
-  }, [supplierMap]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
