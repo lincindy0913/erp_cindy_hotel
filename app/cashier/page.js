@@ -17,6 +17,7 @@ export default function CashierPage() {
   const [executeData, setExecuteData] = useState({
     executionDate: new Date().toISOString().split('T')[0],
     actualAmount: 0,
+    extraAmount: '',
     accountId: '',
     paymentMethod: '',
     note: '',
@@ -71,6 +72,7 @@ export default function CashierPage() {
       setExecuteData({
         executionDate: new Date().toISOString().split('T')[0],
         actualAmount: order.netAmount,
+        extraAmount: '',
         accountId: order.accountId?.toString() || '',
         paymentMethod: order.paymentMethod,
         note: '',
@@ -590,9 +592,21 @@ export default function CashierPage() {
                                       <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">實付金額</label>
                                         <input type="number" step="0.01" value={executeData.actualAmount}
-                                          onChange={e => setExecuteData({...executeData, actualAmount: e.target.value})}
+                                          onChange={e => setExecuteData({...executeData, actualAmount: e.target.value, extraAmount: ''})}
                                           className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required />
                                       </div>
+                                      {(order.summary || '').includes('貸款還款') && (
+                                        <div>
+                                          <label className="block text-xs font-medium text-indigo-700 mb-1">額外預付金額</label>
+                                          <input type="number" step="0.01" value={executeData.extraAmount}
+                                            onChange={e => {
+                                              const extra = parseFloat(e.target.value) || 0;
+                                              setExecuteData({...executeData, extraAmount: e.target.value, actualAmount: Number(order.netAmount) + extra});
+                                            }}
+                                            placeholder="0"
+                                            className="w-full border border-indigo-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-indigo-50" />
+                                        </div>
+                                      )}
                                       <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">付款帳戶 *</label>
                                         <select value={executeData.accountId}
@@ -620,6 +634,12 @@ export default function CashierPage() {
                                         </select>
                                       </div>
                                     </div>
+                                    {(order.summary || '').includes('貸款還款') && parseFloat(executeData.extraAmount) > 0 && (
+                                      <div className="bg-indigo-50 border border-indigo-200 rounded p-2 text-sm text-indigo-800">
+                                        付款單金額 NT$ {Number(order.netAmount).toLocaleString()} + 額外預付 NT$ {parseFloat(executeData.extraAmount).toLocaleString()} =
+                                        <span className="font-bold ml-1">實付 NT$ {parseFloat(executeData.actualAmount).toLocaleString()}</span>
+                                      </div>
+                                    )}
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 mb-1">備註</label>
                                       <input type="text" value={executeData.note}
