@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
@@ -134,23 +134,15 @@ export default function ExpensesPage() {
   async function fetchAll() {
     setLoading(true);
     try {
-      const [templatesRes, categoriesRes, warehousesRes, suppliersRes, productsRes, accountingRes, cashflowRes] = await Promise.all([
+      // 第一批：頁面顯示必要資料（範本、分類、館別）
+      const [templatesRes, categoriesRes, warehousesRes] = await Promise.all([
         fetch('/api/expense-templates?activeOnly=false'),
         fetch('/api/settings/expense-categories'),
         fetch('/api/warehouse-departments'),
-        fetch('/api/suppliers?activeOnly=true'),
-        fetch('/api/products'),
-        fetch('/api/accounting-subjects'),
-        fetch('/api/cashflow/accounts').catch(() => ({ json: () => [] }))
       ]);
       const templatesData = await templatesRes.json();
       const categoriesData = await categoriesRes.json();
       const warehousesData = await warehousesRes.json();
-      const suppliersData = await suppliersRes.json();
-      let productsData = [];
-      try { productsData = await productsRes.json(); } catch(e) {}
-      let accountingData = [];
-      try { accountingData = await accountingRes.json(); } catch(e) {}
 
       setTemplates(Array.isArray(templatesData) ? templatesData : []);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
@@ -162,16 +154,31 @@ export default function ExpensesPage() {
             ? warehousesData.map(w => w.name || w)
           : [];
       setWarehouses(whList);
+      setLoading(false);
+
+      // 第二批：延遲載入（廠商、商品、會計科目、存簿）- 不阻塞頁面顯示
+      const [suppliersRes, productsRes, accountingRes, cashflowRes] = await Promise.all([
+        fetch('/api/suppliers?activeOnly=true'),
+        fetch('/api/products'),
+        fetch('/api/accounting-subjects'),
+        fetch('/api/cashflow/accounts').catch(() => ({ json: () => [] }))
+      ]);
+      const suppliersData = await suppliersRes.json();
+      let productsData = [];
+      try { productsData = await productsRes.json(); } catch(e) {}
+      let accountingData = [];
+      try { accountingData = await accountingRes.json(); } catch(e) {}
+      let cashflowData = [];
+      try { cashflowData = await cashflowRes.json(); } catch(e) {}
+
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : (suppliersData?.suppliers || []));
       setProducts(Array.isArray(productsData) ? productsData : []);
       setAccountingSubjects(Array.isArray(accountingData) ? accountingData : []);
-      let cashflowData = [];
-      try { cashflowData = await cashflowRes.json(); } catch(e) {}
       setCashAccounts(Array.isArray(cashflowData) ? cashflowData.filter(a => a.isActive !== false) : []);
     } catch (err) {
       console.error('載入資料失敗:', err);
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function fetchTemplates() {
@@ -203,7 +210,7 @@ export default function ExpensesPage() {
   }
 
   // Filter templates by current main tab type
-  const filteredTemplates = templates.filter(t => (t.templateType || 'fixed') === mainTab);
+  const filteredTemplates = useMemo(() => templates.filter(t => (t.templateType || 'fixed') === mainTab), [templates, mainTab]);
 
   // ====== Template CRUD ======
   function resetTemplateForm() {
@@ -298,18 +305,20 @@ export default function ExpensesPage() {
     }));
   }
 
+  const acctByCode = useMemo(() => new Map(accountingSubjects.map(s => [String(s.code).trim(), s])), [accountingSubjects]);
+  const acctByName = useMemo(() => new Map(accountingSubjects.map(s => [(s.name || '').trim(), s])), [accountingSubjects]);
+
   function updateEntryLineAccounting(idx, codeOrName, isCode) {
     setTemplateForm(prev => {
       const lines = prev.entryLines.map((l, i) => {
         if (i !== idx) return l;
-        const subList = accountingSubjects;
         if (isCode) {
           const code = String(codeOrName).trim();
-          const sub = subList.find(s => String(s.code).trim() === code);
+          const sub = acctByCode.get(code);
           return { ...l, accountingCode: codeOrName, accountingName: sub ? (sub.name || '') : l.accountingName };
         } else {
           const name = String(codeOrName).trim();
-          const sub = subList.find(s => (s.name || '').trim() === name);
+          const sub = acctByName.get(name);
           return { ...l, accountingName: codeOrName, accountingCode: sub ? (sub.code || '') : l.accountingCode };
         }
       });
@@ -829,15 +838,17 @@ export default function ExpensesPage() {
     );
   }
 
-  const activeTemplates = filteredTemplates.filter(t => t.isActive);
-  const getProductName = (id) => {
-    const p = products.find(p => p.id === parseInt(id));
+  const activeTemplates = useMemo(() => filteredTemplates.filter(t => t.isActive), [filteredTemplates]);
+  const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
+  const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s])), [suppliers]);
+  const getProductName = useCallback((id) => {
+    const p = productMap.get(parseInt(id));
     return p ? `${p.code} - ${p.name}` : id;
-  };
-  const getSupplierName = (id) => {
-    const s = suppliers.find(s => s.id === parseInt(id));
+  }, [productMap]);
+  const getSupplierName = useCallback((id) => {
+    const s = supplierMap.get(parseInt(id));
     return s?.name || id;
-  };
+  }, [supplierMap]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
