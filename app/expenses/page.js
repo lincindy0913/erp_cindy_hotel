@@ -26,7 +26,8 @@ const EMPTY_ENTRY_LINE = {
   supplierName: '',
   warehouse: '',       // 館別
   paymentMethod: '',   // 付款方式
-  accountId: ''        // 轉帳存簿 (CashAccount id)
+  accountId: '',       // 轉帳存簿 (CashAccount id)
+  note: ''             // 備註
 };
 
 const PAYMENT_METHODS = ['月結', '現金', '轉帳', '支票', '匯款', '信用卡', '員工代付'];
@@ -265,7 +266,8 @@ export default function ExpensesPage() {
           supplierName: l.supplierName || '',
           warehouse: l.warehouse || '',
           paymentMethod: l.paymentMethod || '',
-          accountId: l.accountId ? String(l.accountId) : ''
+          accountId: l.accountId ? String(l.accountId) : '',
+          note: l.note || ''
         })),
       purchaseItems: Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
         ? tmpl.purchaseItems.map(item => ({
@@ -437,6 +439,7 @@ export default function ExpensesPage() {
         warehouse: l.warehouse,
         paymentMethod: l.paymentMethod,
         accountId: l.accountId || null,
+        note: l.note || '',
         sortOrder: i
       }));
       body.warehouseAmounts = null;
@@ -955,21 +958,6 @@ export default function ExpensesPage() {
                         onChange={e => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
                         style={inputStyle} placeholder="範本說明..." />
                     </div>
-                    <div>
-                      <label style={labelStyle}>摘要</label>
-                      <input value={templateForm.summary}
-                        onChange={e => setTemplateForm(prev => ({ ...prev, summary: e.target.value }))}
-                        style={inputStyle} placeholder="範本摘要..." />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>預設廠商{mainTab === 'purchase' ? ' *' : ''}</label>
-                      <select value={templateForm.defaultSupplierId}
-                        onChange={e => setTemplateForm(prev => ({ ...prev, defaultSupplierId: e.target.value }))}
-                        style={inputStyle}>
-                        <option value="">不指定</option>
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </div>
                   </div>
 
                   {/* Purchase-type specific: product items */}
@@ -1065,12 +1053,15 @@ export default function ExpensesPage() {
                       <table style={tableStyle}>
                         <thead>
                           <tr>
-                            <th style={{ ...thStyle, width: 120 }}>費用名稱 *</th>
-                            <th style={{ ...thStyle, width: 90 }}>會計代碼</th>
-                            <th style={{ ...thStyle, width: 90 }}>館別 *</th>
-                            <th style={{ ...thStyle, width: 90 }}>付款方式 *</th>
-                            <th style={{ ...thStyle, width: 130 }}>轉帳存簿</th>
-                            <th style={{ ...thStyle, width: 90 }}>預設金額</th>
+                            <th style={{ ...thStyle, width: 110 }}>費用名稱 *</th>
+                            <th style={{ ...thStyle, width: 80 }}>會計代碼</th>
+                            <th style={{ ...thStyle, width: 100 }}>摘要</th>
+                            <th style={{ ...thStyle, width: 110 }}>廠商</th>
+                            <th style={{ ...thStyle, width: 80 }}>館別 *</th>
+                            <th style={{ ...thStyle, width: 80 }}>付款方式 *</th>
+                            <th style={{ ...thStyle, width: 120 }}>轉帳存簿</th>
+                            <th style={{ ...thStyle, width: 100 }}>備註</th>
+                            <th style={{ ...thStyle, width: 80 }}>預設金額</th>
                             <th style={{ ...thStyle, width: 40 }}></th>
                           </tr>
                         </thead>
@@ -1086,6 +1077,23 @@ export default function ExpensesPage() {
                                 <input value={line.accountingCode}
                                   onChange={e => updateEntryLineAccounting(idx, e.target.value, true)}
                                   style={{ ...inputStyle, marginBottom: 0 }} placeholder="選填" />
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={line.summary}
+                                  onChange={e => updateEntryLine(idx, 'summary', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="摘要" />
+                              </td>
+                              <td style={tdStyle}>
+                                <select value={line.supplierId}
+                                  onChange={e => {
+                                    const s = suppliers.find(s => s.id === parseInt(e.target.value));
+                                    updateEntryLine(idx, 'supplierId', e.target.value);
+                                    updateEntryLine(idx, 'supplierName', s?.name || '');
+                                  }}
+                                  style={{ ...inputStyle, marginBottom: 0 }}>
+                                  <option value="">不指定</option>
+                                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
                               </td>
                               <td style={tdStyle}>
                                 <select value={line.warehouse}
@@ -1117,6 +1125,11 @@ export default function ExpensesPage() {
                                     ))}
                                   </select>
                                 ) : <span style={{ fontSize: 12, color: '#999' }}>—</span>}
+                              </td>
+                              <td style={tdStyle}>
+                                <input value={line.note}
+                                  onChange={e => updateEntryLine(idx, 'note', e.target.value)}
+                                  style={{ ...inputStyle, marginBottom: 0 }} placeholder="備註" />
                               </td>
                               <td style={tdStyle}>
                                 <input type="number" value={line.defaultAmount}

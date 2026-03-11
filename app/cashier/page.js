@@ -5,6 +5,17 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 
+// Determine the correct display order number based on source
+function getDisplayOrderNo(order) {
+  // Check payment: show checkNo (PAY-PAY-...)
+  if (order.paymentMethod === '支票' && order.checkNo) return order.checkNo;
+  // Loan payment: ensure LN- prefix (fix legacy PAY- prefixed loan orders)
+  if ((order.summary || '').includes('貸款還款') && order.orderNo.startsWith('PAY-')) {
+    return order.orderNo.replace(/^PAY-/, 'LN-');
+  }
+  return order.orderNo;
+}
+
 export default function CashierPage() {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState('pending');
@@ -427,7 +438,7 @@ export default function CashierPage() {
                             />
                           </td>
                         )}
-                        <td className="px-4 py-3 font-medium text-amber-800">{order.orderNo}</td>
+                        <td className="px-4 py-3 font-medium text-amber-800">{getDisplayOrderNo(order)}</td>
                         <td className="px-4 py-3">{order.supplierName || '-'}</td>
                         <td className="px-4 py-3">{order.warehouse || '-'}</td>
                         <td className="px-4 py-3">{order.paymentMethod}</td>
@@ -481,7 +492,7 @@ export default function CashierPage() {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                   <div>
                                     <div className="text-xs text-gray-500 mb-1">付款單號</div>
-                                    <div className="font-semibold">{order.orderNo}</div>
+                                    <div className="font-semibold">{getDisplayOrderNo(order)}</div>
                                   </div>
                                   <div>
                                     <div className="text-xs text-gray-500 mb-1">廠商</div>
@@ -534,7 +545,7 @@ export default function CashierPage() {
                                   <div className="text-sm font-semibold text-green-700 mb-2">追蹤鏈</div>
                                   <div className="flex items-center gap-2 flex-wrap text-sm">
                                     <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-xs font-medium">
-                                      付款單: {order.orderNo}
+                                      付款單: {getDisplayOrderNo(order)}
                                     </span>
                                     <span className="text-gray-400">-&gt;</span>
                                     <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs font-medium">
@@ -756,7 +767,7 @@ export default function CashierPage() {
                 <tbody className="divide-y divide-gray-100">
                   {selectedOrders.map(o => (
                     <tr key={o.id}>
-                      <td className="px-3 py-2 font-medium text-amber-800">{o.orderNo}</td>
+                      <td className="px-3 py-2 font-medium text-amber-800">{getDisplayOrderNo(o)}</td>
                       <td className="px-3 py-2">{o.supplierName || '-'}</td>
                       <td className="px-3 py-2">{o.warehouse || '-'}</td>
                       <td className="px-3 py-2">{o.paymentMethod}</td>
@@ -1003,7 +1014,7 @@ export default function CashierPage() {
                           const amount = Number(exec?.actualAmount ?? order.netAmount);
                           return (
                             <tr key={order.id} className="border-b border-gray-200">
-                              <td className="py-1.5 px-2 border-r border-gray-200 font-medium">{order.orderNo}</td>
+                              <td className="py-1.5 px-2 border-r border-gray-200 font-medium">{getDisplayOrderNo(order)}</td>
                               <td className="py-1.5 px-2 border-r border-gray-200">{order.supplierName || '-'}</td>
                               <td className="py-1.5 px-2 border-r border-gray-200">{order.warehouse || '-'}</td>
                               <td className="py-1.5 px-2 border-r border-gray-200">{exec?.paymentMethod || order.paymentMethod}</td>

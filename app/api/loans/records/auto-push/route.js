@@ -6,10 +6,10 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// Generate payment order number: PAY-YYYYMMDD-XXXX
+// Generate payment order number: LN-YYYYMMDD-XXXX (loan source)
 async function generateOrderNo(date) {
   const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `PAY-${dateStr}-`;
+  const prefix = `LN-${dateStr}-`;
   const existing = await prisma.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
     select: { orderNo: true }

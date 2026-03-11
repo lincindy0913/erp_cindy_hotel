@@ -802,10 +802,7 @@ export default function PaymentPage() {
                                 NT$ {parseFloat(invoice.totalAmount || (invoice.amount || 0) + (invoice.tax || 0)).toFixed(2)}
                               </td>
                               <td className="px-3 py-2 text-sm">
-                                <div className="flex gap-2">
-                                  <Link href={`/sales?edit=${invoice.id}`} target="_blank" className="text-indigo-600 hover:underline text-sm">編輯</Link>
-                                  <Link href={`/payment-voucher/${invoice.id}`} target="_blank" className="text-green-600 hover:underline text-sm">列印傳票</Link>
-                                </div>
+                                <Link href={`/payment-voucher/${invoice.id}`} target="_blank" className="text-green-600 hover:underline text-sm">列印傳票</Link>
                               </td>
                             </tr>
                           );

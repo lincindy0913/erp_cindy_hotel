@@ -6,9 +6,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// Generate payment order number: PAY-YYYYMMDD-XXXX
+// Generate payment order number: LN-YYYYMMDD-XXXX (loan source)
 async function generateOrderNo(dateStr) {
-  const prefix = `PAY-${dateStr}-`;
+  const prefix = `LN-${dateStr}-`;
   const existing = await prisma.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
     select: { orderNo: true }
@@ -112,7 +112,7 @@ export async function POST(request) {
       if (autoPush && estimatedTotal > 0 && loan.deductAccountId) {
         try {
           orderSeq++;
-          const orderNo = `PAY-${todayStr}-${String(orderSeq).padStart(4, '0')}`;
+          const orderNo = `LN-${todayStr}-${String(orderSeq).padStart(4, '0')}`;
 
           const paymentOrder = await prisma.paymentOrder.create({
             data: {

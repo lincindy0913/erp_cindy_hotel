@@ -34,13 +34,26 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：付款方式名稱', 400);
     }
 
-    // Check for duplicate name
-    const existing = await prisma.paymentMethodOption.findUnique({
-      where: { name: data.name }
+    // Check for duplicate name among active records
+    const existing = await prisma.paymentMethodOption.findFirst({
+      where: { name: data.name, isActive: true }
     });
 
     if (existing) {
       return createErrorResponse('CONFLICT_UNIQUE', '付款方式名稱已存在', 409);
+    }
+
+    // Check if there's a soft-deleted record with the same name – reactivate it
+    const softDeleted = await prisma.paymentMethodOption.findFirst({
+      where: { name: data.name, isActive: false }
+    });
+
+    if (softDeleted) {
+      const reactivated = await prisma.paymentMethodOption.update({
+        where: { id: softDeleted.id },
+        data: { isActive: true }
+      });
+      return NextResponse.json(reactivated, { status: 201 });
     }
 
     // Get the max sortOrder to append at the end
