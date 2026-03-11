@@ -62,12 +62,43 @@ export async function GET(request) {
       }
     }) : [];
 
+    // Also fetch cashier payment transactions linked via PaymentOrder
+    const paymentOrderIds = records.map(r => r.paymentOrderId).filter(Boolean);
+    const cashierTxns = paymentOrderIds.length > 0 ? await prisma.cashTransaction.findMany({
+      where: {
+        sourceRecordId: { in: paymentOrderIds },
+        sourceType: 'cashier_payment'
+      },
+      select: {
+        id: true, sourceRecordId: true, sourceType: true, type: true,
+        transactionNo: true, transactionDate: true, amount: true, description: true
+      }
+    }) : [];
+
+    // Map paymentOrderId → recordId for cashier transactions
+    const orderToRecord = {};
+    for (const r of records) {
+      if (r.paymentOrderId) orderToRecord[r.paymentOrderId] = r.id;
+    }
+
     // Group transactions by record ID
     const txByRecord = {};
     for (const tx of linkedTxns) {
       if (!txByRecord[tx.sourceRecordId]) txByRecord[tx.sourceRecordId] = [];
       txByRecord[tx.sourceRecordId].push({
         ...tx, amount: Number(tx.amount)
+      });
+    }
+    // Add cashier payment transactions mapped to their loan record
+    for (const tx of cashierTxns) {
+      const recId = orderToRecord[tx.sourceRecordId];
+      if (!recId) continue;
+      if (!txByRecord[recId]) txByRecord[recId] = [];
+      txByRecord[recId].push({
+        ...tx,
+        sourceRecordId: recId,
+        sourceType: 'cashier_payment',
+        amount: Number(tx.amount)
       });
     }
 
@@ -85,6 +116,7 @@ export async function GET(request) {
       } : null,
       preDeposit: (txByRecord[r.id] || []).find(t => t.sourceType === 'loan_predeposit') || null,
       paymentTxns: (txByRecord[r.id] || []).filter(t => t.sourceType === 'loan_payment'),
+      cashierTxns: (txByRecord[r.id] || []).filter(t => t.sourceType === 'cashier_payment'),
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
       confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,

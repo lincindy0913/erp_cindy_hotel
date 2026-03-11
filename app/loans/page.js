@@ -1072,13 +1072,19 @@ export default function LoansPage() {
                                 <span className="font-mono">{formatCurrency(rec.preDeposit.amount)}</span>
                               </div>
                             )}
+                            {rec.cashierTxns && rec.cashierTxns.length > 0 && (
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span>已付款</span>
+                                <span className="font-mono">{formatCurrency(rec.cashierTxns.reduce((s, t) => s + t.amount, 0))}</span>
+                              </div>
+                            )}
                             {rec.paymentTxns && rec.paymentTxns.length > 0 && (
                               <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 border border-green-200">
                                 <span>扣款</span>
                                 <span className="font-mono">{formatCurrency(rec.paymentTxns.reduce((s, t) => s + t.amount, 0))}</span>
                               </div>
                             )}
-                            {!rec.preDeposit && (!rec.paymentTxns || rec.paymentTxns.length === 0) && (
+                            {!rec.preDeposit && (!rec.cashierTxns || rec.cashierTxns.length === 0) && (!rec.paymentTxns || rec.paymentTxns.length === 0) && (
                               <span className="text-xs text-gray-400">-</span>
                             )}
                           </div>
