@@ -1163,6 +1163,7 @@ export default function ExpensesPage() {
                   <thead>
                     <tr>
                       <th style={thStyle}>名稱</th>
+                      <th style={thStyle}>摘要</th>
                       <th style={thStyle}>分類</th>
                       <th style={thStyle}>館別</th>
                       <th style={thStyle}>{mainTab === 'purchase' ? '預設廠商' : '付款方式'}</th>
@@ -1186,6 +1187,7 @@ export default function ExpensesPage() {
                             <div style={{ fontWeight: 500 }}>{tmpl.name}</div>
                             {tmpl.description && <div style={{ fontSize: 12, color: '#888' }}>{tmpl.description}</div>}
                           </td>
+                          <td style={tdStyle}>{tmpl.summary || '-'}</td>
                           <td style={tdStyle}>{tmpl.category?.name || '-'}</td>
                           <td style={tdStyle}>{tmpl.warehouse || '不限'}</td>
                           <td style={tdStyle}>
