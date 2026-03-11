@@ -59,4 +59,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Wait for DB then run migrations and start server (Railway/Docker)
-CMD ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss 2>/dev/null; exec node server.js"]
+# npx is not available in standalone; use node to invoke prisma CLI directly
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy 2>/dev/null || node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss 2>/dev/null; exec node server.js"]
