@@ -81,6 +81,7 @@ export async function PUT(request, { params }) {
       const updatePayload = {
         name: data.name.trim(),
         description: data.description?.trim() || null,
+        summary: data.summary?.trim() || null,
         templateType: data.templateType || existing.templateType || 'fixed',
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         warehouse: data.warehouse?.trim() || null,

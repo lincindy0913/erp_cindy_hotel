@@ -58,7 +58,7 @@ export default function ExpensesPage() {
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [templateForm, setTemplateForm] = useState({
-    name: '', description: '', categoryId: '', warehouse: '',
+    name: '', description: '', summary: '', categoryId: '', warehouse: '',
     defaultSupplierId: '', paymentMethod: '', sortOrder: 0,
     defaultTaxType: '',
     entryLines: [
@@ -226,7 +226,7 @@ export default function ExpensesPage() {
   // ====== Template CRUD ======
   function resetTemplateForm() {
     setTemplateForm({
-      name: '', description: '', categoryId: '', warehouse: '',
+      name: '', description: '', summary: '', categoryId: '', warehouse: '',
       defaultSupplierId: '', paymentMethod: '', sortOrder: 0,
       defaultTaxType: '',
       entryLines: [
@@ -245,6 +245,7 @@ export default function ExpensesPage() {
     const form = {
       name: tmpl.name,
       description: tmpl.description || '',
+      summary: tmpl.summary || '',
       categoryId: tmpl.categoryId ? String(tmpl.categoryId) : '',
       warehouse: tmpl.warehouse || '',
       defaultSupplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
@@ -947,12 +948,18 @@ export default function ExpensesPage() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={labelStyle}>說明</label>
                       <input value={templateForm.description}
                         onChange={e => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
                         style={inputStyle} placeholder="範本說明..." />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>摘要</label>
+                      <input value={templateForm.summary}
+                        onChange={e => setTemplateForm(prev => ({ ...prev, summary: e.target.value }))}
+                        style={inputStyle} placeholder="範本摘要..." />
                     </div>
                     <div>
                       <label style={labelStyle}>預設廠商{mainTab === 'purchase' ? ' *' : ''}</label>

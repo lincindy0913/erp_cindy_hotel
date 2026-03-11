@@ -88,6 +88,7 @@ export async function POST(request) {
     const templateData = {
       name: data.name.trim(),
       description: data.description?.trim() || null,
+      summary: data.summary?.trim() || null,
       templateType,
       categoryId: data.categoryId ? parseInt(data.categoryId) : null,
       warehouse: data.warehouse?.trim() || null,

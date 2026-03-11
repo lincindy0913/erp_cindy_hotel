@@ -1777,6 +1777,7 @@ model CommonExpenseTemplate {
   id              Int       @id @default(autoincrement())
   name            String    @db.VarChar(255)
   description     String?   @db.Text
+  summary         String?   @db.VarChar(500)   // 摘要
   templateType    String    @default("fixed") @map("template_type") @db.VarChar(20) // purchase, fixed
   categoryId      Int?      @map("category_id")
   warehouse       String?   @db.VarChar(100)
