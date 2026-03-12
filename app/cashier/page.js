@@ -32,6 +32,9 @@ export default function CashierPage() {
     accountId: '',
     paymentMethod: '',
     note: '',
+    isEmployeeAdvance: false,
+    advancedBy: '',
+    advancePaymentMethod: '現金',
   });
   const [executionResults, setExecutionResults] = useState({});
 
@@ -87,6 +90,9 @@ export default function CashierPage() {
         accountId: order.accountId?.toString() || '',
         paymentMethod: order.paymentMethod,
         note: '',
+        isEmployeeAdvance: false,
+        advancedBy: '',
+        advancePaymentMethod: '現金',
       });
     }
   }
@@ -651,6 +657,36 @@ export default function CashierPage() {
                                         <span className="font-bold ml-1">實付 NT$ {parseFloat(executeData.actualAmount).toLocaleString()}</span>
                                       </div>
                                     )}
+                                    {/* 員工代墊款 */}
+                                    <div className="border-t pt-3">
+                                      <label className="flex items-center gap-2 text-sm">
+                                        <input type="checkbox" checked={executeData.isEmployeeAdvance}
+                                          onChange={e => setExecuteData({...executeData, isEmployeeAdvance: e.target.checked})}
+                                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                                        <span className="font-medium text-purple-800">此筆為員工代墊款</span>
+                                      </label>
+                                      {executeData.isEmployeeAdvance && (
+                                        <div className="grid grid-cols-2 gap-3 mt-2">
+                                          <div>
+                                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
+                                            <input type="text" value={executeData.advancedBy}
+                                              onChange={e => setExecuteData({...executeData, advancedBy: e.target.value})}
+                                              placeholder="員工姓名"
+                                              className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50" />
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
+                                            <select value={executeData.advancePaymentMethod}
+                                              onChange={e => setExecuteData({...executeData, advancePaymentMethod: e.target.value})}
+                                              className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50">
+                                              <option value="現金">現金</option>
+                                              <option value="信用卡">信用卡</option>
+                                              <option value="其他">其他</option>
+                                            </select>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 mb-1">備註</label>
                                       <input type="text" value={executeData.note}

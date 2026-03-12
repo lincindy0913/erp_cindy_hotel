@@ -13,7 +13,7 @@ export async function POST(request) {
     const session = await getServerSession(authOptions);
     const data = await request.json();
 
-    const { paymentOrderId, executionDate, actualAmount, accountId, paymentMethod } = data;
+    const { paymentOrderId, executionDate, actualAmount, accountId, paymentMethod, isEmployeeAdvance, advancedBy, advancePaymentMethod } = data;
 
     if (!paymentOrderId || !executionDate || actualAmount === undefined || !accountId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
@@ -180,6 +180,39 @@ export async function POST(request) {
             data: { employeeAdvanceId: advance.id },
           });
         }
+      }
+
+      // 8. If cashier marked this as employee advance (from cashier form), create EmployeeAdvance
+      if (isEmployeeAdvance && advancedBy) {
+        const advDateStr2 = executionDate.replace(/-/g, '');
+        const advPrefix2 = `ADV-${advDateStr2}-`;
+        const existingAdv2 = await tx.employeeAdvance.findMany({
+          where: { advanceNo: { startsWith: advPrefix2 } },
+          select: { advanceNo: true },
+        });
+        let maxAdvSeq2 = 0;
+        for (const item of existingAdv2) {
+          const seq = parseInt(item.advanceNo.substring(advPrefix2.length)) || 0;
+          if (seq > maxAdvSeq2) maxAdvSeq2 = seq;
+        }
+        const advNo = `${advPrefix2}${String(maxAdvSeq2 + 1).padStart(4, '0')}`;
+
+        await tx.employeeAdvance.create({
+          data: {
+            advanceNo: advNo,
+            employeeName: advancedBy,
+            paymentMethod: advancePaymentMethod || '現金',
+            sourceType: 'cashier',
+            sourceRecordId: order.id,
+            sourceDescription: order.summary || `付款單 ${order.orderNo}`,
+            paymentOrderId: parseInt(paymentOrderId),
+            paymentOrderNo: order.orderNo,
+            amount: actualAmount,
+            status: '待結算',
+            warehouse: order.warehouse,
+            createdBy: session?.user?.email || null,
+          },
+        });
       }
 
       return { execution, cashTx };
