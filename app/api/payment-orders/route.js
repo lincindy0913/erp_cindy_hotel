@@ -150,7 +150,41 @@ export async function POST(request) {
         order.checkNo = checkNumber;
       }
 
-      return { order, check };
+      // 員工代墊款：自動建立 EmployeeAdvance 記錄
+      let advance = null;
+      if (data.isEmployeeAdvance && data.advancedBy) {
+        const advDateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+        const advPrefix = `ADV-${advDateStr}-`;
+        const existingAdv = await tx.employeeAdvance.findMany({
+          where: { advanceNo: { startsWith: advPrefix } },
+          select: { advanceNo: true },
+        });
+        let maxAdvSeq = 0;
+        for (const item of existingAdv) {
+          const seq = parseInt(item.advanceNo.substring(advPrefix.length)) || 0;
+          if (seq > maxAdvSeq) maxAdvSeq = seq;
+        }
+        const advanceNo = `${advPrefix}${String(maxAdvSeq + 1).padStart(4, '0')}`;
+
+        advance = await tx.employeeAdvance.create({
+          data: {
+            advanceNo,
+            employeeName: data.advancedBy,
+            paymentMethod: data.advancePaymentMethod || data.paymentMethod || '現金',
+            sourceType: 'payment_order',
+            sourceRecordId: order.id,
+            sourceDescription: `${data.supplierName || ''} - ${orderNo}`,
+            paymentOrderId: order.id,
+            paymentOrderNo: orderNo,
+            amount: data.netAmount,
+            status: '待結算',
+            warehouse: data.warehouse || null,
+            createdBy: session?.user?.email || null,
+          },
+        });
+      }
+
+      return { order, check, advance };
     });
 
     const order = result.order;
@@ -171,6 +205,7 @@ export async function POST(request) {
       discount: Number(order.discount),
       netAmount: Number(order.netAmount),
       linkedCheckNo: result.check?.checkNo || null,
+      linkedAdvanceNo: result.advance?.advanceNo || null,
     }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

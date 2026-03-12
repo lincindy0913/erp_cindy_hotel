@@ -61,7 +61,9 @@ export default function PaymentPage() {
     discount: '',
     paymentAmount: '',
     paymentDate: '',
-    accountId: ''
+    accountId: '',
+    advancedBy: '',
+    advancePaymentMethod: '',
   });
 
   useEffect(() => {
@@ -324,6 +326,13 @@ export default function PaymentPage() {
         // 非支票：付款日期、付款帳戶
         orderData.dueDate = formData.paymentDate || null;
         orderData.accountId = formData.accountId ? parseInt(formData.accountId) : null;
+      }
+
+      // 員工代墊款：傳送代墊員工資訊
+      if ((formData.paymentMethod === '員工代付' || formData.paymentMethod === '信用卡') && formData.advancedBy) {
+        orderData.isEmployeeAdvance = true;
+        orderData.advancedBy = formData.advancedBy;
+        orderData.advancePaymentMethod = formData.advancePaymentMethod || formData.paymentMethod;
       }
 
       const response = await fetch('/api/payment-orders', {
@@ -1104,6 +1113,36 @@ export default function PaymentPage() {
                         </p>
                       )}
                     </div>
+                    {/* 員工代墊款欄位 - 付款方式為員工代付或信用卡時顯示 */}
+                    {(formData.paymentMethod === '員工代付' || formData.paymentMethod === '信用卡') && (
+                      <div className="col-span-2 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                        <div className="text-sm font-medium text-purple-800 mb-2">員工代墊資訊（存檔後自動連動代墊款管理）</div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
+                            <input
+                              type="text"
+                              value={formData.advancedBy}
+                              onChange={(e) => setFormData({ ...formData, advancedBy: e.target.value })}
+                              placeholder="員工姓名"
+                              className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
+                            <select
+                              value={formData.advancePaymentMethod || formData.paymentMethod}
+                              onChange={(e) => setFormData({ ...formData, advancePaymentMethod: e.target.value })}
+                              className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                            >
+                              <option value="現金">現金</option>
+                              <option value="信用卡">信用卡</option>
+                              <option value="其他">其他</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
                       <textarea
