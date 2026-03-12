@@ -20,7 +20,23 @@ docker compose up -d --build
 | `NEXTAUTH_URL` | 登入回調網址 | `http://localhost:3000` |
 | `NEXTAUTH_SECRET` | NextAuth 密鑰（至少 32 字元） | 需自行設定 |
 
-首次啟動時會自動執行 `prisma migrate deploy`（無 migrations 時會改為 `prisma db push`）同步資料庫。
+首次啟動時容器內會自動執行 `prisma db push` 同步資料庫結構（**不會刪除既有資料**）。
+
+## 更新映像並保留資料
+
+要更新程式後重新建置並啟動，且**保留資料庫與 volume 資料**：
+
+```bash
+# 只重建 app 映像並重啟，不刪除 volume（資料庫資料會保留）
+docker compose up -d --build
+
+# 或分開執行：
+docker compose build --no-cache app
+docker compose up -d
+```
+
+- **不要**使用 `docker compose down -v`（`-v` 會刪除 named volumes，包含 `postgres_data`）。
+- 僅使用 `docker compose down` 再 `docker compose up -d --build` 時，`postgres_data` volume 會保留，資料不會遺失。
 
 ## 常用指令
 
@@ -31,7 +47,10 @@ docker compose logs -f app
 # 停止
 docker compose down
 
-# 停止並刪除資料庫 volume
+# 停止（保留 volume，資料保留）
+docker compose down
+
+# 停止並刪除資料庫 volume（會清空所有資料，請謹慎使用）
 docker compose down -v
 ```
 

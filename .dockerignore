@@ -1,40 +1,37 @@
 # Dependencies
 node_modules
-.pnp
-.pnp.js
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+.pnpm-debug.log*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
 
-# Build / Next
+# Build
 .next
 out
-build
 dist
+build
 
-# Env and secrets (use docker-compose or runtime env)
+# Env (use compose or runtime env)
 .env
 .env.*
 !.env.example
 
-# Git and IDE
+# Git & IDE
 .git
 .gitignore
-.cursor
+.dockerignore
+Dockerfile*
+docker-compose*
 .vscode
+.idea
 *.md
-!README.md
 
-# Tests and misc
+# Misc
+*.log
+.DS_Store
 coverage
 .nyc_output
-*.test.js
-*.spec.js
-__tests__
-.DS_Store
-Thumbs.db
-
-# Optional: keep image smaller
-agent-transcripts
-openspec
-*.jsonl
+.cursor

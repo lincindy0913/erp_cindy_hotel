@@ -11,7 +11,10 @@ const TABS = [
   { key: 'properties', label: '物業管理' },
   { key: 'contracts', label: '合約管理' },
   { key: 'taxes', label: '稅款管理' },
-  { key: 'maintenance', label: '維護費' }
+  { key: 'maintenance', label: '維護費' },
+  { key: 'utilityIncome', label: '水電收入' },
+  { key: 'incomeReport', label: '收入分析報表' },
+  { key: 'operatingReport', label: '營運分析報表' }
 ];
 
 const PROPERTY_STATUSES = [
@@ -104,6 +107,7 @@ function RentalsPage() {
   });
 
   const [showTaxModal, setShowTaxModal] = useState(false);
+  const [editingTax, setEditingTax] = useState(null);
   const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' });
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
@@ -112,10 +116,26 @@ function RentalsPage() {
 
   // Inline payment forms
   const [payingIncomeId, setPayingIncomeId] = useState(null);
+  const [incomeFormMode, setIncomeFormMode] = useState('confirm'); // 'confirm' | 'edit'
   const [incomePayForm, setIncomePayForm] = useState({ actualAmount: '', actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '現金', matchTransferRef: '', matchBankAccountName: '' });
 
   const [payingTaxId, setPayingTaxId] = useState(null);
   const [taxPayForm, setTaxPayForm] = useState({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] });
+
+  const [reportYear, setReportYear] = useState(new Date().getFullYear());
+  const [incomeReportData, setIncomeReportData] = useState({ year: null, rows: [] });
+  const [operatingReportData, setOperatingReportData] = useState({ year: null, rows: [] });
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const [taxTableYear, setTaxTableYear] = useState(new Date().getFullYear());
+  const [taxTableRows, setTaxTableRows] = useState([]);
+  const [taxTableSaving, setTaxTableSaving] = useState(false);
+
+  const [utilityFilter, setUtilityFilter] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
+  const [utilityList, setUtilityList] = useState([]);
+  const [showUtilityModal, setShowUtilityModal] = useState(false);
+  const [utilityForm, setUtilityForm] = useState({ propertyId: '', incomeYear: new Date().getFullYear(), incomeMonth: new Date().getMonth() + 1, expectedAmount: '', actualAmount: '', actualDate: '', accountId: '', note: '' });
+  const [editingUtility, setEditingUtility] = useState(null);
 
   useEffect(() => {
     setActiveTab(tabParam);
@@ -131,9 +151,51 @@ function RentalsPage() {
     if (activeTab === 'properties') fetchProperties();
     if (activeTab === 'contracts') fetchContracts();
     if (activeTab === 'taxes') fetchTaxes();
+    if (activeTab === 'utilityIncome') fetchUtilityList();
     if (activeTab === 'maintenance') fetchMaintenances();
     if (activeTab === 'overview') fetchSummary();
+    if (activeTab === 'incomeReport') fetchIncomeReport();
+    if (activeTab === 'operatingReport') fetchOperatingReport();
   }, [activeTab]);
+
+  // 從出納執行回來時自動更新稅款清單（頁面重新顯示時 refetch）
+  useEffect(() => {
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && activeTab === 'taxes') {
+        fetchTaxes();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [activeTab]);
+
+  async function fetchIncomeReport() {
+    setReportLoading(true);
+    try {
+      const res = await fetch(`/api/rentals/reports/income-by-month?year=${reportYear}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || data.error);
+      setIncomeReportData({ year: data.year, rows: data.rows || [] });
+    } catch (e) {
+      setIncomeReportData({ year: reportYear, rows: [] });
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  async function fetchOperatingReport() {
+    setReportLoading(true);
+    try {
+      const res = await fetch(`/api/rentals/reports/operating?year=${reportYear}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || data.error);
+      setOperatingReportData({ year: data.year, rows: data.rows || [] });
+    } catch (e) {
+      setOperatingReportData({ year: reportYear, rows: [] });
+    } finally {
+      setReportLoading(false);
+    }
+  }
 
   function switchTab(key) {
     setActiveTab(key);
@@ -145,8 +207,6 @@ function RentalsPage() {
     await Promise.all([
       fetchSummary(),
       fetchAccounts(),
-      fetchTenants(),
-      fetchProperties(),
       (async () => {
         try {
           const res = await fetch('/api/accounting-subjects');
@@ -227,6 +287,80 @@ function RentalsPage() {
       const data = await res.json();
       setTaxes(Array.isArray(data) ? data : []);
     } catch { setTaxes([]); }
+  }
+
+  async function fetchTaxTable() {
+    try {
+      const res = await fetch(`/api/rentals/taxes/by-year?year=${taxTableYear}`);
+      const data = await res.json();
+      if (data.rows) setTaxTableRows(data.rows);
+      else setTaxTableRows([]);
+    } catch { setTaxTableRows([]); }
+  }
+
+  async function saveTaxTable() {
+    setTaxTableSaving(true);
+    try {
+      const res = await fetch('/api/rentals/taxes/by-year', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          year: taxTableYear,
+          rows: taxTableRows.map(r => ({ propertyId: r.propertyId, landTax: r.landTax, houseTax: r.houseTax }))
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || '儲存失敗');
+      alert('已儲存年度稅額');
+      fetchTaxTable();
+      fetchTaxes();
+    } catch (e) { alert('儲存失敗: ' + e.message); }
+    finally { setTaxTableSaving(false); }
+  }
+
+  async function fetchUtilityList() {
+    try {
+      const params = new URLSearchParams();
+      if (utilityFilter.year) params.set('year', utilityFilter.year);
+      if (utilityFilter.month) params.set('month', utilityFilter.month);
+      const res = await fetch(`/api/rentals/utility-income?${params}`);
+      const data = await res.json();
+      setUtilityList(Array.isArray(data) ? data : []);
+    } catch { setUtilityList([]); }
+  }
+
+  async function saveUtility() {
+    try {
+      const payload = { ...utilityForm, incomeYear: utilityForm.incomeYear || new Date().getFullYear(), incomeMonth: utilityForm.incomeMonth || new Date().getMonth() + 1 };
+      if (editingUtility) {
+        const res = await fetch(`/api/rentals/utility-income/${editingUtility.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) return alert(data.error || '儲存失敗');
+      } else {
+        const res = await fetch('/api/rentals/utility-income', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) return alert(data.error || '儲存失敗');
+      }
+      setShowUtilityModal(false);
+      setEditingUtility(null);
+      fetchUtilityList();
+    } catch (e) { alert('儲存失敗: ' + e.message); }
+  }
+
+  async function deleteUtility(id) {
+    if (!confirm('確定刪除此筆水電收入？')) return;
+    try {
+      const res = await fetch(`/api/rentals/utility-income/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || '刪除失敗');
+      fetchUtilityList();
+    } catch (e) { alert('刪除失敗: ' + e.message); }
   }
 
   async function fetchMaintenances() {
@@ -398,44 +532,101 @@ function RentalsPage() {
   }
 
   function openIncomePayment(income) {
+    setIncomeFormMode('confirm');
     setPayingIncomeId(income.id);
     setIncomePayForm({
       actualAmount: String(income.expectedAmount),
       actualDate: new Date().toISOString().split('T')[0],
       accountId: income.accountId || '',
-      paymentMethod: '現金',
-      matchTransferRef: '',
-      matchBankAccountName: ''
+      paymentMethod: income.paymentMethod || '現金',
+      matchTransferRef: income.matchTransferRef || '',
+      matchBankAccountName: income.matchBankAccountName || ''
+    });
+  }
+
+  function openIncomeEdit(income) {
+    setIncomeFormMode('edit');
+    setPayingIncomeId(income.id);
+    setIncomePayForm({
+      actualAmount: String(income.actualAmount ?? ''),
+      actualDate: income.actualDate || new Date().toISOString().split('T')[0],
+      accountId: income.accountId || '',
+      paymentMethod: income.paymentMethod || '現金',
+      matchTransferRef: income.matchTransferRef || '',
+      matchBankAccountName: income.matchBankAccountName || ''
     });
   }
 
   async function confirmIncomePayment() {
     try {
+      const method = incomeFormMode === 'edit' ? 'PATCH' : 'PUT';
       const res = await fetch(`/api/rentals/income/${payingIncomeId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(incomePayForm)
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '確認失敗');
-      alert(`已確認收款 (${data.status === 'partial' ? '部分收款' : '全額收款'})`);
+      if (!res.ok) return alert(data.error || (incomeFormMode === 'edit' ? '更新失敗' : '確認失敗'));
+      alert(incomeFormMode === 'edit' ? '已更新收款資料' : `已確認收款 (${data.status === 'partial' ? '部分收款' : '全額收款'})`);
       setPayingIncomeId(null);
       fetchIncomes();
       fetchSummary();
-    } catch (err) { alert('確認失敗: ' + err.message); }
+    } catch (err) { alert(incomeFormMode === 'edit' ? '更新失敗: ' + err.message : '確認失敗: ' + err.message); }
+  }
+
+  async function voidIncomePayment(incomeId) {
+    if (!confirm('確定要作廢此筆收款？金流將沖銷，收租紀錄恢復為待收。')) return;
+    try {
+      const res = await fetch(`/api/rentals/income/${incomeId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || '作廢失敗');
+      setPayingIncomeId(null);
+      fetchIncomes();
+      fetchSummary();
+    } catch (err) { alert('作廢失敗: ' + err.message); }
   }
 
   // ==================== TAXES ====================
+  function openTaxEdit(tax) {
+    setEditingTax(tax);
+    setTaxForm({
+      propertyId: String(tax.propertyId),
+      taxYear: tax.taxYear,
+      taxType: tax.taxType || '房屋稅',
+      dueDate: tax.dueDate || '',
+      amount: tax.amount != null ? String(tax.amount) : ''
+    });
+    setShowTaxModal(true);
+  }
+
   async function saveTax() {
     try {
-      const res = await fetch('/api/rentals/taxes', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taxForm)
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data.error || '儲存失敗');
-      setShowTaxModal(false);
-      fetchTaxes();
-    } catch (err) { alert('儲存失敗: ' + err.message); }
+      if (editingTax) {
+        const res = await fetch(`/api/rentals/taxes/${editingTax.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: taxForm.amount === '' ? undefined : Number(taxForm.amount),
+            dueDate: taxForm.dueDate || undefined,
+            taxType: taxForm.taxType || undefined
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) return alert(data.error || data.message || '更新失敗');
+        setShowTaxModal(false);
+        setEditingTax(null);
+        fetchTaxes();
+      } else {
+        const res = await fetch('/api/rentals/taxes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(taxForm)
+        });
+        const data = await res.json();
+        if (!res.ok) return alert(data.error || '儲存失敗');
+        setShowTaxModal(false);
+        fetchTaxes();
+      }
+    } catch (err) { alert(editingTax ? '更新失敗: ' + err.message : '儲存失敗: ' + err.message); }
   }
 
   async function confirmTaxPayment() {
@@ -530,13 +721,13 @@ function RentalsPage() {
   // ==================== RENDER ====================
   return (
     <div className="min-h-screen page-bg-rentals">
-      <Navigation borderColor="border-teal-500" />
+      <div className="no-print"><Navigation borderColor="border-teal-500" /></div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">租屋管理</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4 no-print">租屋管理</h2>
 
         {/* Tab Navigation */}
-        <div className="flex gap-1 mb-6 border-b overflow-x-auto">
+        <div className="no-print flex gap-1 mb-6 border-b overflow-x-auto">
           {TABS.map(tab => (
             <button
               key={tab.key}
@@ -678,35 +869,46 @@ function RentalsPage() {
                         <th className="text-left px-3 py-2">物業</th>
                         <th className="text-left px-3 py-2">租客</th>
                         <th className="text-right px-3 py-2">應收</th>
+                        <th className="text-right px-3 py-2">實收</th>
+                        <th className="text-right px-3 py-2">未收</th>
                         <th className="text-left px-3 py-2">到期日</th>
                         <th className="text-center px-3 py-2">狀態</th>
-                        <th className="text-right px-3 py-2">實收</th>
                         <th className="text-left px-3 py-2">收款日</th>
                         <th className="text-center px-3 py-2">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {incomes.length === 0 ? (
-                        <tr><td colSpan={8} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                        <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                       ) : incomes.map(income => {
                         const isOverdue = income.status === 'pending' && income.dueDate < new Date().toISOString().split('T')[0];
+                        const expected = Number(income.expectedAmount || 0);
+                        const actual = Number(income.actualAmount || 0);
+                        const remaining = expected - actual;
                         return (
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
                             <td className="px-3 py-2">{income.propertyName}</td>
                             <td className="px-3 py-2">{income.tenantName}</td>
                             <td className="px-3 py-2 text-right font-medium">${fmt(income.expectedAmount)}</td>
+                            <td className="px-3 py-2 text-right">{income.actualAmount ? `$${fmt(income.actualAmount)}` : '-'}</td>
+                            <td className="px-3 py-2 text-right font-medium">{remaining > 0 ? `$${fmt(remaining)}` : '-'}</td>
                             <td className="px-3 py-2">{income.dueDate}</td>
                             <td className="px-3 py-2 text-center">
                               <StatusBadge value={isOverdue ? 'overdue' : income.status} list={INCOME_STATUSES} />
                             </td>
-                            <td className="px-3 py-2 text-right">{income.actualAmount ? `$${fmt(income.actualAmount)}` : '-'}</td>
                             <td className="px-3 py-2">{income.actualDate || '-'}</td>
                             <td className="px-3 py-2 text-center">
                               {(income.status === 'pending') && (
                                 <button onClick={() => openIncomePayment(income)}
-                                  className="text-teal-600 hover:text-teal-800 text-xs font-medium">
-                                  確認收款
+                                  className="text-teal-600 hover:text-teal-800 text-xs font-medium mr-1">
+                                  {income.note && income.note.includes('補繳') ? '補繳差額' : '確認收款'}
                                 </button>
+                              )}
+                              {(income.status === 'completed' || income.status === 'partial') && (
+                                <>
+                                  <button onClick={() => openIncomeEdit(income)} className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-1">編輯</button>
+                                  <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium">作廢</button>
+                                </>
                               )}
                             </td>
                           </tr>
@@ -719,7 +921,7 @@ function RentalsPage() {
                 {/* Inline payment form */}
                 {payingIncomeId && (
                   <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
-                    <h4 className="font-medium text-teal-800 mb-3">確認收款</h4>
+                    <h4 className="font-medium text-teal-800 mb-3">{incomeFormMode === 'edit' ? '編輯收款' : '確認收款'}</h4>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       <div>
                         <label className="text-xs text-gray-600">實收金額</label>
@@ -762,7 +964,7 @@ function RentalsPage() {
                       )}
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <button onClick={confirmIncomePayment} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700">確認</button>
+                      <button onClick={confirmIncomePayment} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700">{incomeFormMode === 'edit' ? '儲存' : '確認'}</button>
                       <button onClick={() => setPayingIncomeId(null)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
                     </div>
                   </div>
@@ -991,6 +1193,52 @@ function RentalsPage() {
             {/* ==================== TAB: TAXES ==================== */}
             {activeTab === 'taxes' && (
               <div>
+                {/* 年度稅額表格 (一年填一次) */}
+                <div className="mb-8">
+                  <h3 className="text-base font-semibold text-gray-800 mb-3">年度稅額表格</h3>
+                  <div className="flex items-center gap-3 mb-3">
+                    <label className="text-sm text-gray-600">年度：</label>
+                    <select value={taxTableYear} onChange={e => { setTaxTableYear(Number(e.target.value)); }} className="border rounded px-2 py-1.5 text-sm w-28">
+                      {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                    <button onClick={fetchTaxTable} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">載入</button>
+                    <button onClick={saveTaxTable} disabled={taxTableSaving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50">儲存</button>
+                  </div>
+                  <div className="bg-white rounded-lg shadow overflow-x-auto border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-teal-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 border-b border-gray-200">門牌</th>
+                          <th className="text-right px-3 py-2 border-b border-gray-200">地價稅</th>
+                          <th className="text-right px-3 py-2 border-b border-gray-200">房屋稅</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {taxTableRows.length === 0 ? (
+                          <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-500">載入後顯示</td></tr>
+                        ) : taxTableRows.map(r => (
+                          <tr key={r.propertyId} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-3 py-2">{r.doorplate}</td>
+                            <td className="px-3 py-2">
+                              <input type="number" min="0" step="1" value={r.landTax === '' ? '' : r.landTax}
+                                onChange={e => setTaxTableRows(prev => prev.map(x => x.propertyId === r.propertyId ? { ...x, landTax: e.target.value === '' ? '' : e.target.value } : x))}
+                                className="w-full text-right border rounded px-2 py-1 text-sm" placeholder="0" />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input type="number" min="0" step="1" value={r.houseTax === '' ? '' : r.houseTax}
+                                onChange={e => setTaxTableRows(prev => prev.map(x => x.propertyId === r.propertyId ? { ...x, houseTax: e.target.value === '' ? '' : e.target.value } : x))}
+                                className="w-full text-right border rounded px-2 py-1 text-sm" placeholder="0" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <h3 className="text-base font-semibold text-gray-800 mb-3">稅款清單</h3>
                 <div className="flex items-center gap-3 mb-4">
                   <label className="text-sm text-gray-600">年度:</label>
                   <input type="number" value={taxFilter.taxYear} onChange={e => setTaxFilter(f => ({ ...f, taxYear: e.target.value }))}
@@ -1002,7 +1250,7 @@ function RentalsPage() {
                     <option value="paid">已繳</option>
                   </select>
                   <button onClick={fetchTaxes} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={() => setShowTaxModal(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
+                  <button onClick={() => { setEditingTax(null); setTaxForm({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' }); setShowTaxModal(true); }} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增稅款
                   </button>
                 </div>
@@ -1036,12 +1284,23 @@ function RentalsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            {tax.status === 'pending' && (
-                              <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
-                                className="text-teal-600 hover:text-teal-800 text-xs font-medium">
-                                確認繳納
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                              <button onClick={() => openTaxEdit(tax)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                                編輯
                               </button>
-                            )}
+                              {tax.status === 'pending' && (
+                                <>
+                                  {tax.paymentOrderId ? (
+                                    <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</a>
+                                  ) : (
+                                    <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
+                                      className="text-teal-600 hover:text-teal-800 text-xs font-medium">
+                                      確認繳納
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1164,6 +1423,226 @@ function RentalsPage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* ==================== TAB: 水電收入 ==================== */}
+            {activeTab === 'utilityIncome' && (
+              <div>
+                <div className="flex items-center gap-3 mb-4 flex-wrap">
+                  <label className="text-sm text-gray-600">年月：</label>
+                  <select value={utilityFilter.year} onChange={e => setUtilityFilter(f => ({ ...f, year: Number(e.target.value) }))} className="border rounded px-2 py-1.5 text-sm">
+                    {[new Date().getFullYear(), new Date().getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                  <span className="text-sm">年</span>
+                  <select value={utilityFilter.month} onChange={e => setUtilityFilter(f => ({ ...f, month: Number(e.target.value) }))} className="border rounded px-2 py-1.5 text-sm">
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}月</option>)}
+                  </select>
+                  <button onClick={fetchUtilityList} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
+                  <button onClick={() => { setEditingUtility(null); setUtilityForm({ propertyId: '', incomeYear: utilityFilter.year, incomeMonth: utilityFilter.month, expectedAmount: '', actualAmount: '', actualDate: '', accountId: '', note: '' }); setShowUtilityModal(true); }}
+                    className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
+                    登記水電收入
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600 mb-2">物業每月向租客收取之水電等費用，在此登記為收入。</p>
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-teal-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">物業</th>
+                        <th className="text-center px-3 py-2">年月</th>
+                        <th className="text-right px-3 py-2">應收</th>
+                        <th className="text-right px-3 py-2">實收</th>
+                        <th className="text-center px-3 py-2">狀態</th>
+                        <th className="text-center px-3 py-2">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {utilityList.length === 0 ? (
+                        <tr><td colSpan={6} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                      ) : utilityList.map(u => (
+                        <tr key={u.id} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-2">{u.propertyName}</td>
+                          <td className="px-3 py-2 text-center">{u.incomeYear}/{u.incomeMonth}</td>
+                          <td className="px-3 py-2 text-right">${fmt(u.expectedAmount)}</td>
+                          <td className="px-3 py-2 text-right">{u.actualAmount != null ? `$${fmt(u.actualAmount)}` : '-'}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`text-xs px-2 py-0.5 rounded ${u.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                              {u.status === 'completed' ? '已收' : '待收'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button onClick={() => { setEditingUtility(u); setUtilityForm({ propertyId: u.propertyId, incomeYear: u.incomeYear, incomeMonth: u.incomeMonth, expectedAmount: String(u.expectedAmount ?? ''), actualAmount: u.actualAmount != null ? String(u.actualAmount) : '', actualDate: u.actualDate || '', accountId: u.accountId || '', note: u.note || '' }); setShowUtilityModal(true); }} className="text-teal-600 hover:text-teal-800 text-xs mr-2">編輯</button>
+                            <button onClick={() => deleteUtility(u.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Modal: 水電收入 */}
+                {showUtilityModal && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowUtilityModal(false)}>
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+                      <div className="p-6">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">{editingUtility ? '編輯水電收入' : '登記水電收入'}</h3>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-sm text-gray-600">物業 *</label>
+                            <select value={utilityForm.propertyId} onChange={e => setUtilityForm(f => ({ ...f, propertyId: e.target.value }))}
+                              className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingUtility}>
+                              <option value="">選擇物業</option>
+                              {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-sm text-gray-600">年份</label>
+                              <input type="number" value={utilityForm.incomeYear} onChange={e => setUtilityForm(f => ({ ...f, incomeYear: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                            </div>
+                            <div>
+                              <label className="text-sm text-gray-600">月份</label>
+                              <select value={utilityForm.incomeMonth} onChange={e => setUtilityForm(f => ({ ...f, incomeMonth: Number(e.target.value) }))} className="w-full border rounded px-3 py-2 text-sm">
+                                {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-600">應收金額</label>
+                            <input type="number" min="0" step="0.01" value={utilityForm.expectedAmount} onChange={e => setUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-600">實收金額（已收再填）</label>
+                            <input type="number" min="0" step="0.01" value={utilityForm.actualAmount} onChange={e => setUtilityForm(f => ({ ...f, actualAmount: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-600">收款日期</label>
+                            <input type="date" value={utilityForm.actualDate} onChange={e => setUtilityForm(f => ({ ...f, actualDate: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-600">收款帳戶</label>
+                            <select value={utilityForm.accountId} onChange={e => setUtilityForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm">
+                              <option value="">選擇帳戶</option>
+                              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-600">備註</label>
+                            <input type="text" value={utilityForm.note} onChange={e => setUtilityForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2 mt-6">
+                          <button onClick={() => setShowUtilityModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                          <button onClick={saveUtility} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ==================== TAB: 收入分析報表 ==================== */}
+            {activeTab === 'incomeReport' && (
+              <div className="rental-report-print-area">
+                <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
+                  <label className="text-sm">年份：</label>
+                  <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                    {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <button onClick={fetchIncomeReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
+                  <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+                </div>
+                <h2 className="text-lg font-bold text-gray-800 mb-2 print:block">租屋收入分析報表 — {incomeReportData.year || reportYear} 年</h2>
+                {reportLoading ? (
+                  <p className="text-gray-500">載入中...</p>
+                ) : (
+                  <div className="bg-white rounded-lg shadow overflow-x-auto overflow-y-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="bg-teal-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 border border-gray-200">房號</th>
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                            <th key={m} className="text-right px-2 py-2 border border-gray-200 whitespace-nowrap">{incomeReportData.year || reportYear}/{m}</th>
+                          ))}
+                          <th className="text-right px-3 py-2 border border-gray-200 font-semibold">總和</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {incomeReportData.rows.length === 0 ? (
+                          <tr><td colSpan={14} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                        ) : (
+                          incomeReportData.rows.map(r => (
+                            <tr key={r.propertyId} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 border border-gray-200">{r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}</td>
+                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                                <td key={m} className="text-right px-2 py-2 border border-gray-200">{r.months[m] ? fmt(r.months[m]) : ''}</td>
+                              ))}
+                              <td className="text-right px-3 py-2 border border-gray-200 font-semibold">{fmt(r.total)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ==================== TAB: 營運分析報表 ==================== */}
+            {activeTab === 'operatingReport' && (
+              <div className="rental-report-print-area">
+                <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
+                  <label className="text-sm">年份：</label>
+                  <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                    {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <button onClick={fetchOperatingReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
+                  <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+                </div>
+                <h2 className="text-lg font-bold text-gray-800 mb-2 print:block">物業營運狀況分析報表 — {operatingReportData.year || reportYear} 年</h2>
+                <p className="text-sm text-gray-600 mb-2 no-print">收租金額、維修、稅金等支出，淨利與淨利率（投報率需物業成本，可於設定中維護後顯示）。</p>
+                {reportLoading ? (
+                  <p className="text-gray-500">載入中...</p>
+                ) : (
+                  <div className="bg-white rounded-lg shadow overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="bg-teal-50">
+                        <tr>
+                          <th className="text-left px-3 py-2 border border-gray-200">物業</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">收租金額</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">維修金額</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">稅金</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">總支出</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">淨利</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">淨利率 %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {operatingReportData.rows.length === 0 ? (
+                          <tr><td colSpan={7} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                        ) : (
+                          operatingReportData.rows.map(r => (
+                            <tr key={r.propertyId} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 border border-gray-200">{r.propertyLabel}</td>
+                              <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentIncome)}</td>
+                              <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.maintenanceAmount)}</td>
+                              <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.taxAmount)}</td>
+                              <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.totalExpense)}</td>
+                              <td className={`text-right px-3 py-2 border border-gray-200 font-medium ${r.netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(r.netProfit)}</td>
+                              <td className="text-right px-3 py-2 border border-gray-200">{r.profitMarginPercent != null ? `${r.profitMarginPercent}%` : '-'}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -1417,15 +1896,15 @@ function RentalsPage() {
 
       {/* ==================== MODAL: TAX ==================== */}
       {showTaxModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTaxModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowTaxModal(false); setEditingTax(null); }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">新增稅款</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4">{editingTax ? '編輯稅款' : '新增稅款'}</h3>
               <div className="space-y-3">
                 <div>
                   <label className="text-sm text-gray-600">物業 *</label>
                   <select value={taxForm.propertyId} onChange={e => setTaxForm(f => ({ ...f, propertyId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
+                    className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingTax}>
                     <option value="">選擇物業</option>
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
@@ -1433,7 +1912,7 @@ function RentalsPage() {
                 <div>
                   <label className="text-sm text-gray-600">年度 *</label>
                   <input type="number" value={taxForm.taxYear} onChange={e => setTaxForm(f => ({ ...f, taxYear: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
+                    className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingTax} />
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">稅種 *</label>
@@ -1457,7 +1936,7 @@ function RentalsPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setShowTaxModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                <button onClick={() => { setShowTaxModal(false); setEditingTax(null); }} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
                 <button onClick={saveTax} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
               </div>
             </div>

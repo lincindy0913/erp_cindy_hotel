@@ -1,29 +1,15 @@
 import { NextResponse } from 'next/server';
+import * as XLSX from 'xlsx';
+import prisma from '@/lib/prisma';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
-// 已知 PMS 欄位名稱（用於比對 Excel 表頭）
-const KNOWN_PMS_HEADERS = [
-  '住房收入', '餐飲收入', '其他營業收入', '服務費收入',
-  '代收款-稅金', '預收款', '應收帳款', '現金收入', '信用卡收入', '轉帳收入',
-  '房間數', '住房率', '平均房價', '營業日期', '日期', '館別', '館別名稱'
-];
-
-// 對應到匯入表單的科目（與 DEFAULT_PMS_COLUMNS 一致）
-const DEFAULT_MAPPING = [
-  { pmsColumnName: '住房收入', entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
-  { pmsColumnName: '餐飲收入', entryType: '貸方', accountingCode: '4112', accountingName: '餐飲收入' },
-  { pmsColumnName: '其他營業收入', entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
-  { pmsColumnName: '服務費收入', entryType: '貸方', accountingCode: '4114', accountingName: '服務費收入' },
-  { pmsColumnName: '代收款-稅金', entryType: '貸方', accountingCode: '2171', accountingName: '代收款-稅金' },
-  { pmsColumnName: '預收款', entryType: '借方', accountingCode: '2131', accountingName: '預收款' },
-  { pmsColumnName: '應收帳款', entryType: '借方', accountingCode: '1131', accountingName: '應收帳款' },
-  { pmsColumnName: '現金收入', entryType: '借方', accountingCode: '1111', accountingName: '現金收入' },
-  { pmsColumnName: '信用卡收入', entryType: '借方', accountingCode: '1141', accountingName: '信用卡收入' },
-  { pmsColumnName: '轉帳收入', entryType: '借方', accountingCode: '1112', accountingName: '銀行轉帳收入' },
+// 非金額欄位（用於辨識表頭、取營業日期/館別/房間數等）
+const META_HEADERS = [
+  '營業日期', '日期', '館別', '館別名稱', '房間數', '住房率', '平均房價'
 ];
 
 function toNum(v) {
@@ -34,22 +20,39 @@ function toNum(v) {
   return Number.isNaN(n) ? null : n;
 }
 
-function cellValue(cell) {
-  if (!cell) return null;
-  const v = cell.value;
-  if (v == null) return null;
-  if (typeof v === 'object' && v.text) return String(v.text).trim();
-  return String(v).trim();
+function normalizeHeader(str) {
+  if (str == null) return '';
+  return String(str).replace(/\s/g, '').trim();
 }
 
-function normalizeHeader(str) {
-  if (!str) return '';
-  return String(str).replace(/\s/g, '').trim();
+function cellStr(val) {
+  if (val == null) return '';
+  if (typeof val === 'object' && val.w !== undefined) return String(val.w).trim();
+  return String(val).trim();
+}
+
+/**
+ * 用 xlsx 讀取 .xls / .xlsx，回傳第一張 sheet 的二維陣列 [row][col]
+ */
+function readSheetToMatrix(buffer) {
+  const workbook = XLSX.read(buffer, {
+    type: 'buffer',
+    cellDates: true,
+    cellNF: false,
+    cellText: false,
+  });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return null;
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) return null;
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: false });
+  return Array.isArray(aoa) ? aoa : null;
 }
 
 /**
  * POST /api/pms-income/parse-excel
- * Body: multipart/form-data with field "file" (Excel file)
+ * Body: multipart/form-data with field "file" (Excel file, .xls or .xlsx)
+ * 依「PMS 科目對應設定」(mapping 分頁) 的規則，自動對應欄位並抓取金額。
  * Returns: { warehouse?, businessDate?, records, roomCount?, occupancyRate?, avgRoomRate?, fileName }
  */
 export async function POST(request) {
@@ -64,30 +67,38 @@ export async function POST(request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const ExcelJS = (await import('exceljs')).default;
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    const fileName = file.name || '日營業報表.xlsx';
 
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
-      return createErrorResponse('PARSE_ERROR', 'Excel 無工作表', 400);
+    const matrix = readSheetToMatrix(buffer);
+    if (!matrix || matrix.length === 0) {
+      return createErrorResponse('PARSE_ERROR', 'Excel 無工作表或為空', 400);
     }
 
-    const rowCount = sheet.rowCount || 0;
-    let headerRowIndex = -1;
-    let dataRowIndex = -1;
-    const colToHeader = new Map(); // col 1-based -> header text
+    // 從 DB 讀取 mapping 規則（與 mapping 分頁一致）
+    const mappingRules = await prisma.pmsMappingRule.findMany({
+      orderBy: [{ entryType: 'asc' }, { sortOrder: 'asc' }],
+    });
 
-    // 找表頭列：任一列中出現至少兩個已知欄位名
-    for (let r = 1; r <= Math.min(rowCount || 30, 30); r++) {
-      const row = sheet.getRow(r);
+    const knownHeaders = [
+      ...mappingRules.map((r) => r.pmsColumnName),
+      ...META_HEADERS,
+    ].filter(Boolean);
+
+    let headerRowIndex = -1;
+    const colToHeader = new Map(); // col 0-based -> normalized header text
+
+    for (let r = 0; r < Math.min(matrix.length, 30); r++) {
+      const row = matrix[r];
+      if (!Array.isArray(row)) continue;
       let matchCount = 0;
       const found = new Map();
-      for (let c = 1; c <= (row.cellCount || 20); c++) {
-        const val = normalizeHeader(cellValue(row.getCell(c)));
+      for (let c = 0; c < row.length; c++) {
+        const raw = row[c];
+        const val = normalizeHeader(cellStr(raw));
         if (!val) continue;
-        for (const known of KNOWN_PMS_HEADERS) {
-          if (val === known || val.includes(known) || known.includes(val)) {
+        for (const known of knownHeaders) {
+          const n = normalizeHeader(known);
+          if (val === n || val.includes(n) || n.includes(val)) {
             matchCount++;
             found.set(c, val);
             break;
@@ -97,61 +108,57 @@ export async function POST(request) {
       if (matchCount >= 2) {
         headerRowIndex = r;
         found.forEach((h, c) => colToHeader.set(c, h));
-        dataRowIndex = r + 1; // 資料在下一列
         break;
       }
     }
 
     if (headerRowIndex < 0) {
-      return createErrorResponse('PARSE_ERROR', '無法辨識 Excel 表頭（請確認含住房收入、餐飲收入等欄位）', 400);
+      return createErrorResponse(
+        'PARSE_ERROR',
+        '無法辨識 Excel 表頭（請確認含住房收入、餐飲收入等欄位，或先在「PMS 科目對應設定」設定欄位名稱）',
+        400
+      );
     }
 
-    const dataRow = sheet.getRow(dataRowIndex);
-    const headerRow = sheet.getRow(headerRowIndex);
+    const headerRow = matrix[headerRowIndex];
+    let dataRowIndex = headerRowIndex + 1;
+    let dataRow = matrix[dataRowIndex];
 
-    // 若資料列為空，嘗試用表頭列當資料列（同一列有標題與數值）
-    let useRow = dataRow;
-    let checkRow = dataRow;
-    for (let c = 1; c <= (headerRow.cellCount || 20); c++) {
-      const hv = headerRow.getCell(c).value;
-      const dv = dataRow.getCell(c).value;
-      if (hv != null && typeof hv === 'number') {
-        useRow = headerRow;
-        checkRow = headerRow;
-        break;
-      }
-      if (dv != null && (typeof dv === 'number' || (typeof dv === 'string' && /[\d.,]/.test(dv)))) {
-        break;
+    // 若下一列為空或不存在，嘗試用表頭列當資料列（同一列有標題與數值）
+    if (!dataRow || dataRow.every((c) => c == null || cellStr(c) === '')) {
+      dataRow = headerRow;
+      dataRowIndex = headerRowIndex;
+    } else {
+      const hasNumInData = (dataRow || []).some((c) => toNum(c) != null);
+      const hasNumInHeader = (headerRow || []).some((c) => toNum(c) != null);
+      if (!hasNumInData && hasNumInHeader) {
+        dataRow = headerRow;
+        dataRowIndex = headerRowIndex;
       }
     }
 
     const getVal = (colIndex) => {
-      const cell = useRow.getCell(colIndex);
-      const v = cell?.value;
-      if (v == null) return null;
-      if (typeof v === 'number') return v;
-      const s = String(v).replace(/,/g, '').trim();
-      const n = parseFloat(s);
-      return Number.isNaN(n) ? null : n;
+      const raw = Array.isArray(dataRow) ? dataRow[colIndex] : undefined;
+      return toNum(raw);
     };
     const getStr = (colIndex) => {
-      const cell = useRow.getCell(colIndex);
-      const v = cellValue(cell);
-      return v || null;
+      const raw = Array.isArray(dataRow) ? dataRow[colIndex] : undefined;
+      const s = cellStr(raw);
+      return s || null;
     };
 
-    // 找出「營業日期」「日期」「館別」欄位
+    // 營業日期、館別
     let businessDate = null;
     let warehouse = null;
     for (const [col, header] of colToHeader) {
-      const h = normalizeHeader(header);
-      if ((h === '營業日期' || h === '日期' || h.includes('日期')) && !businessDate) {
+      const h = header;
+      if ((h === '營業日期' || h === '日期' || (header && header.includes('日期'))) && !businessDate) {
         const raw = getStr(col);
         if (raw) {
           const d = raw.match(/(\d{4})[-\/]?(\d{1,2})[-\/]?(\d{1,2})/) || raw.match(/(\d{2})[-\/](\d{1,2})[-\/](\d{1,2})/);
           if (d) {
             const y = d[1].length === 4 ? d[1] : '20' + d[1];
-            businessDate = `${y}-${d[2].padStart(2, '0')}-${d[3].padStart(2, '0')}`;
+            businessDate = `${y}-${String(d[2]).padStart(2, '0')}-${String(d[3]).padStart(2, '0')}`;
           } else {
             businessDate = raw;
           }
@@ -162,34 +169,35 @@ export async function POST(request) {
       }
     }
 
-    // 房間數、住房率、平均房價
     let roomCount = null;
     let occupancyRate = null;
     let avgRoomRate = null;
     for (const [col, header] of colToHeader) {
-      const h = normalizeHeader(header);
-      if (h === '房間數' || h.includes('房間數')) roomCount = getVal(col);
-      if (h === '住房率' || h.includes('住房率')) occupancyRate = getVal(col);
-      if (h === '平均房價' || h.includes('平均房價') || h === '平均房價') avgRoomRate = getVal(col);
+      const h = header;
+      if (h && (h === '房間數' || h.includes('房間數'))) roomCount = getVal(col);
+      if (h && (h === '住房率' || h.includes('住房率'))) occupancyRate = getVal(col);
+      if (h && (h === '平均房價' || h.includes('平均房價'))) avgRoomRate = getVal(col);
     }
 
-    // 依 DEFAULT_MAPPING 組出 records，從 Excel 對應欄位抓金額
-    const records = DEFAULT_MAPPING.map((m) => {
+    // 依 DB mapping 規則組出 records，從 Excel 對應欄位抓金額
+    const records = mappingRules.map((rule) => {
       let amount = null;
       for (const [col, header] of colToHeader) {
-        const h = normalizeHeader(header);
-        if (h === m.pmsColumnName || h.includes(m.pmsColumnName) || m.pmsColumnName.includes(h)) {
+        const h = header;
+        const n = normalizeHeader(rule.pmsColumnName);
+        if (h && (h === n || h.includes(n) || n.includes(h))) {
           amount = getVal(col);
           break;
         }
       }
       return {
-        ...m,
-        amount: amount != null ? String(amount) : ''
+        pmsColumnName: rule.pmsColumnName,
+        entryType: rule.entryType,
+        accountingCode: rule.accountingCode,
+        accountingName: rule.accountingName,
+        amount: amount != null ? String(amount) : '',
       };
     });
-
-    const fileName = file.name || '日營業報表.xlsx';
 
     return NextResponse.json({
       warehouse: warehouse || null,
@@ -198,7 +206,7 @@ export async function POST(request) {
       roomCount: roomCount != null ? String(Math.round(roomCount)) : '',
       occupancyRate: occupancyRate != null ? String(occupancyRate) : '',
       avgRoomRate: avgRoomRate != null ? String(Math.round(avgRoomRate)) : '',
-      fileName
+      fileName,
     });
   } catch (error) {
     console.error('[pms-income/parse-excel]', error);

@@ -805,9 +805,11 @@ export default function ExpensesPage() {
             warehouse: l.warehouse || '',
             paymentMethod: l.paymentMethod || '月結',
             accountId: l.accountId ? parseInt(l.accountId) : null,
+            advancedBy: l.advancedBy || null,
             sortOrder: l.sortOrder
           })),
           paymentMethod: executeForm.paymentMethod || '月結',
+          advancedBy: executeForm.advancedBy || null,
           createdBy: session?.user?.name || session?.user?.email || '系統',
           note: executeForm.note || null,
           allowDuplicate
@@ -1124,6 +1126,10 @@ export default function ExpensesPage() {
                                       <option key={a.id} value={a.id}>{a.name} {a.warehouse ? `(${a.warehouse})` : ''}</option>
                                     ))}
                                   </select>
+                                ) : (line.paymentMethod === '信用卡' || line.paymentMethod === '員工代付') ? (
+                                  <input value={line.advancedBy || ''}
+                                    onChange={e => updateEntryLine(idx, 'advancedBy', e.target.value)}
+                                    style={{ ...inputStyle, marginBottom: 0 }} placeholder="代墊員工" />
                                 ) : <span style={{ fontSize: 12, color: '#999' }}>—</span>}
                               </td>
                               <td style={tdStyle}>
@@ -1431,6 +1437,8 @@ export default function ExpensesPage() {
                             <option value="現金">現金</option>
                             <option value="匯款">匯款</option>
                             <option value="支票">支票</option>
+                            <option value="信用卡">信用卡</option>
+                            <option value="員工代付">員工代付</option>
                           </select>
                         </div>
                         <div>
@@ -1450,6 +1458,29 @@ export default function ExpensesPage() {
                           </select>
                         </div>
                       </div>
+                      {(executeForm.paymentMethod === '信用卡' || executeForm.paymentMethod === '員工代付') && (
+                        <div style={{ background: '#f3e8ff', border: '1px solid #c4b5fd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#6d28d9', marginBottom: 8 }}>員工代墊資訊（存檔後自動連動代墊款管理）</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <div>
+                              <label style={{ fontSize: 11, color: '#6d28d9' }}>代墊員工 *</label>
+                              <input value={executeForm.advancedBy || ''}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, advancedBy: e.target.value }))}
+                                placeholder="員工姓名" style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: '#6d28d9' }}>代墊方式</label>
+                              <select value={executeForm.advancePaymentMethod || executeForm.paymentMethod}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, advancePaymentMethod: e.target.value }))}
+                                style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }}>
+                                <option value="現金">現金</option>
+                                <option value="信用卡">信用卡</option>
+                                <option value="其他">其他</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* 固定費用：依範本列出費用項目，只需填入金額 */}
                       {executeForm.entryLines && executeForm.entryLines.length > 0 && (

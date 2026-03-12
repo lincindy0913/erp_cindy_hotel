@@ -388,3 +388,8 @@ body {
 .page-bg-year-end { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
 .page-bg-backup { background: linear-gradient(180deg, rgba(220, 38, 38, 0.08) 0%, rgba(220, 38, 38, 0.15) 100%); }
 .page-bg-import { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

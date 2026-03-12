@@ -31,6 +31,15 @@ async function generateNo(tx, model, prefix) {
       const seq = parseInt(item.recordNo.substring(fullPrefix.length)) || 0;
       if (seq > maxSeq) maxSeq = seq;
     }
+  } else if (model === 'employeeAdvance') {
+    const existing = await tx.employeeAdvance.findMany({
+      where: { advanceNo: { startsWith: fullPrefix } },
+      select: { advanceNo: true }
+    });
+    for (const item of existing) {
+      const seq = parseInt(item.advanceNo.substring(fullPrefix.length)) || 0;
+      if (seq > maxSeq) maxSeq = seq;
+    }
   }
 
   return `${fullPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
@@ -210,6 +219,27 @@ export async function POST(request) {
             });
           }
 
+          // 員工代墊款：付款方式為信用卡或員工代付時，自動建立 EmployeeAdvance
+          if ((pm === '信用卡' || pm === '員工代付') && whLines[0].advancedBy) {
+            const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+            await tx.employeeAdvance.create({
+              data: {
+                advanceNo,
+                employeeName: whLines[0].advancedBy,
+                paymentMethod: pm === '信用卡' ? '信用卡' : '現金',
+                sourceType: 'expense',
+                sourceRecordId: po.id,
+                sourceDescription: `${template.name} — ${wh} ${data.expenseMonth}`,
+                paymentOrderId: po.id,
+                paymentOrderNo: orderNo,
+                amount: debitTotal,
+                status: '待結算',
+                warehouse: wh,
+                createdBy: data.createdBy?.trim() || null,
+              },
+            });
+          }
+
           return { recordNo, warehouse: wh, amount: debitTotal };
         });
         created.push(r);
@@ -323,6 +353,28 @@ export async function POST(request) {
           } else {
             await tx.monthlyAggregation.create({
               data: { aggregationType: 'expense', year, month, warehouse: wh, totalAmount: amount, recordCount: 1 }
+            });
+          }
+
+          // 員工代墊款
+          const batchPm = data.paymentMethod || '月結';
+          if ((batchPm === '信用卡' || batchPm === '員工代付') && data.advancedBy) {
+            const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+            await tx.employeeAdvance.create({
+              data: {
+                advanceNo,
+                employeeName: data.advancedBy,
+                paymentMethod: batchPm === '信用卡' ? '信用卡' : '現金',
+                sourceType: 'expense',
+                sourceRecordId: paymentOrder.id,
+                sourceDescription: `${template.name} — ${wh} ${data.expenseMonth}`,
+                paymentOrderId: paymentOrder.id,
+                paymentOrderNo: orderNo,
+                amount,
+                status: '待結算',
+                warehouse: wh,
+                createdBy: data.createdBy?.trim() || null,
+              },
             });
           }
 
@@ -497,6 +549,28 @@ export async function POST(request) {
             totalAmount: debitTotal,
             recordCount: 1
           }
+        });
+      }
+
+      // 員工代墊款：付款方式為信用卡或員工代付
+      const singlePm = data.paymentMethod || '月結';
+      if ((singlePm === '信用卡' || singlePm === '員工代付') && data.advancedBy) {
+        const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+        await tx.employeeAdvance.create({
+          data: {
+            advanceNo,
+            employeeName: data.advancedBy,
+            paymentMethod: singlePm === '信用卡' ? '信用卡' : '現金',
+            sourceType: 'expense',
+            sourceRecordId: paymentOrder.id,
+            sourceDescription: `${template?.name || '費用'} — ${data.warehouse.trim()} ${data.expenseMonth}`,
+            paymentOrderId: paymentOrder.id,
+            paymentOrderNo: orderNo,
+            amount: debitTotal,
+            status: '待結算',
+            warehouse: data.warehouse.trim(),
+            createdBy: data.createdBy?.trim() || null,
+          },
         });
       }
 

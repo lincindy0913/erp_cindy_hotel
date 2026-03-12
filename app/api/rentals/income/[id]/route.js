@@ -7,12 +7,13 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
+// Generate transaction number: CF-YYYYMMDD-XXXX (optional tx for use inside transaction)
+async function generateTransactionNo(date, txClient = null) {
+  const db = txClient || prisma;
   const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
   const prefix = `CF-${dateStr}-`;
 
-  const existing = await prisma.cashTransaction.findMany({
+  const existing = await db.cashTransaction.findMany({
     where: { transactionNo: { startsWith: prefix } },
     select: { transactionNo: true }
   });
@@ -102,6 +103,15 @@ export async function PUT(request, { params }) {
 
     const transactionNo = await generateTransactionNo(actualDate);
     const categoryId = await getCategoryId(prisma, 'rental_income');
+    const category = categoryId
+      ? await prisma.cashCategory.findUnique({
+          where: { id: categoryId },
+          include: { accountingSubject: { select: { code: true, name: true } } }
+        })
+      : null;
+    const accountingSubjectLabel = category?.accountingSubject
+      ? `${category.accountingSubject.code || ''} ${category.accountingSubject.name || ''}`.trim()
+      : null;
     const tx = await prisma.cashTransaction.create({
       data: {
         transactionNo,
@@ -109,6 +119,7 @@ export async function PUT(request, { params }) {
         type: '收入',
         accountId: acctId,
         categoryId,
+        accountingSubject: accountingSubjectLabel,
         amount: parsedActual,
         description: `租金收入 - ${income.property.name} - ${tenantName} - ${income.incomeYear}/${income.incomeMonth}`,
         sourceType: 'rental_income',
@@ -159,6 +170,167 @@ export async function PUT(request, { params }) {
     return NextResponse.json({ success: true, status: newStatus, transactionId: tx.id });
   } catch (error) {
     console.error('PUT /api/rentals/income/[id] error:', error);
+    return handleApiError(error);
+  }
+}
+
+// PATCH: 編輯已登錄的收款（實收金額、收款日期、收款帳戶、付款方式），連動更新金流
+export async function PATCH(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const incomeId = parseInt(id);
+    const body = await request.json();
+
+    const income = await prisma.rentalIncome.findUnique({
+      where: { id: incomeId },
+      include: {
+        property: { select: { name: true } },
+        tenant: { select: { fullName: true, companyName: true, tenantType: true } }
+      }
+    });
+    if (!income) {
+      return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
+    }
+    if (!income.cashTransactionId) {
+      return createErrorResponse('VALIDATION_FAILED', '僅可編輯已收款的紀錄', 400);
+    }
+
+    const actualAmount = body.actualAmount != null && body.actualAmount !== '' ? parseFloat(body.actualAmount) : Number(income.actualAmount);
+    const actualDate = body.actualDate || income.actualDate;
+    const accountId = body.accountId != null && body.accountId !== '' ? parseInt(body.accountId) : income.accountId;
+    const paymentMethod = body.paymentMethod != null ? body.paymentMethod : income.paymentMethod;
+
+    if (!actualDate || !accountId) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '收款日期、收款帳戶為必填', 400);
+    }
+
+    const cashTx = await prisma.cashTransaction.findUnique({
+      where: { id: income.cashTransactionId }
+    });
+    if (!cashTx) {
+      return createErrorResponse('NOT_FOUND', '找不到對應金流', 404);
+    }
+
+    const oldAccountId = cashTx.accountId;
+    const newStatus = actualAmount >= Number(income.expectedAmount) ? 'completed' : 'partial';
+
+    await prisma.$transaction(async (tx) => {
+      await tx.cashTransaction.update({
+        where: { id: income.cashTransactionId },
+        data: {
+          transactionDate: actualDate,
+          accountId,
+          amount: actualAmount,
+          paymentTerms: paymentMethod || null
+        }
+      });
+      await tx.rentalIncome.update({
+        where: { id: incomeId },
+        data: {
+          actualAmount,
+          actualDate,
+          accountId,
+          paymentMethod: paymentMethod || null,
+          matchTransferRef: body.matchTransferRef != null ? body.matchTransferRef : income.matchTransferRef,
+          matchBankAccountName: body.matchBankAccountName != null ? body.matchBankAccountName : income.matchBankAccountName,
+          status: newStatus
+        }
+      });
+    });
+
+    await recalcBalance(accountId);
+    if (oldAccountId !== accountId) await recalcBalance(oldAccountId);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('PATCH /api/rentals/income/[id] error:', error);
+    return handleApiError(error);
+  }
+}
+
+// DELETE: 作廢收款（沖銷金流、收租紀錄恢復待收）
+export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const incomeId = parseInt(id);
+
+    const income = await prisma.rentalIncome.findUnique({
+      where: { id: incomeId },
+      include: { property: { select: { name: true } }, tenant: { select: { fullName: true, companyName: true, tenantType: true } } }
+    });
+    if (!income) {
+      return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
+    }
+    if (!income.cashTransactionId) {
+      return createErrorResponse('VALIDATION_FAILED', '僅可作廢已收款的紀錄', 400);
+    }
+
+    const cashTx = await prisma.cashTransaction.findUnique({
+      where: { id: income.cashTransactionId }
+    });
+    if (!cashTx) {
+      return createErrorResponse('NOT_FOUND', '找不到對應金流', 404);
+    }
+
+    const accountId = cashTx.accountId;
+    const amount = Number(cashTx.amount);
+
+    await prisma.$transaction(async (tx) => {
+      const revDate = new Date().toISOString().split('T')[0];
+      const revNo = await generateTransactionNo(revDate, tx);
+      const reversalTx = await tx.cashTransaction.create({
+        data: {
+          transactionNo: revNo,
+          transactionDate: revDate,
+          type: '支出',
+          accountId,
+          categoryId: cashTx.categoryId,
+          amount,
+          description: `沖銷：${cashTx.description || ''}`,
+          sourceType: 'reversal',
+          sourceRecordId: cashTx.id,
+          status: '已確認',
+          isReversal: true,
+          reversalOfId: cashTx.id
+        }
+      });
+      await tx.cashTransaction.update({
+        where: { id: cashTx.id },
+        data: { reversedById: reversalTx.id }
+      });
+      await tx.rentalIncome.update({
+        where: { id: incomeId },
+        data: {
+          actualAmount: null,
+          actualDate: null,
+          accountId: null,
+          paymentMethod: null,
+          matchTransferRef: null,
+          matchBankAccountName: null,
+          status: 'pending',
+          cashTransactionId: null,
+          confirmedAt: null,
+          confirmedBy: null
+        }
+      });
+      const supplementaries = await tx.rentalIncome.findMany({
+        where: { note: { contains: `補繳差額 - 原紀錄 #${incomeId}` } }
+      });
+      for (const s of supplementaries) {
+        await tx.rentalIncome.delete({ where: { id: s.id } });
+      }
+    });
+
+    await recalcBalance(accountId);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('DELETE /api/rentals/income/[id] error:', error);
     return handleApiError(error);
   }
 }

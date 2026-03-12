@@ -36,6 +36,38 @@ export async function GET(request) {
   }
 }
 
+async function createPaymentOrderForTax(tx, tax) {
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const prefix = `PAY-${dateStr}-`;
+  const existing = await tx.paymentOrder.findMany({
+    where: { orderNo: { startsWith: prefix } },
+    select: { orderNo: true }
+  });
+  let maxSeq = 0;
+  for (const item of existing) {
+    const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+  const amt = Number(tax.amount);
+  const summary = `房屋稅款 - ${tax.property.name} - ${tax.taxYear} ${tax.taxType}`;
+  const order = await tx.paymentOrder.create({
+    data: {
+      orderNo,
+      invoiceIds: [],
+      supplierName: summary,
+      paymentMethod: '轉帳',
+      amount: amt,
+      discount: 0,
+      netAmount: amt,
+      dueDate: tax.dueDate,
+      summary,
+      status: '待出納'
+    }
+  });
+  return order;
+}
+
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_CREATE);
   if (!auth.ok) return auth.response;
@@ -48,21 +80,29 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
 
-    const tax = await prisma.propertyTax.create({
-      data: {
-        propertyId: parseInt(propertyId),
-        taxYear: parseInt(taxYear),
-        taxType,
-        dueDate,
-        amount: parseFloat(amount),
-        status: 'pending'
-      },
-      include: {
-        property: { select: { id: true, name: true, buildingName: true } }
-      }
+    const result = await prisma.$transaction(async (tx) => {
+      const tax = await tx.propertyTax.create({
+        data: {
+          propertyId: parseInt(propertyId),
+          taxYear: parseInt(taxYear),
+          taxType,
+          dueDate,
+          amount: parseFloat(amount),
+          status: 'pending'
+        },
+        include: {
+          property: { select: { id: true, name: true, buildingName: true } }
+        }
+      });
+      const order = await createPaymentOrderForTax(tx, tax);
+      await tx.propertyTax.update({
+        where: { id: tax.id },
+        data: { paymentOrderId: order.id }
+      });
+      return { ...tax, paymentOrderId: order.id, paymentOrderNo: order.orderNo };
     });
 
-    return NextResponse.json(tax, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error('POST /api/rentals/taxes error:', error);
     return handleApiError(error);

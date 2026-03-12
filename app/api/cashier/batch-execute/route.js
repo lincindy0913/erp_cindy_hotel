@@ -269,6 +269,23 @@ export async function POST(request) {
             });
           }
         }
+
+        // 若此付款單為租賃稅款，連動更新 PropertyTax 為已繳並寫入金流
+        const linkedTax = await tx.propertyTax.findFirst({
+          where: { paymentOrderId: order.id },
+        });
+        if (linkedTax) {
+          const firstExec = executions.find(e => e.paymentOrderId === order.id);
+          await tx.propertyTax.update({
+            where: { id: linkedTax.id },
+            data: {
+              status: 'paid',
+              cashTransactionId: firstExec ? firstExec.cashTransactionId : null,
+              confirmedAt: new Date(),
+              confirmedBy: session?.user?.email || null,
+            },
+          });
+        }
       }
 
       // Recalculate balance for all affected accounts

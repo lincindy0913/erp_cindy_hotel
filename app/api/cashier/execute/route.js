@@ -182,6 +182,22 @@ export async function POST(request) {
         }
       }
 
+      // 6b. If this PaymentOrder is linked to property tax, update tax to paid and link cash tx
+      const linkedTax = await tx.propertyTax.findFirst({
+        where: { paymentOrderId: parseInt(paymentOrderId) }
+      });
+      if (linkedTax) {
+        await tx.propertyTax.update({
+          where: { id: linkedTax.id },
+          data: {
+            status: 'paid',
+            cashTransactionId: cashTx.id,
+            confirmedAt: new Date(),
+            confirmedBy: session?.user?.email || null
+          }
+        });
+      }
+
       // 8. If cashier marked this as employee advance (from cashier form), create EmployeeAdvance
       if (isEmployeeAdvance && advancedBy) {
         const advDateStr2 = executionDate.replace(/-/g, '');

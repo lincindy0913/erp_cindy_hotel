@@ -43,11 +43,14 @@ async function main() {
   };
 
   for (const [whName, depts] of Object.entries(warehouseData)) {
-    const wh = await prisma.warehouse.upsert({
-      where: { name: whName },
-      update: {},
-      create: { name: whName }
+    let wh = await prisma.warehouse.findFirst({
+      where: { name: whName, parentId: null }
     });
+    if (!wh) {
+      wh = await prisma.warehouse.create({
+        data: { name: whName, type: 'building' }
+      });
+    }
     for (const deptName of depts) {
       await prisma.department.upsert({
         where: { warehouseId_name: { warehouseId: wh.id, name: deptName } },

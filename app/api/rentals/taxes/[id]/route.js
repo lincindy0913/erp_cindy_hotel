@@ -111,3 +111,62 @@ export async function PUT(request, { params }) {
     return handleApiError(error);
   }
 }
+
+// PATCH - 編輯稅款（金額、到期日、稅種）；若已繳納會同步更新金流
+export async function PATCH(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const taxId = parseInt(id);
+    const body = await request.json();
+    const { amount, dueDate, taxType } = body;
+
+    const tax = await prisma.propertyTax.findUnique({
+      where: { id: taxId },
+      include: { property: { select: { name: true } } }
+    });
+
+    if (!tax) {
+      return createErrorResponse('NOT_FOUND', '找不到稅款紀錄', 404);
+    }
+
+    const updateData = {};
+    if (amount !== undefined) updateData.amount = Number(amount);
+    if (dueDate !== undefined) updateData.dueDate = dueDate;
+    if (taxType !== undefined) updateData.taxType = taxType;
+
+    if (Object.keys(updateData).length === 0) {
+      return createErrorResponse('VALIDATION_FAILED', '請提供要更新的欄位', 400);
+    }
+
+    await prisma.propertyTax.update({
+      where: { id: taxId },
+      data: updateData
+    });
+
+    if (tax.cashTransactionId && amount !== undefined) {
+      const tx = await prisma.cashTransaction.findUnique({
+        where: { id: tax.cashTransactionId },
+        select: { accountId: true }
+      });
+      if (tx) {
+        await prisma.cashTransaction.update({
+          where: { id: tax.cashTransactionId },
+          data: { amount: Number(amount) }
+        });
+        await recalcBalance(tx.accountId);
+      }
+    }
+
+    const updated = await prisma.propertyTax.findUnique({
+      where: { id: taxId },
+      include: { property: { select: { name: true } } }
+    });
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error('PATCH /api/rentals/taxes/[id] error:', error);
+    return handleApiError(error);
+  }
+}
