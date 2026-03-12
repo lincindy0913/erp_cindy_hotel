@@ -28,6 +28,9 @@ export async function GET(request) {
     if (templateId) where.templateId = parseInt(templateId);
     if (executionType) where.executionType = executionType;
 
+    // If filtering by payment status, we need to join with PaymentOrder
+    const paymentStatusFilter = searchParams.get('paymentStatus');
+
     const [records, total] = await Promise.all([
       prisma.commonExpenseRecord.findMany({
         where,
@@ -46,19 +49,44 @@ export async function GET(request) {
       prisma.commonExpenseRecord.count({ where })
     ]);
 
-    const result = records.map(r => ({
-      ...r,
-      totalDebit: Number(r.totalDebit),
-      totalCredit: Number(r.totalCredit),
-      entryLines: r.entryLines.map(line => ({
-        ...line,
-        amount: Number(line.amount)
-      })),
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
-      confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
-      voidedAt: r.voidedAt ? r.voidedAt.toISOString() : null
-    }));
+    // Fetch linked payment order statuses
+    const paymentOrderIds = records.map(r => r.paymentOrderId).filter(Boolean);
+    const paymentOrders = paymentOrderIds.length > 0
+      ? await prisma.paymentOrder.findMany({
+          where: { id: { in: paymentOrderIds } },
+          select: { id: true, status: true }
+        })
+      : [];
+    const poStatusMap = new Map(paymentOrders.map(po => [po.id, po.status]));
+
+    const allResults = records.map(r => {
+      const poStatus = r.paymentOrderId ? poStatusMap.get(r.paymentOrderId) : null;
+      // Map payment order status to display status
+      let paymentStatus = null;
+      if (poStatus === '待出納') paymentStatus = '待出納';
+      else if (poStatus === '已執行') paymentStatus = '已付款';
+      else if (poStatus) paymentStatus = poStatus;
+
+      return {
+        ...r,
+        totalDebit: Number(r.totalDebit),
+        totalCredit: Number(r.totalCredit),
+        paymentStatus,
+        entryLines: r.entryLines.map(line => ({
+          ...line,
+          amount: Number(line.amount)
+        })),
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+        confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
+        voidedAt: r.voidedAt ? r.voidedAt.toISOString() : null
+      };
+    });
+
+    // Filter by payment status if requested
+    const result = paymentStatusFilter
+      ? allResults.filter(r => r.paymentStatus === paymentStatusFilter)
+      : allResults;
 
     return NextResponse.json({
       records: result,

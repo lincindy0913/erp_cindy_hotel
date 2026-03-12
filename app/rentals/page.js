@@ -158,12 +158,12 @@ function RentalsPage() {
     if (activeTab === 'operatingReport') fetchOperatingReport();
   }, [activeTab]);
 
-  // 從出納執行回來時自動更新稅款清單（頁面重新顯示時 refetch）
+  // 從出納執行回來時自動更新稅款/維護費清單（頁面重新顯示時 refetch）
   useEffect(() => {
     const onVisible = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && activeTab === 'taxes') {
-        fetchTaxes();
-      }
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (activeTab === 'taxes') fetchTaxes();
+      if (activeTab === 'maintenance') fetchMaintenances();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -534,8 +534,11 @@ function RentalsPage() {
   function openIncomePayment(income) {
     setIncomeFormMode('confirm');
     setPayingIncomeId(income.id);
+    const expected = Number(income.expectedAmount || 0);
+    const received = Number(income.actualAmount || 0);
+    const remaining = Math.max(0, expected - received);
     setIncomePayForm({
-      actualAmount: String(income.expectedAmount),
+      actualAmount: remaining > 0 ? String(remaining) : String(expected),
       actualDate: new Date().toISOString().split('T')[0],
       accountId: income.accountId || '',
       paymentMethod: income.paymentMethod || '現金',
@@ -641,6 +644,20 @@ function RentalsPage() {
       setPayingTaxId(null);
       fetchTaxes();
     } catch (err) { alert('確認失敗: ' + err.message); }
+  }
+
+  async function deleteTax(tax) {
+    if (tax.status === 'paid') {
+      alert('已付款的稅款不可刪除');
+      return;
+    }
+    if (!confirm(`確定要刪除此筆稅款（${tax.property?.name} ${tax.taxYear} ${tax.taxType}）？`)) return;
+    try {
+      const res = await fetch(`/api/rentals/taxes/${tax.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return alert(data.message || data.error || '刪除失敗');
+      fetchTaxes();
+    } catch (err) { alert('刪除失敗: ' + err.message); }
   }
 
   // ==================== MAINTENANCE ====================
@@ -873,7 +890,7 @@ function RentalsPage() {
                         <th className="text-right px-3 py-2">未收</th>
                         <th className="text-left px-3 py-2">到期日</th>
                         <th className="text-center px-3 py-2">狀態</th>
-                        <th className="text-left px-3 py-2">收款日</th>
+                        <th className="text-left px-3 py-2">付款紀錄</th>
                         <th className="text-center px-3 py-2">操作</th>
                       </tr>
                     </thead>
@@ -885,6 +902,9 @@ function RentalsPage() {
                         const expected = Number(income.expectedAmount || 0);
                         const actual = Number(income.actualAmount || 0);
                         const remaining = expected - actual;
+                        const paymentList = (income.payments && income.payments.length > 0)
+                          ? income.payments.map((p, i) => ({ label: `第${i + 1}次`, amount: Number(p.amount), date: p.paymentDate }))
+                          : (income.actualAmount != null && income.actualAmount > 0 ? [{ label: '第1次', amount: Number(income.actualAmount), date: income.actualDate || '-' }] : []);
                         return (
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
                             <td className="px-3 py-2">{income.propertyName}</td>
@@ -896,17 +916,23 @@ function RentalsPage() {
                             <td className="px-3 py-2 text-center">
                               <StatusBadge value={isOverdue ? 'overdue' : income.status} list={INCOME_STATUSES} />
                             </td>
-                            <td className="px-3 py-2">{income.actualDate || '-'}</td>
+                            <td className="px-3 py-2 text-xs text-gray-600">
+                              {paymentList.length === 0 ? '-' : paymentList.map((p, i) => (
+                                <span key={i} className="block">{p.label} ${fmt(p.amount)} ({p.date})</span>
+                              ))}
+                            </td>
                             <td className="px-3 py-2 text-center">
                               {(income.status === 'pending') && (
                                 <button onClick={() => openIncomePayment(income)}
                                   className="text-teal-600 hover:text-teal-800 text-xs font-medium mr-1">
-                                  {income.note && income.note.includes('補繳') ? '補繳差額' : '確認收款'}
+                                  {paymentList.length > 0 ? '第' + (paymentList.length + 1) + '次收款' : '確認收款'}
                                 </button>
                               )}
                               {(income.status === 'completed' || income.status === 'partial') && (
                                 <>
-                                  <button onClick={() => openIncomeEdit(income)} className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-1">編輯</button>
+                                  {paymentList.length <= 1 && (
+                                    <button onClick={() => openIncomeEdit(income)} className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-1">編輯</button>
+                                  )}
                                   <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium">作廢</button>
                                 </>
                               )}
@@ -1285,11 +1311,11 @@ function RentalsPage() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             <div className="flex items-center justify-center gap-2 flex-wrap">
-                              <button onClick={() => openTaxEdit(tax)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                                編輯
-                              </button>
                               {tax.status === 'pending' && (
                                 <>
+                                  <button onClick={() => openTaxEdit(tax)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                                    編輯
+                                  </button>
                                   {tax.paymentOrderId ? (
                                     <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</a>
                                   ) : (
@@ -1298,8 +1324,10 @@ function RentalsPage() {
                                       確認繳納
                                     </button>
                                   )}
+                                  <button onClick={() => deleteTax(tax)} className="text-red-600 hover:text-red-800 text-xs font-medium">刪除</button>
                                 </>
                               )}
+                              {tax.status === 'paid' && <span className="text-xs text-gray-400">—</span>}
                             </div>
                           </td>
                         </tr>

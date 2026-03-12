@@ -27,6 +27,7 @@ const EMPTY_ENTRY_LINE = {
   warehouse: '',       // 館別
   paymentMethod: '',   // 付款方式
   accountId: '',       // 轉帳存簿 (CashAccount id)
+  advancedBy: '',      // 代墊員工 (信用卡/員工代付)
   note: ''             // 備註
 };
 
@@ -82,6 +83,8 @@ export default function ExpensesPage() {
   const [expandedRecord, setExpandedRecord] = useState(null);
   const [voidReason, setVoidReason] = useState('');
   const [showVoidModal, setShowVoidModal] = useState(null);
+  const [editingRecord, setEditingRecord] = useState(null);  // record object being edited
+  const [editForm, setEditForm] = useState({ entryLines: [], note: '', paymentMethod: '' });
 
   // Execute tab state
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -198,7 +201,7 @@ export default function ExpensesPage() {
       const params = new URLSearchParams();
       if (recordFilter.month) params.set('month', recordFilter.month);
       if (recordFilter.warehouse) params.set('warehouse', recordFilter.warehouse);
-      if (recordFilter.status) params.set('status', recordFilter.status);
+      if (recordFilter.status) params.set('paymentStatus', recordFilter.status);
       params.set('type', mainTab);
       const res = await fetch(`/api/expense-records?${params.toString()}`);
       const data = await res.json();
@@ -267,6 +270,7 @@ export default function ExpensesPage() {
           warehouse: l.warehouse || '',
           paymentMethod: l.paymentMethod || '',
           accountId: l.accountId ? String(l.accountId) : '',
+          advancedBy: l.advancedBy || '',
           note: l.note || ''
         })),
       purchaseItems: Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
@@ -439,6 +443,7 @@ export default function ExpensesPage() {
         warehouse: l.warehouse,
         paymentMethod: l.paymentMethod,
         accountId: l.accountId || null,
+        advancedBy: l.advancedBy || null,
         note: l.note || '',
         sortOrder: i
       }));
@@ -567,7 +572,7 @@ export default function ExpensesPage() {
   }
 
   async function handleDeleteRecord(id) {
-    if (!confirm('確定要刪除此記錄嗎？')) return;
+    if (!confirm('確定要刪除此記錄及關聯的付款單嗎？此操作無法復原。')) return;
     try {
       const res = await fetch(`/api/expense-records/${id}`, { method: 'DELETE' });
       if (res.ok) fetchRecords();
@@ -577,6 +582,64 @@ export default function ExpensesPage() {
       }
     } catch (err) {
       alert('刪除失敗');
+    }
+  }
+
+  function openEditRecord(record) {
+    setEditingRecord(record);
+    setEditForm({
+      entryLines: record.entryLines.filter(l => l.entryType === 'debit').map(l => ({
+        accountingCode: l.accountingCode,
+        accountingName: l.accountingName,
+        summary: l.summary || '',
+        amount: l.amount
+      })),
+      note: record.note || '',
+      paymentMethod: record.paymentMethod || ''
+    });
+  }
+
+  async function handleSaveEdit() {
+    if (!editingRecord) return;
+    const debitLines = editForm.entryLines.map((l, i) => ({
+      entryType: 'debit',
+      accountingCode: l.accountingCode,
+      accountingName: l.accountingName,
+      summary: l.summary,
+      amount: parseFloat(l.amount) || 0,
+      sortOrder: i
+    }));
+    const debitTotal = debitLines.reduce((s, l) => s + l.amount, 0);
+    if (debitTotal <= 0) { alert('金額必須大於 0'); return; }
+    // Auto-add credit line to balance
+    const creditLines = [{
+      entryType: 'credit',
+      accountingCode: editingRecord.entryLines.find(l => l.entryType === 'credit')?.accountingCode || '1111',
+      accountingName: editingRecord.entryLines.find(l => l.entryType === 'credit')?.accountingName || '銀行存款',
+      summary: '',
+      amount: debitTotal,
+      sortOrder: debitLines.length
+    }];
+    try {
+      const res = await fetch(`/api/expense-records/${editingRecord.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'edit',
+          entryLines: [...debitLines, ...creditLines],
+          note: editForm.note,
+          paymentMethod: editForm.paymentMethod
+        })
+      });
+      if (res.ok) {
+        setEditingRecord(null);
+        fetchRecords();
+      } else {
+        const err = await res.json();
+        alert(err.error || '儲存失敗');
+      }
+    } catch (err) {
+      alert('儲存失敗');
     }
   }
 
@@ -628,6 +691,7 @@ export default function ExpensesPage() {
           warehouse: l.warehouse || '',
           paymentMethod: l.paymentMethod || '',
           accountId: l.accountId ? String(l.accountId) : '',
+          advancedBy: l.advancedBy || '',
           sortOrder: l.sortOrder
         };
       });
@@ -1458,26 +1522,16 @@ export default function ExpensesPage() {
                           </select>
                         </div>
                       </div>
-                      {(executeForm.paymentMethod === '信用卡' || executeForm.paymentMethod === '員工代付') && (
+                      {/* 當無逐筆分錄且付款方式為信用卡/員工代付時，顯示整批代墊員工欄位 */}
+                      {(!executeForm.entryLines || executeForm.entryLines.length === 0) &&
+                        (executeForm.paymentMethod === '信用卡' || executeForm.paymentMethod === '員工代付') && (
                         <div style={{ background: '#f3e8ff', border: '1px solid #c4b5fd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: '#6d28d9', marginBottom: 8 }}>員工代墊資訊（存檔後自動連動代墊款管理）</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                            <div>
-                              <label style={{ fontSize: 11, color: '#6d28d9' }}>代墊員工 *</label>
-                              <input value={executeForm.advancedBy || ''}
-                                onChange={e => setExecuteForm(prev => ({ ...prev, advancedBy: e.target.value }))}
-                                placeholder="員工姓名" style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: 11, color: '#6d28d9' }}>代墊方式</label>
-                              <select value={executeForm.advancePaymentMethod || executeForm.paymentMethod}
-                                onChange={e => setExecuteForm(prev => ({ ...prev, advancePaymentMethod: e.target.value }))}
-                                style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }}>
-                                <option value="現金">現金</option>
-                                <option value="信用卡">信用卡</option>
-                                <option value="其他">其他</option>
-                              </select>
-                            </div>
+                          <div>
+                            <label style={{ fontSize: 11, color: '#6d28d9' }}>代墊員工 *</label>
+                            <input value={executeForm.advancedBy || ''}
+                              onChange={e => setExecuteForm(prev => ({ ...prev, advancedBy: e.target.value }))}
+                              placeholder="員工姓名" style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }} />
                           </div>
                         </div>
                       )}
@@ -1492,7 +1546,7 @@ export default function ExpensesPage() {
                                 <th style={{ ...thStyle, width: 120 }}>費用名稱</th>
                                 <th style={{ ...thStyle, width: 90 }}>館別</th>
                                 <th style={{ ...thStyle, width: 90 }}>付款方式</th>
-                                <th style={{ ...thStyle, width: 120 }}>轉帳存簿</th>
+                                <th style={{ ...thStyle, width: 140 }}>存簿 / 代墊員工</th>
                                 <th style={{ ...thStyle, width: 120 }}>金額 *</th>
                               </tr>
                             </thead>
@@ -1505,7 +1559,13 @@ export default function ExpensesPage() {
                                     <td style={tdStyle}>{line.warehouse || '—'}</td>
                                     <td style={tdStyle}>{line.paymentMethod || '—'}</td>
                                     <td style={tdStyle}>
-                                      {line.accountId ? (cashAccounts.find(a => a.id === parseInt(line.accountId))?.name || '—') : '—'}
+                                      {(line.paymentMethod === '信用卡' || line.paymentMethod === '員工代付') ? (
+                                        <input value={line.advancedBy || ''}
+                                          onChange={e => updateExecuteLine(realIdx, 'advancedBy', e.target.value)}
+                                          style={{ ...inputStyle, marginBottom: 0 }} placeholder="代墊員工姓名" />
+                                      ) : line.accountId ? (
+                                        <span style={{ fontSize: 13 }}>{cashAccounts.find(a => a.id === parseInt(line.accountId))?.name || '—'}</span>
+                                      ) : <span style={{ fontSize: 12, color: '#999' }}>—</span>}
                                     </td>
                                     <td style={tdStyle}>
                                       <input type="number" value={line.amount}
@@ -1620,14 +1680,13 @@ export default function ExpensesPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 12 }}>狀態</label>
+                  <label style={{ ...labelStyle, fontSize: 12 }}>付款狀態</label>
                   <select value={recordFilter.status}
                     onChange={e => setRecordFilter(prev => ({ ...prev, status: e.target.value }))}
                     style={{ ...inputStyle, width: 120 }}>
                     <option value="">全部</option>
-                    <option value="待確認">待確認</option>
-                    <option value="已確認">已確認</option>
-                    <option value="已作廢">已作廢</option>
+                    <option value="待出納">待出納</option>
+                    <option value="已付款">已付款</option>
                   </select>
                 </div>
               </div>
@@ -1653,8 +1712,10 @@ export default function ExpensesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {records.map(r => (
-                      <tr key={r.id} style={{ background: r.status === '已作廢' ? '#f8f8f8' : '#fff' }}>
+                    {records.map(r => {
+                      const ps = r.paymentStatus;
+                      return (
+                      <tr key={r.id} style={{ background: '#fff' }}>
                         <td style={tdStyle}>
                           <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{r.recordNo}</span>
                         </td>
@@ -1675,10 +1736,10 @@ export default function ExpensesPage() {
                         <td style={tdStyle}>
                           <span style={{
                             padding: '2px 8px', borderRadius: 4, fontSize: 12,
-                            background: r.status === '已確認' ? '#d4edda' : r.status === '已作廢' ? '#f8d7da' : '#fff3cd',
-                            color: r.status === '已確認' ? '#155724' : r.status === '已作廢' ? '#721c24' : '#856404'
+                            background: ps === '已付款' ? '#d4edda' : ps === '待出納' ? '#fff3cd' : '#e2e3e5',
+                            color: ps === '已付款' ? '#155724' : ps === '待出納' ? '#856404' : '#383d41'
                           }}>
-                            {r.status}
+                            {ps || r.status}
                           </span>
                         </td>
                         <td style={tdStyle}>
@@ -1687,22 +1748,19 @@ export default function ExpensesPage() {
                               style={smallBtnStyle}>
                               {expandedRecord === r.id ? '收起' : '明細'}
                             </button>
-                            {r.status === '待確認' && (
+                            {ps === '待出納' && (
                               <>
-                                <button onClick={() => handleConfirmRecord(r.id)}
-                                  style={{ ...smallBtnStyle, color: '#28a745' }}>確認</button>
+                                <button onClick={() => openEditRecord(r)}
+                                  style={{ ...smallBtnStyle, color: '#1a73e8' }}>編輯</button>
                                 <button onClick={() => handleDeleteRecord(r.id)}
                                   style={{ ...smallBtnStyle, color: '#dc3545' }}>刪除</button>
                               </>
                             )}
-                            {r.status === '已確認' && (
-                              <button onClick={() => { setShowVoidModal(r.id); setVoidReason(''); }}
-                                style={{ ...smallBtnStyle, color: '#dc3545' }}>作廢</button>
-                            )}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {records.map(r => expandedRecord === r.id && (
                       <tr key={`detail-${r.id}`}>
                         <td colSpan={8} style={{ padding: 16, background: '#fafbfc' }}>
@@ -1748,27 +1806,114 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* Void Modal */}
-      {showVoidModal && (
+      {/* Edit Record Modal */}
+      {editingRecord && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 400 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>作廢記錄</h3>
-            <label style={labelStyle}>作廢原因 *</label>
-            <textarea value={voidReason}
-              onChange={e => setVoidReason(e.target.value)}
-              style={{ ...inputStyle, height: 80, resize: 'vertical' }}
-              placeholder="請輸入作廢原因" />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-              <button onClick={() => { setShowVoidModal(null); setVoidReason(''); }}
+          <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 560, maxHeight: '80vh', overflow: 'auto' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>編輯費用記錄</h3>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+              {editingRecord.recordNo} | {editingRecord.warehouse} | {editingRecord.expenseMonth}
+              {editingRecord.paymentOrderNo && <> | 付款單: {editingRecord.paymentOrderNo}</>}
+            </div>
+
+            <label style={labelStyle}>付款方式</label>
+            <select value={editForm.paymentMethod}
+              onChange={e => setEditForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+              style={{ ...inputStyle, width: 200, marginBottom: 12 }}>
+              <option value="">—</option>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+
+            <label style={labelStyle}>費用明細 (借方)</label>
+            <table style={{ ...tableStyle, marginBottom: 12 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, padding: '4px 8px' }}>費用名稱</th>
+                  <th style={{ ...thStyle, padding: '4px 8px' }}>會計代碼</th>
+                  <th style={{ ...thStyle, padding: '4px 8px', width: 100 }}>摘要</th>
+                  <th style={{ ...thStyle, padding: '4px 8px', width: 110, textAlign: 'right' }}>金額</th>
+                  <th style={{ ...thStyle, padding: '4px 8px', width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {editForm.entryLines.map((line, i) => (
+                  <tr key={i}>
+                    <td style={{ ...tdStyle, padding: '4px 6px' }}>
+                      <input value={line.accountingName}
+                        onChange={e => {
+                          const lines = [...editForm.entryLines];
+                          lines[i] = { ...lines[i], accountingName: e.target.value };
+                          setEditForm(prev => ({ ...prev, entryLines: lines }));
+                        }}
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13 }} />
+                    </td>
+                    <td style={{ ...tdStyle, padding: '4px 6px' }}>
+                      <input value={line.accountingCode}
+                        onChange={e => {
+                          const lines = [...editForm.entryLines];
+                          lines[i] = { ...lines[i], accountingCode: e.target.value };
+                          setEditForm(prev => ({ ...prev, entryLines: lines }));
+                        }}
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13, width: 80 }} />
+                    </td>
+                    <td style={{ ...tdStyle, padding: '4px 6px' }}>
+                      <input value={line.summary}
+                        onChange={e => {
+                          const lines = [...editForm.entryLines];
+                          lines[i] = { ...lines[i], summary: e.target.value };
+                          setEditForm(prev => ({ ...prev, entryLines: lines }));
+                        }}
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13 }} />
+                    </td>
+                    <td style={{ ...tdStyle, padding: '4px 6px' }}>
+                      <input type="number" value={line.amount}
+                        onChange={e => {
+                          const lines = [...editForm.entryLines];
+                          lines[i] = { ...lines[i], amount: e.target.value };
+                          setEditForm(prev => ({ ...prev, entryLines: lines }));
+                        }}
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13, textAlign: 'right' }} />
+                    </td>
+                    <td style={{ ...tdStyle, padding: '4px 6px', textAlign: 'center' }}>
+                      {editForm.entryLines.length > 1 && (
+                        <button onClick={() => {
+                          const lines = editForm.entryLines.filter((_, idx) => idx !== i);
+                          setEditForm(prev => ({ ...prev, entryLines: lines }));
+                        }}
+                        style={{ ...smallBtnStyle, color: '#dc3545', padding: '2px 6px' }}>✕</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button onClick={() => setEditForm(prev => ({
+              ...prev,
+              entryLines: [...prev.entryLines, { accountingCode: '', accountingName: '', summary: '', amount: '' }]
+            }))}
+              style={{ ...smallBtnStyle, marginBottom: 12 }}>+ 新增明細</button>
+
+            <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
+              合計: NT$ {editForm.entryLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0).toLocaleString()}
+            </div>
+
+            <label style={labelStyle}>備註</label>
+            <textarea value={editForm.note}
+              onChange={e => setEditForm(prev => ({ ...prev, note: e.target.value }))}
+              style={{ ...inputStyle, height: 60, resize: 'vertical' }}
+              placeholder="備註" />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setEditingRecord(null)}
                 style={{ padding: '8px 16px', background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: 6, cursor: 'pointer' }}>
                 取消
               </button>
-              <button onClick={() => handleVoidRecord(showVoidModal)}
-                style={{ padding: '8px 16px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
-                確定作廢
+              <button onClick={handleSaveEdit}
+                style={{ padding: '8px 16px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
+                儲存並同步付款單
               </button>
             </div>
           </div>

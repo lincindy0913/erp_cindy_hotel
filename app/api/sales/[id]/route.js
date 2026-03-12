@@ -203,6 +203,24 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('NOT_FOUND', '發票不存在', 404);
     }
 
+    // 已付款的發票不可刪除
+    const paymentOrders = await prisma.paymentOrder.findMany({
+      where: { status: '已執行' },
+      select: { invoiceIds: true }
+    });
+    const idNum = Number(id);
+    const isPaid = paymentOrders.some(o => {
+      if (!Array.isArray(o.invoiceIds)) return false;
+      return o.invoiceIds.some(invId => Number(invId) === idNum || invId === id);
+    });
+    if (isPaid) {
+      return createErrorResponse(
+        'VALIDATION_FAILED',
+        '此發票為已付款狀態，不可刪除。',
+        400
+      );
+    }
+
     await prisma.salesMaster.delete({ where: { id } });
     return NextResponse.json({ message: '發票已刪除，相關進貨單品項已可重新核銷' });
   } catch (error) {

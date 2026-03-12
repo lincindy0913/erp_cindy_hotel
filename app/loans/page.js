@@ -1078,13 +1078,19 @@ export default function LoansPage() {
                                 <span className="font-mono">{formatCurrency(rec.cashierTxns.reduce((s, t) => s + t.amount, 0))}</span>
                               </div>
                             )}
+                            {(rec.status === '已預付' || rec.status === '已核實') && rec.actualTotal != null && rec.actualTotal > rec.estimatedTotal && (
+                              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                <span>已預付</span>
+                                <span className="font-mono">{formatCurrency(Math.round((rec.actualTotal - rec.estimatedTotal) * 100) / 100)}</span>
+                              </div>
+                            )}
                             {rec.paymentTxns && rec.paymentTxns.length > 0 && (
                               <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 border border-green-200">
                                 <span>扣款</span>
                                 <span className="font-mono">{formatCurrency(rec.paymentTxns.reduce((s, t) => s + t.amount, 0))}</span>
                               </div>
                             )}
-                            {!rec.preDeposit && (!rec.cashierTxns || rec.cashierTxns.length === 0) && (!rec.paymentTxns || rec.paymentTxns.length === 0) && (
+                            {!rec.preDeposit && (!rec.cashierTxns || rec.cashierTxns.length === 0) && (!rec.paymentTxns || rec.paymentTxns.length === 0) && rec.actualTotal == null && (
                               <span className="text-xs text-gray-400">-</span>
                             )}
                           </div>
@@ -1138,6 +1144,10 @@ export default function LoansPage() {
                 const confirmedRecs = monthlyRecords.filter(r => r.actualTotal != null);
                 const totalActT = confirmedRecs.reduce((s, r) => s + (r.actualTotal || 0), 0);
                 const totalPreDeposit = monthlyRecords.reduce((s, r) => s + (r.preDeposit ? r.preDeposit.amount : 0), 0);
+                const totalExtraPrepaid = confirmedRecs.reduce((s, r) => {
+                  const extra = r.actualTotal != null && r.actualTotal > r.estimatedTotal ? Math.round((r.actualTotal - r.estimatedTotal) * 100) / 100 : 0;
+                  return s + extra;
+                }, 0);
                 const statusCounts = {};
                 monthlyRecords.forEach(r => { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
                 return (
@@ -1161,9 +1171,14 @@ export default function LoansPage() {
                         ) : '-'}
                       </td>
                       <td className="px-3 py-3 text-center text-xs">
-                        {totalPreDeposit > 0 && (
-                          <span className="text-blue-600 font-mono">預付: {formatCurrency(totalPreDeposit)}</span>
-                        )}
+                        <div className="space-y-1">
+                          {totalPreDeposit > 0 && (
+                            <div className="text-blue-600 font-mono">預付: {formatCurrency(totalPreDeposit)}</div>
+                          )}
+                          {totalExtraPrepaid > 0 && (
+                            <div className="text-indigo-600 font-mono">已預付: {formatCurrency(totalExtraPrepaid)}</div>
+                          )}
+                        </div>
                       </td>
                       <td></td>
                     </tr>

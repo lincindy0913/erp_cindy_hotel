@@ -995,12 +995,14 @@ function InvoicePageInner() {
                                     編輯
                                   </button>
                                 )}
-                                <button
-                                  onClick={() => handleDelete(invoice.id)}
-                                  className="text-red-600 hover:underline text-sm"
-                                >
-                                  刪除
-                                </button>
+                                {!['草稿', '待出納', '已付款'].includes(invoice.paymentStatus) && (
+                                  <button
+                                    onClick={() => handleDelete(invoice.id)}
+                                    className="text-red-600 hover:underline text-sm"
+                                  >
+                                    刪除
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>

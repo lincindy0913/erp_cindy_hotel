@@ -45,13 +45,14 @@ async function recalcAccountBalance(tx, accountId) {
 }
 
 // Helper: sync DepartmentExpense (upsert by year/month/department/category)
-async function syncDepartmentExpense(tx, record, template, sign) {
+// sign: +1 for add, -1 for reverse; directDiff: for edit mode, pass the diff directly
+async function syncDepartmentExpense(tx, record, template, sign, directDiff) {
   const [yearStr, monthStr] = record.expenseMonth.split('-');
   const year = parseInt(yearStr);
   const month = parseInt(monthStr);
   const department = record.warehouse;
   const category = template?.category?.name || '未分類';
-  const amount = Number(record.totalDebit) * sign;
+  const amount = directDiff !== undefined ? directDiff : Number(record.totalDebit) * sign;
 
   const existing = await tx.departmentExpense.findFirst({
     where: { year, month, department, category }
@@ -75,11 +76,12 @@ async function syncDepartmentExpense(tx, record, template, sign) {
 }
 
 // Helper: sync MonthlyAggregation for expense type
-async function syncMonthlyAggregation(tx, record, sign) {
+// sign: +1 for add, -1 for reverse; directDiff: for edit mode
+async function syncMonthlyAggregation(tx, record, sign, directDiff) {
   const [yearStr, monthStr] = record.expenseMonth.split('-');
   const year = parseInt(yearStr);
   const month = parseInt(monthStr);
-  const amount = Number(record.totalDebit) * sign;
+  const amount = directDiff !== undefined ? directDiff : Number(record.totalDebit) * sign;
 
   const existing = await tx.monthlyAggregation.findFirst({
     where: { aggregationType: 'expense', year, month, warehouse: record.warehouse }
@@ -340,13 +342,111 @@ export async function PUT(request, { params }) {
       return NextResponse.json(formatRecord(updated));
     }
 
-    return createErrorResponse('VALIDATION_FAILED', '無效的操作，請指定 action: confirm 或 void', 400);
+    // Action: edit (update entry lines, amounts, note — sync to PaymentOrder)
+    if (data.action === 'edit') {
+      // Only allow edit when linked payment order is 待出納
+      if (existing.paymentOrderId) {
+        const po = await prisma.paymentOrder.findUnique({ where: { id: existing.paymentOrderId } });
+        if (po && po.status !== '待出納') {
+          return createErrorResponse('VALIDATION_FAILED', '付款單已執行，無法編輯', 400);
+        }
+      }
+
+      if (!data.entryLines || data.entryLines.length === 0) {
+        return createErrorResponse('VALIDATION_FAILED', '請至少有一筆分錄', 400);
+      }
+
+      const newDebitTotal = data.entryLines
+        .filter(l => l.entryType === 'debit')
+        .reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
+      const newCreditTotal = data.entryLines
+        .filter(l => l.entryType === 'credit')
+        .reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
+
+      if (newDebitTotal <= 0) {
+        return createErrorResponse('VALIDATION_FAILED', '金額必須大於 0', 400);
+      }
+      if (Math.abs(newDebitTotal - newCreditTotal) > 0.01) {
+        return createErrorResponse('VALIDATION_FAILED', `借貸不平衡：借方 ${newDebitTotal.toFixed(2)} ≠ 貸方 ${newCreditTotal.toFixed(2)}`, 400);
+      }
+
+      const oldDebitTotal = Number(existing.totalDebit);
+
+      const updated = await prisma.$transaction(async (tx) => {
+        // 1. Delete old entry lines
+        await tx.recordEntryLine.deleteMany({ where: { recordId: id } });
+
+        // 2. Update record with new entry lines
+        const record = await tx.commonExpenseRecord.update({
+          where: { id },
+          data: {
+            totalDebit: newDebitTotal,
+            totalCredit: newCreditTotal,
+            note: data.note !== undefined ? data.note : existing.note,
+            paymentMethod: data.paymentMethod || existing.paymentMethod,
+            entryLines: {
+              create: data.entryLines.map((line, idx) => ({
+                entryType: line.entryType,
+                accountingCode: line.accountingCode || '',
+                accountingName: line.accountingName || '',
+                summary: line.summary || '',
+                amount: parseFloat(line.amount),
+                sortOrder: idx
+              }))
+            }
+          },
+          include: {
+            template: { select: { id: true, name: true } },
+            entryLines: { orderBy: { sortOrder: 'asc' } }
+          }
+        });
+
+        // 3. Sync linked PaymentOrder
+        if (existing.paymentOrderId) {
+          await tx.paymentOrder.update({
+            where: { id: existing.paymentOrderId },
+            data: {
+              amount: newDebitTotal,
+              netAmount: newDebitTotal,
+              paymentMethod: data.paymentMethod || existing.paymentMethod,
+              note: data.note !== undefined ? data.note : undefined,
+            }
+          });
+        }
+
+        // 4. Sync linked EmployeeAdvance (if exists)
+        if (existing.paymentOrderId) {
+          const linkedAdvance = await tx.employeeAdvance.findFirst({
+            where: { paymentOrderId: existing.paymentOrderId, status: '待結算' }
+          });
+          if (linkedAdvance) {
+            await tx.employeeAdvance.update({
+              where: { id: linkedAdvance.id },
+              data: { amount: newDebitTotal }
+            });
+          }
+        }
+
+        // 5. Adjust DepartmentExpense & MonthlyAggregation if amount changed
+        if (existing.status === '已確認' && Math.abs(oldDebitTotal - newDebitTotal) > 0.01) {
+          const diff = newDebitTotal - oldDebitTotal;
+          await syncDepartmentExpense(tx, existing, existing.template, 0, diff);
+          await syncMonthlyAggregation(tx, existing, 0, diff);
+        }
+
+        return record;
+      });
+
+      return NextResponse.json(formatRecord(updated));
+    }
+
+    return createErrorResponse('VALIDATION_FAILED', '無效的操作，請指定 action: confirm、void 或 edit', 400);
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-// DELETE: Only if status = 待確認
+// DELETE: Only if linked payment order status = 待出納
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
   if (!auth.ok) return auth.response;
@@ -355,20 +455,63 @@ export async function DELETE(request, { params }) {
     const id = parseInt(params.id);
 
     const existing = await prisma.commonExpenseRecord.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        template: {
+          select: { id: true, name: true, categoryId: true, category: { select: { name: true } } }
+        }
+      }
     });
 
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '找不到費用記錄', 404);
     }
 
-    if (existing.status !== '待確認') {
+    // Check linked payment order status
+    if (existing.paymentOrderId) {
+      const po = await prisma.paymentOrder.findUnique({ where: { id: existing.paymentOrderId } });
+      if (po && po.status !== '待出納') {
+        return createErrorResponse('VALIDATION_FAILED', `無法刪除：付款單狀態為「${po.status}」，僅「待出納」狀態可刪除`, 400);
+      }
+    } else if (existing.status !== '待確認') {
+      // No linked PO — fallback to old behavior
       return createErrorResponse('VALIDATION_FAILED', `無法刪除：目前狀態為「${existing.status}」，僅「待確認」狀態可刪除`, 400);
     }
 
-    await prisma.commonExpenseRecord.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete linked EmployeeAdvance records
+      if (existing.paymentOrderId) {
+        await tx.employeeAdvance.deleteMany({
+          where: { paymentOrderId: existing.paymentOrderId }
+        });
+      }
 
-    return NextResponse.json({ message: '費用記錄已刪除' });
+      // 2. Delete linked CashierExecution records (shouldn't exist for 待出納 but just in case)
+      if (existing.paymentOrderId) {
+        await tx.cashierExecution.deleteMany({
+          where: { paymentOrderId: existing.paymentOrderId }
+        });
+      }
+
+      // 3. Reverse DepartmentExpense & MonthlyAggregation if was confirmed
+      if (existing.status === '已確認') {
+        await syncDepartmentExpense(tx, existing, existing.template, -1);
+        await syncMonthlyAggregation(tx, existing, -1);
+      }
+
+      // 4. Delete entry lines
+      await tx.recordEntryLine.deleteMany({ where: { recordId: id } });
+
+      // 5. Delete expense record
+      await tx.commonExpenseRecord.delete({ where: { id } });
+
+      // 6. Delete linked PaymentOrder
+      if (existing.paymentOrderId) {
+        await tx.paymentOrder.delete({ where: { id: existing.paymentOrderId } });
+      }
+    });
+
+    return NextResponse.json({ message: '費用記錄及關聯付款單已刪除' });
   } catch (error) {
     return handleApiError(error);
   }

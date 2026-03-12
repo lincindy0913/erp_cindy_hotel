@@ -28,7 +28,8 @@ export async function GET(request) {
       include: {
         property: { select: { id: true, name: true, buildingName: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true } },
-        contract: { select: { id: true, contractNo: true, monthlyRent: true } }
+        contract: { select: { id: true, contractNo: true, monthlyRent: true } },
+        payments: { orderBy: { sequenceNo: 'asc' } }
       },
       orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { dueDate: 'asc' }]
     });

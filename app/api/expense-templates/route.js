@@ -123,6 +123,7 @@ export async function POST(request) {
           warehouse: line.warehouse?.trim() || null,
           paymentMethod: line.paymentMethod?.trim() || null,
           accountId: line.accountId ? parseInt(line.accountId) : null,
+          advancedBy: line.advancedBy?.trim() || null,
           sortOrder: line.sortOrder ?? idx
         }))
       };

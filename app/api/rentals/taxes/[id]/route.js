@@ -132,6 +132,10 @@ export async function PATCH(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到稅款紀錄', 404);
     }
 
+    if (tax.status === 'paid' || tax.cashTransactionId) {
+      return createErrorResponse('VALIDATION_FAILED', '已繳款的稅款不可編輯', 400);
+    }
+
     const updateData = {};
     if (amount !== undefined) updateData.amount = Number(amount);
     if (dueDate !== undefined) updateData.dueDate = dueDate;
@@ -167,6 +171,38 @@ export async function PATCH(request, { params }) {
     return NextResponse.json(updated);
   } catch (error) {
     console.error('PATCH /api/rentals/taxes/[id] error:', error);
+    return handleApiError(error);
+  }
+}
+
+// DELETE - 刪除稅款（僅待繳可刪除；已付款不可刪除）
+export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const taxId = parseInt(id);
+
+    const tax = await prisma.propertyTax.findUnique({
+      where: { id: taxId }
+    });
+
+    if (!tax) {
+      return createErrorResponse('NOT_FOUND', '找不到稅款紀錄', 404);
+    }
+
+    if (tax.status === 'paid' || tax.cashTransactionId) {
+      return createErrorResponse('VALIDATION_FAILED', '已付款的稅款不可刪除', 400);
+    }
+
+    await prisma.propertyTax.delete({
+      where: { id: taxId }
+    });
+
+    return NextResponse.json({ message: '已刪除' });
+  } catch (error) {
+    console.error('DELETE /api/rentals/taxes/[id] error:', error);
     return handleApiError(error);
   }
 }

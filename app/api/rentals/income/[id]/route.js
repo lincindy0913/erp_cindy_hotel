@@ -65,7 +65,8 @@ export async function PUT(request, { params }) {
       include: {
         contract: { select: { contractNo: true } },
         property: { select: { name: true } },
-        tenant: { select: { fullName: true, companyName: true, tenantType: true } }
+        tenant: { select: { fullName: true, companyName: true, tenantType: true } },
+        payments: { orderBy: { sequenceNo: 'asc' } }
       }
     });
 
@@ -73,15 +74,14 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
     }
 
-    // If payment method is transfer, validate matchTransferRef uniqueness
     if (paymentMethod === 'transfer' && matchTransferRef) {
-      const dupRef = await prisma.rentalIncome.findFirst({
-        where: {
-          matchTransferRef,
-          id: { not: incomeId }
-        }
+      const dupPayment = await prisma.rentalIncomePayment.findFirst({
+        where: { matchTransferRef }
       });
-      if (dupRef) {
+      const dupIncome = await prisma.rentalIncome.findFirst({
+        where: { matchTransferRef, id: { not: incomeId } }
+      });
+      if (dupPayment || dupIncome) {
         return createErrorResponse('CONFLICT_UNIQUE', '此轉帳參考號已被使用', 409);
       }
     }
@@ -89,14 +89,12 @@ export async function PUT(request, { params }) {
     const parsedActual = parseFloat(actualAmount);
     const expected = Number(income.expectedAmount);
     const acctId = parseInt(accountId);
+    const existingPayments = income.payments || [];
+    const nextSeq = existingPayments.length + 1;
+    const previousTotal = existingPayments.reduce((s, p) => s + Number(p.amount), 0);
+    const newTotal = previousTotal + parsedActual;
+    const newStatus = newTotal >= expected ? 'completed' : 'partial';
 
-    // Determine status
-    let newStatus = 'completed';
-    if (parsedActual < expected) {
-      newStatus = 'partial';
-    }
-
-    // Create CashTransaction
     const tenantName = income.tenant.tenantType === 'company'
       ? income.tenant.companyName
       : income.tenant.fullName;
@@ -121,53 +119,50 @@ export async function PUT(request, { params }) {
         categoryId,
         accountingSubject: accountingSubjectLabel,
         amount: parsedActual,
-        description: `租金收入 - ${income.property.name} - ${tenantName} - ${income.incomeYear}/${income.incomeMonth}`,
+        description: `租金收入 - ${income.property.name} - ${tenantName} - ${income.incomeYear}/${income.incomeMonth}${nextSeq > 1 ? ` (第${nextSeq}次)` : ''}`,
         sourceType: 'rental_income',
         sourceRecordId: incomeId,
         status: '已確認'
       }
     });
 
-    // Update rental income record
+    await prisma.rentalIncomePayment.create({
+      data: {
+        rentalIncomeId: incomeId,
+        sequenceNo: nextSeq,
+        amount: parsedActual,
+        paymentDate: actualDate,
+        accountId: acctId,
+        paymentMethod: paymentMethod || null,
+        matchTransferRef: matchTransferRef || null,
+        matchBankAccountName: matchBankAccountName || null,
+        matchNote: body.matchNote || null,
+        cashTransactionId: tx.id,
+        confirmedBy: body.confirmedBy || null
+      }
+    });
+
+    const firstTxId = existingPayments.length > 0 ? income.cashTransactionId : tx.id;
     await prisma.rentalIncome.update({
       where: { id: incomeId },
       data: {
-        actualAmount: parsedActual,
-        actualDate,
+        actualAmount: newTotal,
+        actualDate: actualDate,
         accountId: acctId,
         paymentMethod: paymentMethod || null,
         matchTransferRef: matchTransferRef || null,
         matchBankAccountName: matchBankAccountName || null,
         matchNote: body.matchNote || null,
         status: newStatus,
-        cashTransactionId: tx.id,
+        cashTransactionId: firstTxId ?? tx.id,
         confirmedAt: new Date(),
         confirmedBy: body.confirmedBy || null
       }
     });
 
-    // If partial, create supplementary income record for the difference
-    if (newStatus === 'partial') {
-      const difference = expected - parsedActual;
-      await prisma.rentalIncome.create({
-        data: {
-          contractId: income.contractId,
-          propertyId: income.propertyId,
-          tenantId: income.tenantId,
-          incomeYear: income.incomeYear,
-          incomeMonth: income.incomeMonth,
-          dueDate: income.dueDate,
-          expectedAmount: difference,
-          status: 'pending',
-          note: `補繳差額 - 原紀錄 #${incomeId}`
-        }
-      });
-    }
-
-    // Recalculate account balance
     await recalcBalance(acctId);
 
-    return NextResponse.json({ success: true, status: newStatus, transactionId: tx.id });
+    return NextResponse.json({ success: true, status: newStatus, transactionId: tx.id, sequenceNo: nextSeq });
   } catch (error) {
     console.error('PUT /api/rentals/income/[id] error:', error);
     return handleApiError(error);
@@ -251,7 +246,7 @@ export async function PATCH(request, { params }) {
   }
 }
 
-// DELETE: 作廢收款（沖銷金流、收租紀錄恢復待收）
+// DELETE: 作廢收款（沖銷所有付款金流、刪除付款紀錄、收租恢復待收）
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
@@ -262,48 +257,56 @@ export async function DELETE(request, { params }) {
 
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
-      include: { property: { select: { name: true } }, tenant: { select: { fullName: true, companyName: true, tenantType: true } } }
+      include: {
+        property: { select: { name: true } },
+        tenant: { select: { fullName: true, companyName: true, tenantType: true } },
+        payments: { orderBy: { sequenceNo: 'asc' } }
+      }
     });
     if (!income) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
     }
-    if (!income.cashTransactionId) {
+    const payments = income.payments || [];
+    if (payments.length === 0 && !income.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '僅可作廢已收款的紀錄', 400);
     }
 
-    const cashTx = await prisma.cashTransaction.findUnique({
-      where: { id: income.cashTransactionId }
-    });
-    if (!cashTx) {
-      return createErrorResponse('NOT_FOUND', '找不到對應金流', 404);
+    const accountIds = new Set();
+    const txsToReverse = payments.length > 0
+      ? await prisma.cashTransaction.findMany({ where: { id: { in: payments.map(p => p.cashTransactionId).filter(Boolean) } } })
+      : [];
+    if (payments.length === 0 && income.cashTransactionId) {
+      const single = await prisma.cashTransaction.findUnique({ where: { id: income.cashTransactionId } });
+      if (single) txsToReverse.push(single);
     }
-
-    const accountId = cashTx.accountId;
-    const amount = Number(cashTx.amount);
+    txsToReverse.forEach(t => accountIds.add(t.accountId));
 
     await prisma.$transaction(async (tx) => {
       const revDate = new Date().toISOString().split('T')[0];
-      const revNo = await generateTransactionNo(revDate, tx);
-      const reversalTx = await tx.cashTransaction.create({
-        data: {
-          transactionNo: revNo,
-          transactionDate: revDate,
-          type: '支出',
-          accountId,
-          categoryId: cashTx.categoryId,
-          amount,
-          description: `沖銷：${cashTx.description || ''}`,
-          sourceType: 'reversal',
-          sourceRecordId: cashTx.id,
-          status: '已確認',
-          isReversal: true,
-          reversalOfId: cashTx.id
-        }
-      });
-      await tx.cashTransaction.update({
-        where: { id: cashTx.id },
-        data: { reversedById: reversalTx.id }
-      });
+      for (const cashTx of txsToReverse) {
+        const revNo = await generateTransactionNo(revDate, tx);
+        const reversalTx = await tx.cashTransaction.create({
+          data: {
+            transactionNo: revNo,
+            transactionDate: revDate,
+            type: '支出',
+            accountId: cashTx.accountId,
+            categoryId: cashTx.categoryId,
+            amount: Number(cashTx.amount),
+            description: `沖銷：${cashTx.description || ''}`,
+            sourceType: 'reversal',
+            sourceRecordId: cashTx.id,
+            status: '已確認',
+            isReversal: true,
+            reversalOfId: cashTx.id
+          }
+        });
+        await tx.cashTransaction.update({
+          where: { id: cashTx.id },
+          data: { reversedById: reversalTx.id }
+        });
+      }
+      await tx.rentalIncomePayment.deleteMany({ where: { rentalIncomeId: incomeId } });
       await tx.rentalIncome.update({
         where: { id: incomeId },
         data: {
@@ -313,21 +316,18 @@ export async function DELETE(request, { params }) {
           paymentMethod: null,
           matchTransferRef: null,
           matchBankAccountName: null,
+          matchNote: null,
           status: 'pending',
           cashTransactionId: null,
           confirmedAt: null,
           confirmedBy: null
         }
       });
-      const supplementaries = await tx.rentalIncome.findMany({
-        where: { note: { contains: `補繳差額 - 原紀錄 #${incomeId}` } }
-      });
-      for (const s of supplementaries) {
-        await tx.rentalIncome.delete({ where: { id: s.id } });
-      }
     });
 
-    await recalcBalance(accountId);
+    for (const aid of accountIds) {
+      await recalcBalance(aid);
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/rentals/income/[id] error:', error);

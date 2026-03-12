@@ -202,7 +202,8 @@ export default function PurchasingPage() {
       warehouse: tmpl.warehouse || prev.warehouse,
       supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
       supplierName: supplier ? supplier.name : '',
-      paymentTerms: supplier?.paymentTerms || tmpl.paymentMethod || '月結',
+      // 付款方式優先連動廠商的預設值，若廠商未設定則預設為「月結」
+      paymentTerms: supplier?.paymentTerms || '月結',
       taxType: tmpl.defaultTaxType || '',
       items,
       invoiceNo: '',
@@ -2120,7 +2121,8 @@ export default function PurchasingPage() {
                             ...prev,
                             supplierId: sid,
                             supplierName: s ? s.name : '',
-                            paymentTerms: s?.paymentTerms || prev.paymentTerms
+                            // 付款方式連動廠商預設值，若廠商未設定則預設為「月結」
+                            paymentTerms: s?.paymentTerms || '月結'
                           }));
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"

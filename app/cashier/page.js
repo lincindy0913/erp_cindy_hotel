@@ -609,7 +609,16 @@ export default function CashierPage() {
                                       <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">實付金額</label>
                                         <input type="number" step="0.01" value={executeData.actualAmount}
-                                          onChange={e => setExecuteData({...executeData, actualAmount: e.target.value, extraAmount: ''})}
+                                          onChange={e => {
+                                            const val = e.target.value;
+                                            const isLoan = (order.summary || '').includes('貸款還款');
+                                            if (isLoan) {
+                                              const extra = Math.max(0, Math.round(((parseFloat(val) || 0) - Number(order.netAmount)) * 100) / 100);
+                                              setExecuteData({...executeData, actualAmount: val, extraAmount: extra > 0 ? extra : ''});
+                                            } else {
+                                              setExecuteData({...executeData, actualAmount: val});
+                                            }
+                                          }}
                                           className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required />
                                       </div>
                                       {(order.summary || '').includes('貸款還款') && (
