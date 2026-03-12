@@ -753,6 +753,7 @@ model PmsIncomeRecord {
   isModified      Boolean  @default(false) @map("is_modified")
   originalAmount  Decimal? @map("original_amount") @db.Decimal(12, 2)
   note            String?  @db.VarChar(500)
+  cashTransactionId Int?   @map("cash_transaction_id")  // 已同步至現金流的交易 id
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -761,6 +762,7 @@ model PmsIncomeRecord {
   @@index([warehouse, businessDate])
   @@index([importBatchId])
   @@index([entryType])
+  @@index([cashTransactionId])
   @@map("pms_income_records")
 }
 
@@ -784,6 +786,22 @@ model PmsPaymentMethodConfig {
 
   @@unique([warehouse, pmsColumnName])
   @@map("pms_payment_method_configs")
+}
+
+/// 每日信用卡手續費（依入帳日）：手續費扣除後為存簿實際存入金額
+model PmsCreditCardFeeEntry {
+  id              Int      @id @default(autoincrement())
+  warehouse       String   @db.VarChar(100)
+  settlementDate  String   @map("settlement_date") @db.VarChar(20)  // 入帳日 YYYY-MM-DD
+  feeAmount       Decimal  @map("fee_amount") @db.Decimal(12, 2)
+  note            String?  @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([warehouse, settlementDate])
+  @@index([warehouse])
+  @@index([settlementDate])
+  @@map("pms_credit_card_fee_entries")
 }
 
 // ============================================
@@ -1536,6 +1554,7 @@ model RentalMaintenance {
   supplierId          Int?      @map("supplier_id")
   status              String    @default("pending") @db.VarChar(20)
   cashTransactionId   Int?      @map("cash_transaction_id")
+  paymentOrderId     Int?      @map("payment_order_id")  // 連動出納待出納，執行後入金流
   note                String?   @db.Text
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -1544,6 +1563,7 @@ model RentalMaintenance {
 
   @@index([propertyId])
   @@index([status])
+  @@index([paymentOrderId])
   @@map("rental_maintenances")
 }
 

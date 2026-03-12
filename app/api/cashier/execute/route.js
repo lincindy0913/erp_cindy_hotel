@@ -132,6 +132,17 @@ export async function POST(request) {
         });
       }
 
+      // 6. If this PaymentOrder is linked to rental maintenance, update maintenance to paid and link cash tx
+      const linkedMaintenance = await tx.rentalMaintenance.findFirst({
+        where: { paymentOrderId: parseInt(paymentOrderId) }
+      });
+      if (linkedMaintenance) {
+        await tx.rentalMaintenance.update({
+          where: { id: linkedMaintenance.id },
+          data: { status: 'paid', cashTransactionId: cashTx.id }
+        });
+      }
+
       return { execution, cashTx };
     });
 

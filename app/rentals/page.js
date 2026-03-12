@@ -107,7 +107,8 @@ function RentalsPage() {
   const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' });
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', note: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', note: '' });
+  const [editingMaintenance, setEditingMaintenance] = useState(null);
 
   // Inline payment forms
   const [payingIncomeId, setPayingIncomeId] = useState(null);
@@ -115,9 +116,6 @@ function RentalsPage() {
 
   const [payingTaxId, setPayingTaxId] = useState(null);
   const [taxPayForm, setTaxPayForm] = useState({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] });
-
-  const [payingMaintenanceId, setPayingMaintenanceId] = useState(null);
-  const [maintenancePayForm, setMaintenancePayForm] = useState({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] });
 
   useEffect(() => {
     setActiveTab(tabParam);
@@ -460,9 +458,36 @@ function RentalsPage() {
       alert('請選擇會計科目');
       return;
     }
+    if (editingMaintenance) {
+      try {
+        const res = await fetch(`/api/rentals/maintenance/${editingMaintenance.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyId: maintenanceForm.propertyId,
+            maintenanceDate: maintenanceForm.maintenanceDate,
+            category: maintenanceForm.category,
+            amount: maintenanceForm.amount,
+            accountingSubjectId: maintenanceForm.accountingSubjectId,
+            note: maintenanceForm.note
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) return alert(data?.error?.message || data?.error || '更新失敗');
+        setShowMaintenanceModal(false);
+        setEditingMaintenance(null);
+        fetchMaintenances();
+      } catch (err) { alert('更新失敗: ' + err.message); }
+      return;
+    }
+    if (!maintenanceForm.accountId) {
+      alert('請選擇支出戶頭（存檔後將同步至出納待出納）');
+      return;
+    }
     try {
       const res = await fetch('/api/rentals/maintenance', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(maintenanceForm)
       });
       const data = await res.json();
@@ -472,18 +497,20 @@ function RentalsPage() {
     } catch (err) { alert('儲存失敗: ' + err.message); }
   }
 
-  async function confirmMaintenancePayment() {
+  async function deleteMaintenance(m) {
+    if (m.status === 'paid' || m.cashTransactionId) {
+      alert('已付款的維護費不可刪除');
+      return;
+    }
+    if (!confirm(`確定要刪除此筆維護紀錄嗎？`)) return;
     try {
-      const res = await fetch(`/api/rentals/maintenance/${payingMaintenanceId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(maintenancePayForm)
-      });
-      const data = await res.json();
-      if (!res.ok) return alert(data.error || '確認失敗');
-      alert('維護費已確認繳納');
-      setPayingMaintenanceId(null);
+      const res = await fetch(`/api/rentals/maintenance/${m.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        return alert(data?.error?.message || data?.error || '刪除失敗');
+      }
       fetchMaintenances();
-    } catch (err) { alert('確認失敗: ' + err.message); }
+    } catch (err) { alert('刪除失敗: ' + err.message); }
   }
 
   // ==================== HELPER ====================
@@ -1066,7 +1093,11 @@ function RentalsPage() {
                     <option value="paid">已付</option>
                   </select>
                   <button onClick={fetchMaintenances} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={() => { setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', note: '' }); setShowMaintenanceModal(true); }}
+                  <button onClick={() => {
+                    setEditingMaintenance(null);
+                    setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', note: '' });
+                    setShowMaintenanceModal(true);
+                  }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增維護
                   </button>
@@ -1097,48 +1128,36 @@ function RentalsPage() {
                           <td className="px-3 py-2 text-gray-500 text-xs">{m.note || '-'}</td>
                           <td className="px-3 py-2 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded ${m.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                              {m.status === 'paid' ? '已付' : '待付'}
+                              {m.status === 'paid' ? '已付' : '待出納'}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center">
                             {m.status === 'pending' && (
-                              <button onClick={() => { setPayingMaintenanceId(m.id); setMaintenancePayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
-                                className="text-teal-600 hover:text-teal-800 text-xs font-medium">
-                                確認付款
-                              </button>
+                              <>
+                                <a href="/cashier" className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-2">出納</a>
+                                <button onClick={() => {
+                                  setEditingMaintenance(m);
+                                  setMaintenanceForm({
+                                    propertyId: String(m.propertyId),
+                                    maintenanceDate: m.maintenanceDate,
+                                    category: m.category,
+                                    amount: String(m.amount),
+                                    accountingSubjectId: m.accountingSubjectId ? String(m.accountingSubjectId) : '',
+                                    accountId: '',
+                                    note: m.note || ''
+                                  });
+                                  setShowMaintenanceModal(true);
+                                }} className="text-teal-600 hover:text-teal-800 text-xs font-medium mr-2">編輯</button>
+                                <button onClick={() => deleteMaintenance(m)} className="text-red-600 hover:text-red-800 text-xs font-medium">刪除</button>
+                              </>
                             )}
+                            {m.status === 'paid' && <span className="text-xs text-gray-400">—</span>}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-
-                {/* Inline maintenance payment */}
-                {payingMaintenanceId && (
-                  <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
-                    <h4 className="font-medium text-teal-800 mb-3">確認維護費付款</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-600">付款帳戶</label>
-                        <select value={maintenancePayForm.accountId} onChange={e => setMaintenancePayForm(f => ({ ...f, accountId: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm">
-                          <option value="">選擇帳戶</option>
-                          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600">付款日期</label>
-                        <input type="date" value={maintenancePayForm.paymentDate} onChange={e => setMaintenancePayForm(f => ({ ...f, paymentDate: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm" />
-                      </div>
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button onClick={confirmMaintenancePayment} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700">確認</button>
-                      <button onClick={() => setPayingMaintenanceId(null)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </>
@@ -1442,15 +1461,15 @@ function RentalsPage() {
 
       {/* ==================== MODAL: MAINTENANCE ==================== */}
       {showMaintenanceModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowMaintenanceModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowMaintenanceModal(false); setEditingMaintenance(null); }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">新增維護紀錄</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4">{editingMaintenance ? '編輯維護紀錄' : '新增維護紀錄'}</h3>
               <div className="space-y-3">
                 <div>
                   <label className="text-sm text-gray-600">物業 *</label>
                   <select value={maintenanceForm.propertyId} onChange={e => setMaintenanceForm(f => ({ ...f, propertyId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
+                    className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingMaintenance}>
                     <option value="">選擇物業</option>
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
@@ -1480,6 +1499,16 @@ function RentalsPage() {
                     {accountingSubjects.map(s => <option key={s.id} value={s.id}>{s.code} - {s.name}</option>)}
                   </select>
                 </div>
+                {!editingMaintenance && (
+                  <div>
+                    <label className="text-sm text-gray-600">支出戶頭 *</label>
+                    <select value={maintenanceForm.accountId} onChange={e => setMaintenanceForm(f => ({ ...f, accountId: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 text-sm">
+                      <option value="">請選擇（存檔後同步至出納待出納）</option>
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm text-gray-600">備註</label>
                   <textarea value={maintenanceForm.note} onChange={e => setMaintenanceForm(f => ({ ...f, note: e.target.value }))}
@@ -1487,7 +1516,7 @@ function RentalsPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setShowMaintenanceModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                <button onClick={() => { setShowMaintenanceModal(false); setEditingMaintenance(null); }} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
                 <button onClick={saveMaintenance} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
               </div>
             </div>

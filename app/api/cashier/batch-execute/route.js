@@ -213,6 +213,22 @@ export async function POST(request) {
             },
           });
         }
+
+        // If this order is linked to rental maintenance, update maintenance to paid
+        const linkedMaintenance = await tx.rentalMaintenance.findFirst({
+          where: { paymentOrderId: order.id },
+        });
+        if (linkedMaintenance) {
+          const firstAlloc = allocations.find(a => a.orderId === order.id);
+          const firstExec = executions.find(e => e.paymentOrderId === order.id);
+          await tx.rentalMaintenance.update({
+            where: { id: linkedMaintenance.id },
+            data: {
+              status: 'paid',
+              cashTransactionId: firstExec ? firstExec.cashTransactionId : null,
+            },
+          });
+        }
       }
 
       // Recalculate balance for all affected accounts

@@ -1,111 +1,123 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { getCategoryId } from '@/lib/cash-category-helper';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
+// GET: single maintenance
+export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
+  if (!auth.ok) return auth.response;
 
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
+  try {
+    const { id } = await params;
+    const record = await prisma.rentalMaintenance.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        property: { select: { id: true, name: true, buildingName: true } }
+      }
+    });
+    if (!record) {
+      return createErrorResponse('NOT_FOUND', '找不到維護紀錄', 404);
+    }
+    return NextResponse.json({
+      ...record,
+      amount: Number(record.amount),
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString()
+    });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
 }
 
-// Recalculate account balance
-async function recalcBalance(accountId) {
-  const incomes = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '收入' },
-    _sum: { amount: true }
-  });
-  const expenses = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '支出' },
-    _sum: { amount: true }
-  });
-  const account = await prisma.cashAccount.findUnique({ where: { id: accountId } });
-  const newBalance = Number(account.openingBalance) + Number(incomes._sum.amount || 0) - Number(expenses._sum.amount || 0);
-  await prisma.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: newBalance }
-  });
-}
-
+// PUT: 編輯維護紀錄（僅待付可編輯）；已付款不可編輯
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const { id } = await params;
     const maintenanceId = parseInt(id);
     const body = await request.json();
 
-    const { accountId, paymentDate } = body;
-
-    if (!accountId) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇付款帳戶', 400);
-    }
-
     const record = await prisma.rentalMaintenance.findUnique({
       where: { id: maintenanceId },
-      include: {
-        property: { select: { name: true } }
-      }
+      include: { property: { select: { name: true } } }
     });
 
     if (!record) {
       return createErrorResponse('NOT_FOUND', '找不到維護紀錄', 404);
     }
 
-    const acctId = parseInt(accountId);
-    const txDate = paymentDate || new Date().toISOString().split('T')[0];
-    const transactionNo = await generateTransactionNo(txDate);
+    if (record.status === 'paid' || record.cashTransactionId) {
+      return createErrorResponse('VALIDATION_FAILED', '已付款的維護費不可編輯', 400);
+    }
 
-    // Create CashTransaction
-    const categoryId = await getCategoryId(prisma, 'rental_maintenance');
-    const tx = await prisma.cashTransaction.create({
-      data: {
-        transactionNo,
-        transactionDate: txDate,
-        type: '支出',
-        accountId: acctId,
-        categoryId,
-        amount: Number(record.amount),
-        description: `維護費用 - ${record.property.name} - ${record.category}`,
-        sourceType: 'rental_maintenance',
-        sourceRecordId: maintenanceId,
-        status: '已確認'
-      }
-    });
+    const {
+      propertyId,
+      maintenanceDate,
+      category,
+      amount,
+      accountingSubjectId,
+      supplierId,
+      note
+    } = body;
 
-    // Update maintenance record
-    await prisma.rentalMaintenance.update({
+    const updateData = {};
+    if (propertyId != null) updateData.propertyId = parseInt(propertyId);
+    if (maintenanceDate != null) updateData.maintenanceDate = maintenanceDate;
+    if (category != null) updateData.category = category;
+    if (amount != null) updateData.amount = parseFloat(amount);
+    if (accountingSubjectId != null) updateData.accountingSubjectId = parseInt(accountingSubjectId);
+    if (supplierId !== undefined) updateData.supplierId = supplierId ? parseInt(supplierId) : null;
+    if (note !== undefined) updateData.note = note || null;
+
+    const updated = await prisma.rentalMaintenance.update({
       where: { id: maintenanceId },
-      data: {
-        status: 'paid',
-        cashTransactionId: tx.id
+      data: updateData,
+      include: {
+        property: { select: { id: true, name: true, buildingName: true } }
       }
     });
 
-    // Recalculate balance
-    await recalcBalance(acctId);
-
-    return NextResponse.json({ success: true, transactionId: tx.id });
+    return NextResponse.json(updated);
   } catch (error) {
     console.error('PUT /api/rentals/maintenance/[id] error:', error);
+    return handleApiError(error);
+  }
+}
+
+// DELETE: 僅未付款可刪除
+export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const maintenanceId = parseInt(id);
+
+    const record = await prisma.rentalMaintenance.findUnique({
+      where: { id: maintenanceId }
+    });
+
+    if (!record) {
+      return createErrorResponse('NOT_FOUND', '找不到維護紀錄', 404);
+    }
+
+    if (record.status === 'paid' || record.cashTransactionId) {
+      return createErrorResponse('VALIDATION_FAILED', '已付款的維護費不可刪除', 400);
+    }
+
+    await prisma.rentalMaintenance.delete({
+      where: { id: maintenanceId }
+    });
+
+    return NextResponse.json({ message: '已刪除' });
+  } catch (error) {
+    console.error('DELETE /api/rentals/maintenance/[id] error:', error);
     return handleApiError(error);
   }
 }

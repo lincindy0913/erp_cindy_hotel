@@ -97,6 +97,16 @@ function PmsIncomePage() {
   const [sortField, setSortField] = useState('businessDate');
   const [sortDir, setSortDir] = useState('desc');
 
+  // 每日信用卡手續費（收入記錄 → 現金流連動用）
+  const [creditCardFees, setCreditCardFees] = useState([]);
+  const [creditCardFeeForm, setCreditCardFeeForm] = useState({
+    warehouse: WAREHOUSES[0] || '麗格',
+    settlementDate: new Date().toISOString().split('T')[0],
+    feeAmount: '',
+    note: ''
+  });
+  const [pushToCashflowLoading, setPushToCashflowLoading] = useState(false);
+
   // Manual add record modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({
@@ -237,6 +247,81 @@ function PmsIncomePage() {
   useEffect(() => {
     if (activeTab === 'records') fetchRecords();
   }, [activeTab, fetchRecords]);
+
+  const fetchCreditCardFees = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filterWarehouse) params.set('warehouse', filterWarehouse);
+      if (filterStartDate) params.set('startDate', filterStartDate);
+      if (filterEndDate) params.set('endDate', filterEndDate);
+      const res = await fetch(`/api/pms-income/credit-card-fees?${params.toString()}`);
+      const data = await res.json();
+      setCreditCardFees(Array.isArray(data) ? data : []);
+    } catch { setCreditCardFees([]); }
+  }, [filterWarehouse, filterStartDate, filterEndDate]);
+
+  useEffect(() => {
+    if (activeTab === 'records') fetchCreditCardFees();
+  }, [activeTab, fetchCreditCardFees]);
+
+  const handlePushToCashflow = async () => {
+    setPushToCashflowLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const body = {};
+      if (filterWarehouse) body.warehouse = filterWarehouse;
+      if (filterStartDate) body.startDate = filterStartDate;
+      if (filterEndDate) body.endDate = filterEndDate;
+      const res = await fetch('/api/pms-income/push-to-cashflow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(`已同步 ${data.created} 筆至現金流${data.errors?.length ? '；部分未設定帳戶已略過' : ''}`);
+        fetchRecords();
+      } else {
+        setError(data.error?.message || data.error || '同步失敗');
+      }
+    } catch (err) {
+      setError('同步失敗: ' + err.message);
+    } finally {
+      setPushToCashflowLoading(false);
+    }
+  };
+
+  const handleSaveCreditCardFee = async () => {
+    const fee = parseFloat(creditCardFeeForm.feeAmount);
+    if (Number.isNaN(fee) || fee < 0) {
+      setError('請輸入有效手續費金額');
+      return;
+    }
+    setError('');
+    try {
+      const res = await fetch('/api/pms-income/credit-card-fees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          warehouse: creditCardFeeForm.warehouse,
+          settlementDate: creditCardFeeForm.settlementDate,
+          feeAmount: fee,
+          note: creditCardFeeForm.note || null
+        })
+      });
+      if (res.ok) {
+        setSuccess('手續費已儲存');
+        setCreditCardFeeForm(prev => ({ ...prev, feeAmount: '', note: '' }));
+        fetchCreditCardFees();
+      } else {
+        const data = await res.json();
+        setError(data.error?.message || data.error || '儲存失敗');
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   // ========================
   // Statistics tab data fetching
@@ -1448,11 +1533,74 @@ function PmsIncomePage() {
                   清除篩選
                 </button>
                 <div className="flex-1" />
+                <button
+                  onClick={handlePushToCashflow}
+                  disabled={pushToCashflowLoading}
+                  className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {pushToCashflowLoading ? '同步中...' : '同步至現金流'}
+                </button>
                 <button onClick={() => setShowAddModal(true)}
                   className="px-4 py-1.5 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">
                   + 手動新增
                 </button>
               </div>
+            </div>
+
+            {/* 每日信用卡手續費：扣除後為存簿實際存入金額 */}
+            <div className="bg-amber-50/70 rounded-lg shadow-sm border border-amber-200 p-4">
+              <h3 className="text-sm font-bold text-amber-900 mb-3">每日信用卡手續費</h3>
+              <p className="text-xs text-amber-800 mb-3">信用卡收入延遲入帳時，請輸入「入帳日」與手續費金額；同步至現金流時會以「收入合計 − 手續費」作為存簿存入金額。</p>
+              <div className="flex flex-wrap gap-3 items-end mb-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">館別</label>
+                  <select value={creditCardFeeForm.warehouse} onChange={e => setCreditCardFeeForm(f => ({ ...f, warehouse: e.target.value }))}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm">
+                    {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">入帳日</label>
+                  <input type="date" value={creditCardFeeForm.settlementDate} onChange={e => setCreditCardFeeForm(f => ({ ...f, settlementDate: e.target.value }))}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">手續費金額</label>
+                  <input type="number" step="0.01" min="0" value={creditCardFeeForm.feeAmount} onChange={e => setCreditCardFeeForm(f => ({ ...f, feeAmount: e.target.value }))}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-28" placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">備註</label>
+                  <input type="text" value={creditCardFeeForm.note} onChange={e => setCreditCardFeeForm(f => ({ ...f, note: e.target.value }))}
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm w-32" placeholder="選填" />
+                </div>
+                <button onClick={handleSaveCreditCardFee} className="px-3 py-1.5 text-sm bg-amber-600 text-white rounded hover:bg-amber-700">儲存</button>
+              </div>
+              {creditCardFees.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-amber-100/80 text-left">
+                        <th className="px-2 py-1.5 font-medium">入帳日</th>
+                        <th className="px-2 py-1.5 font-medium">館別</th>
+                        <th className="px-2 py-1.5 font-medium text-right">手續費</th>
+                        <th className="px-2 py-1.5 font-medium">備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {creditCardFees.slice(0, 20).map(f => (
+                        <tr key={`${f.warehouse}-${f.settlementDate}`} className="border-t border-amber-200/50">
+                          <td className="px-2 py-1.5 font-mono text-xs">{f.settlementDate}</td>
+                          <td className="px-2 py-1.5">{f.warehouse}</td>
+                          <td className="px-2 py-1.5 text-right font-medium">{formatNumber(f.feeAmount)}</td>
+                          <td className="px-2 py-1.5 text-gray-500 text-xs">{f.note || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {creditCardFees.length > 20 && <p className="text-xs text-gray-500 mt-1">僅顯示前 20 筆，請用篩選查詢</p>}
+                </div>
+              )}
             </div>
 
             {/* Records table */}
@@ -1484,6 +1632,7 @@ function PmsIncomePage() {
                           <th className="px-3 py-2 font-medium">科目名稱</th>
                           <th className="px-3 py-2 font-medium">批次</th>
                           <th className="px-3 py-2 font-medium">結算狀態</th>
+                          <th className="px-3 py-2 font-medium text-center">現金流</th>
                           <th className="px-3 py-2 font-medium">備註</th>
                           <th className="px-3 py-2 font-medium text-center">操作</th>
                         </tr>
@@ -1521,6 +1670,15 @@ function PmsIncomePage() {
                                 </span>
                               ) : (
                                 <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {rec.entryType === '借方' && rec.cashTransactionId ? (
+                                <span className="text-xs text-green-600 font-medium">已連動</span>
+                              ) : rec.entryType === '借方' ? (
+                                <span className="text-xs text-gray-400">-</span>
+                              ) : (
+                                <span className="text-xs text-gray-300">-</span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-xs text-gray-400 max-w-[100px] truncate">{rec.note || '-'}</td>
