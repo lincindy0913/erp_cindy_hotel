@@ -219,7 +219,6 @@ export async function POST(request) {
           where: { paymentOrderId: order.id },
         });
         if (linkedMaintenance) {
-          const firstAlloc = allocations.find(a => a.orderId === order.id);
           const firstExec = executions.find(e => e.paymentOrderId === order.id);
           await tx.rentalMaintenance.update({
             where: { id: linkedMaintenance.id },
@@ -228,6 +227,47 @@ export async function POST(request) {
               cashTransactionId: firstExec ? firstExec.cashTransactionId : null,
             },
           });
+
+          // If maintenance was an employee advance, create EmployeeAdvance record
+          if (linkedMaintenance.isEmployeeAdvance && linkedMaintenance.advancedBy) {
+            const advDateStr = executionDate.replace(/-/g, '');
+            const advPrefix = `ADV-${advDateStr}-`;
+            const existingAdv = await tx.employeeAdvance.findMany({
+              where: { advanceNo: { startsWith: advPrefix } },
+              select: { advanceNo: true },
+            });
+            let maxAdvSeq = 0;
+            for (const item of existingAdv) {
+              const seq = parseInt(item.advanceNo.substring(advPrefix.length)) || 0;
+              if (seq > maxAdvSeq) maxAdvSeq = seq;
+            }
+            const advanceNo = `${advPrefix}${String(maxAdvSeq + 1).padStart(4, '0')}`;
+
+            const orderAllocations = allocations.filter(a => a.orderId === order.id);
+            const totalActual = orderAllocations.reduce((s, a) => s + a.amount, 0);
+
+            const advance = await tx.employeeAdvance.create({
+              data: {
+                advanceNo,
+                employeeName: linkedMaintenance.advancedBy,
+                paymentMethod: linkedMaintenance.advancePaymentMethod || '現金',
+                sourceType: 'maintenance',
+                sourceRecordId: linkedMaintenance.id,
+                sourceDescription: `維護費 - ${order.summary || ''}`,
+                paymentOrderId: order.id,
+                paymentOrderNo: order.orderNo,
+                amount: totalActual,
+                status: '待結算',
+                warehouse: order.warehouse,
+                createdBy: session?.user?.email || null,
+              },
+            });
+
+            await tx.rentalMaintenance.update({
+              where: { id: linkedMaintenance.id },
+              data: { employeeAdvanceId: advance.id },
+            });
+          }
         }
       }
 

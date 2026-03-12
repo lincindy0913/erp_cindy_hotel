@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/checks', label: '支票', linkClass: 'link-checks', requiredPermission: 'check.view' },
   { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
+  { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
   { href: '/cashier', label: '出納', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
   { href: '/year-end', label: '年結', linkClass: 'link-year-end', requiredPermission: 'yearend.view' },
 ];

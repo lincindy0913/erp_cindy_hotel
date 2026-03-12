@@ -107,7 +107,7 @@ function RentalsPage() {
   const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' });
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', note: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', note: '' });
   const [editingMaintenance, setEditingMaintenance] = useState(null);
 
   // Inline payment forms
@@ -1095,7 +1095,7 @@ function RentalsPage() {
                   <button onClick={fetchMaintenances} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
                   <button onClick={() => {
                     setEditingMaintenance(null);
-                    setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', note: '' });
+                    setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', note: '' });
                     setShowMaintenanceModal(true);
                   }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
@@ -1125,7 +1125,10 @@ function RentalsPage() {
                           <td className="px-3 py-2">{m.maintenanceDate}</td>
                           <td className="px-3 py-2">{m.category}</td>
                           <td className="px-3 py-2 text-right font-medium">${fmt(m.amount)}</td>
-                          <td className="px-3 py-2 text-gray-500 text-xs">{m.note || '-'}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs">
+                            {m.isEmployeeAdvance && <span className="inline-block bg-purple-100 text-purple-800 text-xs px-1.5 py-0.5 rounded mr-1">代墊:{m.advancedBy}{m.advancePaymentMethod === '信用卡' ? '(卡)' : ''}</span>}
+                            {m.note || '-'}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`text-xs px-2 py-0.5 rounded ${m.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                               {m.status === 'paid' ? '已付' : '待出納'}
@@ -1144,6 +1147,9 @@ function RentalsPage() {
                                     amount: String(m.amount),
                                     accountingSubjectId: m.accountingSubjectId ? String(m.accountingSubjectId) : '',
                                     accountId: '',
+                                    isEmployeeAdvance: !!m.isEmployeeAdvance,
+                                    advancedBy: m.advancedBy || '',
+                                    advancePaymentMethod: m.advancePaymentMethod || '現金',
                                     note: m.note || ''
                                   });
                                   setShowMaintenanceModal(true);
@@ -1509,6 +1515,32 @@ function RentalsPage() {
                     </select>
                   </div>
                 )}
+                {/* 員工代墊款 */}
+                <div className="border-t pt-3 mt-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={maintenanceForm.isEmployeeAdvance}
+                      onChange={e => setMaintenanceForm(f => ({ ...f, isEmployeeAdvance: e.target.checked, advancedBy: e.target.checked ? f.advancedBy : '', advancePaymentMethod: '現金' }))} />
+                    <span className="font-medium text-gray-700">員工代墊款</span>
+                  </label>
+                  {maintenanceForm.isEmployeeAdvance && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div>
+                        <label className="text-xs text-gray-500">代墊員工 *</label>
+                        <input value={maintenanceForm.advancedBy} onChange={e => setMaintenanceForm(f => ({ ...f, advancedBy: e.target.value }))}
+                          placeholder="員工姓名" className="w-full border rounded px-3 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">代墊方式</label>
+                        <select value={maintenanceForm.advancePaymentMethod} onChange={e => setMaintenanceForm(f => ({ ...f, advancePaymentMethod: e.target.value }))}
+                          className="w-full border rounded px-3 py-1.5 text-sm">
+                          <option value="現金">現金</option>
+                          <option value="信用卡">信用卡</option>
+                          <option value="其他">其他</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div>
                   <label className="text-sm text-gray-600">備註</label>
                   <textarea value={maintenanceForm.note} onChange={e => setMaintenanceForm(f => ({ ...f, note: e.target.value }))}

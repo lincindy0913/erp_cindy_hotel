@@ -63,6 +63,9 @@ export async function PUT(request, { params }) {
       amount,
       accountingSubjectId,
       supplierId,
+      isEmployeeAdvance,
+      advancedBy,
+      advancePaymentMethod,
       note
     } = body;
 
@@ -73,6 +76,11 @@ export async function PUT(request, { params }) {
     if (amount != null) updateData.amount = parseFloat(amount);
     if (accountingSubjectId != null) updateData.accountingSubjectId = parseInt(accountingSubjectId);
     if (supplierId !== undefined) updateData.supplierId = supplierId ? parseInt(supplierId) : null;
+    if (isEmployeeAdvance !== undefined) {
+      updateData.isEmployeeAdvance = !!isEmployeeAdvance;
+      updateData.advancedBy = isEmployeeAdvance ? (advancedBy || null) : null;
+      updateData.advancePaymentMethod = isEmployeeAdvance ? (advancePaymentMethod || '現金') : null;
+    }
     if (note !== undefined) updateData.note = note || null;
 
     const updated = await prisma.rentalMaintenance.update({

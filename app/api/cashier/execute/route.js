@@ -141,6 +141,45 @@ export async function POST(request) {
           where: { id: linkedMaintenance.id },
           data: { status: 'paid', cashTransactionId: cashTx.id }
         });
+
+        // 7. If maintenance was an employee advance, create EmployeeAdvance record
+        if (linkedMaintenance.isEmployeeAdvance && linkedMaintenance.advancedBy) {
+          const advDateStr = executionDate.replace(/-/g, '');
+          const advPrefix = `ADV-${advDateStr}-`;
+          const existingAdv = await tx.employeeAdvance.findMany({
+            where: { advanceNo: { startsWith: advPrefix } },
+            select: { advanceNo: true },
+          });
+          let maxAdvSeq = 0;
+          for (const item of existingAdv) {
+            const seq = parseInt(item.advanceNo.substring(advPrefix.length)) || 0;
+            if (seq > maxAdvSeq) maxAdvSeq = seq;
+          }
+          const advanceNo = `${advPrefix}${String(maxAdvSeq + 1).padStart(4, '0')}`;
+
+          const advance = await tx.employeeAdvance.create({
+            data: {
+              advanceNo,
+              employeeName: linkedMaintenance.advancedBy,
+              paymentMethod: linkedMaintenance.advancePaymentMethod || '現金',
+              sourceType: 'maintenance',
+              sourceRecordId: linkedMaintenance.id,
+              sourceDescription: `維護費 - ${order.summary || ''}`,
+              paymentOrderId: parseInt(paymentOrderId),
+              paymentOrderNo: order.orderNo,
+              amount: actualAmount,
+              status: '待結算',
+              warehouse: order.warehouse,
+              createdBy: session?.user?.email || null,
+            },
+          });
+
+          // Link back to maintenance
+          await tx.rentalMaintenance.update({
+            where: { id: linkedMaintenance.id },
+            data: { employeeAdvanceId: advance.id },
+          });
+        }
       }
 
       return { execution, cashTx };

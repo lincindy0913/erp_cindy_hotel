@@ -45,7 +45,7 @@ export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
     const body = await request.json();
-    const { propertyId, maintenanceDate, category, amount, accountingSubjectId, accountId } = body;
+    const { propertyId, maintenanceDate, category, amount, accountingSubjectId, accountId, isEmployeeAdvance, advancedBy, advancePaymentMethod } = body;
 
     if (!propertyId || !maintenanceDate || !category || !amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
@@ -68,6 +68,9 @@ export async function POST(request) {
           accountingSubjectId: parseInt(accountingSubjectId),
           supplierId: body.supplierId ? parseInt(body.supplierId) : null,
           status: 'pending',
+          isEmployeeAdvance: !!isEmployeeAdvance,
+          advancedBy: isEmployeeAdvance ? (advancedBy || null) : null,
+          advancePaymentMethod: isEmployeeAdvance ? (advancePaymentMethod || '現金') : null,
           note: body.note || null
         },
         include: {
@@ -89,7 +92,8 @@ export async function POST(request) {
       }
       const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
 
-      const summary = `租賃維護費 - ${record.property.name} - ${record.category}`;
+      const advanceLabel = isEmployeeAdvance && advancedBy ? ` (員工代墊: ${advancedBy})` : '';
+      const summary = `租賃維護費 - ${record.property.name} - ${record.category}${advanceLabel}`;
       const order = await tx.paymentOrder.create({
         data: {
           orderNo,
