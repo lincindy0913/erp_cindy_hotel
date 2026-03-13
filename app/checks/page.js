@@ -68,7 +68,7 @@ function formatAmount(val) {
 function Modal({ isOpen, onClose, title, children, width = 'max-w-lg' }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 no-print">
       <div className={`bg-white rounded-xl shadow-2xl ${width} w-full mx-4 max-h-[90vh] overflow-y-auto`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-bold text-gray-800">{title}</h3>
@@ -95,10 +95,13 @@ export default function ChecksPage() {
   const [showBounceModal, setShowBounceModal] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPrintSheetModal, setShowPrintSheetModal] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
 
-  // Batch clear
+  // Batch clear：未兌現 TAB 批次兌現時需填寫兌現日
   const [selectedIds, setSelectedIds] = useState([]);
+  const [showBatchClearModal, setShowBatchClearModal] = useState(false);
+  const [batchClearDate, setBatchClearDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // Filters
   const [filterStatus, setFilterStatus] = useState('');
@@ -119,6 +122,9 @@ export default function ChecksPage() {
 
   // Bounce/void form
   const [actionReason, setActionReason] = useState('');
+
+  // Reissue (重新開票) loading
+  const [reissueLoading, setReissueLoading] = useState(null);
 
   // Schedule view
   const [scheduleRange, setScheduleRange] = useState(30);
@@ -280,7 +286,32 @@ export default function ChecksPage() {
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
     } catch (e) { alert('退票失敗: ' + e.message); }
-  };
+  }
+
+  const handleReissue = async (bouncedCheck) => {
+    if (!bouncedCheck || bouncedCheck.status !== 'bounced' || bouncedCheck.checkType !== 'payable') return;
+    if ((bouncedCheck.reissuedByChecks || []).length > 0) {
+      alert('此退票已重新開票過，請至「應付支票」或「出納」查看新支票。');
+      return;
+    }
+    setReissueLoading(bouncedCheck.id);
+    try {
+      const res = await fetch('/api/checks/reissue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bouncedCheckId: bouncedCheck.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || '重新開票失敗');
+      fetchChecks();
+      alert(`${data.message}\n付款單號：${data.orderNo}\n請至「出納」執行付款，執行後新支票將顯示於本頁並可標記為已兌現。`);
+      window.open('/cashier', '_blank');
+    } catch (e) {
+      alert(e.message || '重新開票失敗');
+    } finally {
+      setReissueLoading(null);
+    }
+  };;
 
   const handleVoid = async () => {
     if (!selectedCheck) return;
@@ -337,20 +368,29 @@ export default function ChecksPage() {
     } catch (e) { alert('刪除失敗: ' + e.message); }
   };
 
-  const handleBatchClear = async () => {
+  const openBatchClearModal = () => {
     if (selectedIds.length === 0) { alert('請選擇要兌現的支票'); return; }
-    if (!confirm(`確定要批次兌現 ${selectedIds.length} 張支票？`)) return;
+    setBatchClearDate(new Date().toISOString().split('T')[0]);
+    setShowBatchClearModal(true);
+  };
+
+  const handleBatchClear = async () => {
+    if (!batchClearDate || !batchClearDate.trim()) {
+      alert('請填寫兌現日');
+      return;
+    }
     try {
       const res = await fetch('/api/checks/batch-clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           checkIds: selectedIds,
-          clearDate: new Date().toISOString().split('T')[0]
+          clearDate: batchClearDate.trim()
         })
       });
       const result = await res.json();
       alert(result.message || '批次兌現完成');
+      setShowBatchClearModal(false);
       setSelectedIds([]);
       fetchChecks({});
       fetchSummary();
@@ -630,7 +670,12 @@ export default function ChecksPage() {
                 )}
               </td>}
               <td className="px-3 py-2"><StatusBadge status={c.status} /></td>
-              <td className="px-3 py-2 font-mono text-xs">{c.checkNumber}</td>
+              <td className="px-3 py-2">
+                <span className="font-mono text-xs">{c.checkNumber}</span>
+                {c.reissueOfCheck && (
+                  <span className="block text-xs text-amber-600 mt-0.5">重新開票（原退票 {c.reissueOfCheck.checkNo}）</span>
+                )}
+              </td>
               <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
               <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
               <td className={`px-3 py-2 ${getDueDateColor(c.dueDate)}`}>
@@ -648,17 +693,25 @@ export default function ChecksPage() {
                       <>
                         <button onClick={() => openClear(c)}
                           className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">兌現</button>
-                        <button onClick={() => openBounce(c)}
-                          className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">退票</button>
                         <button onClick={() => openVoid(c)}
                           className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200">作廢</button>
                         <button onClick={() => openEdit(c)}
                           className="px-2 py-1 text-xs bg-violet-50 text-violet-700 rounded hover:bg-violet-100">編輯</button>
                       </>
                     )}
-                    {c.status === 'cleared' && (
-                      <button onClick={() => openBounce(c)}
-                        className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">退票</button>
+                    {c.status === 'bounced' && c.checkType === 'payable' && (
+                      <>
+                        {(c.reissuedByChecks || []).length > 0 ? (
+                          <span className="text-xs text-green-600">已重新開票 → {c.reissuedByChecks[0].checkNo}</span>
+                        ) : (
+                          <button
+                            onClick={() => handleReissue(c)}
+                            disabled={reissueLoading === c.id}
+                            className="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50">
+                            {reissueLoading === c.id ? '處理中…' : '重新開票'}
+                          </button>
+                        )}
+                      </>
                     )}
                     {c.status === 'pending' && (
                       <button onClick={() => handleDelete(c)}
@@ -707,7 +760,7 @@ export default function ChecksPage() {
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 bg-violet-50 px-4 py-3 rounded-lg border border-violet-200">
           <span className="text-sm text-violet-700">已選擇 {selectedIds.length} 張支票</span>
-          <button onClick={handleBatchClear}
+          <button onClick={openBatchClearModal}
             className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700">
             批次兌現
           </button>
@@ -1027,6 +1080,7 @@ export default function ChecksPage() {
                       <th className="px-3 py-2 text-right">金額</th>
                       <th className="px-3 py-2 text-left">到期日</th>
                       <th className="px-3 py-2 text-left">退票原因</th>
+                      <th className="px-3 py-2 text-center">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1037,6 +1091,22 @@ export default function ChecksPage() {
                         <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
                         <td className="px-3 py-2">{c.dueDate}</td>
                         <td className="px-3 py-2 text-xs text-gray-500">{c.bouncedReason || '-'}</td>
+                        <td className="px-3 py-2 text-center">
+                          {c.checkType === 'payable' ? (
+                            (c.reissuedByChecks || []).length > 0 ? (
+                              <span className="text-xs text-green-600">已重新開票 → {c.reissuedByChecks[0].checkNo}</span>
+                            ) : (
+                              <button
+                                onClick={() => handleReissue(c)}
+                                disabled={reissueLoading === c.id}
+                                className="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50">
+                                {reissueLoading === c.id ? '處理中…' : '重新開票'}
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-gray-400">－</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1095,25 +1165,49 @@ export default function ChecksPage() {
     );
   };
 
+  // 列印表用：應付且待兌現/到期的支票，依到期日、支票號排序
+  const checksForPrintSheet = checks
+    .filter(c => c.checkType === 'payable' && (c.status === 'pending' || c.status === 'due'))
+    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '') || (a.checkNumber || '').localeCompare(b.checkNumber || ''));
+  const getPayeeName = (c) => c.payeeName || (c.supplierId && suppliers.find(s => s.id === c.supplierId)?.name) || '－';
+
   // ============== MAIN RENDER ==============
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation borderColor="border-violet-500" />
-      <NotificationBanner moduleFilter="checks" />
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          .no-print, .no-print * { visibility: hidden !important; }
+          #check-pickup-print-root { visibility: visible !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; z-index: 99999 !important; }
+          #check-pickup-print-root * { visibility: visible !important; }
+        }
+      `}} />
+      <div className="no-print">
+        <Navigation borderColor="border-violet-500" />
+        <NotificationBanner moduleFilter="checks" />
+      </div>
+      <div className="max-w-7xl mx-auto px-4 py-6 no-print">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 no-print">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">支票管理</h2>
             <p className="text-sm text-gray-500 mt-1">管理應付及應收支票，追蹤兌現狀態與到期日程</p>
           </div>
-          <ExportButtons
-            data={checks}
-            columns={EXPORT_CONFIGS.checks.columns}
-            exportName={EXPORT_CONFIGS.checks.filename}
-            title="支票管理"
-            sheetName="支票清單"
-          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowPrintSheetModal(true)}
+              className="px-4 py-2 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100"
+            >
+              支票列印表（領取簽名）
+            </button>
+            <ExportButtons
+              data={checks}
+              columns={EXPORT_CONFIGS.checks.columns}
+              exportName={EXPORT_CONFIGS.checks.filename}
+              title="支票管理"
+              sheetName="支票清單"
+            />
+          </div>
         </div>
 
         {/* Tabs */}
@@ -1233,6 +1327,25 @@ export default function ChecksPage() {
         )}
       </Modal>
 
+      {/* Batch Clear Modal：填寫兌現日後存檔，所有勾選的支票記錄兌現日期 */}
+      <Modal isOpen={showBatchClearModal} onClose={() => setShowBatchClearModal(false)}
+        title="批次兌現">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">已選擇 <strong>{selectedIds.length}</strong> 張支票，請填寫兌現日後存檔，所有勾選的支票將一併記錄該兌現日。</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">兌現日 <span className="text-red-500">*</span></label>
+            <input type="date" value={batchClearDate} onChange={e => setBatchClearDate(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setShowBatchClearModal(false)}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+            <button onClick={handleBatchClear}
+              className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">存檔</button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Void Modal */}
       <Modal isOpen={showVoidModal} onClose={() => { setShowVoidModal(false); setSelectedCheck(null); }}
         title="作廢支票">
@@ -1258,6 +1371,85 @@ export default function ChecksPage() {
           </div>
         )}
       </Modal>
+
+      {/* 支票列印表（領取簽名）Modal */}
+      <Modal isOpen={showPrintSheetModal} onClose={() => setShowPrintSheetModal(false)} title="支票領取簽名表" width="max-w-4xl">
+        <div className="space-y-4 no-print">
+          <p className="text-sm text-gray-500">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-sm text-gray-600">以下為應付且待兌現／到期之支票，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
+          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
+                  <th className="px-3 py-2 text-left border-b border-gray-200">支票號碼</th>
+                  <th className="px-3 py-2 text-left border-b border-gray-200">受款人／廠商</th>
+                  <th className="px-3 py-2 text-right border-b border-gray-200">金額</th>
+                  <th className="px-3 py-2 text-left border-b border-gray-200">開票日</th>
+                  <th className="px-3 py-2 text-left border-b border-gray-200">到期日</th>
+                  <th className="px-3 py-2 text-left border-b border-gray-200 min-w-[120px]">簽收欄（簽名）</th>
+                </tr>
+              </thead>
+              <tbody>
+                {checksForPrintSheet.length === 0 ? (
+                  <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">目前無待領取之應付支票</td></tr>
+                ) : checksForPrintSheet.map((c, idx) => (
+                  <tr key={c.id} className="border-b border-gray-100">
+                    <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
+                    <td className="px-3 py-2 font-mono">{c.checkNumber}</td>
+                    <td className="px-3 py-2">{getPayeeName(c)}</td>
+                    <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                    <td className="px-3 py-2">{c.issueDate || '－'}</td>
+                    <td className="px-3 py-2">{c.dueDate || '－'}</td>
+                    <td className="px-3 py-2 align-top" style={{ minHeight: 32 }}>&nbsp;</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setShowPrintSheetModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+            <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700">列印</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 列印時只顯示此區塊 */}
+      {showPrintSheetModal && (
+        <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
+          <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表</h1>
+          <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-sm text-gray-600 mb-4">以下為應付且待兌現／到期之支票，廠商領取時請於簽收欄簽名。</p>
+          <table className="w-full text-sm border border-gray-300">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="px-3 py-2 text-left border border-gray-300 w-12">序號</th>
+                <th className="px-3 py-2 text-left border border-gray-300">支票號碼</th>
+                <th className="px-3 py-2 text-left border border-gray-300">受款人／廠商</th>
+                <th className="px-3 py-2 text-right border border-gray-300">金額</th>
+                <th className="px-3 py-2 text-left border border-gray-300">開票日</th>
+                <th className="px-3 py-2 text-left border border-gray-300">到期日</th>
+                <th className="px-3 py-2 text-left border border-gray-300 min-w-[120px]">簽收欄（簽名）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {checksForPrintSheet.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400 border border-gray-300">目前無待領取之應付支票</td></tr>
+              ) : checksForPrintSheet.map((c, idx) => (
+                <tr key={c.id}>
+                  <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
+                  <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>
+                  <td className="px-3 py-2 border border-gray-300">{getPayeeName(c)}</td>
+                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatAmount(c.amount)}</td>
+                  <td className="px-3 py-2 border border-gray-300">{c.issueDate || '－'}</td>
+                  <td className="px-3 py-2 border border-gray-300">{c.dueDate || '－'}</td>
+                  <td className="px-3 py-2 border border-gray-300" style={{ minHeight: 36 }}>&nbsp;</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

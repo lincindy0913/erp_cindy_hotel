@@ -23,8 +23,8 @@ function InvoicePageInner() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState(new Set()); // 追蹤展開的發票ID
 
-  // 發票抬頭選項管理
-  const [invoiceTitles, setInvoiceTitles] = useState(['麗格大飯店', '麗軒國際大飯店']);
+  // 發票抬頭：連動系統設定 /api/settings/invoice-titles
+  const [invoiceTitles, setInvoiceTitles] = useState([]); // [{ id, title }, ...]
   const [showTitleManager, setShowTitleManager] = useState(false);
   const [newTitleName, setNewTitleName] = useState('');
 
@@ -65,7 +65,20 @@ function InvoicePageInner() {
     fetchSuppliers();
     fetchInvoices();
     fetchSystemTaxRate();
+    fetchInvoiceTitles();
   }, []);
+
+  async function fetchInvoiceTitles() {
+    try {
+      const res = await fetch('/api/settings/invoice-titles', { credentials: 'include' });
+      const data = await res.json().catch(() => []);
+      if (res.ok && Array.isArray(data)) {
+        setInvoiceTitles(data.map(t => ({ id: t.id, title: t.title || '' })).filter(t => t.title));
+      }
+    } catch (err) {
+      console.error('載入發票抬頭失敗:', err);
+    }
+  }
 
   // 從網址 ?edit=id 連動開啟編輯表單（例如從財務頁「發票號」或「編輯」點入）
   const searchParams = useSearchParams();
@@ -184,25 +197,27 @@ function InvoicePageInner() {
 
   function handleItemToggle(item) {
     const isSelected = selectedItems.some(selected => selected.id === item.id);
+    let newItems;
     if (isSelected) {
-      setSelectedItems(selectedItems.filter(selected => selected.id !== item.id));
+      newItems = selectedItems.filter(selected => selected.id !== item.id);
     } else {
-      setSelectedItems([...selectedItems, {
-        ...item,
-        salesAmount: item.subtotal || 0
-      }]);
+      newItems = [...selectedItems, { ...item, salesAmount: item.subtotal || 0 }];
     }
+    setSelectedItems(newItems);
+    const subtotal = newItems.reduce((sum, i) => sum + parseFloat(i.salesAmount || i.subtotal || 0), 0);
+    setFormData(prev => ({ ...prev, invoiceAmount: subtotal > 0 ? subtotal.toFixed(2) : '' }));
   }
 
   function handleSelectAll() {
+    let newItems;
     if (selectedItems.length === availableItems.length) {
-      setSelectedItems([]);
+      newItems = [];
     } else {
-      setSelectedItems(availableItems.map(item => ({
-        ...item,
-        salesAmount: item.subtotal || 0
-      })));
+      newItems = availableItems.map(item => ({ ...item, salesAmount: item.subtotal || 0 }));
     }
+    setSelectedItems(newItems);
+    const subtotal = newItems.reduce((sum, i) => sum + parseFloat(i.salesAmount || i.subtotal || 0), 0);
+    setFormData(prev => ({ ...prev, invoiceAmount: subtotal > 0 ? subtotal.toFixed(2) : '' }));
   }
 
   function calculateTotal() {
@@ -214,21 +229,48 @@ function InvoicePageInner() {
     };
   }
 
-  function handleAddTitle() {
-    if (!newTitleName.trim()) return;
-    if (invoiceTitles.includes(newTitleName.trim())) {
+  async function handleAddTitle() {
+    const title = newTitleName.trim();
+    if (!title) return;
+    if (invoiceTitles.some(t => t.title === title)) {
       alert('此抬頭已存在');
       return;
     }
-    setInvoiceTitles([...invoiceTitles, newTitleName.trim()]);
-    setNewTitleName('');
+    try {
+      const res = await fetch('/api/settings/invoice-titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ title })
+      });
+      if (res.ok) {
+        await fetchInvoiceTitles();
+        setNewTitleName('');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error?.message || '新增發票抬頭失敗');
+      }
+    } catch (err) {
+      alert('新增發票抬頭失敗');
+    }
   }
 
-  function handleDeleteTitle(title) {
+  async function handleDeleteTitle(title) {
     if (!confirm(`確定要刪除「${title}」嗎？`)) return;
-    setInvoiceTitles(invoiceTitles.filter(t => t !== title));
-    if (formData.invoiceTitle === title) {
-      setFormData(prev => ({ ...prev, invoiceTitle: '' }));
+    const item = invoiceTitles.find(t => t.title === title);
+    if (!item) return;
+    try {
+      const res = await fetch(`/api/settings/invoice-titles?id=${item.id}`, { method: 'DELETE', credentials: 'include' });
+      if (res.ok) {
+        await fetchInvoiceTitles();
+        if (formData.invoiceTitle === title) {
+          setFormData(prev => ({ ...prev, invoiceTitle: '' }));
+        }
+      } else {
+        alert('刪除失敗');
+      }
+    } catch {
+      alert('刪除失敗');
     }
   }
 
@@ -682,7 +724,7 @@ function InvoicePageInner() {
                   >
                     <option value="">請選擇抬頭...</option>
                     {invoiceTitles.map(t => (
-                      <option key={t} value={t}>{t}</option>
+                      <option key={t.id} value={t.title}>{t.title}</option>
                     ))}
                   </select>
                 </div>
@@ -718,12 +760,12 @@ function InvoicePageInner() {
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {invoiceTitles.map(title => (
-                        <span key={title} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
-                          {title}
+                      {invoiceTitles.map(t => (
+                        <span key={t.id} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
+                          {t.title}
                           <button
                             type="button"
-                            onClick={() => handleDeleteTitle(title)}
+                            onClick={() => handleDeleteTitle(t.title)}
                             className="text-blue-400 hover:text-red-500 font-bold ml-0.5"
                           >
                             x

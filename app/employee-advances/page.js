@@ -21,7 +21,7 @@ export default function EmployeeAdvancesPage() {
   // Add form
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({
-    employeeName: '', paymentMethod: '現金', amount: '', sourceDescription: '', warehouse: '', note: '',
+    employeeName: '', paymentMethod: '現金', amount: '', sourceDescription: '', expenseName: '', summary: '', warehouse: '', note: '',
   });
 
   useEffect(() => { fetchAll(); }, []);
@@ -125,7 +125,7 @@ export default function EmployeeAdvancesPage() {
       if (res.ok) {
         alert('新增成功');
         setShowAddForm(false);
-        setAddForm({ employeeName: '', paymentMethod: '現金', amount: '', sourceDescription: '', warehouse: '', note: '' });
+        setAddForm({ employeeName: '', paymentMethod: '現金', amount: '', sourceDescription: '', expenseName: '', summary: '', warehouse: '', note: '' });
         fetchAll();
       } else {
         const err = await res.json();
@@ -208,6 +208,14 @@ export default function EmployeeAdvancesPage() {
                 <input type="number" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
               </div>
               <div>
+                <label style={{ fontSize: 12, color: '#6b7280' }}>費用名稱</label>
+                <input value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: '#6b7280' }}>摘要</label>
+                <input value={addForm.summary} onChange={e => setAddForm(f => ({ ...f, summary: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+              </div>
+              <div>
                 <label style={{ fontSize: 12, color: '#6b7280' }}>說明</label>
                 <input value={addForm.sourceDescription} onChange={e => setAddForm(f => ({ ...f, sourceDescription: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
               </div>
@@ -281,7 +289,8 @@ export default function EmployeeAdvancesPage() {
                     <th style={thStyle}>代墊員工</th>
                     <th style={thStyle}>代墊方式</th>
                     <th style={thStyle}>來源</th>
-                    <th style={thStyle}>說明</th>
+                    <th style={thStyle}>費用名稱</th>
+                    <th style={thStyle}>摘要</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>金額</th>
                     <th style={thStyle}>建立日期</th>
                   </tr>
@@ -300,7 +309,8 @@ export default function EmployeeAdvancesPage() {
                         </span>
                       </td>
                       <td style={tdStyle}><span style={{ fontSize: 12, color: '#6b7280' }}>{a.sourceType === 'maintenance' ? '維護費' : a.sourceType === 'expense' ? '費用' : '其他'}</span></td>
-                      <td style={tdStyle}><span style={{ fontSize: 12 }}>{a.sourceDescription || '-'}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 12 }}>{a.expenseName || '-'}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 12 }}>{a.summary || a.sourceDescription || '-'}</span></td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>NT$ {Number(a.amount).toLocaleString()}</td>
                       <td style={tdStyle}><span style={{ fontSize: 12, color: '#6b7280' }}>{a.createdAt?.substring(0, 10)}</span></td>
                     </tr>
@@ -308,7 +318,7 @@ export default function EmployeeAdvancesPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#f9fafb' }}>
-                    <td colSpan={6} style={{ ...tdStyle, fontWeight: 600 }}>合計 {filteredPending.length} 筆</td>
+                    <td colSpan={7} style={{ ...tdStyle, fontWeight: 600 }}>合計 {filteredPending.length} 筆</td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>NT$ {filteredPending.reduce((s, a) => s + Number(a.amount), 0).toLocaleString()}</td>
                     <td style={tdStyle}></td>
                   </tr>

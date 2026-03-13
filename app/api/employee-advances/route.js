@@ -34,7 +34,7 @@ export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
     const body = await request.json();
-    const { employeeName, paymentMethod, amount, sourceDescription, warehouse, note } = body;
+    const { employeeName, paymentMethod, amount, sourceDescription, expenseName, summary, warehouse, note } = body;
 
     if (!employeeName || !amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫代墊員工和金額', 400);
@@ -62,6 +62,8 @@ export async function POST(request) {
         paymentMethod: paymentMethod || '現金',
         sourceType: 'other',
         sourceDescription: sourceDescription || null,
+        expenseName: expenseName || null,
+        summary: summary || null,
         amount: parseFloat(amount),
         status: '待結算',
         warehouse: warehouse || null,

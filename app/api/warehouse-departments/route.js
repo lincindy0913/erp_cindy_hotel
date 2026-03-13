@@ -18,11 +18,11 @@ async function fetchAll() {
     name: wh.name,
     type: wh.type || 'storage',
     parentId: wh.parentId || null,
-    departments: wh.departments.map(d => d.name),
+    departments: wh.departments.map(d => ({ id: d.id, name: d.name })),
     children: wh.children.map(c => ({ id: c.id, name: c.name })),
   }));
   for (const wh of warehouses) {
-    byName[wh.name] = wh.departments.map(d => d.name);
+    byName[wh.name] = wh.departments.map(d => (typeof d === 'object' && d.name != null ? d.name : d));
   }
   return { list, byName };
 }

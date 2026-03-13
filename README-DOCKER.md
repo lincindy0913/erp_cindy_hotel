@@ -27,12 +27,12 @@ docker compose up -d --build
 要更新程式後重新建置並啟動，且**保留資料庫與 volume 資料**：
 
 ```bash
-# 只重建 app 映像並重啟，不刪除 volume（資料庫資料會保留）
-docker compose up -d --build
-
-# 或分開執行：
-docker compose build --no-cache app
+# 完整重建（無快取）並重啟，資料庫資料會保留
+docker compose build --no-cache
 docker compose up -d
+
+# 或使用快取建置並重啟
+docker compose up -d --build
 ```
 
 - **不要**使用 `docker compose down -v`（`-v` 會刪除 named volumes，包含 `postgres_data`）。

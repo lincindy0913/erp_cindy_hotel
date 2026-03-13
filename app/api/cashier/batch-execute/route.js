@@ -40,7 +40,7 @@ export async function POST(request) {
     const session = await getServerSession(authOptions);
     const data = await request.json();
 
-    const { orderIds, accounts, executionDate, note } = data;
+    const { orderIds, accounts, executionDate, note, orderExtras, isEmployeeAdvance, advancedBy, advancePaymentMethod } = data;
 
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇付款單', 400);
@@ -84,8 +84,16 @@ export async function POST(request) {
         `以下付款單狀態不正確：${invalidOrders.map(o => o.orderNo).join(', ')}`, 409);
     }
 
+    // Calculate effective amounts per order (netAmount + extra for loan orders)
+    const extras = orderExtras || {};
+    const orderEffectiveAmounts = {};
+    for (const o of orders) {
+      const extra = parseFloat(extras[o.id]) || 0;
+      orderEffectiveAmounts[o.id] = Number(o.netAmount) + extra;
+    }
+
     // Validate totals match
-    const orderTotal = orders.reduce((sum, o) => sum + Number(o.netAmount), 0);
+    const orderTotal = orders.reduce((sum, o) => sum + orderEffectiveAmounts[o.id], 0);
     const accountTotal = accounts.reduce((sum, a) => sum + parseFloat(a.amount), 0);
 
     if (Math.abs(orderTotal - accountTotal) > 0.01) {
@@ -94,8 +102,8 @@ export async function POST(request) {
     }
 
     // Allocate orders to accounts using greedy approach
-    // Sort orders by amount descending for better fit
-    const sortedOrders = [...orders].sort((a, b) => Number(b.netAmount) - Number(a.netAmount));
+    // Sort orders by effective amount descending for better fit
+    const sortedOrders = [...orders].sort((a, b) => orderEffectiveAmounts[b.id] - orderEffectiveAmounts[a.id]);
     const accountRemaining = accounts.map(a => ({
       accountId: parseInt(a.accountId),
       remaining: parseFloat(a.amount),
@@ -106,7 +114,7 @@ export async function POST(request) {
     const allocations = [];
 
     for (const order of sortedOrders) {
-      let orderRemaining = Number(order.netAmount);
+      let orderRemaining = orderEffectiveAmounts[order.id];
 
       for (const acc of accountRemaining) {
         if (orderRemaining <= 0) break;
@@ -196,20 +204,41 @@ export async function POST(request) {
           data: { status: '已執行' },
         });
 
+        // If this PaymentOrder has a linked Check, mark Check as cleared
+        const linkedCheck = await tx.check.findFirst({
+          where: { paymentId: order.id },
+        });
+        if (linkedCheck) {
+          const firstExec = executions.find(e => e.paymentOrderId === order.id);
+          await tx.check.update({
+            where: { id: linkedCheck.id },
+            data: {
+              status: 'cleared',
+              clearDate: firstExec ? firstExec.executionDate : executionDate,
+              actualAmount: firstExec ? firstExec.actualAmount : null,
+              cashTransactionId: firstExec ? firstExec.cashTransactionId : null,
+              clearedBy: session?.user?.email || null,
+            },
+          });
+        }
+
         // Check linked loan records — update status and actual amounts
         const linkedLoanRecord = await tx.loanMonthlyRecord.findFirst({
           where: { paymentOrderId: order.id },
         });
         if (linkedLoanRecord && linkedLoanRecord.status === '待出納') {
-          // Sum actual amounts allocated to this order
+          // Sum actual amounts allocated to this order (includes extra prepaid)
           const orderAllocations = allocations.filter(a => a.orderId === order.id);
           const totalActual = orderAllocations.reduce((s, a) => s + a.amount, 0);
+          // Find primary account used for this order
+          const primaryAlloc = orderAllocations[0];
           await tx.loanMonthlyRecord.update({
             where: { id: linkedLoanRecord.id },
             data: {
               status: '已預付',
               actualTotal: totalActual,
               actualDebitDate: executionDate,
+              deductAccountId: primaryAlloc ? primaryAlloc.accountId : undefined,
             },
           });
         }
@@ -283,6 +312,42 @@ export async function POST(request) {
               cashTransactionId: firstExec ? firstExec.cashTransactionId : null,
               confirmedAt: new Date(),
               confirmedBy: session?.user?.email || null,
+            },
+          });
+        }
+
+        // If cashier marked batch as employee advance, create EmployeeAdvance record per order
+        if (isEmployeeAdvance && advancedBy) {
+          const advDateStr = executionDate.replace(/-/g, '');
+          const advPrefix = `ADV-${advDateStr}-`;
+          const existingAdv = await tx.employeeAdvance.findMany({
+            where: { advanceNo: { startsWith: advPrefix } },
+            select: { advanceNo: true },
+          });
+          let maxAdvSeq = 0;
+          for (const item of existingAdv) {
+            const seq = parseInt(item.advanceNo.substring(advPrefix.length)) || 0;
+            if (seq > maxAdvSeq) maxAdvSeq = seq;
+          }
+          const advNo = `${advPrefix}${String(maxAdvSeq + 1).padStart(4, '0')}`;
+
+          const orderAllocs = allocations.filter(a => a.orderId === order.id);
+          const totalActualAdv = orderAllocs.reduce((s, a) => s + a.amount, 0);
+
+          await tx.employeeAdvance.create({
+            data: {
+              advanceNo: advNo,
+              employeeName: advancedBy,
+              paymentMethod: advancePaymentMethod || '現金',
+              sourceType: 'cashier',
+              sourceRecordId: order.id,
+              sourceDescription: order.summary || `付款單 ${order.orderNo}`,
+              paymentOrderId: order.id,
+              paymentOrderNo: order.orderNo,
+              amount: totalActualAdv,
+              status: '待結算',
+              warehouse: order.warehouse,
+              createdBy: session?.user?.email || null,
             },
           });
         }

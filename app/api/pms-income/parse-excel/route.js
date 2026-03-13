@@ -7,9 +7,10 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 
 export const dynamic = 'force-dynamic';
 
-// 非金額欄位（用於辨識表頭、取營業日期/館別/房間數等）
+// 非金額欄位（用於辨識表頭、取營業日期/館別/房間數/住宿人數/早餐人數等）
 const META_HEADERS = [
-  '營業日期', '日期', '館別', '館別名稱', '房間數', '住房率', '平均房價'
+  '營業日期', '日期', '館別', '館別名稱', '房間數', '住房率', '平均房價',
+  '住宿人數', '早餐人數', '住宿間數'
 ];
 
 function toNum(v) {
@@ -172,11 +173,17 @@ export async function POST(request) {
     let roomCount = null;
     let occupancyRate = null;
     let avgRoomRate = null;
+    let guestCount = null;
+    let breakfastCount = null;
+    let occupiedRooms = null;
     for (const [col, header] of colToHeader) {
       const h = header;
       if (h && (h === '房間數' || h.includes('房間數'))) roomCount = getVal(col);
       if (h && (h === '住房率' || h.includes('住房率'))) occupancyRate = getVal(col);
       if (h && (h === '平均房價' || h.includes('平均房價'))) avgRoomRate = getVal(col);
+      if (h && (h === '住宿人數' || h.includes('住宿人數'))) guestCount = getVal(col);
+      if (h && (h === '早餐人數' || h.includes('早餐人數'))) breakfastCount = getVal(col);
+      if (h && (h === '住宿間數' || h.includes('住宿間數'))) occupiedRooms = getVal(col);
     }
 
     // 依 DB mapping 規則組出 records，從 Excel 對應欄位抓金額
@@ -206,6 +213,9 @@ export async function POST(request) {
       roomCount: roomCount != null ? String(Math.round(roomCount)) : '',
       occupancyRate: occupancyRate != null ? String(occupancyRate) : '',
       avgRoomRate: avgRoomRate != null ? String(Math.round(avgRoomRate)) : '',
+      guestCount: guestCount != null ? String(Math.round(guestCount)) : '',
+      breakfastCount: breakfastCount != null ? String(Math.round(breakfastCount)) : '',
+      occupiedRooms: occupiedRooms != null ? String(Math.round(occupiedRooms)) : '',
       fileName,
     });
   } catch (error) {

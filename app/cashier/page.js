@@ -44,6 +44,10 @@ export default function CashierPage() {
   const [batchExecutionDate, setBatchExecutionDate] = useState(new Date().toISOString().split('T')[0]);
   const [batchNote, setBatchNote] = useState('');
   const [batchExecuting, setBatchExecuting] = useState(false);
+  const [batchIsEmployeeAdvance, setBatchIsEmployeeAdvance] = useState(false);
+  const [batchAdvancedBy, setBatchAdvancedBy] = useState('');
+  const [batchAdvancePaymentMethod, setBatchAdvancePaymentMethod] = useState('現金');
+  const [batchExtraAmounts, setBatchExtraAmounts] = useState({}); // orderId -> extraAmount for loan orders
 
   useEffect(() => {
     fetchAll();
@@ -71,9 +75,10 @@ export default function CashierPage() {
     } catch { setAccounts([]); }
   }
 
-  const pendingOrders = orders.filter(o => o.status === '待出納');
+  // 待執行：待出納且未被退回；已退回：待出納但曾被出納退回（會計修改後可重新送出）
+  const pendingOrders = orders.filter(o => o.status === '待出納' && !o.rejectedAt);
   const executedOrders = orders.filter(o => o.status === '已執行');
-  const rejectedOrders = orders.filter(o => o.status === '已拒絕');
+  const rejectedOrders = orders.filter(o => o.status === '待出納' && o.rejectedAt);
 
   function toggleExpand(order) {
     if (expandedOrderId === order.id) {
@@ -83,11 +88,13 @@ export default function CashierPage() {
       setExpandedOrderId(order.id);
       setRejectingOrderId(null);
       setRejectReason('');
+      // 付款單若已選好付款帳戶，自動帶入出納確認執行表單，不需再選一次
+      const accountIdStr = (order.accountId != null && order.accountId !== '') ? String(order.accountId) : '';
       setExecuteData({
         executionDate: new Date().toISOString().split('T')[0],
         actualAmount: order.netAmount,
         extraAmount: '',
-        accountId: order.accountId?.toString() || '',
+        accountId: accountIdStr,
         paymentMethod: order.paymentMethod,
         note: '',
         isEmployeeAdvance: false,
@@ -117,15 +124,18 @@ export default function CashierPage() {
   }
 
   const selectedOrders = pendingOrders.filter(o => selectedOrderIds.has(o.id));
-  const selectedTotal = selectedOrders.reduce((sum, o) => sum + Number(o.netAmount), 0);
+  const batchExtrasTotal = selectedOrders.reduce((sum, o) => sum + (parseFloat(batchExtraAmounts[o.id]) || 0), 0);
+  const selectedTotal = selectedOrders.reduce((sum, o) => sum + Number(o.netAmount), 0) + batchExtrasTotal;
+  const hasLoanOrders = selectedOrders.some(o => (o.summary || '').includes('貸款還款'));
 
   // Group selected orders by payment method for summary
   const selectedByMethod = {};
   selectedOrders.forEach(o => {
+    const extra = parseFloat(batchExtraAmounts[o.id]) || 0;
     const method = o.paymentMethod || '未指定';
     if (!selectedByMethod[method]) selectedByMethod[method] = { count: 0, total: 0, orders: [] };
     selectedByMethod[method].count++;
-    selectedByMethod[method].total += Number(o.netAmount);
+    selectedByMethod[method].total += Number(o.netAmount) + extra;
     selectedByMethod[method].orders.push(o);
   });
 
@@ -163,8 +173,21 @@ export default function CashierPage() {
     const confirmMsg = `確定要批次執行 ${selectedOrderIds.size} 筆付款單？\n總金額：NT$ ${selectedTotal.toLocaleString()}\n\n資金來源：\n${accountSummary}`;
     if (!confirm(confirmMsg)) return;
 
+    // Validate employee advance fields
+    if (batchIsEmployeeAdvance && !batchAdvancedBy.trim()) {
+      alert('請輸入代墊員工姓名');
+      return;
+    }
+
     setBatchExecuting(true);
     try {
+      // Build per-order extras for loan orders
+      const orderExtras = {};
+      for (const o of selectedOrders) {
+        const extra = parseFloat(batchExtraAmounts[o.id]) || 0;
+        if (extra > 0) orderExtras[o.id] = extra;
+      }
+
       const res = await fetch('/api/cashier/batch-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,6 +199,10 @@ export default function CashierPage() {
           })),
           executionDate: batchExecutionDate,
           note: batchNote || '批次執行',
+          orderExtras,
+          isEmployeeAdvance: batchIsEmployeeAdvance,
+          advancedBy: batchAdvancedBy.trim(),
+          advancePaymentMethod: batchAdvancePaymentMethod,
         }),
       });
 
@@ -191,6 +218,10 @@ export default function CashierPage() {
         alert(result.message || '批次執行成功');
         setSelectedOrderIds(new Set());
         setBatchAccounts([{ accountId: '', amount: '' }]);
+        setBatchExtraAmounts({});
+        setBatchIsEmployeeAdvance(false);
+        setBatchAdvancedBy('');
+        setBatchAdvancePaymentMethod('現金');
         fetchOrders();
         fetchAccounts();
       } else {
@@ -634,13 +665,18 @@ export default function CashierPage() {
                                         </div>
                                       )}
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">付款帳戶 *</label>
-                                        <select value={executeData.accountId}
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                                          付款帳戶 *
+                                          {order.accountId != null && order.accountId !== '' && (
+                                            <span className="text-amber-600 font-normal ml-1">（已從付款單帶入）</span>
+                                          )}
+                                        </label>
+                                        <select value={String(executeData.accountId || '')}
                                           onChange={e => setExecuteData({...executeData, accountId: e.target.value})}
                                           className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
                                           <option value="">-- 選擇帳戶 --</option>
                                           {accounts.filter(a => a.isActive).map(a => (
-                                            <option key={a.id} value={a.id}>
+                                            <option key={a.id} value={String(a.id)}>
                                               {a.name} ({a.type}) - NT$ {Number(a.currentBalance).toLocaleString()}
                                             </option>
                                           ))}
@@ -806,27 +842,71 @@ export default function CashierPage() {
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款方式</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">摘要</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">金額</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">應付金額</th>
+                    {hasLoanOrders && <th className="px-3 py-2 text-right text-xs font-medium text-indigo-600">額外預付</th>}
+                    {hasLoanOrders && <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">實付金額</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {selectedOrders.map(o => (
-                    <tr key={o.id}>
-                      <td className="px-3 py-2 font-medium text-amber-800">{getDisplayOrderNo(o)}</td>
-                      <td className="px-3 py-2">{o.supplierName || '-'}</td>
-                      <td className="px-3 py-2">{o.warehouse || '-'}</td>
-                      <td className="px-3 py-2">{o.paymentMethod}</td>
-                      <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.note || ''}>{o.note || '-'}</td>
-                      <td className="px-3 py-2 text-right font-medium">NT$ {Number(o.netAmount).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {selectedOrders.map(o => {
+                    const isLoan = (o.summary || '').includes('貸款還款');
+                    const extra = parseFloat(batchExtraAmounts[o.id]) || 0;
+                    const orderActual = Number(o.netAmount) + extra;
+                    return (
+                      <tr key={o.id}>
+                        <td className="px-3 py-2 font-medium text-amber-800">{getDisplayOrderNo(o)}</td>
+                        <td className="px-3 py-2">{o.supplierName || '-'}</td>
+                        <td className="px-3 py-2">{o.warehouse || '-'}</td>
+                        <td className="px-3 py-2">{o.paymentMethod}</td>
+                        <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={o.note || ''}>{o.note || '-'}</td>
+                        <td className="px-3 py-2 text-right font-medium">NT$ {Number(o.netAmount).toLocaleString()}</td>
+                        {hasLoanOrders && (
+                          <td className="px-3 py-2 text-right">
+                            {isLoan ? (
+                              <input type="number" step="0.01" min="0"
+                                value={batchExtraAmounts[o.id] || ''}
+                                onChange={e => setBatchExtraAmounts(prev => ({ ...prev, [o.id]: e.target.value }))}
+                                placeholder="0"
+                                className="w-24 border border-indigo-300 rounded px-2 py-1 text-sm text-right focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-indigo-50" />
+                            ) : <span className="text-gray-400">—</span>}
+                          </td>
+                        )}
+                        {hasLoanOrders && (
+                          <td className="px-3 py-2 text-right font-medium">
+                            {isLoan && extra > 0 ? (
+                              <span className="text-indigo-700">NT$ {orderActual.toLocaleString()}</span>
+                            ) : (
+                              <span>NT$ {Number(o.netAmount).toLocaleString()}</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                   <tr className="bg-amber-50 font-bold">
-                    <td colSpan="5" className="px-3 py-2 text-right">合計</td>
-                    <td className="px-3 py-2 text-right text-amber-700">NT$ {selectedTotal.toLocaleString()}</td>
+                    <td colSpan={hasLoanOrders ? 5 : 5} className="px-3 py-2 text-right">合計</td>
+                    {!hasLoanOrders && (
+                      <td className="px-3 py-2 text-right text-amber-700">NT$ {selectedTotal.toLocaleString()}</td>
+                    )}
+                    {hasLoanOrders && (
+                      <>
+                        <td className="px-3 py-2 text-right">{(selectedTotal - batchExtrasTotal) > 0 ? `NT$ ${(selectedTotal - batchExtrasTotal).toLocaleString()}` : ''}</td>
+                        <td className="px-3 py-2 text-right text-indigo-700">{batchExtrasTotal > 0 ? `NT$ ${batchExtrasTotal.toLocaleString()}` : ''}</td>
+                        <td className="px-3 py-2 text-right text-amber-700">NT$ {selectedTotal.toLocaleString()}</td>
+                      </>
+                    )}
                   </tr>
                 </tbody>
               </table>
             </div>
+
+            {/* Loan prepaid info banner */}
+            {hasLoanOrders && batchExtrasTotal > 0 && (
+              <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded p-2 text-sm text-indigo-800">
+                付款單金額 NT$ {(selectedTotal - batchExtrasTotal).toLocaleString()} + 額外預付 NT$ {batchExtrasTotal.toLocaleString()} =
+                <span className="font-bold ml-1">實付 NT$ {selectedTotal.toLocaleString()}</span>
+              </div>
+            )}
 
             {/* Batch execution form */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -843,6 +923,37 @@ export default function CashierPage() {
                   placeholder="選填..."
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
               </div>
+            </div>
+
+            {/* Employee advance section */}
+            <div className="mb-4 border-t pt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={batchIsEmployeeAdvance}
+                  onChange={e => setBatchIsEmployeeAdvance(e.target.checked)}
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                <span className="font-medium text-purple-800">此批次為員工代墊款</span>
+              </label>
+              {batchIsEmployeeAdvance && (
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <label className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
+                    <input type="text" value={batchAdvancedBy}
+                      onChange={e => setBatchAdvancedBy(e.target.value)}
+                      placeholder="員工姓名"
+                      className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
+                    <select value={batchAdvancePaymentMethod}
+                      onChange={e => setBatchAdvancePaymentMethod(e.target.value)}
+                      className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50">
+                      <option value="現金">現金</option>
+                      <option value="信用卡">信用卡</option>
+                      <option value="其他">其他</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Multiple funding accounts */}
@@ -949,7 +1060,7 @@ export default function CashierPage() {
 
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => { setSelectedOrderIds(new Set()); setBatchAccounts([{ accountId: '', amount: '' }]); }}
+                onClick={() => { setSelectedOrderIds(new Set()); setBatchAccounts([{ accountId: '', amount: '' }]); setBatchExtraAmounts({}); setBatchIsEmployeeAdvance(false); setBatchAdvancedBy(''); setBatchAdvancePaymentMethod('現金'); }}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
               >
                 取消選取
