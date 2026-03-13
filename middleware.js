@@ -17,6 +17,7 @@ const ROUTE_PERMISSIONS = {
   '/rentals': 'rental.view',
   '/month-end': 'monthend.view',
   '/expenses': 'expense.view',
+  '/engineering': 'engineering.view',
   '/settings': 'settings.view',
 };
 

@@ -66,7 +66,9 @@ export async function GET(request) {
       where,
       include: {
         sourceAccount: { select: { id: true, name: true, accountCode: true } },
-        destinationAccount: { select: { id: true, name: true, accountCode: true } }
+        destinationAccount: { select: { id: true, name: true, accountCode: true } },
+        reissueOfCheck: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
+        reissuedByChecks: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
       },
       orderBy: { dueDate: 'asc' }
     });

@@ -52,5 +52,6 @@ USER nextjs
 
 EXPOSE 3000
 
-# Sync schema (no destructive changes; keeps existing data) then start Next.js
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; exec node server.js"]
+# Sync Prisma schema to database (keeps existing data; no destructive migrations)
+# Then regenerate client and start Next.js
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; node node_modules/prisma/build/index.js generate 2>/dev/null || true; exec node server.js"]

@@ -150,7 +150,10 @@ export async function POST(request) {
           roomCount: data.roomCount ? parseInt(data.roomCount) : null,
           occupancyRate: data.occupancyRate ? parseFloat(data.occupancyRate) : null,
           avgRoomRate: data.avgRoomRate ? parseFloat(data.avgRoomRate) : null,
-          roomRevenue: data.roomRevenue ? parseFloat(data.roomRevenue) : null
+          roomRevenue: data.roomRevenue ? parseFloat(data.roomRevenue) : null,
+          guestCount: data.guestCount != null && data.guestCount !== '' ? parseInt(data.guestCount) : null,
+          breakfastCount: data.breakfastCount != null && data.breakfastCount !== '' ? parseInt(data.breakfastCount) : null,
+          occupiedRooms: data.occupiedRooms != null && data.occupiedRooms !== '' ? parseInt(data.occupiedRooms) : null,
         }
       });
 

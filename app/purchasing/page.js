@@ -77,7 +77,7 @@ export default function PurchasingPage() {
     paymentTerms: '月結',
     taxType: '',
     department: '',
-    items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }],
+    items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }],
     invoiceNo: '',
     invoiceDate: '',
     invoiceTitle: '',
@@ -95,7 +95,7 @@ export default function PurchasingPage() {
   const [expTemplateForm, setExpTemplateForm] = useState({
     name: '', description: '', warehouse: '',
     defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
-    purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
+    purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }]
   });
   // 館別（building type）— for 館別 selectors
   const warehousesList = warehouseList.filter(w => w.type === 'building').map(w => w.name);
@@ -183,27 +183,33 @@ export default function PurchasingPage() {
   function handleSelectExpenseTemplate(tmplId) {
     setSelectedExpenseTemplateId(tmplId);
     if (!tmplId) {
-      setExecuteExpenseForm(prev => ({ ...prev, items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }], supplierId: '', supplierName: '', invoiceNo: '', invoiceDate: '', invoiceTitle: '', invoiceAmount: '', taxAmount: '', supplierDiscount: '' }));
+      setExecuteExpenseForm(prev => ({ ...prev, items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }], supplierId: '', supplierName: '', invoiceNo: '', invoiceDate: '', invoiceTitle: '', invoiceAmount: '', taxAmount: '', supplierDiscount: '' }));
       return;
     }
     const tmpl = expenseTemplates.find(t => t.id === parseInt(tmplId));
     if (!tmpl) return;
     const items = Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
-      ? tmpl.purchaseItems.map(item => ({
-          productId: String(item.productId || ''),
-          quantity: item.quantity || 1,
-          unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
-          note: item.note || ''
-        }))
-      : [{ productId: '', quantity: 1, unitPrice: '', note: '' }];
+      ? tmpl.purchaseItems.map(item => {
+          const product = products.find(p => p.id === parseInt(item.productId));
+          const isInStock = !!product?.isInStock;
+          return {
+            productId: String(item.productId || ''),
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
+            note: item.note || '',
+            putInInventory: isInStock,
+            inventoryWarehouse: (item.inventoryWarehouse != null && item.inventoryWarehouse !== '') ? String(item.inventoryWarehouse) : ''
+          };
+        })
+      : [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }];
     const supplier = suppliers.find(s => s.id === tmpl.defaultSupplierId);
     setExecuteExpenseForm(prev => ({
       ...prev,
       warehouse: tmpl.warehouse || prev.warehouse,
       supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
       supplierName: supplier ? supplier.name : '',
-      // 付款方式優先連動廠商的預設值，若廠商未設定則預設為「月結」
-      paymentTerms: supplier?.paymentTerms || '月結',
+      // 付款方式連動範本預設值，若範本未設則用廠商預設，再無則「月結」
+      paymentTerms: tmpl.paymentMethod || supplier?.paymentTerms || '月結',
       taxType: tmpl.defaultTaxType || '',
       items,
       invoiceNo: '',
@@ -220,7 +226,7 @@ export default function PurchasingPage() {
     setExpTemplateForm({
       name: '', description: '', warehouse: '',
       defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
-      purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
+      purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }]
     });
     setEditingExpTemplate(null);
     setShowExpTemplateForm(false);
@@ -241,9 +247,10 @@ export default function PurchasingPage() {
             productId: String(item.productId || ''),
             quantity: item.quantity || 1,
             unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
-            note: item.note || ''
+            note: item.note || '',
+            inventoryWarehouse: item.inventoryWarehouse != null ? String(item.inventoryWarehouse) : ''
           }))
-        : [{ productId: '', quantity: 1, unitPrice: '', note: '' }]
+        : [{ productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }]
     });
     setShowExpTemplateForm(true);
   }
@@ -266,7 +273,8 @@ export default function PurchasingPage() {
         productId: parseInt(item.productId),
         quantity: parseInt(item.quantity) || 1,
         unitPrice: parseFloat(item.unitPrice) || 0,
-        note: item.note || ''
+        note: item.note || '',
+        inventoryWarehouse: item.inventoryWarehouse?.trim() || null
       })),
       isActive: true
     };
@@ -352,6 +360,13 @@ export default function PurchasingPage() {
       alert('請至少新增一筆進貨品項');
       return;
     }
+    const productById = (id) => products.find(p => p.id === parseInt(id, 10));
+    for (const item of validItems) {
+      if (productById(item.productId)?.isInStock && item.putInInventory && !(item.inventoryWarehouse || '').trim()) {
+        alert('勾選「入庫」的品項請選擇庫存地點');
+        return;
+      }
+    }
     if (!executeExpenseForm.supplierId) {
       alert('請選擇廠商');
       return;
@@ -382,12 +397,19 @@ export default function PurchasingPage() {
         paymentTerms: executeExpenseForm.paymentTerms || '月結',
         taxType: executeExpenseForm.taxType || null,
         department: executeExpenseForm.department || '',
-        items: validItems.map(item => ({
-          productId: parseInt(item.productId, 10),
-          quantity: parseInt(item.quantity, 10) || 1,
-          unitPrice: parseFloat(item.unitPrice) || 0,
-          note: item.note || ''
-        })),
+        items: validItems.map(item => {
+          const product = products.find(p => p.id === parseInt(item.productId, 10));
+          const isInStock = !!product?.isInStock;
+          const putInInventory = isInStock && !!item.putInInventory;
+          return {
+            productId: parseInt(item.productId, 10),
+            quantity: parseInt(item.quantity, 10) || 1,
+            unitPrice: parseFloat(item.unitPrice) || 0,
+            note: item.note || '',
+            putInInventory,
+            inventoryWarehouse: putInInventory ? (item.inventoryWarehouse?.trim() || null) : null
+          };
+        }),
         invoiceNo: executeExpenseForm.invoiceNo || null,
         invoiceDate: executeExpenseForm.invoiceDate || null,
         invoiceTitle: executeExpenseForm.invoiceTitle || null,
@@ -424,7 +446,7 @@ export default function PurchasingPage() {
           paymentTerms: '月結',
           taxType: '',
           department: '',
-          items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }],
+          items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }],
           invoiceNo: '',
           invoiceDate: '',
           invoiceTitle: '',
@@ -456,7 +478,7 @@ export default function PurchasingPage() {
               paymentTerms: '月結',
               taxType: '',
               department: '',
-              items: [{ productId: '', quantity: 1, unitPrice: '', note: '' }],
+              items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }],
               invoiceNo: '',
               invoiceDate: '',
               invoiceTitle: '',
@@ -1953,46 +1975,63 @@ export default function PurchasingPage() {
                           <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
                           <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
                           <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left w-36">庫存地點</th>
                           <th className="border border-gray-300 px-2 py-2 w-10"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {expTemplateForm.purchaseItems.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="border border-gray-300 px-2 py-1">
-                              <select value={item.productId}
-                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, productId: e.target.value } : it) }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                                <option value="">選擇商品</option>
-                                {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
-                              </select>
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1">
-                              <input type="number" min={1} value={item.quantity}
-                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it) }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1">
-                              <input type="number" step="0.01" value={item.unitPrice}
-                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, unitPrice: e.target.value } : it) }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1 text-right font-medium">
-                              {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1">
-                              <input value={item.note}
-                                onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, note: e.target.value } : it) }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1 text-center">
-                              {expTemplateForm.purchaseItems.length > 1 && (
-                                <button type="button" onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.filter((_, i) => i !== idx) }))}
-                                  className="text-red-500 hover:text-red-700 text-lg">✕</button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                        {expTemplateForm.purchaseItems.map((item, idx) => {
+                          const product = products.find(p => p.id === parseInt(item.productId));
+                          const needInventory = !!product?.isInStock;
+                          return (
+                            <tr key={idx}>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <select value={item.productId}
+                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, productId: e.target.value, inventoryWarehouse: '' } : it) }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                  <option value="">選擇商品</option>
+                                  {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
+                                </select>
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <input type="number" min={1} value={item.quantity}
+                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it) }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <input type="number" step="0.01" value={item.unitPrice}
+                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, unitPrice: e.target.value } : it) }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1 text-right font-medium">
+                                {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                <input value={item.note}
+                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, note: e.target.value } : it) }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1">
+                                {needInventory ? (
+                                  <select value={item.inventoryWarehouse || ''}
+                                    onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, inventoryWarehouse: e.target.value } : it) }))}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                    <option value="">選擇庫存地點</option>
+                                    {storageLocationsList.map(w => <option key={w} value={w}>{w}</option>)}
+                                  </select>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">不需入庫</span>
+                                )}
+                              </td>
+                              <td className="border border-gray-300 px-2 py-1 text-center">
+                                {expTemplateForm.purchaseItems.length > 1 && (
+                                  <button type="button" onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.filter((_, i) => i !== idx) }))}
+                                    className="text-red-500 hover:text-red-700 text-lg">✕</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                       <tfoot>
                         <tr className="bg-gray-50">
@@ -2000,12 +2039,12 @@ export default function PurchasingPage() {
                           <td className="border border-gray-300 px-2 py-2 text-right font-bold">
                             {expTemplateForm.purchaseItems.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unitPrice) || 0), 0).toLocaleString()}
                           </td>
-                          <td colSpan={2} className="border border-gray-300 px-2 py-2"></td>
+                          <td colSpan={3} className="border border-gray-300 px-2 py-2"></td>
                         </tr>
                       </tfoot>
                     </table>
                     <button type="button"
-                      onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: [...p.purchaseItems, { productId: '', quantity: 1, unitPrice: '', note: '' }] }))}
+                      onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: [...p.purchaseItems, { productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }] }))}
                       className="text-sm text-orange-600 hover:underline mb-3">
                       + 新增品項
                     </button>
@@ -2156,7 +2195,7 @@ export default function PurchasingPage() {
                   <>
                     {/* Product Items */}
                     <div className="mb-4">
-                      <h4 className="text-sm font-semibold mb-2">進貨品項</h4>
+                      <h4 className="text-sm font-semibold mb-2">進貨品項（需入庫品項將連動至 <Link href="/inventory" className="text-orange-600 hover:underline">庫存</Link>）</h4>
                       <table className="w-full border-collapse border border-gray-300 text-sm">
                         <thead>
                           <tr className="bg-gray-100">
@@ -2165,46 +2204,88 @@ export default function PurchasingPage() {
                             <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
                             <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
                             <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
+                            <th className="border border-gray-300 px-2 py-2 text-center w-24">是否入庫</th>
+                            <th className="border border-gray-300 px-2 py-2 text-left w-36">庫存地點</th>
                             <th className="border border-gray-300 px-2 py-2 w-10"></th>
                           </tr>
                         </thead>
                         <tbody>
-                          {executeExpenseForm.items.map((item, idx) => (
-                            <tr key={idx}>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <select value={item.productId}
-                                  onChange={e => updateExecuteExpenseItem(idx, 'productId', e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                                  <option value="">選擇商品</option>
-                                  {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
-                                </select>
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <input type="number" min={1} value={item.quantity}
-                                  onChange={e => updateExecuteExpenseItem(idx, 'quantity', e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <input type="number" step="0.01" value={item.unitPrice}
-                                  onChange={e => updateExecuteExpenseItem(idx, 'unitPrice', e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1 text-right font-medium">
-                                {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <input value={item.note}
-                                  onChange={e => updateExecuteExpenseItem(idx, 'note', e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1 text-center">
-                                {executeExpenseForm.items.length > 1 && (
-                                  <button type="button" onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))}
-                                    className="text-red-500 hover:text-red-700 text-lg">✕</button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                          {executeExpenseForm.items.map((item, idx) => {
+                            const product = products.find(p => p.id === parseInt(item.productId, 10));
+                            const isInStock = !!product?.isInStock;
+                            return (
+                              <tr key={idx}>
+                                <td className="border border-gray-300 px-2 py-1">
+                                  <select value={item.productId}
+                                    onChange={e => {
+                                      const pid = e.target.value;
+                                      const p = products.find(x => x.id === parseInt(pid, 10));
+                                      updateExecuteExpenseItem(idx, 'productId', pid);
+                                      if (p?.isInStock) {
+                                        setExecuteExpenseForm(prev => ({
+                                          ...prev,
+                                          items: prev.items.map((it, i) => i === idx ? { ...it, putInInventory: true, inventoryWarehouse: '' } : it)
+                                        }));
+                                      }
+                                    }}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                    <option value="">選擇商品</option>
+                                    {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
+                                  </select>
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1">
+                                  <input type="number" min={1} value={item.quantity}
+                                    onChange={e => updateExecuteExpenseItem(idx, 'quantity', e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1">
+                                  <input type="number" step="0.01" value={item.unitPrice}
+                                    onChange={e => updateExecuteExpenseItem(idx, 'unitPrice', e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1 text-right font-medium">
+                                  {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1">
+                                  <input value={item.note}
+                                    onChange={e => updateExecuteExpenseItem(idx, 'note', e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1 text-center">
+                                  {isInStock ? (
+                                    <label className="inline-flex items-center gap-1">
+                                      <input type="checkbox" checked={!!item.putInInventory}
+                                        onChange={e => updateExecuteExpenseItem(idx, 'putInInventory', e.target.checked)}
+                                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
+                                      <span className="text-xs">入庫</span>
+                                    </label>
+                                  ) : (
+                                    <span className="text-gray-400 text-xs">不需入庫</span>
+                                  )}
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1">
+                                  {isInStock && item.putInInventory ? (
+                                    <select value={item.inventoryWarehouse || ''}
+                                      onChange={e => updateExecuteExpenseItem(idx, 'inventoryWarehouse', e.target.value)}
+                                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                                      <option value="">選擇庫存地點</option>
+                                      {storageLocationsList.map(w => <option key={w} value={w}>{w}</option>)}
+                                    </select>
+                                  ) : isInStock ? (
+                                    <span className="text-gray-400 text-xs">勾選入庫後選擇</span>
+                                  ) : (
+                                    <span className="text-gray-400 text-xs">-</span>
+                                  )}
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1 text-center">
+                                  {executeExpenseForm.items.length > 1 && (
+                                    <button type="button" onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))}
+                                      className="text-red-500 hover:text-red-700 text-lg">✕</button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         <tfoot>
                           <tr className="bg-gray-50">
@@ -2217,7 +2298,7 @@ export default function PurchasingPage() {
                         </tfoot>
                       </table>
                       <button type="button"
-                        onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: [...prev.items, { productId: '', quantity: 1, unitPrice: '', note: '' }] }))}
+                        onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: [...prev.items, { productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }] }))}
                         className="mt-2 text-sm text-orange-600 hover:underline">
                         + 新增品項
                       </button>

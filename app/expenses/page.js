@@ -103,7 +103,12 @@ export default function ExpensesPage() {
     invoiceTitle: '',
     taxType: '',
     department: '',
-    warehouseAmounts: []
+    warehouseAmounts: [],
+    checkIssueDate: '',
+    checkDate: '',
+    checkNo: '',
+    checkAccountId: '',
+    checkNote: ''
   });
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -857,6 +862,13 @@ export default function ExpensesPage() {
           setSubmitting(false);
           return;
         }
+        if (executeForm.paymentMethod === '支票') {
+          if (!executeForm.checkIssueDate || !executeForm.checkDate || !executeForm.checkNo?.trim() || !executeForm.checkAccountId) {
+            alert('付款方式為支票時，請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶');
+            setSubmitting(false);
+            return;
+          }
+        }
         const body = {
           templateId: parseInt(selectedTemplateId),
           expenseMonth: executeForm.expenseMonth.trim(),
@@ -878,6 +890,13 @@ export default function ExpensesPage() {
           note: executeForm.note || null,
           allowDuplicate
         };
+        if (executeForm.paymentMethod === '支票') {
+          body.checkIssueDate = executeForm.checkIssueDate;
+          body.checkDate = executeForm.checkDate;
+          body.checkNo = executeForm.checkNo?.trim();
+          body.checkAccountId = executeForm.checkAccountId ? parseInt(executeForm.checkAccountId) : null;
+          body.checkNote = executeForm.checkNote || null;
+        }
 
         const res = await fetch('/api/expense-records/execute-fixed', {
           method: 'POST',
@@ -887,9 +906,19 @@ export default function ExpensesPage() {
 
         if (res.ok) {
           const result = await res.json();
-          alert(result.message || `執行成功！已建立 ${result.created?.length || 0} 筆記錄`);
+          let msg = result.message || `執行成功！已建立 ${result.created?.length || 0} 筆記錄`;
+          if (executeForm.paymentMethod === '支票') msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
+          alert(msg);
           setSelectedTemplateId('');
-          setExecuteForm(prev => ({ ...prev, entryLines: [] }));
+          setExecuteForm(prev => ({
+            ...prev,
+            entryLines: [],
+            checkIssueDate: '',
+            checkDate: '',
+            checkNo: '',
+            checkAccountId: '',
+            checkNote: ''
+          }));
           if (subTab === 'records') fetchRecords();
         } else if (res.status === 409) {
           const err = await res.json();
@@ -1532,6 +1561,50 @@ export default function ExpensesPage() {
                             <input value={executeForm.advancedBy || ''}
                               onChange={e => setExecuteForm(prev => ({ ...prev, advancedBy: e.target.value }))}
                               placeholder="員工姓名" style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 付款方式為支票時，顯示支票資訊（存檔後連動支票管理） */}
+                      {executeForm.paymentMethod === '支票' && (
+                        <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#b45309', marginBottom: 8 }}>支票資訊（存檔後連動支票管理）</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div>
+                              <label style={{ fontSize: 11, color: '#b45309' }}>付款(開票)日期 *</label>
+                              <input type="date" value={executeForm.checkIssueDate || ''}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, checkIssueDate: e.target.value }))}
+                                style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: '#b45309' }}>支票日期(到期日) *</label>
+                              <input type="date" value={executeForm.checkDate || ''}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, checkDate: e.target.value }))}
+                                style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: '#b45309' }}>支票號碼 *</label>
+                              <input type="text" value={executeForm.checkNo || ''}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, checkNo: e.target.value }))}
+                                placeholder="請輸入支票號碼" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: '#b45309' }}>開票帳戶 *</label>
+                              <select value={executeForm.checkAccountId || ''}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, checkAccountId: e.target.value }))}
+                                style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }}>
+                                <option value="">請選擇</option>
+                                {cashAccounts.map(a => (
+                                  <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <label style={{ fontSize: 11, color: '#b45309' }}>備註</label>
+                              <input type="text" value={executeForm.checkNote || ''}
+                                onChange={e => setExecuteForm(prev => ({ ...prev, checkNote: e.target.value }))}
+                                placeholder="選填" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
+                            </div>
                           </div>
                         </div>
                       )}

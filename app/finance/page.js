@@ -50,6 +50,14 @@ export default function PaymentPage() {
     paymentTerms: ''
   });
 
+  // 按館別列印草稿報表
+  const [showWarehouseReportModal, setShowWarehouseReportModal] = useState(false);
+  const [reportMonth, setReportMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [reportWarehouse, setReportWarehouse] = useState('');
+
   // 表單資料
   const [formData, setFormData] = useState({
     paymentMethod: '月結',
@@ -117,6 +125,23 @@ export default function PaymentPage() {
       }
     } catch (_) {}
   }
+
+  // 付款方式為支票時，付款日期／支票日期／開票帳戶預設為上一次選取
+  useEffect(() => {
+    if (formData.paymentMethod !== '支票') return;
+    const last = getLastCheckValues();
+    if (!last) return;
+    const needIssue = !formData.checkIssueDate?.trim();
+    const needDate = !formData.checkDate?.trim();
+    const needAccount = !formData.checkAccountId;
+    if (!needIssue && !needDate && !needAccount) return;
+    setFormData(prev => ({
+      ...prev,
+      ...(needIssue && last.checkIssueDate ? { checkIssueDate: last.checkIssueDate } : {}),
+      ...(needDate && last.checkDate ? { checkDate: last.checkDate } : {}),
+      ...(needAccount && last.checkAccountId ? { checkAccountId: String(last.checkAccountId) } : {})
+    }));
+  }, [formData.paymentMethod]);
 
   async function fetchOrders() {
     try {
@@ -513,6 +538,30 @@ export default function PaymentPage() {
 
   const displayOrders = getDisplayOrders();
 
+  // 按館別列印報表：依報表月份篩選草稿，再依館別分組
+  const draftOrdersInReportMonth = draftOrders.filter(o => {
+    const created = o.createdAt ? o.createdAt.slice(0, 7) : '';
+    return created === reportMonth;
+  });
+  const warehouseOptionsForReport = [
+    { value: '', label: '全部館別（分頁列印）' },
+    ...Array.from(new Set(draftOrdersInReportMonth.map(o => o.warehouse || '').filter(Boolean))).sort().map(w => ({ value: w, label: w })),
+    ...(draftOrdersInReportMonth.some(o => !o.warehouse) ? [{ value: '__none__', label: '未指定館別' }] : []),
+  ];
+  const reportOrdersByWarehouse = reportWarehouse === ''
+    ? (() => {
+        const groups = {};
+        draftOrdersInReportMonth.forEach(o => {
+          const key = o.warehouse || '__none__';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(o);
+        });
+        return groups;
+      })()
+    : reportWarehouse === '__none__'
+      ? { '__none__': draftOrdersInReportMonth.filter(o => !o.warehouse) }
+      : { [reportWarehouse]: draftOrdersInReportMonth.filter(o => o.warehouse === reportWarehouse) };
+
   function getStatusBadge(status) {
     const map = {
       '草稿': 'bg-gray-100 text-gray-800',
@@ -555,6 +604,13 @@ export default function PaymentPage() {
 
   return (
     <div className="min-h-screen page-bg-finance">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          .no-print-finance, .no-print-finance * { visibility: hidden !important; }
+          #finance-warehouse-report-print-root { visibility: visible !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; z-index: 99999 !important; }
+          #finance-warehouse-report-print-root * { visibility: visible !important; }
+        }
+      `}} />
       <Navigation borderColor="border-indigo-500" />
       <NotificationBanner moduleFilter="finance" />
 
@@ -562,6 +618,13 @@ export default function PaymentPage() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">付款管理</h2>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowWarehouseReportModal(true)}
+              className="bg-white border border-indigo-300 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-50"
+            >
+              按館別列印報表
+            </button>
             <ExportButtons
               data={displayOrders.map(o => ({
                 ...o,
@@ -854,8 +917,14 @@ export default function PaymentPage() {
                       const next = e.target.value;
                       if (next === '支票') {
                         const last = getLastCheckValues();
-                        if (last && !formData.checkIssueDate && !formData.checkDate && !formData.checkNo && !formData.checkAccountId) {
-                          setFormData(prev => ({ ...prev, paymentMethod: next, ...last }));
+                        if (last) {
+                          setFormData(prev => ({
+                            ...prev,
+                            paymentMethod: next,
+                            checkIssueDate: last.checkIssueDate || prev.checkIssueDate,
+                            checkDate: last.checkDate || prev.checkDate,
+                            checkAccountId: last.checkAccountId || prev.checkAccountId
+                          }));
                           return;
                         }
                       }
@@ -1295,6 +1364,9 @@ export default function PaymentPage() {
                                 作廢
                               </button>
                             )}
+                            {order.status === '待出納' && order.rejectedAt && isLoggedIn && (
+                              <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">曾被退回，請修改後重新送出</span>
+                            )}
                             {order.status === '已拒絕' && isLoggedIn && (
                               <>
                                 <button
@@ -1328,7 +1400,18 @@ export default function PaymentPage() {
                         <tr className="bg-indigo-50">
                           <td colSpan="10" className="px-4 py-4">
                             <div className="space-y-4">
-                              {/* 拒絕原因（如果有） */}
+                              {/* 曾被出納退回（待出納但 rejectedAt 有值）：請修改後重新送出 */}
+                              {order.status === '待出納' && order.rejectedAt && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                  <div className="text-sm font-semibold text-amber-800 mb-1">曾被出納退回</div>
+                                  <div className="text-sm text-amber-700">{order.rejectedReason || '（未填原因）'}</div>
+                                  {order.rejectedBy && (
+                                    <div className="text-xs text-amber-600 mt-1">退回人：{order.rejectedBy} | {order.rejectedAt ? new Date(order.rejectedAt).toLocaleString('zh-TW') : ''}</div>
+                                  )}
+                                  <p className="text-xs text-amber-600 mt-2">請修改資料正確後，存檔即會回到出納待執行列表。</p>
+                                </div>
+                              )}
+                              {/* 拒絕原因（已拒絕狀態，若有） */}
                               {order.status === '已拒絕' && order.rejectedReason && (
                                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                                   <div className="text-sm font-semibold text-red-700 mb-1">退回原因</div>
@@ -1597,6 +1680,146 @@ export default function PaymentPage() {
           </table>
         </div>
       </main>
+
+      {/* 按館別列印草稿報表 Modal */}
+      {showWarehouseReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 no-print-finance" onClick={() => setShowWarehouseReportModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto no-print-finance" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-800">付款單草稿報表（按館別列印）</h3>
+              <button type="button" onClick={() => setShowWarehouseReportModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <p className="text-sm text-gray-600">每月進銷存費用之付款單草稿，可依館別篩選後列印，供飯店會計使用。</p>
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">報表月份</label>
+                  <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={reportWarehouse} onChange={e => setReportWarehouse(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[180px]">
+                    {warehouseOptionsForReport.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                {Object.keys(reportOrdersByWarehouse).length === 0 ? (
+                  <div className="px-4 py-8 text-center text-gray-500 text-sm">該月份無草稿付款單，或請選擇其他館別。</div>
+                ) : (
+                  Object.entries(reportOrdersByWarehouse).map(([whKey, list]) => {
+                    const whLabel = whKey === '__none__' ? '未指定館別' : whKey;
+                    const total = list.reduce((s, o) => s + Number(o.netAmount || 0), 0);
+                    return (
+                      <div key={whKey} className="mb-6 last:mb-0">
+                        <div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b border-gray-200">館別：{whLabel}（共 {list.length} 筆，淨額合計 NT$ {total.toLocaleString()}）</div>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50">
+                              <th className="px-3 py-2 text-left">序號</th>
+                              <th className="px-3 py-2 text-left">付款單號</th>
+                              <th className="px-3 py-2 text-left">銷帳年月</th>
+                              <th className="px-3 py-2 text-left">廠商</th>
+                              <th className="px-3 py-2 text-left">付款方式</th>
+                              <th className="px-3 py-2 text-right">發票數</th>
+                              <th className="px-3 py-2 text-right">折讓</th>
+                              <th className="px-3 py-2 text-right">淨額</th>
+                              <th className="px-3 py-2 text-left">建立日期</th>
+                              <th className="px-3 py-2 text-left">備註</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {list.map((o, idx) => {
+                              const invCount = getInvoicesForOrder(o).length;
+                              return (
+                                <tr key={o.id} className="border-t border-gray-100">
+                                  <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
+                                  <td className="px-3 py-2 font-medium text-indigo-700">{o.orderNo}</td>
+                                  <td className="px-3 py-2 text-gray-600">{reportMonth || '－'}</td>
+                                  <td className="px-3 py-2">{o.supplierName || '-'}</td>
+                                  <td className="px-3 py-2">{o.paymentMethod}</td>
+                                  <td className="px-3 py-2 text-right">{invCount} 張</td>
+                                  <td className="px-3 py-2 text-right">{Number(o.discount) > 0 ? `NT$ ${Number(o.discount).toLocaleString()}` : '-'}</td>
+                                  <td className="px-3 py-2 text-right font-semibold">NT$ {Number(o.netAmount).toLocaleString()}</td>
+                                  <td className="px-3 py-2 text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '-'}</td>
+                                  <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate" title={o.note || ''}>{o.note || '－'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowWarehouseReportModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">列印</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 列印時只顯示此區塊 */}
+      {showWarehouseReportModal && (
+        <div id="finance-warehouse-report-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
+          <h1 className="text-xl font-bold text-gray-800 mb-2">付款單草稿報表（按館別）</h1>
+          <p className="text-sm text-gray-500 mb-4">報表月份：{reportMonth}　列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-sm text-gray-600 mb-4">每月進銷存費用之付款單草稿，依館別列示。</p>
+          {Object.keys(reportOrdersByWarehouse).length === 0 ? (
+            <p className="text-sm text-gray-500">該月份無草稿付款單。</p>
+          ) : (
+            Object.entries(reportOrdersByWarehouse).map(([whKey, list]) => {
+              const whLabel = whKey === '__none__' ? '未指定館別' : whKey;
+              const total = list.reduce((s, o) => s + Number(o.netAmount || 0), 0);
+              return (
+                <div key={whKey} className="mb-6 break-inside-avoid">
+                  <h2 className="text-base font-bold text-gray-800 mt-4 mb-2 border-b border-gray-300 pb-1">館別：{whLabel}（共 {list.length} 筆，淨額合計 NT$ {total.toLocaleString()}）</h2>
+                  <table className="w-full text-sm border border-gray-300">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="px-3 py-2 text-left border border-gray-300">序號</th>
+                        <th className="px-3 py-2 text-left border border-gray-300">付款單號</th>
+                        <th className="px-3 py-2 text-left border border-gray-300">銷帳年月</th>
+                        <th className="px-3 py-2 text-left border border-gray-300">廠商</th>
+                        <th className="px-3 py-2 text-left border border-gray-300">付款方式</th>
+                        <th className="px-3 py-2 text-right border border-gray-300">發票數</th>
+                        <th className="px-3 py-2 text-right border border-gray-300">折讓</th>
+                        <th className="px-3 py-2 text-right border border-gray-300">淨額</th>
+                        <th className="px-3 py-2 text-left border border-gray-300">建立日期</th>
+                        <th className="px-3 py-2 text-left border border-gray-300">備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((o, idx) => {
+                        const invCount = getInvoicesForOrder(o).length;
+                        return (
+                          <tr key={o.id}>
+                            <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
+                            <td className="px-3 py-2 border border-gray-300 font-medium">{o.orderNo}</td>
+                            <td className="px-3 py-2 border border-gray-300">{reportMonth || '－'}</td>
+                            <td className="px-3 py-2 border border-gray-300">{o.supplierName || '-'}</td>
+                            <td className="px-3 py-2 border border-gray-300">{o.paymentMethod}</td>
+                            <td className="px-3 py-2 border border-gray-300 text-right">{invCount} 張</td>
+                            <td className="px-3 py-2 border border-gray-300 text-right">{Number(o.discount) > 0 ? `NT$ ${Number(o.discount).toLocaleString()}` : '-'}</td>
+                            <td className="px-3 py-2 border border-gray-300 text-right font-semibold">NT$ {Number(o.netAmount).toLocaleString()}</td>
+                            <td className="px-3 py-2 border border-gray-300 text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '-'}</td>
+                            <td className="px-3 py-2 border border-gray-300 text-gray-500">{o.note || '－'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

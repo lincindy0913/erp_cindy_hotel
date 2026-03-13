@@ -7,24 +7,29 @@ import { usePathname } from 'next/navigation';
 import { ROLE_LABELS, ROLE_COLORS, hasPermission } from '@/lib/permissions';
 import NotificationBell from '@/components/NotificationBell';
 
-// Navigation items with required permissions
+// 主選單順序：儀錶板 → 庫存 → 進貨 → 發票登錄 → 付款 → 支票 → 費用 → 貸款 → 出納 → 代墊款 → 現金流 → 存簿對帳 → PMS收入 → 租屋管理 → 工程 → 分析 → 結帳(下拉)
 const NAV_ITEMS = [
-  { href: '/', label: '儀表板', linkClass: 'link-dashboard', requiredPermission: null },
-  { href: '/purchasing', label: '進貨', linkClass: 'link-purchasing', requiredPermission: 'purchasing.view' },
-  { href: '/sales', label: '發票登錄/核銷', linkClass: 'link-sales', requiredPermission: 'sales.view' },
-  { href: '/finance', label: '付款', linkClass: 'link-finance', requiredPermission: 'finance.view' },
-  { href: '/expenses', label: '費用', linkClass: 'link-finance', requiredPermission: 'expense.view' },
+  { href: '/', label: '儀錶板', linkClass: 'link-dashboard', requiredPermission: null },
   { href: '/inventory', label: '庫存', linkClass: 'link-inventory', requiredPermission: 'inventory.view' },
-  { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },
-  { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
-  { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
-  { href: '/month-end', label: '月結', linkClass: 'link-monthend', requiredPermission: 'monthend.view' },
-  { href: '/loans', label: '貸款', linkClass: 'link-loans', requiredPermission: 'loan.view' },
+  { href: '/purchasing', label: '進貨', linkClass: 'link-purchasing', requiredPermission: 'purchasing.view' },
+  { href: '/sales', label: '發票登錄', linkClass: 'link-sales', requiredPermission: 'sales.view' },
+  { href: '/finance', label: '付款', linkClass: 'link-finance', requiredPermission: 'finance.view' },
   { href: '/checks', label: '支票', linkClass: 'link-checks', requiredPermission: 'check.view' },
-  { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
-  { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
-  { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
+  { href: '/expenses', label: '費用', linkClass: 'link-finance', requiredPermission: 'expense.view' },
+  { href: '/loans', label: '貸款', linkClass: 'link-loans', requiredPermission: 'loan.view' },
   { href: '/cashier', label: '出納', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
+  { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
+  { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
+  { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
+  { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
+  { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
+  { href: '/engineering', label: '工程', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+  { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },
+];
+
+// 結帳下拉：月結、年結
+const CLOSE_BOOK_ITEMS = [
+  { href: '/month-end', label: '月結', linkClass: 'link-monthend', requiredPermission: 'monthend.view' },
   { href: '/year-end', label: '年結', linkClass: 'link-year-end', requiredPermission: 'yearend.view' },
 ];
 
@@ -65,6 +70,10 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   // 過濾導覽項目
   const visibleNavItems = NAV_ITEMS.filter(item => canAccess(item.requiredPermission));
 
+  // 過濾結帳下拉項目（月結、年結）
+  const visibleCloseBookItems = CLOSE_BOOK_ITEMS.filter(item => canAccess(item.requiredPermission));
+  const isCloseBookActive = CLOSE_BOOK_ITEMS.some(item => pathname === item.href);
+
   // 過濾資料設定 dropdown 項目
   const visibleSettingsItems = DATA_SETTINGS_ITEMS.filter(item => {
     if (item.adminOnly) return isAdmin;
@@ -73,6 +82,17 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
 
   // Check if any dropdown item is active
   const isDropdownActive = DATA_SETTINGS_ITEMS.some(item => pathname === item.href);
+
+  const [closeBookOpen, setCloseBookOpen] = useState(false);
+  const closeBookRef = useRef(null);
+  const closeBookTimeoutRef = useRef(null);
+  const handleCloseBookEnter = () => {
+    if (closeBookTimeoutRef.current) clearTimeout(closeBookTimeoutRef.current);
+    setCloseBookOpen(true);
+  };
+  const handleCloseBookLeave = () => {
+    closeBookTimeoutRef.current = setTimeout(() => setCloseBookOpen(false), 150);
+  };
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -83,9 +103,12 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
     timeoutRef.current = setTimeout(() => setDropdownOpen(false), 150);
   };
 
-  // Cleanup timeout on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
-    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (closeBookTimeoutRef.current) clearTimeout(closeBookTimeoutRef.current);
+    };
   }, []);
 
   // 取得使用者角色徽章
@@ -129,6 +152,41 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
                   {item.label}
                 </Link>
               ))}
+
+              {/* 結帳 dropdown（月結、年結） */}
+              {visibleCloseBookItems.length > 0 && (
+                <div
+                  className="relative"
+                  ref={closeBookRef}
+                  onMouseEnter={handleCloseBookEnter}
+                  onMouseLeave={handleCloseBookLeave}
+                >
+                  <button
+                    className={`link-monthend flex items-center gap-1 ${isCloseBookActive ? 'active font-medium' : ''}`}
+                  >
+                    結帳
+                    <svg className={`w-3 h-3 transition-transform ${closeBookOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {closeBookOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[100px] z-50">
+                      {visibleCloseBookItems.map(item => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`block px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                            pathname === item.href ? 'font-medium bg-gray-50' : 'text-gray-700'
+                          }`}
+                          onClick={() => setCloseBookOpen(false)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 資料設定 dropdown - only show if there are visible items */}
               {visibleSettingsItems.length > 0 && (

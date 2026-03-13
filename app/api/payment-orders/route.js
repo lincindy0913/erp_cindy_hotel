@@ -13,11 +13,13 @@ export async function GET(request) {
     const status = searchParams.get('status');
     const warehouse = searchParams.get('warehouse');
     const supplierId = searchParams.get('supplierId');
+    const sourceType = searchParams.get('sourceType');
 
     const where = {};
     if (status) where.status = status;
     if (warehouse) where.warehouse = warehouse;
     if (supplierId) where.supplierId = parseInt(supplierId);
+    if (sourceType) where.sourceType = sourceType;
 
     const orders = await prisma.paymentOrder.findMany({
       where,
@@ -99,6 +101,8 @@ export async function POST(request) {
           summary: data.summary || null,
           note: data.note || null,
           status: data.status === '待出納' ? '待出納' : '草稿',
+          sourceType: data.sourceType || null,
+          sourceRecordId: data.sourceRecordId != null ? parseInt(data.sourceRecordId) : null,
           createdBy: session?.user?.email || null,
         },
       });
@@ -118,8 +122,8 @@ export async function POST(request) {
           if (seq > maxChkSeq) maxChkSeq = seq;
         }
         const checkNo = `${chkPrefix}${String(maxChkSeq + 1).padStart(4, '0')}`;
-        const checkNumber = `PAY-${orderNo}`;
-        const dueDate = data.checkDueDate || now.toISOString().split('T')[0];
+        const checkNumber = (data.checkNo && String(data.checkNo).trim()) || `PAY-${orderNo}`;
+        const dueDate = data.checkDueDate || data.checkDate || now.toISOString().split('T')[0];
 
         check = await tx.check.create({
           data: {
@@ -137,12 +141,12 @@ export async function POST(request) {
             invoiceIds: data.invoiceIds,
             warehouse: data.warehouse || null,
             sourceAccountId: checkAccountId || undefined,
-            note: `自動建立 - 付款單 ${orderNo}`,
+            note: (data.note && String(data.note).trim()) ? `付款單 ${orderNo} - ${data.note}` : `自動建立 - 付款單 ${orderNo}`,
             createdBy: session?.user?.email || null,
           },
         });
 
-        // 更新付款單的 checkNo 欄位關聯
+        // 付款單的 checkNo 存成「顯示用支票號碼」（與支票管理頁面一致）
         await tx.paymentOrder.update({
           where: { id: order.id },
           data: { checkNo: checkNumber },

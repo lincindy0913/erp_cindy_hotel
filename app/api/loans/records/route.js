@@ -37,9 +37,12 @@ export async function GET(request) {
             loanName: true,
             bankName: true,
             warehouse: true,
+            originalAmount: true,
+            currentBalance: true,
             annualRate: true,
             repaymentDay: true,
             deductAccountId: true,
+            remark: true,
             deductAccount: {
               select: { id: true, name: true }
             }
@@ -112,6 +115,8 @@ export async function GET(request) {
       actualTotal: r.actualTotal !== null ? Number(r.actualTotal) : null,
       loan: r.loan ? {
         ...r.loan,
+        originalAmount: Number(r.loan.originalAmount),
+        currentBalance: Number(r.loan.currentBalance),
         annualRate: Number(r.loan.annualRate)
       } : null,
       preDeposit: (txByRecord[r.id] || []).find(t => t.sourceType === 'loan_predeposit') || null,

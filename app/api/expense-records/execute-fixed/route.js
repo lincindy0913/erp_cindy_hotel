@@ -93,6 +93,10 @@ export async function POST(request) {
     if (isLinesMode) {
       // 每筆分錄含館別/付款方式/存簿：依館別分組，每館別一筆記錄
       const warehouses = [...new Set(data.entryLines.map(l => (l.warehouse || '').trim()).filter(Boolean))];
+      const anyCheck = data.entryLines.some(l => (l.paymentMethod || data.paymentMethod) === '支票') || data.paymentMethod === '支票';
+      if (anyCheck && (!data.checkNo?.trim() || !data.checkIssueDate || !data.checkDate || !data.checkAccountId)) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '付款方式為支票時請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 400);
+      }
       const created = [];
       for (const wh of warehouses) {
         const whLines = data.entryLines
@@ -118,7 +122,6 @@ export async function POST(request) {
         if (Math.abs(debitTotal - creditTotal) > 0.01) continue;
         const pm = whLines[0].paymentMethod || data.paymentMethod || '月結';
         const accId = whLines[0].accountId ? parseInt(whLines[0].accountId) : null;
-
         const duplicate = await prisma.commonExpenseRecord.findFirst({
           where: { templateId: parseInt(data.templateId), warehouse: wh, expenseMonth: data.expenseMonth.trim(), executionType: 'fixed', status: { not: '已作廢' } }
         });
@@ -139,6 +142,46 @@ export async function POST(request) {
               entryLines: { create: whLines.map((line, idx) => ({ entryType: line.entryType, accountingCode: line.accountingCode || '', accountingName: line.accountingName || '', summary: line.summary || '', amount: line.amount, sortOrder: idx })) }
             }
           });
+
+          // 付款方式為支票：建立 Check 記錄並連動支票管理
+          if (pm === '支票' && data.checkNo?.trim() && data.checkIssueDate && data.checkDate && data.checkAccountId) {
+            const chkDateStr = (data.checkIssueDate || '').replace(/-/g, '');
+            const chkPrefix = `CHK-${chkDateStr}-`;
+            const existingChks = await tx.check.findMany({
+              where: { checkNo: { startsWith: chkPrefix } },
+              select: { checkNo: true }
+            });
+            let maxSeq = 0;
+            for (const c of existingChks) {
+              const seq = parseInt(c.checkNo.substring(chkPrefix.length)) || 0;
+              if (seq > maxSeq) maxSeq = seq;
+            }
+            const internalCheckNo = `${chkPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+            const checkNumber = data.checkNo.trim();
+            await tx.check.create({
+              data: {
+                checkNo: internalCheckNo,
+                checkType: 'payable',
+                checkNumber,
+                amount: debitTotal,
+                issueDate: data.checkIssueDate,
+                dueDate: data.checkDate,
+                status: 'pending',
+                drawerType: 'company',
+                payeeName: template.name || null,
+                warehouse: wh,
+                sourceAccountId: parseInt(data.checkAccountId),
+                paymentId: po.id,
+                note: data.checkNote?.trim() ? `費用執行 ${orderNo} - ${data.checkNote.trim()}` : `費用執行 - ${orderNo} (${template.name} ${wh})`,
+                createdBy: data.createdBy?.trim() || null,
+              }
+            });
+            await tx.paymentOrder.update({
+              where: { id: po.id },
+              data: { checkNo: checkNumber }
+            });
+          }
+
           const [y, m] = data.expenseMonth.split('-');
           const cat = template?.category?.name || '固定費用';
           const exDept = await tx.departmentExpense.findFirst({ where: { year: parseInt(y), month: parseInt(m), department: wh, category: cat } });

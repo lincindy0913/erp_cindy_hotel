@@ -116,6 +116,23 @@ export async function POST(request) {
         data: { status: '已執行' },
       });
 
+      // 4b. If this PaymentOrder has a linked Check (paymentId = order.id), mark Check as cleared
+      const linkedCheck = await tx.check.findFirst({
+        where: { paymentId: parseInt(paymentOrderId) },
+      });
+      if (linkedCheck) {
+        await tx.check.update({
+          where: { id: linkedCheck.id },
+          data: {
+            status: 'cleared',
+            clearDate: executionDate,
+            actualAmount: actualAmount,
+            cashTransactionId: cashTx.id,
+            clearedBy: session?.user?.email || null,
+          },
+        });
+      }
+
       // 5. If this PaymentOrder is linked to a loan record, update it to 已預付 with actual amounts
       const linkedLoanRecord = await tx.loanMonthlyRecord.findFirst({
         where: { paymentOrderId: parseInt(paymentOrderId) }

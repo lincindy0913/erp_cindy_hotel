@@ -78,6 +78,9 @@ function PmsIncomePage() {
   const [uploadRoomCount, setUploadRoomCount] = useState('');
   const [uploadOccupancyRate, setUploadOccupancyRate] = useState('');
   const [uploadAvgRoomRate, setUploadAvgRoomRate] = useState('');
+  const [uploadGuestCount, setUploadGuestCount] = useState('');
+  const [uploadBreakfastCount, setUploadBreakfastCount] = useState('');
+  const [uploadOccupiedRooms, setUploadOccupiedRooms] = useState('');
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [excelParsing, setExcelParsing] = useState(false);
   const [overviewBuildings, setOverviewBuildings] = useState([]);
@@ -619,7 +622,10 @@ function PmsIncomePage() {
         difference: creditTotal - debitTotal,
         roomCount: uploadRoomCount ? parseInt(uploadRoomCount) : null,
         occupancyRate: uploadOccupancyRate ? parseFloat(uploadOccupancyRate) : null,
-        avgRoomRate: uploadAvgRoomRate ? parseFloat(uploadAvgRoomRate) : null
+        avgRoomRate: uploadAvgRoomRate ? parseFloat(uploadAvgRoomRate) : null,
+        guestCount: uploadGuestCount ? parseInt(uploadGuestCount) : null,
+        breakfastCount: uploadBreakfastCount ? parseInt(uploadBreakfastCount) : null,
+        occupiedRooms: uploadOccupiedRooms ? parseInt(uploadOccupiedRooms) : null,
       };
 
       const res = await fetch('/api/pms-income/batches', {
@@ -663,6 +669,9 @@ function PmsIncomePage() {
     setUploadRoomCount('');
     setUploadOccupancyRate('');
     setUploadAvgRoomRate('');
+    setUploadGuestCount('');
+    setUploadBreakfastCount('');
+    setUploadOccupiedRooms('');
   };
 
   // 上傳 Excel：解析後帶入表單，開啟 modal 供會計核對後確認存檔
@@ -697,6 +706,9 @@ function PmsIncomePage() {
       setUploadRoomCount(data.roomCount ?? '');
       setUploadOccupancyRate(data.occupancyRate ?? '');
       setUploadAvgRoomRate(data.avgRoomRate ?? '');
+      setUploadGuestCount(data.guestCount ?? '');
+      setUploadBreakfastCount(data.breakfastCount ?? '');
+      setUploadOccupiedRooms(data.occupiedRooms ?? '');
       if (Array.isArray(data.records) && data.records.length > 0) {
         setUploadRecords(prev => prev.map(p => {
           const fromExcel = data.records.find(r => r.pmsColumnName === p.pmsColumnName);
@@ -976,7 +988,7 @@ function PmsIncomePage() {
               </div>
             </div>
 
-            {/* Room info */}
+            {/* Room & occupancy info */}
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">房間數</label>
@@ -994,6 +1006,26 @@ function PmsIncomePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">平均房價</label>
                 <input type="number" value={uploadAvgRoomRate} onChange={e => setUploadAvgRoomRate(e.target.value)}
                   placeholder="0" step="1" min="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">住宿人數</label>
+                <input type="number" value={uploadGuestCount} onChange={e => setUploadGuestCount(e.target.value)}
+                  placeholder="0" min="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">早餐人數</label>
+                <input type="number" value={uploadBreakfastCount} onChange={e => setUploadBreakfastCount(e.target.value)}
+                  placeholder="0" min="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">住宿間數</label>
+                <input type="number" value={uploadOccupiedRooms} onChange={e => setUploadOccupiedRooms(e.target.value)}
+                  placeholder="0" min="0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
               </div>
             </div>
@@ -1443,6 +1475,7 @@ function PmsIncomePage() {
                         <th className="px-3 py-2 font-medium text-right">借方合計</th>
                         <th className="px-3 py-2 font-medium text-right">差額</th>
                         <th className="px-3 py-2 font-medium text-center">筆數</th>
+                        <th className="px-3 py-2 font-medium text-center">早餐人數</th>
                         <th className="px-3 py-2 font-medium text-center">狀態</th>
                         <th className="px-3 py-2 font-medium">匯入時間</th>
                         <th className="px-3 py-2 font-medium text-center">操作</th>
@@ -1461,6 +1494,9 @@ function PmsIncomePage() {
                             {formatNumber(batch.difference)}
                           </td>
                           <td className="px-3 py-2 text-center">{batch.recordCount}</td>
+                          <td className="px-3 py-2 text-center text-gray-600" title={`住宿${batch.guestCount ?? '-'}／住宿間數${batch.occupiedRooms ?? '-'}`}>
+                            {batch.breakfastCount != null ? batch.breakfastCount : '-'}
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                               batch.status === '已結算' ? 'bg-green-100 text-green-700' :

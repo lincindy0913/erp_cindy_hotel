@@ -122,7 +122,7 @@ export async function POST(request) {
       const purchaseDate = data.purchaseDate || `${data.expenseMonth}-01`;
       const supplierId = parseInt(data.supplierId);
 
-      // 1. Create PurchaseMaster + PurchaseDetail
+      // 1. Create PurchaseMaster + PurchaseDetail（需入庫品項連動庫存分頁，status=待入庫 + inventoryWarehouse）
       const purchaseNo = await generateNo(tx, 'purchaseMaster', 'PUR');
       const purchaseMaster = await tx.purchaseMaster.create({
         data: {
@@ -138,14 +138,17 @@ export async function POST(request) {
           totalAmount: purchaseAmount + taxAmount,
           status: '待入庫',
           details: {
-            create: data.items.map(item => ({
-              productId: parseInt(item.productId),
-              quantity: parseInt(item.quantity),
-              unitPrice: parseFloat(item.unitPrice),
-              note: item.note || '',
-              status: '待入庫',
-              inventoryWarehouse: item.inventoryWarehouse || null
-            }))
+            create: data.items.map(item => {
+              const putInInventory = item.putInInventory === true;
+              return {
+                productId: parseInt(item.productId),
+                quantity: parseInt(item.quantity),
+                unitPrice: parseFloat(item.unitPrice),
+                note: item.note || '',
+                status: putInInventory ? '待入庫' : '不需入庫',
+                inventoryWarehouse: putInInventory ? (item.inventoryWarehouse || null) : null
+              };
+            })
           }
         },
         include: { details: true }

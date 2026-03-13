@@ -13,6 +13,7 @@ const ANALYTICS_TABS = [
   { key: 'cashflow-forecast', label: '現金流預測' },
   { key: 'department', label: '部門支出' },
   { key: 'business-report', label: '月度報告' },
+  { key: 'breakfast-procurement', label: '早餐與採購比較' },
 ];
 
 export default function AnalyticsPage() {
@@ -60,6 +61,18 @@ export default function AnalyticsPage() {
   const [pnlEndDate, setPnlEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [pnlWarehouseFilter, setPnlWarehouseFilter] = useState('');
 
+  // 早餐與採購比較（依早餐人數判斷品項叫貨是否過高，例：牛奶）
+  const [breakfastYearMonth, setBreakfastYearMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [breakfastWarehouse, setBreakfastWarehouse] = useState('');
+  const [breakfastKeyword, setBreakfastKeyword] = useState('');
+  const [breakfastProductId, setBreakfastProductId] = useState('');
+  const [breakfastResult, setBreakfastResult] = useState(null);
+  const [breakfastLoading, setBreakfastLoading] = useState(false);
+  const [warehouseOptions, setWarehouseOptions] = useState([]);
+
   useEffect(() => {
     fetchProducts();
     fetchPriceComparison();
@@ -72,6 +85,7 @@ export default function AnalyticsPage() {
     if (activeTab === 'cashflow-forecast' && !cashForecast) fetchCashForecast();
     if (activeTab === 'business-report') fetchBusinessReport(reportMonth);
     if (activeTab === 'pnl-warehouse') fetchPnlByWarehouse();
+    if (activeTab === 'breakfast-procurement') fetchWarehouseOptions();
   }, [activeTab]);
 
   async function fetchPnlByWarehouse() {
@@ -89,6 +103,49 @@ export default function AnalyticsPage() {
       console.error('取得館別損益表失敗:', e);
     }
     setPnlWarehouseLoading(false);
+  }
+
+  async function fetchWarehouseOptions() {
+    try {
+      const end = new Date();
+      const start = new Date();
+      start.setFullYear(start.getFullYear() - 1);
+      const params = new URLSearchParams({
+        startDate: start.toISOString().slice(0, 10),
+        endDate: end.toISOString().slice(0, 10),
+      });
+      const res = await fetch(`/api/pms-income/batches?${params}`);
+      if (res.ok) {
+        const list = await res.json();
+        const wh = [...new Set((list || []).map(b => b.warehouse).filter(Boolean))].sort();
+        setWarehouseOptions(wh);
+      }
+    } catch (e) {
+      console.error('取得館別列表失敗:', e);
+    }
+  }
+
+  async function fetchBreakfastProcurement() {
+    setBreakfastLoading(true);
+    setBreakfastResult(null);
+    try {
+      const params = new URLSearchParams({ yearMonth: breakfastYearMonth });
+      if (breakfastWarehouse.trim()) params.set('warehouse', breakfastWarehouse.trim());
+      if (breakfastProductId) params.set('productId', breakfastProductId);
+      if (breakfastKeyword.trim()) params.set('keyword', breakfastKeyword.trim());
+      const res = await fetch(`/api/analytics/procurement-vs-breakfast?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBreakfastResult(data);
+      } else {
+        const err = await res.json();
+        setBreakfastResult({ error: err.error?.message || '查詢失敗' });
+      }
+    } catch (e) {
+      console.error('早餐與採購查詢失敗:', e);
+      setBreakfastResult({ error: e.message || '查詢失敗' });
+    }
+    setBreakfastLoading(false);
   }
 
   useEffect(() => {
@@ -996,6 +1053,107 @@ export default function AnalyticsPage() {
             )}
           </div>
         </div>
+        )}
+
+        {/* 早餐與採購比較：依早餐人數判斷品項叫貨是否過高（例：牛奶） */}
+        {activeTab === 'breakfast-procurement' && (
+          <div className="space-y-6">
+            <p className="text-sm text-gray-600">
+              資料來源：<Link href="/pms-income" className="text-cyan-600 hover:underline">PMS 收入</Link>的「早餐人數、住宿人數、住宿間數」與進貨採購。請先在 PMS 收入匯入或建立每日資料時填寫營運指標。
+            </p>
+            <div className="flex flex-wrap items-end gap-4 bg-white rounded-lg shadow-sm p-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">月份</label>
+                <input
+                  type="month"
+                  value={breakfastYearMonth}
+                  onChange={e => setBreakfastYearMonth(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">館別（選填）</label>
+                <select
+                  value={breakfastWarehouse}
+                  onChange={e => setBreakfastWarehouse(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-40"
+                >
+                  <option value="">全部</option>
+                  {warehouseOptions.map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">品項關鍵字（例：牛奶）</label>
+                <input
+                  type="text"
+                  value={breakfastKeyword}
+                  onChange={e => { setBreakfastKeyword(e.target.value); setBreakfastProductId(''); }}
+                  placeholder="輸入品名或代碼"
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-48"
+                />
+              </div>
+              <button
+                onClick={fetchBreakfastProcurement}
+                disabled={breakfastLoading || !breakfastKeyword.trim()}
+                className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700 disabled:opacity-50"
+              >
+                {breakfastLoading ? '查詢中…' : '查詢'}
+              </button>
+            </div>
+            {breakfastResult && (
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                {breakfastResult.error ? (
+                  <div className="p-4 text-amber-700 bg-amber-50">{breakfastResult.error}</div>
+                ) : (
+                  <>
+                    <div className="px-4 py-3 border-b bg-gray-50">
+                      <h3 className="font-medium text-gray-700">
+                        {breakfastYearMonth} {breakfastResult.warehouse && `－ ${breakfastResult.warehouse}`}
+                        {breakfastResult.productInfo && ` · ${breakfastResult.productInfo.name || breakfastResult.productInfo.code}`}
+                      </h3>
+                    </div>
+                    <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500">當月早餐人數</p>
+                        <p className="text-xl font-bold mt-1">{Number(breakfastResult.totalBreakfastCount || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500">當月住宿人數</p>
+                        <p className="text-xl font-bold mt-1">{Number(breakfastResult.totalGuestCount || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500">當月採購數量</p>
+                        <p className="text-xl font-bold mt-1">{Number(breakfastResult.totalProcurementQty || 0).toLocaleString()} {breakfastResult.productInfo?.unit || ''}</p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-500">當月採購金額</p>
+                        <p className="text-xl font-bold mt-1">NT$ {Number(breakfastResult.totalProcurementAmount || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="px-4 pb-4 flex flex-wrap gap-4">
+                      <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-100">
+                        <p className="text-xs text-cyan-700">平均每人早餐用量（數量）</p>
+                        <p className="text-lg font-bold text-cyan-800 mt-1">
+                          {breakfastResult.perBreakfastQty != null ? `${breakfastResult.perBreakfastQty} ${breakfastResult.productInfo?.unit || ''}/人` : '－'}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-100">
+                        <p className="text-xs text-cyan-700">平均每人早餐金額</p>
+                        <p className="text-lg font-bold text-cyan-800 mt-1">
+                          {breakfastResult.perBreakfastAmount != null ? `NT$ ${breakfastResult.perBreakfastAmount.toFixed(2)}/人` : '－'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="px-4 pb-4 text-sm text-gray-600">
+                      若每人早餐用量或金額明顯高於常態，可能表示該品項叫貨過高，可對照歷史月份或他館數據調整採購。
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>

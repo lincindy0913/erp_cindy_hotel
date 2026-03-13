@@ -45,6 +45,7 @@ model Product {
   inventoryRequisitions InventoryRequisition[]
   inventoryTransferItems InventoryTransferItem[]
   stockCountItems      StockCountItem[]
+  engineeringMaterials EngineeringMaterial[]
 
   @@index([code])
   @@index([isInStock])
@@ -78,6 +79,7 @@ model Supplier {
   products            Product[]
   purchaseMasters     PurchaseMaster[]
   contracts           SupplierContract[]
+  engineeringContracts EngineeringContract[]
   priceHistories      PriceHistory[]
   priceComparisons    PriceComparison[]
   priceSummaryCaches  PriceSummaryCache[]
@@ -103,9 +105,10 @@ model Warehouse {
   sortOrder   Int?         @map("sort_order")
   createdAt   DateTime     @default(now()) @map("created_at")
 
-  parent      Warehouse?   @relation("WarehouseChildren", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Warehouse[]  @relation("WarehouseChildren")
-  departments Department[]
+  parent            Warehouse?          @relation("WarehouseChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children          Warehouse[]          @relation("WarehouseChildren")
+  departments       Department[]
+  engineeringProjects EngineeringProject[]
 
   @@unique([parentId, name])
   @@index([type])
@@ -120,7 +123,8 @@ model Department {
   sortOrder   Int?      @map("sort_order")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse           Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  engineeringProjects EngineeringProject[]
 
   @@unique([warehouseId, name])
   @@map("departments")
@@ -724,6 +728,9 @@ model PmsImportBatch {
   occupancyRate       Decimal? @map("occupancy_rate") @db.Decimal(5, 2)
   avgRoomRate         Decimal? @map("avg_room_rate") @db.Decimal(10, 2)
   roomRevenue         Decimal? @map("room_revenue") @db.Decimal(12, 2)
+  guestCount          Int?     @map("guest_count")
+  breakfastCount      Int?     @map("breakfast_count")
+  occupiedRooms       Int?     @map("occupied_rooms")
   monthlyCreditTotal  Decimal? @map("monthly_credit_total") @db.Decimal(12, 2)
   monthlyDebitTotal   Decimal? @map("monthly_debit_total") @db.Decimal(12, 2)
   importedBy          String?  @map("imported_by") @db.VarChar(255)
@@ -1027,18 +1034,22 @@ model Check {
   bouncedReason         String?  @map("bounced_reason") @db.Text
   cashTransactionId     Int?     @map("cash_transaction_id")
   clearedBy             String?  @map("cleared_by") @db.VarChar(255)
+  reissueOfCheckId      Int?     @map("reissue_of_check_id")
   createdBy             String?  @map("created_by") @db.VarChar(255)
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  sourceAccount      CashAccount? @relation("CheckSourceAccount", fields: [sourceAccountId], references: [id])
-  destinationAccount CashAccount? @relation("CheckDestinationAccount", fields: [destinationAccountId], references: [id])
+  sourceAccount       CashAccount? @relation("CheckSourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount  CashAccount? @relation("CheckDestinationAccount", fields: [destinationAccountId], references: [id])
+  reissueOfCheck      Check?       @relation("CheckReissue", fields: [reissueOfCheckId], references: [id])
+  reissuedByChecks    Check[]      @relation("CheckReissue")
 
   @@index([checkType])
   @@index([status])
   @@index([dueDate])
   @@index([warehouse])
   @@index([supplierId])
+  @@index([reissueOfCheckId])
   @@map("checks")
 }
 
@@ -1632,6 +1643,8 @@ model EmployeeAdvance {
   sourceType          String    @map("source_type") @db.VarChar(50)         // maintenance, expense, other
   sourceRecordId      Int?      @map("source_record_id")
   sourceDescription   String?   @map("source_description") @db.VarChar(500)
+  expenseName         String?   @map("expense_name") @db.VarChar(200)         // 費用名稱
+  summary             String?   @db.VarChar(500)                             // 摘要
   paymentOrderId      Int?      @map("payment_order_id")
   paymentOrderNo      String?   @map("payment_order_no") @db.VarChar(50)
   // 金額
@@ -1839,6 +1852,8 @@ model PaymentOrder {
   summary        String?   @db.VarChar(500)
   note           String?   @db.Text
   status         String    @default("待出納") @db.VarChar(20)
+  sourceType     String?   @map("source_type") @db.VarChar(50)
+  sourceRecordId Int?     @map("source_record_id")
   createdBy      String?   @map("created_by") @db.VarChar(255)
   rejectedBy     String?   @map("rejected_by") @db.VarChar(255)
   rejectedAt     DateTime? @map("rejected_at")
@@ -1852,6 +1867,7 @@ model PaymentOrder {
   @@index([supplierId])
   @@index([warehouse])
   @@index([dueDate])
+  @@index([sourceType])
   @@map("payment_orders")
 }
 
@@ -2497,4 +2513,102 @@ model CriticalOperationRecord {
   @@index([targetModule, targetId])
   @@index([createdAt])
   @@map("critical_operation_records")
+}
+
+// ============================================
+// 工程會計 (營造公司：工程案、合約期數、材料)
+// ============================================
+
+model EngineeringProject {
+  id           Int       @id @default(autoincrement())
+  code         String    @unique @db.VarChar(50)
+  name         String    @db.VarChar(255)
+  clientName   String?    @map("client_name") @db.VarChar(255)
+  startDate    String?   @map("start_date") @db.VarChar(20)
+  endDate      String?   @map("end_date") @db.VarChar(20)
+  budget       Decimal?  @db.Decimal(14, 2)
+  status       String    @default("進行中") @db.VarChar(20)
+  warehouse    String?   @db.VarChar(100)
+  warehouseId  Int?      @map("warehouse_id")
+  departmentId Int?      @map("department_id")
+  location     String?   @db.VarChar(500)
+  buildingNo   String?   @map("building_no") @db.VarChar(100)
+  permitNo     String?   @map("permit_no") @db.VarChar(100)
+  note         String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  warehouseRef  Warehouse?  @relation(fields: [warehouseId], references: [id])
+  departmentRef Department? @relation(fields: [departmentId], references: [id])
+  contracts     EngineeringContract[]
+  materials     EngineeringMaterial[]
+
+  @@index([status])
+  @@index([warehouse])
+  @@index([warehouseId])
+  @@map("engineering_projects")
+}
+
+model EngineeringContract {
+  id           Int      @id @default(autoincrement())
+  projectId    Int      @map("project_id")
+  supplierId   Int      @map("supplier_id")
+  contractNo   String   @map("contract_no") @db.VarChar(100)
+  totalAmount  Decimal  @map("total_amount") @db.Decimal(14, 2)
+  signDate     String?  @map("sign_date") @db.VarChar(20)
+  content      String?  @db.Text
+  note         String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplier Supplier           @relation(fields: [supplierId], references: [id])
+  terms    EngineeringContractTerm[]
+
+  @@unique([projectId, contractNo])
+  @@index([projectId])
+  @@index([supplierId])
+  @@map("engineering_contracts")
+}
+
+model EngineeringContractTerm {
+  id              Int       @id @default(autoincrement())
+  contractId      Int       @map("contract_id")
+  termNo          Int       @map("term_no")
+  termName        String?   @map("term_name") @db.VarChar(100)
+  amount          Decimal   @db.Decimal(14, 2)
+  dueDate         String?   @map("due_date") @db.VarChar(20)
+  status          String    @default("pending") @db.VarChar(20)
+  paidAt          String?   @map("paid_at") @db.VarChar(20)
+  paymentOrderId  Int?      @map("payment_order_id")
+  note            String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  contract EngineeringContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([status])
+  @@map("engineering_contract_terms")
+}
+
+model EngineeringMaterial {
+  id          Int      @id @default(autoincrement())
+  projectId   Int      @map("project_id")
+  productId   Int?     @map("product_id")
+  description String? @db.VarChar(500)
+  quantity    Decimal  @db.Decimal(12, 4)
+  unit        String?  @db.VarChar(20)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(12, 2)
+  usedAt      String?  @map("used_at") @db.VarChar(20)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  product Product?            @relation(fields: [productId], references: [id])
+
+  @@index([projectId])
+  @@index([productId])
+  @@map("engineering_materials")
 }

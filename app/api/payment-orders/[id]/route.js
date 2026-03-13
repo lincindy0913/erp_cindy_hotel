@@ -96,15 +96,15 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ message: '付款單已重新提交出納' });
     }
 
-    // Reject action
+    // Reject action：退回出納 → 狀態改回「待出納」，資料連動回付款端待出納 TAB，供修改後重新送出
     if (data.action === 'reject') {
       if (order.status !== '待出納') {
         return createErrorResponse('VALIDATION_FAILED', '只能退回待出納狀態的付款單', 400);
       }
-      const updated = await prisma.paymentOrder.update({
+      await prisma.paymentOrder.update({
         where: { id },
         data: {
-          status: '已拒絕',
+          status: '待出納',
           rejectedBy: session?.user?.email || null,
           rejectedAt: new Date(),
           rejectedReason: data.reason || null,
@@ -121,7 +121,7 @@ export async function PUT(request, { params }) {
         });
       }
 
-      return NextResponse.json({ message: '付款單已退回' });
+      return NextResponse.json({ message: '付款單已退回至待出納，請於付款頁修改後重新送出' });
     }
 
     // Void action
@@ -162,6 +162,12 @@ export async function PUT(request, { params }) {
     if (data.amount !== undefined) updateData.amount = data.amount;
     if (data.status === '待出納') {
       updateData.status = '待出納';
+      updateData.rejectedBy = null;
+      updateData.rejectedAt = null;
+      updateData.rejectedReason = null;
+    }
+    // 待出納單被修改時清除「曾被退回」標記，視為已修正並重新送出
+    if (order.status === '待出納' && Object.keys(updateData).length > 0) {
       updateData.rejectedBy = null;
       updateData.rejectedAt = null;
       updateData.rejectedReason = null;
