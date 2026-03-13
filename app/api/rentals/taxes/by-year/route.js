@@ -78,7 +78,7 @@ export async function POST(request) {
     await prisma.$transaction(async (tx) => {
       let paySeq = 0;
       const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      const prefix = `PAY-${dateStr}-`;
+      const prefix = `TC-${dateStr}-`;
       const existingOrders = await tx.paymentOrder.findMany({
         where: { orderNo: { startsWith: prefix } },
         select: { orderNo: true }

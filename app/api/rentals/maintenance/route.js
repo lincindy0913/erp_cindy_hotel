@@ -80,7 +80,7 @@ export async function POST(request) {
 
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-      const prefix = `PAY-${dateStr}-`;
+      const prefix = `TC-${dateStr}-`;
       const existing = await tx.paymentOrder.findMany({
         where: { orderNo: { startsWith: prefix } },
         select: { orderNo: true }

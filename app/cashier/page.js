@@ -13,6 +13,11 @@ function getDisplayOrderNo(order) {
   if ((order.summary || '').includes('貸款還款') && order.orderNo.startsWith('PAY-')) {
     return order.orderNo.replace(/^PAY-/, 'LN-');
   }
+  // Rental payment: ensure TC- prefix (fix legacy PAY- prefixed rental orders)
+  const s = order.summary || '';
+  if ((s.includes('租賃') || s.includes('房屋稅') || s.includes('地價稅') || s.includes('維護費')) && order.orderNo.startsWith('PAY-')) {
+    return order.orderNo.replace(/^PAY-/, 'TC-');
+  }
   return order.orderNo;
 }
 

@@ -38,7 +38,7 @@ export async function GET(request) {
 
 async function createPaymentOrderForTax(tx, tax) {
   const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-  const prefix = `PAY-${dateStr}-`;
+  const prefix = `TC-${dateStr}-`;
   const existing = await tx.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
     select: { orderNo: true }
