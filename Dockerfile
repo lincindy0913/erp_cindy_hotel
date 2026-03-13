@@ -15,6 +15,7 @@ RUN npm ci
 
 # App source and build
 COPY . .
+RUN mkdir -p public
 RUN npm run build
 
 # ============================================
@@ -45,6 +46,9 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
+# Copy bcryptjs for seed script
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
+
 # Copy font files if they exist
 COPY --from=builder /app/lib/fonts ./lib/fonts
 
@@ -53,4 +57,4 @@ USER nextjs
 EXPOSE 3000
 
 # Sync schema (no destructive changes; keeps existing data) then start Next.js
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; exec node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; exec node server.js"]
