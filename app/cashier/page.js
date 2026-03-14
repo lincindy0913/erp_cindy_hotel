@@ -13,10 +13,10 @@ function getDisplayOrderNo(order) {
   if ((order.summary || '').includes('貸款還款') && order.orderNo.startsWith('PAY-')) {
     return order.orderNo.replace(/^PAY-/, 'LN-');
   }
-  // Rental payment: ensure TC- prefix (fix legacy PAY- prefixed rental orders)
+  // Rental payment: ensure RENT- prefix (fix legacy PAY-/TC- prefixed rental orders)
   const s = order.summary || '';
-  if ((s.includes('租賃') || s.includes('房屋稅') || s.includes('地價稅') || s.includes('維護費')) && order.orderNo.startsWith('PAY-')) {
-    return order.orderNo.replace(/^PAY-/, 'TC-');
+  if ((s.includes('租賃') || s.includes('房屋稅') || s.includes('地價稅') || s.includes('維護費')) && (order.orderNo.startsWith('PAY-') || order.orderNo.startsWith('TC-'))) {
+    return order.orderNo.replace(/^(PAY-|TC-)/, 'RENT-');
   }
   return order.orderNo;
 }
@@ -591,8 +591,8 @@ export default function CashierPage() {
                   <th className="px-4 py-3 text-left">摘要</th>
                   <th className="px-4 py-3 text-left">備註</th>
                   <th className="px-4 py-3 text-left">建立日期</th>
-                  <th className="px-4 py-3 text-left">狀態</th>
-                  <th className="px-4 py-3 text-center">操作</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap" style={{ minWidth: '80px' }}>狀態</th>
+                  <th className="px-4 py-3 text-center whitespace-nowrap" style={{ minWidth: '90px' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -629,7 +629,7 @@ export default function CashierPage() {
                         <td className="px-4 py-3 text-gray-500">
                           {new Date(order.createdAt).toLocaleDateString('zh-TW')}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded text-xs ${
                             order.status === '待出納' ? 'bg-yellow-100 text-yellow-800' :
                             order.status === '已執行' ? 'bg-green-100 text-green-800' :

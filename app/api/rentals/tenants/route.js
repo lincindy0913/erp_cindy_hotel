@@ -6,11 +6,11 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// Auto-generate tenantCode: TC-YYYYMM-XXX
+// Auto-generate tenantCode: RENT-YYYYMM-XXX
 async function generateTenantCode() {
   const now = new Date();
   const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const prefix = `TC-${ym}-`;
+  const prefix = `RENT-${ym}-`;
 
   const existing = await prisma.tenantMaster.findMany({
     where: { tenantCode: { startsWith: prefix } },
