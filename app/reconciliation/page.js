@@ -74,11 +74,20 @@ export default function ReconciliationPage() {
   });
 
   // Credit card tab state
-  const [creditCardStatements, setCreditCardStatements] = useState([]);
+  const [ccStatements, setCcStatements] = useState([]);
+  const [ccSummary, setCcSummary] = useState(null);
+  const [ccMerchantConfigs, setCcMerchantConfigs] = useState([]);
   const [ccLoading, setCcLoading] = useState(false);
-  const [ccForm, setCcForm] = useState({
-    cardName: '', statementMonth: '', closingBalance: '', bankName: '', bankCode: ''
-  });
+  const [ccMonth, setCcMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const [ccWarehouseFilter, setCcWarehouseFilter] = useState('');
+  const [ccStatusFilter, setCcStatusFilter] = useState('all');
+  const [ccExpandedId, setCcExpandedId] = useState(null);
+  const [ccBuildings, setCcBuildings] = useState([]);
+  const [ccShowUpload, setCcShowUpload] = useState(false);
+  const [ccUploadWarehouse, setCcUploadWarehouse] = useState('');
+  const [ccParsedData, setCcParsedData] = useState(null);
+  const [ccShowConfigModal, setCcShowConfigModal] = useState(false);
+  const [ccConfigForm, setCcConfigForm] = useState({ warehouseId: '', bankName: '國泰世華', merchantId: '', merchantName: '', accountNo: '', domesticFeeRate: '1.70', foreignFeeRate: '2.30', selfFeeRate: '1.70' });
 
   // Messages
   const [message, setMessage] = useState({ text: '', type: '' });
@@ -155,22 +164,37 @@ export default function ReconciliationPage() {
     if (activeTab === 'formats' || activeTab === 'account') fetchFormats();
   }, [activeTab, fetchFormats]);
 
-  // ---- Credit Card Statements ----
-  const fetchCreditCardStatements = useCallback(async () => {
+  // ---- Credit Card ----
+  const fetchCcData = useCallback(async () => {
     setCcLoading(true);
     try {
-      const res = await fetch('/api/reconciliation/credit-card-statements');
-      const data = await res.json();
-      setCreditCardStatements(Array.isArray(data) ? data : []);
+      const params = new URLSearchParams({ month: ccMonth });
+      if (ccWarehouseFilter) params.set('warehouseId', ccWarehouseFilter);
+      if (ccStatusFilter !== 'all') params.set('status', ccStatusFilter);
+
+      const [stmtRes, summaryRes, configRes, bldRes] = await Promise.all([
+        fetch(`/api/reconciliation/credit-card-statements?${params}`),
+        fetch(`/api/reconciliation/credit-card-summary?month=${ccMonth}`),
+        fetch('/api/reconciliation/credit-card-merchant-config'),
+        fetch('/api/warehouse-departments'),
+      ]);
+
+      if (stmtRes.ok) setCcStatements(await stmtRes.json());
+      if (summaryRes.ok) setCcSummary(await summaryRes.json());
+      if (configRes.ok) setCcMerchantConfigs(await configRes.json());
+      if (bldRes.ok) {
+        const bData = await bldRes.json();
+        setCcBuildings((bData.list || []).filter(w => w.type === 'building'));
+      }
     } catch (e) {
-      console.error('載入信用卡帳單失敗:', e);
+      console.error('載入信用卡對帳失敗:', e);
     }
     setCcLoading(false);
-  }, []);
+  }, [ccMonth, ccWarehouseFilter, ccStatusFilter]);
 
   useEffect(() => {
-    if (activeTab === 'credit-card') fetchCreditCardStatements();
-  }, [activeTab, fetchCreditCardStatements]);
+    if (activeTab === 'credit-card') fetchCcData();
+  }, [activeTab, fetchCcData]);
 
   // ---- Load reconciliation for selected account ----
   const loadReconciliation = useCallback(async () => {
@@ -378,7 +402,11 @@ export default function ReconciliationPage() {
     if (!file) return;
     setImportFileName(file.name);
     const fmt = formats.find(f => String(f.id) === String(selectedFormatId));
-    const encoding = fmt?.fileEncoding || 'UTF-8';
+    let encoding = fmt?.fileEncoding || 'UTF-8';
+    // 土地銀行、陽信銀行 CSV 多為 Big5 編碼，若為 UTF-8 則改為 Big5 避免亂碼
+    if (!isExcel && (fmt?.bankName === '土地銀行' || fmt?.bankName === '土銀' || fmt?.bankName === '陽信銀行')) {
+      if (encoding === 'UTF-8') encoding = 'Big5';
+    }
     const isExcel = /\.(xls|xlsx)$/i.test(file.name || '');
 
     const processResult = (parsed) => {
@@ -671,158 +699,676 @@ export default function ReconciliationPage() {
     }
   };
 
-  // ---- Create credit card statement ----
-  const submitCreditCardStatement = async () => {
-    if (!ccForm.cardName.trim() || !ccForm.statementMonth) {
-      showMessage('卡片名稱和帳單月份為必填', 'error');
+  // ---- Credit Card: PDF parse (client-side text extraction) ----
+  const handleCcPdfUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseCathayPdf(text);
+      if (parsed) {
+        setCcParsedData(parsed);
+        showMessage(`解析成功：${parsed.merchantName}，請款金額 ${formatMoney(parsed.totalAmount)}`);
+      } else {
+        showMessage('無法解析 PDF 內容，請確認格式', 'error');
+      }
+    } catch (err) {
+      // If text() fails (binary PDF), show manual entry hint
+      showMessage('PDF 為二進位格式，請使用手動輸入或轉換為文字 PDF', 'error');
+    }
+    e.target.value = '';
+  };
+
+  // Parse Cathay United Bank credit card merchant statement
+  function parseCathayPdf(text) {
+    try {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+      // Extract merchant info
+      let merchantId = '', merchantName = '', billingDate = '', paymentDate = '', accountNo = '';
+      for (const line of lines) {
+        const mid = line.match(/商店代號[：:]\s*(\d+)/);
+        if (mid) merchantId = mid[1];
+        const mn = line.match(/商店名稱[：:]\s*(.+)/);
+        if (mn) merchantName = mn[1].trim();
+        const bd = line.match(/請款日[期]?[：:]\s*(\d{4}\/\d{2}\/\d{2})/);
+        if (bd) billingDate = bd[1];
+        const pd = line.match(/撥款日[期]?[：:]\s*(\d{4}\/\d{2}\/\d{2})/);
+        if (pd) paymentDate = pd[1];
+        const an = line.match(/入帳帳號[：:]\s*(\S+)/);
+        if (an) accountNo = an[1];
+      }
+
+      // Extract summary: 筆數, 請款金額, 調整, 手續費, 服務費, 費用, 撥款淨額
+      let totalCount = 0, totalAmount = 0, adjustment = 0, totalFee = 0, serviceFee = 0, otherFee = 0, netAmount = 0;
+      const summaryMatch = text.match(/總計\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/);
+      if (summaryMatch) {
+        totalCount = parseInt(summaryMatch[1]);
+        totalAmount = parseFloat(summaryMatch[2].replace(/,/g, ''));
+        adjustment = parseFloat(summaryMatch[3].replace(/,/g, ''));
+        totalFee = parseFloat(summaryMatch[4].replace(/,/g, ''));
+        serviceFee = parseFloat(summaryMatch[5].replace(/,/g, ''));
+        otherFee = parseFloat(summaryMatch[6].replace(/,/g, ''));
+        netAmount = parseFloat(summaryMatch[7].replace(/,/g, ''));
+      }
+
+      // Extract batch lines
+      const batchLines = [];
+      const batchRegex = /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+(\d+)\s+(\d+)\s+(VISA|MASTER|JCB|CUP)\s+(\d+)\s+([\d,]+)/g;
+      let m;
+      while ((m = batchRegex.exec(text)) !== null) {
+        batchLines.push({
+          billingDate: m[1],
+          settlementDate: m[2],
+          terminalId: m[3],
+          batchNo: m[4],
+          cardType: m[5],
+          count: parseInt(m[6]),
+          amount: parseFloat(m[7].replace(/,/g, '')),
+        });
+      }
+
+      // Extract fee details
+      const feeDetails = [];
+      const feeRegex = /(國內|國外|自行)\((VISA|MASTER|JCB|CUP)\)\s+筆數／請款金額／手續費[：:]\s*(\d+)\s*／\s*([\d,]+)\s*／\s*([\d,.]+)/g;
+      while ((m = feeRegex.exec(text)) !== null) {
+        const cnt = parseInt(m[3]);
+        const amt = parseFloat(m[4].replace(/,/g, ''));
+        const fee = parseFloat(m[5].replace(/,/g, ''));
+        if (cnt > 0 || amt > 0) {
+          feeDetails.push({
+            origin: m[1],
+            cardType: m[2],
+            count: cnt,
+            amount: amt,
+            fee,
+            feeRate: amt > 0 ? Math.round(fee / amt * 10000) / 100 : 0,
+          });
+        }
+      }
+
+      if (!merchantId && !totalAmount) return null;
+
+      return {
+        bankName: '國泰世華',
+        merchantId,
+        merchantName,
+        billingDate,
+        paymentDate,
+        accountNo,
+        totalCount,
+        totalAmount,
+        adjustment,
+        totalFee,
+        serviceFee,
+        otherFee,
+        netAmount,
+        batchLines,
+        feeDetails,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // Save parsed PDF to server
+  const saveParsedCcStatement = async () => {
+    if (!ccParsedData || !ccUploadWarehouse) {
+      showMessage('請選擇館別', 'error');
       return;
     }
+    const bld = ccBuildings.find(b => b.id === parseInt(ccUploadWarehouse));
     try {
       const res = await fetch('/api/reconciliation/credit-card-statements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cardName: ccForm.cardName,
-          statementMonth: ccForm.statementMonth,
-          closingBalance: parseFloat(ccForm.closingBalance) || 0,
-          bankName: ccForm.bankName,
-          bankCode: ccForm.bankCode
-        })
+          ...ccParsedData,
+          warehouseId: parseInt(ccUploadWarehouse),
+          warehouse: bld?.name || '',
+        }),
       });
       const data = await res.json();
       if (data.error) {
         showMessage(data.error, 'error');
       } else {
-        showMessage('信用卡帳單已建立');
-        setCcForm({ cardName: '', statementMonth: '', closingBalance: '', bankName: '', bankCode: '' });
-        fetchCreditCardStatements();
+        showMessage('對帳單已匯入');
+        setCcParsedData(null);
+        setCcShowUpload(false);
+        fetchCcData();
       }
-    } catch (e) {
-      showMessage('建立失敗', 'error');
+    } catch {
+      showMessage('匯入失敗', 'error');
     }
   };
 
-  // ---- Render credit card tab ----
-  const CC_STATUS_MAP = {
-    pending: { label: '待處理', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
-    matched: { label: '已核對', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-    confirmed: { label: '已確認', color: 'bg-green-100 text-green-700 border-green-300' }
+  // CC: match PMS
+  const matchCcPms = async (id) => {
+    try {
+      const res = await fetch('/api/reconciliation/credit-card-statements', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'match_pms' }),
+      });
+      const data = await res.json();
+      if (data.error) showMessage(data.error, 'error');
+      else {
+        showMessage(`PMS 比對完成，差異 ${formatMoney(data.difference)}`);
+        fetchCcData();
+      }
+    } catch { showMessage('比對失敗', 'error'); }
   };
 
-  const renderCreditCardTab = () => (
-    <div>
-      {/* Add Statement Form */}
-      <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3">新增信用卡帳單</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+  // CC: confirm / unconfirm
+  const toggleCcConfirm = async (id, currentStatus) => {
+    const action = currentStatus === 'confirmed' ? 'unconfirm' : 'confirm';
+    try {
+      await fetch('/api/reconciliation/credit-card-statements', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      fetchCcData();
+    } catch { showMessage('操作失敗', 'error'); }
+  };
+
+  // CC: delete
+  const deleteCcStatement = async (id) => {
+    if (!confirm('確定刪除此對帳單？')) return;
+    try {
+      await fetch(`/api/reconciliation/credit-card-statements?id=${id}`, { method: 'DELETE' });
+      fetchCcData();
+      showMessage('已刪除');
+    } catch { showMessage('刪除失敗', 'error'); }
+  };
+
+  // CC: save merchant config
+  const saveCcConfig = async () => {
+    if (!ccConfigForm.warehouseId || !ccConfigForm.merchantId) {
+      showMessage('館別和特店代號為必填', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/reconciliation/credit-card-merchant-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ccConfigForm),
+      });
+      if (res.ok) {
+        showMessage('特約商店設定已儲存');
+        setCcShowConfigModal(false);
+        fetchCcData();
+      } else {
+        const d = await res.json();
+        showMessage(d.error || '儲存失敗', 'error');
+      }
+    } catch { showMessage('儲存失敗', 'error'); }
+  };
+
+  // CC Status map
+  const CC_STATUS_MAP = {
+    pending: { label: '待對帳', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+    matched: { label: '已對帳', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+    confirmed: { label: '已確認', color: 'bg-green-100 text-green-700 border-green-300' },
+    no_data: { label: '無資料', color: 'bg-gray-100 text-gray-500 border-gray-300' },
+    partial: { label: '部分完成', color: 'bg-orange-100 text-orange-700 border-orange-300' },
+  };
+
+  // ---- Render credit card tab ----
+  const renderCreditCardTab = () => {
+    const summaryRows = ccSummary?.summary || [];
+    const grandTotal = ccSummary?.grandTotal || {};
+
+    return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <div className="bg-white rounded-xl shadow-sm border p-4">
+        <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">卡片名稱 *</label>
-            <input
-              type="text"
-              value={ccForm.cardName}
-              onChange={e => setCcForm({ ...ccForm, cardName: e.target.value })}
-              className="w-full border rounded-lg px-3 py-1.5 text-sm"
-              placeholder="例: 玉山信用卡"
-            />
+            <label className="block text-xs text-gray-500 mb-1">月份</label>
+            <input type="month" value={ccMonth} onChange={e => setCcMonth(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">帳單月份 *</label>
-            <input
-              type="month"
-              value={ccForm.statementMonth}
-              onChange={e => setCcForm({ ...ccForm, statementMonth: e.target.value })}
-              className="w-full border rounded-lg px-3 py-1.5 text-sm"
-            />
+            <label className="block text-xs text-gray-500 mb-1">館別</label>
+            <select value={ccWarehouseFilter} onChange={e => setCcWarehouseFilter(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm">
+              <option value="">全部</option>
+              {ccBuildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">截止餘額</label>
-            <input
-              type="number"
-              value={ccForm.closingBalance}
-              onChange={e => setCcForm({ ...ccForm, closingBalance: e.target.value })}
-              className="w-full border rounded-lg px-3 py-1.5 text-sm"
-              placeholder="帳單截止金額"
-            />
+            <label className="block text-xs text-gray-500 mb-1">狀態</label>
+            <select value={ccStatusFilter} onChange={e => setCcStatusFilter(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm">
+              <option value="all">全部</option>
+              <option value="pending">待對帳</option>
+              <option value="matched">已對帳</option>
+              <option value="confirmed">已確認</option>
+            </select>
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">銀行名稱</label>
-            <input
-              type="text"
-              value={ccForm.bankName}
-              onChange={e => setCcForm({ ...ccForm, bankName: e.target.value })}
-              className="w-full border rounded-lg px-3 py-1.5 text-sm"
-              placeholder="例: 玉山銀行"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">銀行代碼</label>
-            <input
-              type="text"
-              value={ccForm.bankCode}
-              onChange={e => setCcForm({ ...ccForm, bankCode: e.target.value })}
-              className="w-full border rounded-lg px-3 py-1.5 text-sm"
-              placeholder="例: 808"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={submitCreditCardStatement}
-              className="px-6 py-1.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 transition-colors"
-            >
-              新增帳單
+          <div className="flex items-end gap-2 ml-auto">
+            <button onClick={() => setCcShowConfigModal(true)}
+              className="px-4 py-1.5 border border-violet-300 text-violet-700 text-sm rounded-lg hover:bg-violet-50">
+              特約商店設定
+            </button>
+            <button onClick={() => { setCcShowUpload(true); setCcParsedData(null); }}
+              className="px-4 py-1.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700">
+              上傳 PDF 對帳單
             </button>
           </div>
         </div>
       </div>
 
-      {/* Statements Table */}
-      {ccLoading ? (
-        <div className="text-center py-12 text-gray-400">載入中...</div>
-      ) : (
+      {/* Monthly Summary Table */}
+      {summaryRows.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-violet-50 border-b">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-violet-800">卡片</th>
-                <th className="px-4 py-3 text-left font-medium text-violet-800">帳單月</th>
-                <th className="px-4 py-3 text-right font-medium text-violet-800">截止餘額</th>
-                <th className="px-4 py-3 text-center font-medium text-violet-800">狀態</th>
-                <th className="px-4 py-3 text-left font-medium text-violet-800">建立日期</th>
-              </tr>
-            </thead>
-            <tbody>
-              {creditCardStatements.length === 0 ? (
+          <div className="px-4 py-3 bg-violet-50 border-b">
+            <h4 className="text-sm font-semibold text-violet-800">
+              {ccMonth.replace('-', ' 年 ')} 月 各館信用卡對帳匯總
+            </h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                    尚無信用卡帳單紀錄
-                  </td>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">筆數</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">請款金額</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">手續費</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">撥款淨額</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">PMS金額</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差異</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">狀態</th>
                 </tr>
-              ) : (
-                creditCardStatements.map(stmt => {
-                  const statusInfo = CC_STATUS_MAP[stmt.status] || CC_STATUS_MAP.pending;
+              </thead>
+              <tbody className="divide-y">
+                {summaryRows.map(row => {
+                  const si = CC_STATUS_MAP[row.status] || CC_STATUS_MAP.no_data;
                   return (
-                    <tr key={stmt.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{stmt.cardName}</td>
-                      <td className="px-4 py-3 text-gray-600">{stmt.statementMonth}</td>
-                      <td className="px-4 py-3 text-right font-medium">${formatMoney(stmt.closingBalance)}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-1 rounded-full border ${statusInfo.color}`}>
-                          {statusInfo.label}
-                        </span>
+                    <tr key={row.warehouseId} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium text-gray-800">{row.warehouse}</td>
+                      <td className="px-3 py-2 text-center">{row.totalCount}</td>
+                      <td className="px-3 py-2 text-right">{formatMoney(row.totalAmount)}</td>
+                      <td className="px-3 py-2 text-right text-red-600">{formatMoney(row.totalFee)}</td>
+                      <td className="px-3 py-2 text-right font-medium">{formatMoney(row.netAmount)}</td>
+                      <td className="px-3 py-2 text-right">{row.pmsAmount ? formatMoney(row.pmsAmount) : '-'}</td>
+                      <td className={`px-3 py-2 text-right font-medium ${row.difference > 0 ? 'text-green-600' : row.difference < 0 ? 'text-red-600' : ''}`}>
+                        {row.stmtCount > 0 ? (row.difference > 0 ? '+' : '') + formatMoney(row.difference) : '-'}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-sm">
-                        {stmt.createdAt ? new Date(stmt.createdAt).toLocaleDateString('zh-TW') : '-'}
+                      <td className="px-3 py-2 text-center">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${si.color}`}>{si.label}</span>
                       </td>
                     </tr>
                   );
-                })
-              )}
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-violet-50 font-semibold text-sm">
+                  <td className="px-3 py-2">合計</td>
+                  <td className="px-3 py-2 text-center">{grandTotal.totalCount || 0}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(grandTotal.totalAmount)}</td>
+                  <td className="px-3 py-2 text-right text-red-600">{formatMoney(grandTotal.totalFee)}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(grandTotal.netAmount)}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(grandTotal.pmsAmount)}</td>
+                  <td className={`px-3 py-2 text-right ${(grandTotal.difference || 0) !== 0 ? 'text-orange-600' : ''}`}>
+                    {(grandTotal.difference > 0 ? '+' : '') + formatMoney(grandTotal.difference || 0)}
+                  </td>
+                  <td className="px-3 py-2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Statements List */}
+      {ccLoading ? (
+        <div className="text-center py-12 text-gray-400">載入中...</div>
+      ) : ccStatements.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm border p-8 text-center text-gray-400">
+          <p>本月尚無信用卡對帳單</p>
+          <p className="text-sm mt-1">點擊「上傳 PDF 對帳單」匯入銀行撥款對帳單</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div className="px-4 py-3 bg-violet-50 border-b flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-violet-800">對帳單明細 ({ccStatements.length} 筆)</h4>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-8"></th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">請款日</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">撥款日</th>
+                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">筆數</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">請款金額</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">手續費</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">撥款淨額</th>
+                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">狀態</th>
+                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {ccStatements.map(stmt => {
+                const si = CC_STATUS_MAP[stmt.status] || CC_STATUS_MAP.pending;
+                const isExpanded = ccExpandedId === stmt.id;
+                return (
+                  <React.Fragment key={stmt.id}>
+                    <tr className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-violet-50/50' : ''}`}
+                      onClick={() => setCcExpandedId(isExpanded ? null : stmt.id)}>
+                      <td className="px-3 py-2 text-gray-400">{isExpanded ? '▼' : '▶'}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800">{stmt.warehouse}</td>
+                      <td className="px-3 py-2">{stmt.billingDate}</td>
+                      <td className="px-3 py-2 text-gray-500">{stmt.paymentDate || '-'}</td>
+                      <td className="px-3 py-2 text-center">{stmt.totalCount}</td>
+                      <td className="px-3 py-2 text-right font-medium">{formatMoney(stmt.totalAmount)}</td>
+                      <td className="px-3 py-2 text-right text-red-600">{formatMoney(stmt.totalFee)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-violet-700">{formatMoney(stmt.netAmount)}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${si.color}`}>{si.label}</span>
+                      </td>
+                      <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => matchCcPms(stmt.id)} title="比對PMS"
+                            className="text-blue-600 hover:text-blue-800 text-xs px-1.5 py-0.5 border border-blue-200 rounded hover:bg-blue-50">
+                            比對
+                          </button>
+                          {stmt.status !== 'confirmed' ? (
+                            <button onClick={() => toggleCcConfirm(stmt.id, stmt.status)} title="確認"
+                              className="text-green-600 hover:text-green-800 text-xs px-1.5 py-0.5 border border-green-200 rounded hover:bg-green-50">
+                              確認
+                            </button>
+                          ) : (
+                            <button onClick={() => toggleCcConfirm(stmt.id, stmt.status)} title="取消確認"
+                              className="text-orange-600 hover:text-orange-800 text-xs px-1.5 py-0.5 border border-orange-200 rounded hover:bg-orange-50">
+                              取消
+                            </button>
+                          )}
+                          {stmt.status !== 'confirmed' && (
+                            <button onClick={() => deleteCcStatement(stmt.id)} title="刪除"
+                              className="text-red-500 hover:text-red-700 text-xs px-1.5 py-0.5 border border-red-200 rounded hover:bg-red-50">
+                              刪除
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Expanded Detail */}
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-4 bg-violet-50/30">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Left: Batch Lines */}
+                            <div className="bg-white rounded-lg border p-4">
+                              <h5 className="text-sm font-semibold text-gray-700 mb-2">批次明細</h5>
+                              {stmt.batchLines?.length > 0 ? (
+                                <table className="w-full text-xs">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-2 py-1 text-left">終端機</th>
+                                      <th className="px-2 py-1 text-left">批次</th>
+                                      <th className="px-2 py-1 text-left">卡別</th>
+                                      <th className="px-2 py-1 text-center">筆數</th>
+                                      <th className="px-2 py-1 text-right">金額</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y">
+                                    {stmt.batchLines.map((l, i) => (
+                                      <tr key={i}>
+                                        <td className="px-2 py-1 font-mono">{l.terminalId}</td>
+                                        <td className="px-2 py-1 font-mono">{l.batchNo}</td>
+                                        <td className="px-2 py-1">
+                                          <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                            l.cardType === 'VISA' ? 'bg-blue-100 text-blue-700' :
+                                            l.cardType === 'MASTER' ? 'bg-red-100 text-red-700' :
+                                            l.cardType === 'JCB' ? 'bg-green-100 text-green-700' :
+                                            'bg-gray-100 text-gray-700'
+                                          }`}>{l.cardType}</span>
+                                        </td>
+                                        <td className="px-2 py-1 text-center">{l.count}</td>
+                                        <td className="px-2 py-1 text-right font-medium">{formatMoney(l.amount)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              ) : <p className="text-xs text-gray-400">無批次明細</p>}
+                            </div>
+
+                            {/* Right: Fee Details + PMS */}
+                            <div className="space-y-4">
+                              <div className="bg-white rounded-lg border p-4">
+                                <h5 className="text-sm font-semibold text-gray-700 mb-2">手續費明細</h5>
+                                {stmt.feeDetails?.length > 0 ? (
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-2 py-1 text-left">類型</th>
+                                        <th className="px-2 py-1 text-left">卡別</th>
+                                        <th className="px-2 py-1 text-center">筆數</th>
+                                        <th className="px-2 py-1 text-right">金額</th>
+                                        <th className="px-2 py-1 text-right">手續費</th>
+                                        <th className="px-2 py-1 text-right">費率</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                      {stmt.feeDetails.map((d, i) => (
+                                        <tr key={i}>
+                                          <td className="px-2 py-1">{d.origin}</td>
+                                          <td className="px-2 py-1">{d.cardType}</td>
+                                          <td className="px-2 py-1 text-center">{d.count}</td>
+                                          <td className="px-2 py-1 text-right">{formatMoney(d.amount)}</td>
+                                          <td className="px-2 py-1 text-right text-red-600">{formatMoney(d.fee)}</td>
+                                          <td className="px-2 py-1 text-right text-gray-500">{d.feeRate ? d.feeRate + '%' : '-'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                ) : <p className="text-xs text-gray-400">無手續費明細</p>}
+                              </div>
+
+                              {/* PMS comparison */}
+                              <div className="bg-white rounded-lg border p-4">
+                                <h5 className="text-sm font-semibold text-gray-700 mb-2">PMS 信用卡收入比對</h5>
+                                <div className="grid grid-cols-3 gap-3 text-sm">
+                                  <div>
+                                    <div className="text-xs text-gray-500">銀行請款金額</div>
+                                    <div className="font-bold text-lg">{formatMoney(stmt.totalAmount)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500">PMS 信用卡收入</div>
+                                    <div className="font-bold text-lg">{stmt.pmsAmount != null ? formatMoney(stmt.pmsAmount) : '未比對'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-gray-500">差異</div>
+                                    <div className={`font-bold text-lg ${stmt.difference > 0 ? 'text-green-600' : stmt.difference < 0 ? 'text-red-600' : ''}`}>
+                                      {stmt.difference != null ? (stmt.difference > 0 ? '+' : '') + formatMoney(stmt.difference) : '-'}
+                                    </div>
+                                  </div>
+                                </div>
+                                {stmt.note && <p className="text-xs text-gray-500 mt-2">備註：{stmt.note}</p>}
+                              </div>
+
+                              {/* Summary info */}
+                              <div className="bg-violet-50 rounded-lg border border-violet-200 p-3 text-sm">
+                                <div className="flex justify-between">
+                                  <span>特店代號</span><span className="font-mono">{stmt.merchantId || '-'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>入帳帳號</span><span className="font-mono">{stmt.accountNo || '-'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>銀行</span><span>{stmt.bankName || '-'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Upload PDF Modal */}
+      {ccShowUpload && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-xl mx-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">上傳信用卡對帳單 PDF</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
+                <select value={ccUploadWarehouse} onChange={e => setCcUploadWarehouse(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="">選擇館別</option>
+                  {ccBuildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">選擇 PDF 檔案</label>
+                <input type="file" accept=".pdf,.txt" onChange={handleCcPdfUpload}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+                <p className="text-xs text-gray-400 mt-1">支援國泰世華信用卡特約商店撥款對帳單 PDF</p>
+              </div>
+
+              {ccParsedData && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-green-800 mb-2">解析結果</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div><span className="text-gray-500">特店名稱：</span>{ccParsedData.merchantName}</div>
+                    <div><span className="text-gray-500">特店代號：</span>{ccParsedData.merchantId}</div>
+                    <div><span className="text-gray-500">請款日：</span>{ccParsedData.billingDate}</div>
+                    <div><span className="text-gray-500">撥款日：</span>{ccParsedData.paymentDate}</div>
+                    <div><span className="text-gray-500">筆數：</span>{ccParsedData.totalCount}</div>
+                    <div><span className="text-gray-500">請款金額：</span>{formatMoney(ccParsedData.totalAmount)}</div>
+                    <div><span className="text-gray-500">手續費：</span>{formatMoney(ccParsedData.totalFee)}</div>
+                    <div><span className="text-gray-500">撥款淨額：</span><span className="font-bold text-violet-700">{formatMoney(ccParsedData.netAmount)}</span></div>
+                  </div>
+                  {ccParsedData.batchLines?.length > 0 && (
+                    <p className="text-xs text-green-700 mt-2">批次明細 {ccParsedData.batchLines.length} 筆 / 手續費明細 {ccParsedData.feeDetails?.length || 0} 筆</p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => { setCcShowUpload(false); setCcParsedData(null); }}
+                className="px-4 py-2 border text-gray-600 text-sm rounded-lg hover:bg-gray-50">取消</button>
+              <button onClick={saveParsedCcStatement} disabled={!ccParsedData || !ccUploadWarehouse}
+                className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50">
+                匯入對帳單
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merchant Config Modal */}
+      {ccShowConfigModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">信用卡特約商店設定</h3>
+
+            {/* Existing configs */}
+            {ccMerchantConfigs.length > 0 && (
+              <div className="mb-4 border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-1.5 text-left text-xs">館別</th>
+                      <th className="px-3 py-1.5 text-left text-xs">銀行</th>
+                      <th className="px-3 py-1.5 text-left text-xs">特店代號</th>
+                      <th className="px-3 py-1.5 text-right text-xs">國內%</th>
+                      <th className="px-3 py-1.5 text-right text-xs">國外%</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {ccMerchantConfigs.map(c => (
+                      <tr key={c.id}>
+                        <td className="px-3 py-1.5">{c.warehouse?.name}</td>
+                        <td className="px-3 py-1.5">{c.bankName}</td>
+                        <td className="px-3 py-1.5 font-mono">{c.merchantId}</td>
+                        <td className="px-3 py-1.5 text-right">{Number(c.domesticFeeRate)}%</td>
+                        <td className="px-3 py-1.5 text-right">{Number(c.foreignFeeRate)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Add form */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別 *</label>
+                  <select value={ccConfigForm.warehouseId} onChange={e => setCcConfigForm({...ccConfigForm, warehouseId: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                    <option value="">選擇</option>
+                    {ccBuildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">銀行名稱 *</label>
+                  <input type="text" value={ccConfigForm.bankName} onChange={e => setCcConfigForm({...ccConfigForm, bankName: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">特店代號 *</label>
+                  <input type="text" value={ccConfigForm.merchantId} onChange={e => setCcConfigForm({...ccConfigForm, merchantId: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" placeholder="例: 310800073" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">特店名稱</label>
+                  <input type="text" value={ccConfigForm.merchantName} onChange={e => setCcConfigForm({...ccConfigForm, merchantName: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">入帳帳號</label>
+                <input type="text" value={ccConfigForm.accountNo} onChange={e => setCcConfigForm({...ccConfigForm, accountNo: e.target.value})}
+                  className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">國內手續費率%</label>
+                  <input type="number" step="0.01" value={ccConfigForm.domesticFeeRate}
+                    onChange={e => setCcConfigForm({...ccConfigForm, domesticFeeRate: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">國外手續費率%</label>
+                  <input type="number" step="0.01" value={ccConfigForm.foreignFeeRate}
+                    onChange={e => setCcConfigForm({...ccConfigForm, foreignFeeRate: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">自行卡費率%</label>
+                  <input type="number" step="0.01" value={ccConfigForm.selfFeeRate}
+                    onChange={e => setCcConfigForm({...ccConfigForm, selfFeeRate: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setCcShowConfigModal(false)}
+                className="px-4 py-2 border text-gray-600 text-sm rounded-lg hover:bg-gray-50">關閉</button>
+              <button onClick={saveCcConfig}
+                className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700">儲存設定</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+    );
+  };
 
   // Dashboard filtered items
   const filteredDashItems = (dashboardData?.items || []).filter(item => {

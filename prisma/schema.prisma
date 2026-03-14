@@ -109,6 +109,7 @@ model Warehouse {
   children          Warehouse[]          @relation("WarehouseChildren")
   departments       Department[]
   engineeringProjects EngineeringProject[]
+  creditCardMerchantConfigs CreditCardMerchantConfig[]
 
   @@unique([parentId, name])
   @@index([type])
@@ -1484,6 +1485,23 @@ model RentalUtilityIncome {
   @@map("rental_utility_incomes")
 }
 
+// 水電費單解析紀錄：各館別、每月、水費/電費
+model UtilityBillRecord {
+  id          Int      @id @default(autoincrement())
+  warehouse   String   @map("warehouse") @db.VarChar(50)
+  billYear    Int      @map("bill_year")
+  billMonth   Int      @map("bill_month")
+  billType    String   @map("bill_type") @db.VarChar(20)   // 水費 | 電費
+  summaryJson String   @map("summary_json") @db.Text       // 第一頁格式 JSON
+  fileName    String?  @map("file_name") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([warehouse, billYear, billMonth, billType])
+  @@index([warehouse])
+  @@index([billYear, billMonth])
+  @@map("utility_bill_records")
+}
+
 model RentalContract {
   id                            Int       @id @default(autoincrement())
   contractNo                    String    @unique @map("contract_no") @db.VarChar(50)
@@ -1790,7 +1808,6 @@ model BankReconciliation {
 
   account             CashAccount                @relation(fields: [accountId], references: [id])
   import              BankStatementImport?       @relation(fields: [importId], references: [id])
-  creditCardLines     CreditCardStatementLine[]
   txSuggestions       BankTransactionSuggestion[]
 
   @@unique([accountId, statementYear, statementMonth])
@@ -1801,31 +1818,113 @@ model BankReconciliation {
 }
 
 // ============================================
-// 信用卡帳單對帳 (spec17 v3)
+// 信用卡特約商店設定 (per warehouse)
+// ============================================
+
+model CreditCardMerchantConfig {
+  id                Int      @id @default(autoincrement())
+  warehouseId       Int      @map("warehouse_id")
+  bankName          String   @map("bank_name") @db.VarChar(100)    // 國泰世華
+  merchantId        String   @map("merchant_id") @db.VarChar(50)   // 特店代號 310800073
+  merchantName      String   @map("merchant_name") @db.VarChar(200) // 特店名稱
+  accountNo         String?  @map("account_no") @db.VarChar(100)   // 入帳帳號
+  accountName       String?  @map("account_name") @db.VarChar(200) // 入帳戶名
+  cashAccountId     Int?     @map("cash_account_id")               // 對應資金帳戶
+  domesticFeeRate   Decimal  @default(1.70) @map("domestic_fee_rate") @db.Decimal(5, 2)  // 國內手續費率%
+  foreignFeeRate    Decimal  @default(2.30) @map("foreign_fee_rate") @db.Decimal(5, 2)   // 國外手續費率%
+  selfFeeRate       Decimal  @default(1.70) @map("self_fee_rate") @db.Decimal(5, 2)      // 自行卡手續費率%
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([warehouseId, merchantId])
+  @@index([warehouseId])
+  @@map("credit_card_merchant_configs")
+}
+
+// ============================================
+// 信用卡撥款對帳單 (per billing date per merchant)
 // ============================================
 
 model CreditCardStatement {
-  id                    Int       @id @default(autoincrement())
-  accountId             Int       @map("account_id")
-  statementYear         Int       @map("statement_year")
-  statementMonth        Int       @map("statement_month")
-  billingDate           String?   @map("billing_date") @db.VarChar(20)
-  paymentDueDate        String?   @map("payment_due_date") @db.VarChar(20)
-  totalAmount           Decimal   @default(0) @map("total_amount") @db.Decimal(14, 2)
-  minimumPayment        Decimal?  @map("minimum_payment") @db.Decimal(14, 2)
-  isPaid                Boolean   @default(false) @map("is_paid")
-  paidAmount            Decimal?  @map("paid_amount") @db.Decimal(14, 2)
-  paidDate              String?   @map("paid_date") @db.VarChar(20)
-  paidTransactionId     Int?      @map("paid_transaction_id")
-  status                String    @default("unpaid") @db.VarChar(20) // unpaid, partial, paid
-  note                  String?   @db.Text
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  id                Int       @id @default(autoincrement())
+  merchantConfigId  Int?      @map("merchant_config_id")
+  warehouseId       Int       @map("warehouse_id")
+  warehouse         String    @db.VarChar(100)                   // 館別名稱
+  bankName          String    @map("bank_name") @db.VarChar(100) // 銀行名稱
+  merchantId        String?   @map("merchant_id") @db.VarChar(50) // 特店代號
+  merchantName      String?   @map("merchant_name") @db.VarChar(200)
+  billingDate       String    @map("billing_date") @db.VarChar(20)  // 請款日
+  paymentDate       String?   @map("payment_date") @db.VarChar(20) // 撥款日期
+  accountNo         String?   @map("account_no") @db.VarChar(100)  // 入帳帳號
+  totalCount        Int       @default(0) @map("total_count")      // 請款筆數
+  totalAmount       Decimal   @default(0) @map("total_amount") @db.Decimal(14, 2)  // 請款金額
+  adjustment        Decimal   @default(0) @db.Decimal(14, 2)       // 調整
+  totalFee          Decimal   @default(0) @map("total_fee") @db.Decimal(14, 2)     // 手續費
+  serviceFee        Decimal   @default(0) @map("service_fee") @db.Decimal(14, 2)   // 服務費
+  otherFee          Decimal   @default(0) @map("other_fee") @db.Decimal(14, 2)     // 費用
+  netAmount         Decimal   @default(0) @map("net_amount") @db.Decimal(14, 2)    // 撥款淨額
+  pmsAmount         Decimal?  @map("pms_amount") @db.Decimal(14, 2)  // PMS 信用卡收入
+  difference        Decimal?  @db.Decimal(14, 2)                     // 差異金額
+  status            String    @default("pending") @db.VarChar(20)    // pending/matched/confirmed
+  confirmedBy       String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt       DateTime? @map("confirmed_at")
+  note              String?   @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  @@unique([accountId, statementYear, statementMonth])
-  @@index([accountId])
+  batchLines   CreditCardBatchLine[]
+  feeDetails   CreditCardFeeDetail[]
+
+  @@index([warehouseId])
+  @@index([billingDate])
   @@index([status])
   @@map("credit_card_statements")
+}
+
+// ============================================
+// 信用卡批次明細 (per terminal/batch/card type)
+// ============================================
+
+model CreditCardBatchLine {
+  id              Int      @id @default(autoincrement())
+  statementId     Int      @map("statement_id")
+  billingDate     String   @map("billing_date") @db.VarChar(20)
+  settlementDate  String?  @map("settlement_date") @db.VarChar(20) // 機台結帳日
+  terminalId      String?  @map("terminal_id") @db.VarChar(50)     // 終端機
+  batchNo         String?  @map("batch_no") @db.VarChar(20)        // 批次號碼
+  cardType        String   @map("card_type") @db.VarChar(20)       // VISA/MASTER/JCB/CUP
+  count           Int      @default(0)                               // 筆數
+  amount          Decimal  @db.Decimal(14, 2)                        // 請款金額
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  statement CreditCardStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@map("credit_card_batch_lines")
+}
+
+// ============================================
+// 信用卡手續費明細 (國內/國外/自行 per card type)
+// ============================================
+
+model CreditCardFeeDetail {
+  id              Int      @id @default(autoincrement())
+  statementId     Int      @map("statement_id")
+  origin          String   @db.VarChar(20)       // 國內/國外/自行
+  cardType        String   @map("card_type") @db.VarChar(20)  // VISA/MASTER/JCB/CUP
+  count           Int      @default(0)
+  amount          Decimal  @db.Decimal(14, 2)     // 請款金額
+  fee             Decimal  @db.Decimal(14, 2)     // 手續費
+  feeRate         Decimal? @map("fee_rate") @db.Decimal(5, 2) // 計算出的費率%
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  statement CreditCardStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@map("credit_card_fee_details")
 }
 
 // ============================================
@@ -2410,34 +2509,7 @@ model RiskAlert {
   @@map("risk_alerts")
 }
 
-// ============================================
-// 信用卡對帳明細 (spec17 v3)
-// ============================================
-
-model CreditCardStatementLine {
-  id                Int       @id @default(autoincrement())
-  reconciliationId  Int       @map("reconciliation_id")
-  transactionDate   String    @map("transaction_date") @db.VarChar(20)
-  postingDate       String?   @map("posting_date") @db.VarChar(20)
-  description       String?   @db.VarChar(500)
-  amount            Decimal   @db.Decimal(12, 2)
-  currency          String    @default("TWD") @db.VarChar(10)
-  merchantCategory  String?   @map("merchant_category") @db.VarChar(100)
-  merchantName      String?   @map("merchant_name") @db.VarChar(255)
-  referenceNo       String?   @map("reference_no") @db.VarChar(100)
-  matchStatus       String    @default("unmatched") @map("match_status") @db.VarChar(20)
-  // unmatched, matched, manual, ignored
-  matchedExpenseId  Int?      @map("matched_expense_id")
-  matchedTxId       Int?      @map("matched_tx_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-
-  reconciliation BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
-
-  @@index([reconciliationId])
-  @@index([matchStatus])
-  @@index([transactionDate])
-  @@map("credit_card_statement_lines")
-}
+// CreditCardStatementLine removed - replaced by CreditCardBatchLine + CreditCardFeeDetail
 
 // ============================================
 // 銀行異動建議 (spec17 v3)

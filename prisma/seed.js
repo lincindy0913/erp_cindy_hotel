@@ -272,7 +272,7 @@ async function main() {
       data: {
         bankName: '土地銀行',
         bankCode: '005',
-        fileEncoding: 'UTF-8',
+        fileEncoding: 'Big5',
         fileType: 'csv',
         hasHeaderRow: true,
         headerRowIndex: 5,
@@ -330,7 +330,7 @@ async function main() {
       data: {
         bankName: '陽信銀行',
         bankCode: '108',
-        fileEncoding: 'UTF-8',
+        fileEncoding: 'Big5',
         fileType: 'csv',
         hasHeaderRow: true,
         headerRowIndex: 0,
