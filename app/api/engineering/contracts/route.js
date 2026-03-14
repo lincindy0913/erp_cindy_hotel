@@ -19,6 +19,7 @@ export async function GET(request) {
         project: true,
         supplier: true,
         terms: { orderBy: { termNo: 'asc' } },
+        materials: true,
       },
       orderBy: { id: 'desc' },
     });
@@ -30,6 +31,13 @@ export async function GET(request) {
         amount: Number(t.amount),
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
+      })),
+      materials: (c.materials || []).map(m => ({
+        ...m,
+        quantity: Number(m.quantity),
+        unitPrice: Number(m.unitPrice),
+        createdAt: m.createdAt.toISOString(),
+        updatedAt: m.updatedAt.toISOString(),
       })),
     })));
   } catch (e) {
@@ -45,11 +53,18 @@ export async function POST(request) {
     if (!data.projectId || !data.supplierId || !data.contractNo?.trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫工程案、廠商、合約編號', 400);
     }
+    if (!data.content?.trim()) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫合約內容後再存檔', 400);
+    }
+    if (!data.note?.trim()) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫備註後再存檔', 400);
+    }
     const projectId = parseInt(data.projectId);
     const supplierId = parseInt(data.supplierId);
     const contractNo = String(data.contractNo).trim();
     const totalAmount = parseFloat(data.totalAmount) || 0;
     const terms = Array.isArray(data.terms) ? data.terms : [];
+    const materials = Array.isArray(data.materials) ? data.materials : [];
 
     const existing = await prisma.engineeringContract.findUnique({
       where: { projectId_contractNo: { projectId, contractNo } },
@@ -65,8 +80,8 @@ export async function POST(request) {
         contractNo,
         totalAmount,
         signDate: data.signDate || null,
-        content: data.content?.trim() || null,
-        note: data.note?.trim() || null,
+        content: String(data.content).trim(),
+        note: String(data.note).trim(),
         terms: terms.length
           ? {
               create: terms.map((t, i) => ({
@@ -84,16 +99,47 @@ export async function POST(request) {
         project: true,
         supplier: true,
         terms: { orderBy: { termNo: 'asc' } },
+        materials: true,
       },
     });
+    for (const row of materials) {
+      const name = (row.materialName || row.description || '').trim();
+      const qty = parseFloat(row.quantity) || 0;
+      const amt = parseFloat(row.amount) || 0;
+      if (!name || qty <= 0) continue;
+      const unitPrice = qty > 0 ? amt / qty : 0;
+      await prisma.engineeringMaterial.create({
+        data: {
+          projectId: contract.projectId,
+          contractId: contract.id,
+          description: name,
+          quantity: qty,
+          unit: (row.unit || '式').trim() || '式',
+          unitPrice,
+          usedAt: null,
+          note: contractNo ? `合約 ${contractNo}` : null,
+        },
+      });
+    }
+    const updated = await prisma.engineeringContract.findUnique({
+      where: { id: contract.id },
+      include: { project: true, supplier: true, terms: { orderBy: { termNo: 'asc' } }, materials: true },
+    });
     return NextResponse.json({
-      ...contract,
-      totalAmount: Number(contract.totalAmount),
-      terms: contract.terms.map(t => ({
+      ...updated,
+      totalAmount: Number(updated.totalAmount),
+      terms: updated.terms.map(t => ({
         ...t,
         amount: Number(t.amount),
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
+      })),
+      materials: (updated.materials || []).map(m => ({
+        ...m,
+        quantity: Number(m.quantity),
+        unitPrice: Number(m.unitPrice),
+        createdAt: m.createdAt.toISOString(),
+        updatedAt: m.updatedAt.toISOString(),
       })),
     }, { status: 201 });
   } catch (e) {

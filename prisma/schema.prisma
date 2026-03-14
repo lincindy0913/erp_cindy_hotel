@@ -2633,9 +2633,10 @@ model EngineeringContract {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  supplier Supplier           @relation(fields: [supplierId], references: [id])
-  terms    EngineeringContractTerm[]
+  project   EngineeringProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplier  Supplier                  @relation(fields: [supplierId], references: [id])
+  terms     EngineeringContractTerm[]
+  materials EngineeringMaterial[]
 
   @@unique([projectId, contractNo])
   @@index([projectId])
@@ -2667,6 +2668,7 @@ model EngineeringContractTerm {
 model EngineeringMaterial {
   id          Int      @id @default(autoincrement())
   projectId   Int      @map("project_id")
+  contractId  Int?     @map("contract_id")
   productId   Int?     @map("product_id")
   description String? @db.VarChar(500)
   quantity    Decimal  @db.Decimal(12, 4)
@@ -2677,10 +2679,12 @@ model EngineeringMaterial {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  product Product?            @relation(fields: [productId], references: [id])
+  project  EngineeringProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contract EngineeringContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  product  Product?            @relation(fields: [productId], references: [id])
 
   @@index([projectId])
+  @@index([contractId])
   @@index([productId])
   @@map("engineering_materials")
 }

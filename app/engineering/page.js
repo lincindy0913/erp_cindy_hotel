@@ -41,7 +41,7 @@ export default function EngineeringPage() {
   const [editingTerm, setEditingTerm] = useState(null);
 
   const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
-  const [contractForm, setContractForm] = useState({ projectId: '', supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '', terms: [] });
+  const [contractForm, setContractForm] = useState({ projectId: '', supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '', terms: [], materials: [] });
   const [materialForm, setMaterialForm] = useState({ projectId: '', productId: '', description: '', quantity: '', unit: '', unitPrice: '', usedAt: '', note: '' });
   const [termForm, setTermForm] = useState({ termName: '', amount: '', dueDate: '', status: 'pending', paidAt: '', paymentOrderId: '', note: '' });
 
@@ -224,12 +224,18 @@ export default function EngineeringPage() {
       content: '',
       note: '',
       terms: [{ termName: '第1期', amount: '', dueDate: '', note: '' }],
+      materials: [{ materialName: '', quantity: '', amount: '' }],
     });
     setShowContractModal(true);
   }
 
   function openEditContract(c) {
     setEditingContract(c);
+    const matList = (c.materials || []).length ? (c.materials || []).map(m => ({
+      materialName: m.description || '',
+      quantity: String(m.quantity ?? ''),
+      amount: String((Number(m.quantity) || 0) * (Number(m.unitPrice) || 0)),
+    })) : [{ materialName: '', quantity: '', amount: '' }];
     setContractForm({
       projectId: String(c.projectId),
       supplierId: String(c.supplierId),
@@ -239,8 +245,24 @@ export default function EngineeringPage() {
       content: c.content || '',
       note: c.note || '',
       terms: (c.terms || []).map(t => ({ termName: t.termName || `第${t.termNo}期`, amount: String(t.amount), dueDate: t.dueDate || '', note: t.note || '' })),
+      materials: matList,
     });
     setShowContractModal(true);
+  }
+
+  function addContractMaterialRow() {
+    setContractForm(f => ({ ...f, materials: [...f.materials, { materialName: '', quantity: '', amount: '' }] }));
+  }
+
+  function removeContractMaterialRow(i) {
+    setContractForm(f => ({ ...f, materials: f.materials.filter((_, idx) => idx !== i) }));
+  }
+
+  function updateContractMaterial(i, field, value) {
+    setContractForm(f => ({
+      ...f,
+      materials: f.materials.map((m, idx) => (idx === i ? { ...m, [field]: value } : m)),
+    }));
   }
 
   function openUploadContract(c) {
@@ -269,6 +291,14 @@ export default function EngineeringPage() {
       alert('請填寫工程案、廠商、合約編號');
       return;
     }
+    if (!contractForm.content?.trim()) {
+      alert('請填寫合約內容後再存檔');
+      return;
+    }
+    if (!contractForm.note?.trim()) {
+      alert('請填寫備註後再存檔');
+      return;
+    }
     try {
       const body = {
         projectId: parseInt(contractForm.projectId),
@@ -284,9 +314,14 @@ export default function EngineeringPage() {
           dueDate: t.dueDate || null,
           note: t.note?.trim() || null,
         })).filter(t => t.amount > 0),
+        materials: (contractForm.materials || []).map(m => ({
+          materialName: (m.materialName || '').trim(),
+          quantity: parseFloat(m.quantity) || 0,
+          amount: parseFloat(m.amount) || 0,
+        })).filter(m => m.materialName && m.quantity > 0),
       };
       if (editingContract) {
-        await fetch(`/api/engineering/contracts/${editingContract.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractNo: body.contractNo, totalAmount: body.totalAmount, signDate: body.signDate, content: body.content, note: body.note }) });
+        await fetch(`/api/engineering/contracts/${editingContract.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractNo: body.contractNo, totalAmount: body.totalAmount, signDate: body.signDate, content: body.content, note: body.note, materials: body.materials }) });
         alert('合約已更新（期數請於列表內編輯）');
       } else {
         await fetch('/api/engineering/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -294,6 +329,7 @@ export default function EngineeringPage() {
       }
       setShowContractModal(false);
       fetchContracts(filterProjectId || undefined);
+      if (activeTab === 'materials' || !editingContract) fetchMaterials(filterProjectId || undefined);
     } catch (e) {
       alert(e.message || '儲存失敗');
     }
@@ -638,6 +674,7 @@ export default function EngineeringPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left">工程案</th>
+                      <th className="px-4 py-2 text-left">合約</th>
                       <th className="px-4 py-2 text-left">品項／說明</th>
                       <th className="px-4 py-2 text-right">數量</th>
                       <th className="px-4 py-2 text-left">單位</th>
@@ -649,7 +686,7 @@ export default function EngineeringPage() {
                   </thead>
                   <tbody className="divide-y">
                     {materials.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無材料記錄或請選擇工程案</td></tr>
+                      <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">尚無材料記錄或請選擇工程案</td></tr>
                     ) : materials.map(m => {
                       const q = Number(m.quantity);
                       const u = Number(m.unitPrice);
@@ -657,6 +694,7 @@ export default function EngineeringPage() {
                       return (
                         <tr key={m.id} className="hover:bg-gray-50">
                           <td className="px-4 py-2">{m.project?.code}</td>
+                          <td className="px-4 py-2 text-gray-600">{m.contractNo || '－'}</td>
                           <td className="px-4 py-2">{m.product ? `${m.product.code} ${m.product.name}` : (m.description || '－')}</td>
                           <td className="px-4 py-2 text-right">{formatNum(m.quantity)}</td>
                           <td className="px-4 py-2">{m.unit || '－'}</td>
@@ -809,8 +847,8 @@ export default function EngineeringPage() {
                 <div />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">合約內容說明</label>
-                <textarea value={contractForm.content} onChange={e => setContractForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="合約主要內容摘要" />
+                <label className="block text-xs text-gray-500 mb-1">合約內容 *</label>
+                <textarea value={contractForm.content} onChange={e => setContractForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="請填寫合約內容（必填）" required />
               </div>
               {!editingContract && (
                 <>
@@ -835,9 +873,28 @@ export default function EngineeringPage() {
                   </div>
                 </>
               )}
+              <div className="flex justify-between items-center">
+                <label className="text-xs text-gray-500">材料（會連動至「材料使用」TAB）</label>
+                <button type="button" onClick={addContractMaterialRow} className="text-amber-600 text-sm">＋ 新增一筆</button>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50"><tr><th className="px-2 py-1 text-left">材料名稱</th><th className="px-2 py-1 text-right">數量</th><th className="px-2 py-1 text-right">金額</th><th className="w-8" /></tr></thead>
+                  <tbody>
+                    {(contractForm.materials || []).map((m, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-2 py-1"><input value={m.materialName} onChange={e => updateContractMaterial(i, 'materialName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="材料名稱" /></td>
+                        <td className="px-2 py-1"><input type="number" value={m.quantity} onChange={e => updateContractMaterial(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="any" min="0" placeholder="0" /></td>
+                        <td className="px-2 py-1"><input type="number" value={m.amount} onChange={e => updateContractMaterial(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" min="0" placeholder="0" /></td>
+                        <td className="px-2 py-1"><button type="button" onClick={() => removeContractMaterialRow(i)} className="text-red-500">×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">備註</label>
-                <textarea value={contractForm.note} onChange={e => setContractForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+                <label className="block text-xs text-gray-500 mb-1">備註 *</label>
+                <textarea value={contractForm.note} onChange={e => setContractForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="請填寫備註（必填）" required />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
