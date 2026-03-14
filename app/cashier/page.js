@@ -43,6 +43,16 @@ export default function CashierPage() {
   });
   const [executionResults, setExecutionResults] = useState({});
 
+  // Search filter
+  const [searchFilter, setSearchFilter] = useState({
+    dateFrom: '',
+    dateTo: '',
+    warehouse: '',
+    supplierId: '',
+    sourceType: '',
+  });
+  const [suppliers, setSuppliers] = useState([]);
+
   // Batch selection
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [batchAccounts, setBatchAccounts] = useState([{ accountId: '', amount: '' }]);
@@ -60,16 +70,52 @@ export default function CashierPage() {
 
   async function fetchAll() {
     setLoading(true);
-    await Promise.all([fetchOrders(), fetchAccounts()]);
+    await Promise.all([fetchOrders(), fetchAccounts(), fetchSuppliers()]);
     setLoading(false);
+  }
+
+  async function fetchSuppliers() {
+    try {
+      const res = await fetch('/api/suppliers');
+      const data = await res.json();
+      setSuppliers(Array.isArray(data) ? data : []);
+    } catch { setSuppliers([]); }
   }
 
   async function fetchOrders() {
     try {
-      const res = await fetch('/api/payment-orders');
+      const params = new URLSearchParams();
+      if (searchFilter.dateFrom) params.append('dateFrom', searchFilter.dateFrom);
+      if (searchFilter.dateTo) params.append('dateTo', searchFilter.dateTo);
+      if (searchFilter.warehouse) params.append('warehouse', searchFilter.warehouse);
+      if (searchFilter.supplierId) params.append('supplierId', searchFilter.supplierId);
+      if (searchFilter.sourceType) params.append('sourceType', searchFilter.sourceType);
+      const url = `/api/payment-orders?${params.toString()}`;
+      const res = await fetch(url);
       const data = await res.json();
       setOrders(Array.isArray(data) ? data : []);
     } catch { setOrders([]); }
+  }
+
+  function handleSearch() {
+    setLoading(true);
+    fetchOrders().finally(() => setLoading(false));
+  }
+
+  function clearSearch() {
+    setSearchFilter({
+      dateFrom: '',
+      dateTo: '',
+      warehouse: '',
+      supplierId: '',
+      sourceType: '',
+    });
+    setLoading(true);
+    fetch('/api/payment-orders')
+      .then(r => r.json())
+      .then(data => setOrders(Array.isArray(data) ? data : []))
+      .catch(() => setOrders([]))
+      .finally(() => setLoading(false));
   }
 
   async function fetchAccounts() {
@@ -383,12 +429,103 @@ export default function CashierPage() {
   const displayOrders = getDisplayOrders();
   const isPendingTab = activeTab === 'pending';
 
+  // 來源選項（對應 PaymentOrder.sourceType）
+  const SOURCE_OPTIONS = [
+    { value: '', label: '全部來源' },
+    { value: 'payment_order', label: '付款單/進銷存' },
+    { value: 'loan_predeposit', label: '貸款預付' },
+    { value: 'loan_payment', label: '貸款還款' },
+    { value: 'rental', label: '租賃' },
+    { value: 'purchase', label: '採購' },
+    { value: 'engineering', label: '工程' },
+    { value: 'common_expense', label: '固定費用' },
+  ];
+
   return (
     <div className="min-h-screen page-bg-cashier">
       <Navigation borderColor="border-amber-600" />
       <NotificationBanner moduleFilter="cashier" />
       <main className="max-w-7xl mx-auto px-4 py-8">
         <h2 className="text-2xl font-bold text-amber-800 mb-6">出納作業</h2>
+
+        {/* 搜尋條件 */}
+        <div className="bg-white rounded-lg shadow-sm border border-amber-100 p-4 mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">查詢條件</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">建立日期起</label>
+              <input
+                type="date"
+                value={searchFilter.dateFrom}
+                onChange={e => setSearchFilter({ ...searchFilter, dateFrom: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">建立日期迄</label>
+              <input
+                type="date"
+                value={searchFilter.dateTo}
+                onChange={e => setSearchFilter({ ...searchFilter, dateTo: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">館別</label>
+              <select
+                value={searchFilter.warehouse}
+                onChange={e => setSearchFilter({ ...searchFilter, warehouse: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              >
+                <option value="">全部館別</option>
+                <option value="麗格">麗格</option>
+                <option value="麗軒">麗軒</option>
+                <option value="民宿">民宿</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">廠商</label>
+              <select
+                value={searchFilter.supplierId}
+                onChange={e => setSearchFilter({ ...searchFilter, supplierId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              >
+                <option value="">全部廠商</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">來源</label>
+              <select
+                value={searchFilter.sourceType}
+                onChange={e => setSearchFilter({ ...searchFilter, sourceType: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              >
+                {SOURCE_OPTIONS.map(opt => (
+                  <option key={opt.value || '_all'} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium"
+            >
+              查詢
+            </button>
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
+            >
+              清除
+            </button>
+          </div>
+        </div>
 
         {/* KPI Cards */}
         {activeTab !== 'report' && <div className="grid grid-cols-3 gap-4 mb-6">

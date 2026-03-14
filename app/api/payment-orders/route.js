@@ -14,12 +14,19 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
     const supplierId = searchParams.get('supplierId');
     const sourceType = searchParams.get('sourceType');
+    const dateFrom = searchParams.get('dateFrom'); // YYYY-MM-DD 建立日期起
+    const dateTo = searchParams.get('dateTo');   // YYYY-MM-DD 建立日期迄
 
     const where = {};
     if (status) where.status = status;
     if (warehouse) where.warehouse = warehouse;
     if (supplierId) where.supplierId = parseInt(supplierId);
     if (sourceType) where.sourceType = sourceType;
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom + 'T00:00:00.000Z');
+      if (dateTo) where.createdAt.lte = new Date(dateTo + 'T23:59:59.999Z');
+    }
 
     const orders = await prisma.paymentOrder.findMany({
       where,
@@ -93,7 +100,7 @@ export async function POST(request) {
           discount: data.discount || 0,
           netAmount: data.netAmount,
           dueDate: data.dueDate || null,
-          accountId: data.accountId ? parseInt(data.accountId) : null,
+          accountId: isCheck && checkAccountId ? checkAccountId : (data.accountId ? parseInt(data.accountId) : null),
           checkNo: data.checkNo || null,
           checkAccount: checkAccountName,
           checkIssueDate: data.checkIssueDate || null,

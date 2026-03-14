@@ -316,38 +316,264 @@ export default function ReconciliationPage() {
     }
   };
 
-  // ---- CSV Import ----
+  // 解析 CSV（支援欄位內含換行與引號）
+  const parseCSVWithQuotes = (text) => {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"') {
+        if (inQuotes && text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = !inQuotes; }
+      } else if (!inQuotes && c === ',') {
+        row.push(field.trim().replace(/\s+/g, ' '));
+        field = '';
+      } else if (!inQuotes && (c === '\n' || c === '\r')) {
+        row.push(field.trim().replace(/\s+/g, ' '));
+        if (row.length > 0 && row.some(cell => cell)) rows.push(row);
+        row = [];
+        field = '';
+        if (c === '\r' && text[i + 1] === '\n') i++;
+      } else {
+        field += c;
+      }
+    }
+    if (field || row.length) {
+      row.push(field.trim().replace(/\s+/g, ' '));
+      if (row.some(cell => cell)) rows.push(row);
+    }
+    return rows;
+  };
+
+  const parseAmountCiti = (str) => {
+    const s = String(str || '').replace(/,/g, '').replace(/−|－|—/g, '').trim();
+    return s && !isNaN(parseFloat(s)) ? s : '0';
+  };
+
+  const parseDateMDY = (str) => {
+    const s = String(str || '').trim();
+    const parts = s.split(/[\/\-\.]/);
+    if (parts.length < 3) return s;
+    let m = parseInt(parts[0], 10), d = parseInt(parts[1], 10), y = parseInt(parts[2], 10);
+    if (isNaN(m) || isNaN(d) || isNaN(y)) return s;
+    if (y < 100) y += 2000;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
+
+  // 將民國 YYY.MM.DD 或 YYY/M/D 轉為 YYYY-MM-DD
+  const rocDateToIso = (str) => {
+    const s = String(str || '').trim();
+    const m = s.match(/^(\d{3})[.\/\-](\d{1,2})[.\/\-](\d{1,2})$/);
+    if (!m) return str;
+    const year = parseInt(m[1], 10) + 1911;
+    const month = String(parseInt(m[2], 10)).padStart(2, '0');
+    const day = String(parseInt(m[3], 10)).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // ---- CSV/Excel Import ----
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setImportFileName(file.name);
+    const fmt = formats.find(f => String(f.id) === String(selectedFormatId));
+    const encoding = fmt?.fileEncoding || 'UTF-8';
+    const isExcel = /\.(xls|xlsx)$/i.test(file.name || '');
+
+    const processResult = (parsed) => {
+      setImportLines(parsed);
+      if (parsed.length > 0) showMessage(`已解析 ${parsed.length} 筆明細`);
+    };
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target.result;
-      const rows = text.split('\n').filter(r => r.trim());
-      if (rows.length < 2) {
-        showMessage('CSV 檔案至少需要標題列和一筆資料', 'error');
+    reader.onload = async (evt) => {
+      let parsed = [];
+      let matrix = null;
+
+      if (isExcel) {
+        try {
+          const mod = await import('xlsx');
+          const XLSX = mod.default || mod;
+          const wb = XLSX.read(evt.target.result, { type: 'array', raw: false });
+          const sheetName = (fmt && (fmt.bankName === '玉山銀行' || fmt.bankName === '玉山')) && wb.SheetNames.length > 1 ? wb.SheetNames[1] : wb.SheetNames[0];
+          const ws = wb.Sheets[sheetName];
+          matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) || [];
+        } catch (err) {
+          showMessage('Excel 解析失敗：' + (err.message || '未知錯誤'), 'error');
+          return;
+        }
+      }
+
+      // 兆豐銀行 Excel：第7列起為資料，欄位 銀行帳務日, 交易項目, 支出, 收入, 帳戶餘額, 存摺備註
+      if (fmt && (fmt.bankName === '兆豐銀行' || fmt.bankName === '兆豐') && isExcel && matrix) {
+        const skipTop = fmt.skipTopRows ?? 7;
+        for (let i = skipTop; i < matrix.length; i++) {
+          const row = matrix[i];
+          if (!Array.isArray(row) || row.length < 5) continue;
+          const txDateRaw = row[1] || row[0] || '';
+          const txDate = String(txDateRaw).replace(/\//g, '-').trim();
+          if (!/^\d{4}-\d{2}-\d{2}/.test(txDate)) continue;
+          const dateOnly = txDate.slice(0, 10);
+          const debitAmount = parseAmountCiti(row[3]);
+          const creditAmount = parseAmountCiti(row[4]);
+          const desc = [row[2], row[6]].filter(Boolean).join(' ').trim();
+          parsed.push({
+            txDate: dateOnly,
+            description: desc || row[2] || '',
+            debitAmount,
+            creditAmount,
+            referenceNo: row[6] || '',
+            runningBalance: parseAmountCiti(row[5])
+          });
+        }
+        processResult(parsed);
         return;
       }
 
-      // Parse CSV (skip header)
-      const parsed = [];
-      for (let i = 1; i < rows.length; i++) {
-        const cols = rows[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-        if (cols.length < 4) continue;
-        parsed.push({
-          txDate: cols[0] || '',
-          description: cols[1] || '',
-          debitAmount: cols[2] || '0',
-          creditAmount: cols[3] || '0',
-          referenceNo: cols[4] || '',
-          runningBalance: cols[5] || ''
-        });
+      // 玉山銀行 Excel：Sheet2，表頭列0，資料從列1，欄位 交易日期,摘要,提,存,帳戶餘額,存摺備註
+      if (fmt && (fmt.bankName === '玉山銀行' || fmt.bankName === '玉山') && isExcel && matrix) {
+        const skipTop = fmt.skipTopRows ?? 1;
+        for (let i = skipTop; i < matrix.length; i++) {
+          const row = matrix[i];
+          if (!Array.isArray(row) || row.length < 3) continue;
+          const txDate = parseDateMDY(row[0]);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
+          const debitAmount = parseAmountCiti(row[3]);
+          const creditAmount = parseAmountCiti(row[4]);
+          const desc = [row[2], row[6]].filter(Boolean).join(' ').trim();
+          parsed.push({
+            txDate,
+            description: desc || row[2] || '',
+            debitAmount,
+            creditAmount,
+            referenceNo: row[7] || '',
+            runningBalance: parseAmountCiti(row[5])
+          });
+        }
+        processResult(parsed);
+        return;
+      }
+
+      const text = evt.target.result;
+      if (!text && !matrix) return;
+      if (fmt && (fmt.bankName === '兆豐銀行' || fmt.bankName === '兆豐' || fmt.bankName === '玉山銀行' || fmt.bankName === '玉山') && !isExcel) {
+        showMessage('兆豐、玉山請上傳 .xls 或 .xlsx 檔案', 'error');
+        return;
+      }
+
+      // 世華銀行格式：前5列說明，第6列表頭，欄位含引號與換行，提出/存入分欄
+      if (fmt && (fmt.bankName === '世華銀行' || fmt.bankName === '國泰世華') && typeof text === 'string') {
+        const allRows = parseCSVWithQuotes(text);
+        const skipTop = fmt.skipTopRows || 5;
+        if (allRows.length <= skipTop) {
+          showMessage('CSV 檔案格式不符或無資料', 'error');
+          return;
+        }
+        for (let i = skipTop; i < allRows.length; i++) {
+          const cols = allRows[i];
+          if (cols.length < 6) continue;
+          if (cols[0] === '提出' || cols[0] === '存入' || /總金額/.test(cols[0] || '')) break;
+          const txDate = (cols[1] || cols[0] || '').replace(/\//g, '-'); // 帳務日期
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
+          const debitAmount = parseAmountCiti(cols[3]);
+          const creditAmount = parseAmountCiti(cols[4]);
+          const desc = [cols[2], cols[7]].filter(Boolean).join(' ').trim();
+          parsed.push({
+            txDate,
+            description: desc || cols[2] || '',
+            debitAmount,
+            creditAmount,
+            referenceNo: cols[6] || '',
+            runningBalance: parseAmountCiti(cols[5])
+          });
+        }
+      } else if (fmt && (fmt.bankName === '陽信銀行')) {
+        const allRows = parseCSVWithQuotes(text);
+        const skipTop = fmt.skipTopRows ?? 0;
+        if (allRows.length <= skipTop) {
+          showMessage('CSV 檔案格式不符或無資料', 'error');
+          return;
+        }
+        for (let i = skipTop; i < allRows.length; i++) {
+          const cols = allRows[i];
+          if (cols.length < 4) continue;
+          const txDate = (cols[0] || '').replace(/\//g, '-').trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
+          const debitAmount = parseAmountCiti(cols[1]);
+          const creditAmount = parseAmountCiti(cols[2]);
+          const desc = [cols[4], cols[6]].filter(Boolean).join(' ').trim();
+          parsed.push({
+            txDate,
+            description: desc || cols[4] || '',
+            debitAmount,
+            creditAmount,
+            referenceNo: cols[7] || '',
+            runningBalance: parseAmountCiti(cols[3])
+          });
+        }
+      } else if (fmt && (fmt.bankName === '土地銀行' || fmt.bankName === '土銀')) {
+        const allRows = parseCSVWithQuotes(text);
+        const skipTop = fmt.skipTopRows ?? 5;
+        const headerRowIndex = fmt.headerRowIndex ?? 5;
+        const dataStart = Math.max(skipTop, headerRowIndex) + 1;
+        if (allRows.length <= dataStart) {
+          showMessage('CSV 檔案格式不符或無資料', 'error');
+          return;
+        }
+        for (let i = dataStart; i < allRows.length; i++) {
+          const cols = allRows[i];
+          if (cols.length < 7) continue;
+          const txDateRaw = (cols[0] || '').trim();
+          if (txDateRaw === '交易日' || !txDateRaw) continue;
+          const txDate = rocDateToIso(txDateRaw);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
+          const desc = (cols[3] || '').trim();
+          const debitCredit = (cols[5] || '').trim();
+          const amountRaw = (cols[6] || '0').trim().replace(/,/g, '');
+          const amount = amountRaw && !isNaN(parseFloat(amountRaw)) ? amountRaw : '0';
+          const balance = (cols[7] || '').trim().replace(/,/g, '');
+          const note = (cols[8] || '').trim();
+          const debitAmount = (debitCredit === '支出' || debitCredit === '借') ? amount : '0';
+          const creditAmount = (debitCredit === '存入' || debitCredit === '貸') ? amount : '0';
+          parsed.push({
+            txDate,
+            description: note ? `${desc} ${note}`.trim() : desc,
+            debitAmount,
+            creditAmount,
+            referenceNo: cols[2] || '',
+            runningBalance: balance || '0'
+          });
+        }
+        processResult(parsed);
+        return;
+      } else {
+        // 預設格式：日期,說明,提款,存入,備註,餘額
+        const rows = text.split(/\r?\n/).filter(r => r.trim());
+        if (rows.length < 2) {
+          showMessage('CSV 檔案至少需要標題列和一筆資料，或請先選擇銀行格式', 'error');
+          return;
+        }
+        const skip = fmt?.skipTopRows || 0;
+        const headerIdx = Math.min(fmt?.headerRowIndex ?? 0, rows.length - 1);
+        for (let i = Math.max(1, headerIdx + 1, skip + 1); i < rows.length; i++) {
+          const cols = rows[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length < 4) continue;
+          parsed.push({
+            txDate: cols[0] || '',
+            description: cols[1] || '',
+            debitAmount: cols[2] || '0',
+            creditAmount: cols[3] || '0',
+            referenceNo: cols[4] || '',
+            runningBalance: cols[5] || ''
+          });
+        }
       }
       setImportLines(parsed);
+      if (parsed.length > 0) showMessage(`已解析 ${parsed.length} 筆明細`);
     };
-    reader.readAsText(file, 'UTF-8');
+    if (isExcel) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file, encoding === 'Big5' || encoding === 'MS950' ? 'Big5' : 'UTF-8');
   };
 
   const submitImport = async () => {
@@ -1404,10 +1630,16 @@ export default function ReconciliationPage() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">上傳 CSV 檔案</label>
-                  <p className="text-xs text-gray-400 mb-2">格式: 日期, 說明, 提款金額, 存入金額, 備註, 餘額</p>
+                  <p className="text-xs text-gray-400 mb-2">
+                    {selectedFormatId && ['土地', '世華', '國泰世華', '陽信', '兆豐', '玉山'].some(k => formats.find(f => String(f.id) === String(selectedFormatId))?.bankName?.includes(k)) ? (
+                      <>已選銀行格式；兆豐、玉山請上傳 .xls/.xlsx，其餘上傳 CSV（請先選格式再上傳）</>
+                    ) : (
+                      <>預設格式：日期, 說明, 提款金額, 存入金額, 備註, 餘額；或先選擇銀行格式</>
+                    )}
+                  </p>
                   <input
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.xls,.xlsx"
                     onChange={handleFileUpload}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                   />

@@ -107,45 +107,48 @@ export async function PUT(request, { params }) {
       const actualAmount = data.actualAmount ? parseFloat(data.actualAmount) : Number(check.amount);
       const clearedBy = data.clearedBy || null;
 
-      // Create CashTransaction
-      const transactionNo = await generateTransactionNo(clearDate);
+      // 規則：有 paymentId 的支票 = 來自付款單，現金流已在「出納執行」時建立，此處不重複建立 CashTransaction（避免重複扣款）
+      const fromPaymentOrder = !!check.paymentId;
+      let cashTransactionId = null;
 
-      let accountId, txType, sourceType;
-      if (check.checkType === 'payable') {
-        // Payable check: money goes out from source account
-        accountId = check.sourceAccountId;
-        txType = '支出';
-        sourceType = 'check_payment';
-      } else {
-        // Receivable check: money comes in to destination account
-        accountId = check.destinationAccountId;
-        txType = '收入';
-        sourceType = 'check_receipt';
-      }
-
-      if (!accountId) {
-        return createErrorResponse('VALIDATION_FAILED', '支票未關聯帳戶，無法兌現', 400);
-      }
-
-      // Create transaction
-      const categoryId = await getCategoryId(prisma, sourceType);
-      const transaction = await prisma.cashTransaction.create({
-        data: {
-          transactionNo,
-          transactionDate: clearDate,
-          type: txType,
-          warehouse: check.warehouse,
-          accountId,
-          categoryId,
-          amount: actualAmount,
-          description: `支票兌現 - ${check.checkNo} (${check.checkNumber})`,
-          sourceType,
-          sourceRecordId: check.id,
-          status: '已確認'
+      if (!fromPaymentOrder) {
+        // 非付款單支票：建立 CashTransaction 並連動現金流
+        const transactionNo = await generateTransactionNo(clearDate);
+        let accountId, txType, sourceType;
+        if (check.checkType === 'payable') {
+          accountId = check.sourceAccountId;
+          txType = '支出';
+          sourceType = 'check_payment';
+        } else {
+          accountId = check.destinationAccountId;
+          txType = '收入';
+          sourceType = 'check_receipt';
         }
-      });
 
-      // Update check
+        if (!accountId) {
+          return createErrorResponse('VALIDATION_FAILED', '支票未關聯帳戶，無法兌現', 400);
+        }
+
+        const categoryId = await getCategoryId(prisma, sourceType);
+        const transaction = await prisma.cashTransaction.create({
+          data: {
+            transactionNo,
+            transactionDate: clearDate,
+            type: txType,
+            warehouse: check.warehouse,
+            accountId,
+            categoryId,
+            amount: actualAmount,
+            description: `支票兌現 - ${check.checkNo} (${check.checkNumber})`,
+            sourceType,
+            sourceRecordId: check.id,
+            status: '已確認'
+          }
+        });
+        cashTransactionId = transaction.id;
+        await recalcBalance(accountId);
+      }
+
       const updatedCheck = await prisma.check.update({
         where: { id },
         data: {
@@ -153,16 +156,13 @@ export async function PUT(request, { params }) {
           clearDate,
           actualAmount,
           clearedBy,
-          cashTransactionId: transaction.id
+          ...(cashTransactionId ? { cashTransactionId } : {})
         },
         include: {
           sourceAccount: { select: { id: true, name: true, accountCode: true } },
           destinationAccount: { select: { id: true, name: true, accountCode: true } }
         }
       });
-
-      // Recalculate balance
-      await recalcBalance(accountId);
 
       return NextResponse.json(updatedCheck);
     }

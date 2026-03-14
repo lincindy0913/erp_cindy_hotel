@@ -88,44 +88,49 @@ export async function POST(request) {
           continue;
         }
 
-        // Determine account and transaction type
-        let accountId, txType, sourceType;
-        if (check.checkType === 'payable') {
-          accountId = check.sourceAccountId;
-          txType = '支出';
-          sourceType = 'check_payment';
-        } else {
-          accountId = check.destinationAccountId;
-          txType = '收入';
-          sourceType = 'check_receipt';
-        }
+        // 規則：有 paymentId 的支票 = 來自付款單，現金流已在出納執行時建立，此處不重複建立 CashTransaction（避免重複扣款）
+        const fromPaymentOrder = !!check.paymentId;
+        let cashTransactionId = null;
 
-        if (!accountId) {
-          results.failed++;
-          results.errors.push({ checkId, error: '支票未關聯帳戶' });
-          continue;
-        }
-
-        // Create transaction
-        const transactionNo = await generateTransactionNo(effectiveClearDate);
-        const categoryId = await getCategoryId(prisma, sourceType);
-        const transaction = await prisma.cashTransaction.create({
-          data: {
-            transactionNo,
-            transactionDate: effectiveClearDate,
-            type: txType,
-            warehouse: check.warehouse,
-            accountId,
-            categoryId,
-            amount: Number(check.amount),
-            description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
-            sourceType,
-            sourceRecordId: check.id,
-            status: '已確認'
+        if (!fromPaymentOrder) {
+          let accountId, txType, sourceType;
+          if (check.checkType === 'payable') {
+            accountId = check.sourceAccountId;
+            txType = '支出';
+            sourceType = 'check_payment';
+          } else {
+            accountId = check.destinationAccountId;
+            txType = '收入';
+            sourceType = 'check_receipt';
           }
-        });
 
-        // Update check
+          if (!accountId) {
+            results.failed++;
+            results.errors.push({ checkId, error: '支票未關聯帳戶' });
+            continue;
+          }
+
+          const transactionNo = await generateTransactionNo(effectiveClearDate);
+          const categoryId = await getCategoryId(prisma, sourceType);
+          const transaction = await prisma.cashTransaction.create({
+            data: {
+              transactionNo,
+              transactionDate: effectiveClearDate,
+              type: txType,
+              warehouse: check.warehouse,
+              accountId,
+              categoryId,
+              amount: Number(check.amount),
+              description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
+              sourceType,
+              sourceRecordId: check.id,
+              status: '已確認'
+            }
+          });
+          cashTransactionId = transaction.id;
+          affectedAccountIds.add(accountId);
+        }
+
         await prisma.check.update({
           where: { id: parseInt(checkId) },
           data: {
@@ -133,11 +138,9 @@ export async function POST(request) {
             clearDate: effectiveClearDate,
             actualAmount: Number(check.amount),
             clearedBy: clearedBy || null,
-            cashTransactionId: transaction.id
+            ...(cashTransactionId ? { cashTransactionId } : {})
           }
         });
-
-        affectedAccountIds.add(accountId);
         results.success++;
       } catch (err) {
         results.failed++;

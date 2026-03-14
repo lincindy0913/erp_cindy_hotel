@@ -53,7 +53,7 @@ export async function POST(request) {
     const txNo = `${txPrefix}${String(maxTxSeq + 1).padStart(4, '0')}`;
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Create CashTransaction
+      // 1. 建立現金流扣款（包含支票支付：出納執行時即建立，支票分頁兌現時不再重複建立）
       const categoryId = await getCategoryId(tx, 'cashier_payment');
       const cashTx = await tx.cashTransaction.create({
         data: {
@@ -116,7 +116,7 @@ export async function POST(request) {
         data: { status: '已執行' },
       });
 
-      // 4b. If this PaymentOrder has a linked Check (paymentId = order.id), mark Check as cleared
+      // 4b. 支票支付：若有關聯 Check，將支票標記為兌現（現金流已在步驟1建立，不重複）
       const linkedCheck = await tx.check.findFirst({
         where: { paymentId: parseInt(paymentOrderId) },
       });

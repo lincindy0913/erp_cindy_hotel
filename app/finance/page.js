@@ -20,6 +20,7 @@ export default function PaymentPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState(new Set());
   const [expandedOrders, setExpandedOrders] = useState(new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set()); // 付款單勾選，供批量提交出納
   const [activeTab, setActiveTab] = useState('draft');
 
   // 付款條件選項管理
@@ -80,6 +81,11 @@ export default function PaymentPage() {
     fetchAllInvoices();
     fetchCashAccounts();
   }, []);
+
+  // 切換分頁時清空付款單勾選
+  useEffect(() => {
+    setSelectedOrderIds(new Set());
+  }, [activeTab]);
 
   // 從現有付款紀錄中提取開票賬戶選項
   useEffect(() => {
@@ -421,6 +427,65 @@ export default function PaymentPage() {
     } catch (error) {
       console.error('刪除付款單失敗:', error);
       alert('刪除付款單失敗，請稍後再試');
+    }
+  }
+
+  function handleOrderToggle(orderId) {
+    const newSelected = new Set(selectedOrderIds);
+    if (newSelected.has(orderId)) newSelected.delete(orderId);
+    else newSelected.add(orderId);
+    setSelectedOrderIds(newSelected);
+  }
+
+  function handleSelectAllOrders() {
+    const current = getDisplayOrders();
+    const canSelect = current.filter(o => o.status === '草稿' || o.status === '已拒絕');
+    if (selectedOrderIds.size === canSelect.length && canSelect.length > 0) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(canSelect.map(o => o.id)));
+    }
+  }
+
+  async function handleBatchSubmitToCashier() {
+    const ids = Array.from(selectedOrderIds);
+    if (ids.length === 0) return;
+    const orders = displayOrders.filter(o => ids.includes(o.id));
+    const draftCount = orders.filter(o => o.status === '草稿').length;
+    const rejectedCount = orders.filter(o => o.status === '已拒絕').length;
+    const isSubmit = draftCount > 0 && rejectedCount === 0;
+    const isResubmit = rejectedCount > 0 && draftCount === 0;
+    const isMixed = draftCount > 0 && rejectedCount > 0;
+    const actionLabel = isSubmit ? '提交出納' : isResubmit ? '重新提交' : '提交/重新提交';
+    if (!confirm(`確定要將選取的 ${ids.length} 筆付款單${actionLabel}嗎？`)) return;
+
+    let ok = 0;
+    const errors = [];
+    for (const orderId of ids) {
+      const order = orders.find(o => o.id === orderId);
+      const action = order?.status === '已拒絕' ? 'resubmit' : 'submit';
+      try {
+        const response = await fetch(`/api/payment-orders/${orderId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        if (response.ok) ok++;
+        else {
+          const err = await response.json();
+          errors.push(`${order?.orderNo || orderId}: ${err.error || err.message || '未知錯誤'}`);
+        }
+      } catch (e) {
+        errors.push(`${order?.orderNo || orderId}: 網路錯誤`);
+      }
+    }
+    if (ok > 0) {
+      setSelectedOrderIds(new Set());
+      fetchOrders();
+      alert(`成功 ${actionLabel} ${ok} 筆${errors.length ? `，失敗 ${errors.length} 筆` : ''}`);
+    }
+    if (errors.length > 0) {
+      alert(`部分失敗：\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...等 ${errors.length} 筆` : ''}`);
     }
   }
 
@@ -1275,9 +1340,37 @@ export default function PaymentPage() {
 
         {/* 付款單列表 */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          {/* 批量操作列：草稿/已拒絕 有勾選時顯示 */}
+          {selectedOrderIds.size > 0 && (activeTab === 'draft' || activeTab === 'rejected') && (
+            <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between">
+              <span className="text-sm text-indigo-800">
+                已勾選 <strong>{selectedOrderIds.size}</strong> 筆付款單
+              </span>
+              <button
+                type="button"
+                onClick={handleBatchSubmitToCashier}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+              >
+                批量提交出納
+              </button>
+            </div>
+          )}
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                {(activeTab === 'draft' || activeTab === 'rejected') && (
+                  <th className="px-3 py-3 text-left text-sm font-medium text-gray-700 w-12">
+                    <input
+                      type="checkbox"
+                      checked={
+                        getDisplayOrders().filter(o => o.status === '草稿' || o.status === '已拒絕').length > 0 &&
+                        selectedOrderIds.size === getDisplayOrders().filter(o => o.status === '草稿' || o.status === '已拒絕').length
+                      }
+                      onChange={handleSelectAllOrders}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款單號</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
@@ -1293,11 +1386,11 @@ export default function PaymentPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td>
+                  <td colSpan={(activeTab === 'draft' || activeTab === 'rejected') ? 11 : 10} className="px-4 py-8 text-center text-gray-500">載入中...</td>
                 </tr>
               ) : displayOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={(activeTab === 'draft' || activeTab === 'rejected') ? 11 : 10} className="px-4 py-8 text-center text-gray-500">
                     {activeTab === 'draft' ? '目前無草稿付款單' :
                      activeTab === 'pending' ? '目前無待出納的付款單' :
                      activeTab === 'executed' ? '目前無已執行的付款單' :
@@ -1311,6 +1404,20 @@ export default function PaymentPage() {
                   return (
                     <Fragment key={order.id}>
                       <tr className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}>
+                        {(activeTab === 'draft' || activeTab === 'rejected') && (
+                          <td className="px-3 py-3">
+                            {(order.status === '草稿' || order.status === '已拒絕') ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedOrderIds.has(order.id)}
+                                onChange={() => handleOrderToggle(order.id)}
+                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                            ) : (
+                              <span className="w-4 inline-block" />
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-sm font-medium text-indigo-700">{order.orderNo}</td>
                         <td className="px-4 py-3 text-sm">{order.supplierName || '-'}</td>
                         <td className="px-4 py-3 text-sm">{order.warehouse || '-'}</td>
@@ -1398,7 +1505,7 @@ export default function PaymentPage() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-indigo-50">
-                          <td colSpan="10" className="px-4 py-4">
+                          <td colSpan={(activeTab === 'draft' || activeTab === 'rejected') ? 11 : 10} className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 曾被出納退回（待出納但 rejectedAt 有值）：請修改後重新送出 */}
                               {order.status === '待出納' && order.rejectedAt && (

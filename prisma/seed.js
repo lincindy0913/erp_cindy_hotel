@@ -261,6 +261,150 @@ async function main() {
   );
   console.log('Department expenses seeded.');
 
+  // ========================
+  // 銀行對帳格式：土地銀行
+  // ========================
+  const existingLandBank = await prisma.bankAccountFormat.findFirst({
+    where: { bankName: '土地銀行' }
+  });
+  if (!existingLandBank) {
+    await prisma.bankAccountFormat.create({
+      data: {
+        bankName: '土地銀行',
+        bankCode: '005',
+        fileEncoding: 'UTF-8',
+        fileType: 'csv',
+        hasHeaderRow: true,
+        headerRowIndex: 5,
+        skipTopRows: 5,
+        skipBottomRows: 0,
+        dateColumn: '交易日',
+        dateFormat: 'ROCIYY.MM.DD',
+        descriptionColumn: '交易摘要',
+        debitColumn: '借貸記號',
+        creditColumn: '借貸記號',
+        amountColumn: '交易金額',
+        balanceColumn: '餘額',
+        referenceColumn: '備註',
+        isBuiltIn: true,
+        sampleRow: JSON.stringify({ debitValue: '支出', creditValue: '存入' })
+      }
+    });
+    console.log('土地銀行對帳格式已建立.');
+  }
+
+  // 世華銀行 (國泰世華)
+  const existingCiti = await prisma.bankAccountFormat.findFirst({
+    where: { bankName: '世華銀行' }
+  });
+  if (!existingCiti) {
+    await prisma.bankAccountFormat.create({
+      data: {
+        bankName: '世華銀行',
+        bankCode: '013',
+        fileEncoding: 'UTF-8',
+        fileType: 'csv',
+        hasHeaderRow: true,
+        headerRowIndex: 5,
+        skipTopRows: 5,
+        skipBottomRows: 0,
+        dateColumn: '帳務日期',
+        dateFormat: 'YYYY/MM/DD',
+        descriptionColumn: '說明',
+        debitColumn: '提出',
+        creditColumn: '存入',
+        balanceColumn: '餘額',
+        referenceColumn: '備註',
+        isBuiltIn: true
+      }
+    });
+    console.log('世華銀行對帳格式已建立.');
+  }
+
+  // 陽信銀行
+  const existingSunny = await prisma.bankAccountFormat.findFirst({
+    where: { bankName: '陽信銀行' }
+  });
+  if (!existingSunny) {
+    await prisma.bankAccountFormat.create({
+      data: {
+        bankName: '陽信銀行',
+        bankCode: '108',
+        fileEncoding: 'UTF-8',
+        fileType: 'csv',
+        hasHeaderRow: true,
+        headerRowIndex: 0,
+        skipTopRows: 0,
+        skipBottomRows: 0,
+        dateColumn: '交易日',
+        dateFormat: 'YYYY/MM/DD',
+        descriptionColumn: '備註',
+        debitColumn: '支出金額',
+        creditColumn: '存入金額',
+        balanceColumn: '帳面餘額',
+        referenceColumn: '存摺註記',
+        isBuiltIn: true
+      }
+    });
+    console.log('陽信銀行對帳格式已建立.');
+  }
+
+  // 兆豐國際商業銀行
+  const existingMega = await prisma.bankAccountFormat.findFirst({
+    where: { bankName: '兆豐銀行' }
+  });
+  if (!existingMega) {
+    await prisma.bankAccountFormat.create({
+      data: {
+        bankName: '兆豐銀行',
+        bankCode: '017',
+        fileEncoding: 'UTF-8',
+        fileType: 'xls',
+        hasHeaderRow: true,
+        headerRowIndex: 6,
+        skipTopRows: 7,
+        skipBottomRows: 0,
+        dateColumn: '銀行帳務日',
+        dateFormat: 'YYYY/MM/DD',
+        descriptionColumn: '交易項目',
+        debitColumn: '支出',
+        creditColumn: '收入',
+        balanceColumn: '帳戶餘額',
+        referenceColumn: '存摺備註',
+        isBuiltIn: true
+      }
+    });
+    console.log('兆豐銀行對帳格式已建立.');
+  }
+
+  // 玉山銀行
+  const existingEsun = await prisma.bankAccountFormat.findFirst({
+    where: { bankName: '玉山銀行' }
+  });
+  if (!existingEsun) {
+    await prisma.bankAccountFormat.create({
+      data: {
+        bankName: '玉山銀行',
+        bankCode: '808',
+        fileEncoding: 'UTF-8',
+        fileType: 'xls',
+        hasHeaderRow: true,
+        headerRowIndex: 0,
+        skipTopRows: 1,
+        skipBottomRows: 0,
+        dateColumn: '交易日期',
+        dateFormat: 'M/D/YY',
+        descriptionColumn: '摘要',
+        debitColumn: '提',
+        creditColumn: '存',
+        balanceColumn: '帳戶餘額',
+        referenceColumn: '存摺備註',
+        isBuiltIn: true
+      }
+    });
+    console.log('玉山銀行對帳格式已建立.');
+  }
+
   console.log('Seed completed successfully!');
 }
 

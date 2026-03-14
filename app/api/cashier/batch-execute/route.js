@@ -158,7 +158,7 @@ export async function POST(request) {
         const txNo = getTxNo(seqCounter);
         seqCounter++;
 
-        // Create CashTransaction
+        // 建立現金流扣款（支票支付亦在此建立，支票分頁兌現時不再重複）
         const cashTx = await tx.cashTransaction.create({
           data: {
             transactionNo: txNo,
@@ -204,7 +204,7 @@ export async function POST(request) {
           data: { status: '已執行' },
         });
 
-        // If this PaymentOrder has a linked Check, mark Check as cleared
+        // 支票支付：若有關聯 Check，標記兌現（CashTransaction 已於上方建立）
         const linkedCheck = await tx.check.findFirst({
           where: { paymentId: order.id },
         });
