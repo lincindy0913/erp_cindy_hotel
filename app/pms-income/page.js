@@ -710,10 +710,18 @@ function PmsIncomePage() {
       setUploadBreakfastCount(data.breakfastCount ?? '');
       setUploadOccupiedRooms(data.occupiedRooms ?? '');
       if (Array.isArray(data.records) && data.records.length > 0) {
-        setUploadRecords(prev => prev.map(p => {
-          const fromExcel = data.records.find(r => r.pmsColumnName === p.pmsColumnName);
-          return fromExcel ? { ...p, amount: fromExcel.amount != null ? String(fromExcel.amount) : '' } : p;
+        // Build records from Excel, merge with defaults for any missing accounts
+        const excelRecords = data.records.map(r => ({
+          pmsColumnName: r.pmsColumnName,
+          entryType: r.entryType,
+          accountingCode: r.accountingCode || '',
+          accountingName: r.accountingName || '',
+          amount: r.amount != null ? String(r.amount) : '',
         }));
+        const defaults = DEFAULT_PMS_COLUMNS
+          .filter(d => !excelRecords.some(e => e.accountingCode === d.accountingCode && e.entryType === d.entryType))
+          .map(d => ({ ...d, amount: '' }));
+        setUploadRecords([...excelRecords, ...defaults]);
       }
       setShowUploadModal(true);
       setSuccess('已從 Excel 帶入資料，請核對後按「確認匯入」存檔。');
@@ -1352,17 +1360,6 @@ function PmsIncomePage() {
                     e.target.value = '';
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('pms-excel-upload')?.click()}
-                  disabled={excelParsing}
-                  className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  {excelParsing ? '解析中...' : '上傳 Excel 日報表'}
-                </button>
                 <button onClick={() => {
                   setUploadWarehouse(selectedWarehouseForUpload);
                   setShowUploadModal(true);
