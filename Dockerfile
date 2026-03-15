@@ -27,6 +27,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
 # Install OpenSSL for Prisma engine
 RUN apk add --no-cache openssl
@@ -56,5 +57,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Sync schema, seed, then start Next.js
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss 2>/dev/null || true; node node_modules/prisma/build/index.js generate 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; exec node server.js"]
+# Run migrations then start Next.js
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy 2>/dev/null || node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; exec node server.js"]
