@@ -16,7 +16,7 @@ export async function GET(request) {
     const month = searchParams.get('month'); // YYYYMM format
 
     if (!month) {
-      return NextResponse.json({ error: { code: 'REQUIRED_FIELD_MISSING', message: '請指定月份 (month=YYYYMM)' } }, { status: 400 });
+      return NextResponse.json({ error: '請指定月份 (month=YYYYMM)', code: 'REQUIRED_FIELD_MISSING' }, { status: 400 });
     }
 
     const year = parseInt(month.substring(0, 4));

@@ -89,6 +89,11 @@ export default function ReconciliationPage() {
   const [ccShowConfigModal, setCcShowConfigModal] = useState(false);
   const [ccConfigForm, setCcConfigForm] = useState({ warehouseId: '', bankName: '國泰世華', merchantId: '', merchantName: '', accountNo: '', domesticFeeRate: '1.70', foreignFeeRate: '2.30', selfFeeRate: '1.70' });
 
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
+  const [formatSaving, setFormatSaving] = useState(false);
+  const [ccConfigSaving, setCcConfigSaving] = useState(false);
+
   // Messages
   const [message, setMessage] = useState({ text: '', type: '' });
 
@@ -609,6 +614,7 @@ export default function ReconciliationPage() {
       showMessage('請選擇帳戶、銀行格式並上傳 CSV', 'error');
       return;
     }
+    setImportSubmitting(true);
     try {
       const res = await fetch('/api/reconciliation/import', {
         method: 'POST',
@@ -634,6 +640,8 @@ export default function ReconciliationPage() {
       }
     } catch (e) {
       showMessage('匯入失敗', 'error');
+    } finally {
+      setImportSubmitting(false);
     }
   };
 
@@ -643,6 +651,7 @@ export default function ReconciliationPage() {
       showMessage('金額和說明為必填', 'error');
       return;
     }
+    setAdjustmentSubmitting(true);
     try {
       const res = await fetch('/api/reconciliation/adjust', {
         method: 'POST',
@@ -666,6 +675,8 @@ export default function ReconciliationPage() {
       }
     } catch (e) {
       showMessage('調整失敗', 'error');
+    } finally {
+      setAdjustmentSubmitting(false);
     }
   };
 
@@ -675,6 +686,7 @@ export default function ReconciliationPage() {
       showMessage('銀行名稱為必填', 'error');
       return;
     }
+    setFormatSaving(true);
     try {
       const res = await fetch('/api/reconciliation/bank-formats', {
         method: 'POST',
@@ -695,7 +707,9 @@ export default function ReconciliationPage() {
         fetchFormats();
       }
     } catch (e) {
-      showMessage('建立失敗', 'error');
+      showMessage('儲存格式失敗', 'error');
+    } finally {
+      setFormatSaving(false);
     }
   };
 
@@ -889,6 +903,7 @@ export default function ReconciliationPage() {
       showMessage('館別和特店代號為必填', 'error');
       return;
     }
+    setCcConfigSaving(true);
     try {
       const res = await fetch('/api/reconciliation/credit-card-merchant-config', {
         method: 'POST',
@@ -904,6 +919,7 @@ export default function ReconciliationPage() {
         showMessage(d.error || '儲存失敗', 'error');
       }
     } catch { showMessage('儲存失敗', 'error'); }
+    finally { setCcConfigSaving(false); }
   };
 
   // CC Status map
@@ -1359,9 +1375,10 @@ export default function ReconciliationPage() {
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setCcShowConfigModal(false)}
-                className="px-4 py-2 border text-gray-600 text-sm rounded-lg hover:bg-gray-50">關閉</button>
+                className="px-4 py-2 border text-gray-600 text-sm rounded-lg hover:bg-gray-50" disabled={ccConfigSaving}>關閉</button>
               <button onClick={saveCcConfig}
-                className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700">儲存設定</button>
+                disabled={ccConfigSaving}
+                className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50">{ccConfigSaving ? '儲存中…' : '儲存設定'}</button>
             </div>
           </div>
         </div>
@@ -2091,9 +2108,10 @@ export default function ReconciliationPage() {
                 <div className="flex justify-end mt-4">
                   <button
                     onClick={submitFormat}
-                    className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700"
+                    disabled={formatSaving}
+                    className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
                   >
-                    儲存格式
+                    {formatSaving ? '儲存中…' : '儲存格式'}
                   </button>
                 </div>
               </div>
@@ -2230,10 +2248,10 @@ export default function ReconciliationPage() {
                 </button>
                 <button
                   onClick={submitImport}
-                  disabled={importLines.length === 0 || !selectedFormatId}
+                  disabled={importLines.length === 0 || !selectedFormatId || importSubmitting}
                   className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
                 >
-                  確認匯入
+                  {importSubmitting ? '匯入中…' : '確認匯入'}
                 </button>
               </div>
             </div>
@@ -2285,9 +2303,10 @@ export default function ReconciliationPage() {
                 </button>
                 <button
                   onClick={submitAdjustment}
-                  className="px-6 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600"
+                  disabled={adjustmentSubmitting}
+                  className="px-6 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:opacity-50"
                 >
-                  建立調整
+                  {adjustmentSubmitting ? '建立中…' : '建立調整'}
                 </button>
               </div>
             </div>

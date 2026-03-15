@@ -24,10 +24,10 @@ export async function POST(request, { params }) {
     const sessionId = parseInt(params.sessionId);
     const importSession = await prisma.importSession.findUnique({ where: { id: sessionId } });
     if (!importSession) {
-      return NextResponse.json({ error: { message: '匯入作業不存在' } }, { status: 404 });
+      return NextResponse.json({ error: '匯入作業不存在', code: 'NOT_FOUND' }, { status: 404 });
     }
     if (importSession.status === 'archived') {
-      return NextResponse.json({ error: { message: '匯入作業已封存，無法繼續匯入' } }, { status: 403 });
+      return NextResponse.json({ error: '匯入作業已封存，無法繼續匯入', code: 'FORBIDDEN' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -37,7 +37,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: { message: `無效的匯入類型: ${importType}` } }, { status: 400 });
     }
     if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: { message: '無匯入資料' } }, { status: 400 });
+      return NextResponse.json({ error: '無匯入資料', code: 'VALIDATION_FAILED' }, { status: 400 });
     }
 
     // Validate rows according to type

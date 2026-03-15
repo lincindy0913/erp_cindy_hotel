@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import AttachmentSection from '@/components/AttachmentSection';
+import { useToast } from '@/context/ToastContext';
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -54,7 +55,13 @@ export default function EngineeringPage() {
   const [contractForUpload, setContractForUpload] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: '', summary: '', note: '' });
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [contractSaving, setContractSaving] = useState(false);
+  const [termSaving, setTermSaving] = useState(false);
+  const [materialSaving, setMaterialSaving] = useState(false);
+  const [paymentSaving, setPaymentSaving] = useState(false);
   const { data: session } = useSession();
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchProjects();
@@ -171,9 +178,10 @@ export default function EngineeringPage() {
 
   async function saveProject() {
     if (!projectForm.code?.trim() || !projectForm.name?.trim()) {
-      alert('請填寫工程代碼與名稱');
+      showToast('請填寫工程代碼與名稱', 'error');
       return;
     }
+    setProjectSaving(true);
     try {
       const body = {
         code: projectForm.code.trim(),
@@ -192,15 +200,17 @@ export default function EngineeringPage() {
       };
       if (editingProject) {
         await fetch(`/api/engineering/projects/${editingProject.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        alert('已更新');
+        showToast('已更新', 'success');
       } else {
         await fetch('/api/engineering/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        alert('已新增');
+        showToast('已新增', 'success');
       }
       setShowProjectModal(false);
       fetchProjects();
     } catch (e) {
-      alert(e.message || '儲存失敗');
+      showToast(e.message || '儲存失敗', 'error');
+    } finally {
+      setProjectSaving(false);
     }
   }
 
@@ -210,7 +220,7 @@ export default function EngineeringPage() {
       await fetch(`/api/engineering/projects/${p.id}`, { method: 'DELETE' });
       fetchProjects();
       if (filterProjectId === String(p.id)) setFilterProjectId('');
-    } catch (e) { alert('刪除失敗'); }
+    } catch (e) { showToast('刪除失敗', 'error'); }
   }
 
   function openAddContract() {
@@ -288,17 +298,18 @@ export default function EngineeringPage() {
 
   async function saveContract() {
     if (!contractForm.projectId || !contractForm.supplierId || !contractForm.contractNo?.trim()) {
-      alert('請填寫工程案、廠商、合約編號');
+      showToast('請填寫工程案、廠商、合約編號', 'error');
       return;
     }
     if (!contractForm.content?.trim()) {
-      alert('請填寫合約內容後再存檔');
+      showToast('請填寫合約內容後再存檔', 'error');
       return;
     }
     if (!contractForm.note?.trim()) {
-      alert('請填寫備註後再存檔');
+      showToast('請填寫備註後再存檔', 'error');
       return;
     }
+    setContractSaving(true);
     try {
       const body = {
         projectId: parseInt(contractForm.projectId),
@@ -322,16 +333,18 @@ export default function EngineeringPage() {
       };
       if (editingContract) {
         await fetch(`/api/engineering/contracts/${editingContract.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractNo: body.contractNo, totalAmount: body.totalAmount, signDate: body.signDate, content: body.content, note: body.note, materials: body.materials }) });
-        alert('合約已更新（期數請於列表內編輯）');
+        showToast('合約已更新（期數請於列表內編輯）', 'success');
       } else {
         await fetch('/api/engineering/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        alert('已新增合約');
+        showToast('已新增合約', 'success');
       }
       setShowContractModal(false);
       fetchContracts(filterProjectId || undefined);
       if (activeTab === 'materials' || !editingContract) fetchMaterials(filterProjectId || undefined);
     } catch (e) {
-      alert(e.message || '儲存失敗');
+      showToast(e.message || '儲存失敗', 'error');
+    } finally {
+      setContractSaving(false);
     }
   }
 
@@ -340,7 +353,7 @@ export default function EngineeringPage() {
     try {
       await fetch(`/api/engineering/contracts/${c.id}`, { method: 'DELETE' });
       fetchContracts(filterProjectId || undefined);
-    } catch (e) { alert('刪除失敗'); }
+    } catch (e) { showToast('刪除失敗', 'error'); }
   }
 
   function openMarkTermPaid(term, contract) {
@@ -359,6 +372,7 @@ export default function EngineeringPage() {
 
   async function saveTerm() {
     if (!editingTerm) return;
+    setTermSaving(true);
     try {
       await fetch(`/api/engineering/contract-terms/${editingTerm.id}`, {
         method: 'PUT',
@@ -374,7 +388,8 @@ export default function EngineeringPage() {
       });
       setShowTermModal(false);
       fetchContracts(filterProjectId || undefined);
-    } catch (e) { alert('更新失敗'); }
+    } catch (e) { showToast('更新失敗', 'error'); }
+    finally { setTermSaving(false); }
   }
 
   function openAddMaterial() {
@@ -409,9 +424,10 @@ export default function EngineeringPage() {
 
   async function saveMaterial() {
     if (!materialForm.projectId || !materialForm.quantity || parseFloat(materialForm.quantity) <= 0) {
-      alert('請選擇工程案並填寫數量');
+      showToast('請選擇工程案並填寫數量', 'error');
       return;
     }
+    setMaterialSaving(true);
     try {
       const body = {
         projectId: parseInt(materialForm.projectId),
@@ -425,14 +441,15 @@ export default function EngineeringPage() {
       };
       if (editingMaterial) {
         await fetch(`/api/engineering/materials/${editingMaterial.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        alert('已更新');
+        showToast('已更新', 'success');
       } else {
         await fetch('/api/engineering/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        alert('已新增');
+        showToast('已新增', 'success');
       }
       setShowMaterialModal(false);
       fetchMaterials(filterProjectId || undefined);
-    } catch (e) { alert('儲存失敗'); }
+    } catch (e) { showToast('儲存失敗', 'error'); }
+    finally { setMaterialSaving(false); }
   }
 
   async function deleteMaterial(m) {
@@ -440,7 +457,7 @@ export default function EngineeringPage() {
     try {
       await fetch(`/api/engineering/materials/${m.id}`, { method: 'DELETE' });
       fetchMaterials(filterProjectId || undefined);
-    } catch (e) { alert('刪除失敗'); }
+    } catch (e) { showToast('刪除失敗', 'error'); }
   }
 
   return (
@@ -800,8 +817,8 @@ export default function EngineeringPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowProjectModal(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
-              <button onClick={saveProject} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">儲存</button>
+              <button onClick={() => setShowProjectModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={projectSaving}>取消</button>
+              <button onClick={saveProject} disabled={projectSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{projectSaving ? '儲存中…' : '儲存'}</button>
             </div>
           </div>
         </div>
@@ -898,8 +915,8 @@ export default function EngineeringPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowContractModal(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
-              <button onClick={saveContract} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">儲存</button>
+              <button onClick={() => setShowContractModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={contractSaving}>取消</button>
+              <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{contractSaving ? '儲存中…' : '儲存'}</button>
             </div>
           </div>
         </div>
@@ -943,8 +960,8 @@ export default function EngineeringPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowTermModal(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
-              <button onClick={saveTerm} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">儲存</button>
+              <button onClick={() => setShowTermModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={termSaving}>取消</button>
+              <button onClick={saveTerm} disabled={termSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{termSaving ? '儲存中…' : '儲存'}</button>
             </div>
           </div>
         </div>
@@ -1028,9 +1045,10 @@ export default function EngineeringPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
+              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={paymentSaving}>取消</button>
               <button onClick={async () => {
-                if (!paymentForm.netAmount || parseFloat(paymentForm.netAmount) <= 0) { alert('請填寫應付金額'); return; }
+                if (!paymentForm.netAmount || parseFloat(paymentForm.netAmount) <= 0) { showToast('請填寫應付金額', 'error'); return; }
+                setPaymentSaving(true);
                 try {
                   const res = await fetch('/api/payment-orders', {
                     method: 'POST',
@@ -1066,11 +1084,13 @@ export default function EngineeringPage() {
                   fetchPaymentOrders();
                   if (activeTab === 'contracts' || activeTab === 'projectMgmt') fetchContracts(filterProjectId || undefined);
                   if (activeTab === 'projectMgmt') fetchContracts();
-                  alert('付款單已建立，請至出納執行付款');
+                  showToast('付款單已建立，請至出納執行付款', 'success');
                 } catch (e) {
-                  alert(e.message || '建立失敗');
+                  showToast(e.message || '建立失敗', 'error');
+                } finally {
+                  setPaymentSaving(false);
                 }
-              }} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">儲存並送交出納</button>
+              }} disabled={paymentSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{paymentSaving ? '建立中…' : '儲存並送交出納'}</button>
             </div>
           </div>
         </div>
@@ -1124,8 +1144,8 @@ export default function EngineeringPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowMaterialModal(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
-              <button onClick={saveMaterial} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm">儲存</button>
+              <button onClick={() => setShowMaterialModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={materialSaving}>取消</button>
+              <button onClick={saveMaterial} disabled={materialSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{materialSaving ? '儲存中…' : '儲存'}</button>
             </div>
           </div>
         </div>

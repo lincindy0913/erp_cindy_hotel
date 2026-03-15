@@ -6,9 +6,11 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 export default function PurchasingPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState(null);
@@ -87,6 +89,8 @@ export default function PurchasingPage() {
     note: ''
   });
   const [submittingExpense, setSubmittingExpense] = useState(false);
+  const [purchaseSaving, setPurchaseSaving] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState([]);
   const [warehouseList, setWarehouseList] = useState([]);
   // Template CRUD state
@@ -256,10 +260,11 @@ export default function PurchasingPage() {
   }
 
   async function handleSaveExpTemplate() {
-    if (!expTemplateForm.name.trim()) { alert('請輸入範本名稱'); return; }
-    if (!expTemplateForm.defaultSupplierId) { alert('請選擇廠商'); return; }
+    setTemplateSaving(true);
+    if (!expTemplateForm.name.trim()) { showToast('請輸入範本名稱', 'error'); setTemplateSaving(false); return; }
+    if (!expTemplateForm.defaultSupplierId) { showToast('請選擇廠商', 'error'); setTemplateSaving(false); return; }
     const validItems = expTemplateForm.purchaseItems.filter(item => item.productId);
-    if (validItems.length === 0) { alert('請至少新增一筆進貨品項'); return; }
+    if (validItems.length === 0) { showToast('請至少新增一筆進貨品項', 'error'); setTemplateSaving(false); return; }
 
     const body = {
       name: expTemplateForm.name.trim(),
@@ -290,15 +295,17 @@ export default function PurchasingPage() {
         body: JSON.stringify(body)
       });
       if (res.ok) {
-        alert(editingExpTemplate ? '範本更新成功' : '範本新增成功');
+        showToast(editingExpTemplate ? '範本更新成功' : '範本新增成功', 'success');
         resetExpTemplateForm();
         fetchExpenseTemplates();
       } else {
         const err = await res.json();
-        alert(err.error || '儲存失敗');
+        showToast(err.error || '儲存失敗', 'error');
       }
     } catch (err) {
-      alert('儲存失敗: ' + err.message);
+      showToast('儲存失敗: ' + err.message, 'error');
+    } finally {
+      setTemplateSaving(false);
     }
   }
 
@@ -306,9 +313,9 @@ export default function PurchasingPage() {
     if (!confirm('確定要刪除此範本嗎？')) return;
     try {
       const res = await fetch(`/api/expense-templates/${id}`, { method: 'DELETE' });
-      if (res.ok) { alert('範本已刪除'); fetchExpenseTemplates(); }
-      else { const err = await res.json(); alert(err.error || '刪除失敗'); }
-    } catch (err) { alert('刪除失敗: ' + err.message); }
+      if (res.ok) { showToast('範本已刪除', 'success'); fetchExpenseTemplates(); }
+      else { const err = await res.json(); showToast(err.error || '刪除失敗', 'error'); }
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
   }
 
   async function handleToggleExpTemplateActive(tmpl) {
@@ -319,7 +326,7 @@ export default function PurchasingPage() {
         body: JSON.stringify({ ...tmpl, isActive: !tmpl.isActive, purchaseItems: tmpl.purchaseItems || [] })
       });
       if (res.ok) fetchExpenseTemplates();
-    } catch (err) { alert('更新失敗'); }
+    } catch (err) { showToast('更新失敗', 'error'); }
   }
 
   function updateExecuteExpenseItem(idx, field, value) {
@@ -344,31 +351,31 @@ export default function PurchasingPage() {
 
   async function handleExecutePurchaseExpense() {
     if (!selectedExpenseTemplateId) {
-      alert('請選擇範本');
+      showToast('請選擇範本', 'error');
       return;
     }
     if (!executeExpenseForm.warehouse) {
-      alert('請選擇館別');
+      showToast('請選擇館別', 'error');
       return;
     }
     if (!executeExpenseForm.expenseMonth) {
-      alert('請選擇費用月份');
+      showToast('請選擇費用月份', 'error');
       return;
     }
     const validItems = executeExpenseForm.items.filter(item => item.productId);
     if (validItems.length === 0) {
-      alert('請至少新增一筆進貨品項');
+      showToast('請至少新增一筆進貨品項', 'error');
       return;
     }
     const productById = (id) => products.find(p => p.id === parseInt(id, 10));
     for (const item of validItems) {
       if (productById(item.productId)?.isInStock && item.putInInventory && !(item.inventoryWarehouse || '').trim()) {
-        alert('勾選「入庫」的品項請選擇庫存地點');
+        showToast('勾選「入庫」的品項請選擇庫存地點', 'error');
         return;
       }
     }
     if (!executeExpenseForm.supplierId) {
-      alert('請選擇廠商');
+      showToast('請選擇廠商', 'error');
       return;
     }
     // If invoice info provided, validate invoice amount = purchase + tax - discount
@@ -378,10 +385,10 @@ export default function PurchasingPage() {
       const invAmt = parseFloat(executeExpenseForm.invoiceAmount) || 0;
       const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
       const discountAmt = parseFloat(executeExpenseForm.supplierDiscount) || 0;
-      if (invAmt <= 0) { alert('請輸入發票金額'); return; }
+      if (invAmt <= 0) { showToast('請輸入發票金額', 'error'); return; }
       const expected = purchaseTotal + taxAmt - discountAmt;
       if (Math.abs(invAmt - expected) > 0.01) {
-        alert(`發票金額不符！\n發票金額: ${invAmt.toLocaleString()}\n應為: 進貨金額 ${purchaseTotal.toLocaleString()} + 營業稅 ${taxAmt.toLocaleString()} - 廠商折讓 ${discountAmt.toLocaleString()} = ${expected.toLocaleString()}`);
+        showToast(`發票金額不符！\n發票金額: ${invAmt.toLocaleString()}\n應為: 進貨金額 ${purchaseTotal.toLocaleString()} + 營業稅 ${taxAmt.toLocaleString()} - 廠商折讓 ${discountAmt.toLocaleString()} = ${expected.toLocaleString()}`, 'error');
         return;
       }
     }
@@ -432,11 +439,11 @@ export default function PurchasingPage() {
       } catch (_) {
         const text = await res.text();
         setSubmittingExpense(false);
-        alert(`執行失敗 (${res.status})：回應無法解析。請確認已登入並重試。`);
+        showToast(`執行失敗 (${res.status})：回應無法解析。請確認已登入並重試。`, 'error');
         return;
       }
       if (res.ok) {
-        alert(data.message || '已建立進銷存每月費用記錄');
+        showToast(data.message || '已建立進銷存每月費用記錄', 'success');
         setSelectedExpenseTemplateId('');
         setExecuteExpenseForm({
           warehouse: '',
@@ -468,7 +475,7 @@ export default function PurchasingPage() {
           });
           const data2 = await res2.json().catch(() => ({}));
           if (res2.ok) {
-            alert(data2.message || '已建立');
+            showToast(data2.message || '已建立', 'success');
             setSelectedExpenseTemplateId('');
             setExecuteExpenseForm({
               warehouse: '',
@@ -491,15 +498,15 @@ export default function PurchasingPage() {
             fetchExpenseRecords();
           } else {
             const msg = data2?.error?.message ?? (typeof data2?.error === 'string' ? data2.error : null) ?? '執行失敗';
-            alert(msg);
+            showToast(msg, 'error');
           }
         }
       } else {
         const msg = data?.error?.message ?? (typeof data?.error === 'string' ? data.error : null) ?? '執行失敗';
-        alert(msg);
+        showToast(msg, 'error');
       }
     } catch (err) {
-      alert('執行失敗: ' + (err?.message || String(err)));
+      showToast('執行失敗: ' + (err?.message || String(err)), 'error');
     }
     setSubmittingExpense(false);
   }
@@ -575,10 +582,10 @@ export default function PurchasingPage() {
         setNewWarehouseName('');
       } else {
         const error = await response.json();
-        alert(error.error || '新增失敗');
+        showToast(error.error || '新增失敗', 'error');
       }
     } catch (error) {
-      alert('新增館別失敗');
+      showToast('新增館別失敗', 'error');
     }
   }
 
@@ -598,7 +605,7 @@ export default function PurchasingPage() {
         }
       }
     } catch (error) {
-      alert('刪除館別失敗');
+      showToast('刪除館別失敗', 'error');
     }
   }
 
@@ -616,10 +623,10 @@ export default function PurchasingPage() {
         setNewDeptName('');
       } else {
         const error = await response.json();
-        alert(error.error || '新增失敗');
+        showToast(error.error || '新增失敗', 'error');
       }
     } catch (error) {
-      alert('新增部門失敗');
+      showToast('新增部門失敗', 'error');
     }
   }
 
@@ -639,7 +646,7 @@ export default function PurchasingPage() {
         }
       }
     } catch (error) {
-      alert('刪除部門失敗');
+      showToast('刪除部門失敗', 'error');
     }
   }
 
@@ -801,7 +808,7 @@ export default function PurchasingPage() {
       });
 
       if (response.ok) {
-        alert('進貨單刪除成功！');
+        showToast('進貨單刪除成功！', 'success');
         // 從所有資料中移除
         const updatedList = allPurchases.filter(p => p.id !== purchaseId);
         setAllPurchases(updatedList);
@@ -813,11 +820,11 @@ export default function PurchasingPage() {
         }
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || '未知錯誤'));
+        showToast('刪除失敗：' + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('刪除進貨單失敗:', error);
-      alert('刪除進貨單失敗，請稍後再試');
+      showToast('刪除進貨單失敗，請稍後再試', 'error');
     }
   }
 
@@ -871,13 +878,13 @@ export default function PurchasingPage() {
 
   function addItem() {
     if (!newItem.productId || !newItem.quantity || !newItem.unitPrice) {
-      alert('請填寫完整的商品資訊');
+      showToast('請填寫完整的商品資訊', 'error');
       return;
     }
 
     const product = products.find(p => p.id === parseInt(newItem.productId));
     if (!product) {
-      alert('找不到選定的產品');
+      showToast('找不到選定的產品', 'error');
       return;
     }
 
@@ -922,19 +929,20 @@ export default function PurchasingPage() {
     e.preventDefault();
 
     if (items.length === 0) {
-      alert('請至少新增一項商品');
+      showToast('請至少新增一項商品', 'error');
       return;
     }
 
+    setPurchaseSaving(true);
     try {
       const totals = calculateTotal();
       // 驗證必填欄位
       if (!formData.warehouse) {
-        alert('請選擇館別');
+        showToast('請選擇館別', 'error');
         return;
       }
       if (!formData.department) {
-        alert('請選擇部門');
+        showToast('請選擇部門', 'error');
         return;
       }
 
@@ -964,7 +972,7 @@ export default function PurchasingPage() {
       });
 
       if (response.ok) {
-        alert(`進貨單${isEditing ? '更新' : '新增'}成功！`);
+        showToast(`進貨單${isEditing ? '更新' : '新增'}成功！`, 'success');
         setShowAddForm(false);
         setEditingPurchase(null);
         setItems([]);
@@ -985,11 +993,11 @@ export default function PurchasingPage() {
         }, 100);
       } else {
         const error = await response.json();
-        alert(`${isEditing ? '更新' : '新增'}失敗：` + (error.error || '未知錯誤'));
+        showToast(`${isEditing ? '更新' : '新增'}失敗：` + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error(`${editingPurchase ? '更新' : '新增'}進貨單失敗:`, error);
-      alert(`${editingPurchase ? '更新' : '新增'}進貨單失敗，請稍後再試`);
+      showToast(`${editingPurchase ? '更新' : '新增'}進貨單失敗，請稍後再試`, 'error');
     }
   }
 
@@ -1561,9 +1569,10 @@ export default function PurchasingPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  disabled={purchaseSaving}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  儲存
+                  {purchaseSaving ? '儲存中…' : '儲存'}
                 </button>
               </div>
             </form>
@@ -2052,8 +2061,9 @@ export default function PurchasingPage() {
                       <button type="button" onClick={resetExpTemplateForm}
                         className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100">取消</button>
                       <button type="button" onClick={handleSaveExpTemplate}
-                        className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 font-medium">
-                        {editingExpTemplate ? '更新範本' : '儲存範本'}
+                        disabled={templateSaving}
+                        className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 font-medium disabled:opacity-50">
+                        {templateSaving ? '儲存中…' : (editingExpTemplate ? '更新範本' : '儲存範本')}
                       </button>
                     </div>
                   </div>

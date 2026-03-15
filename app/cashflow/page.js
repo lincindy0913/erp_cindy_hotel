@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 const TX_TYPES = ['收入', '支出', '移轉'];
@@ -20,6 +21,7 @@ const TABS = [
 
 export default function CashFlowPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -177,7 +179,7 @@ export default function CashFlowPage() {
   async function handleCreateAccount(e) {
     e.preventDefault();
     if (!accountForm.name || !accountForm.warehouse) {
-      alert('請填寫帳戶名稱和館別');
+      showToast('請填寫帳戶名稱和館別', 'error');
       return;
     }
     try {
@@ -192,9 +194,9 @@ export default function CashFlowPage() {
         fetchAccounts();
       } else {
         const err = await res.json();
-        alert(err.error || '建立失敗');
+        showToast(err.error || '建立失敗', 'error');
       }
-    } catch { alert('建立帳戶失敗'); }
+    } catch { showToast('建立帳戶失敗', 'error'); }
   }
 
   async function handleDeleteAccount(id) {
@@ -205,16 +207,16 @@ export default function CashFlowPage() {
         fetchAccounts();
       } else {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
       }
-    } catch { alert('刪除帳戶失敗'); }
+    } catch { showToast('刪除帳戶失敗', 'error'); }
   }
 
   // ==================== Category CRUD ====================
   async function handleCreateCategory(e) {
     e.preventDefault();
     if (!categoryForm.name) {
-      alert('請填寫類別名稱');
+      showToast('請填寫類別名稱', 'error');
       return;
     }
     try {
@@ -229,9 +231,9 @@ export default function CashFlowPage() {
         fetchCategories();
       } else {
         const err = await res.json();
-        alert(err.error || '建立失敗');
+        showToast(err.error || '建立失敗', 'error');
       }
-    } catch { alert('建立類別失敗'); }
+    } catch { showToast('建立類別失敗', 'error'); }
   }
 
   async function handleDeleteCategory(id) {
@@ -242,20 +244,20 @@ export default function CashFlowPage() {
         fetchCategories();
       } else {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
       }
-    } catch { alert('刪除類別失敗'); }
+    } catch { showToast('刪除類別失敗', 'error'); }
   }
 
   // ==================== Transaction CRUD ====================
   async function handleCreateTransaction(e) {
     e.preventDefault();
     if (!txForm.accountId || !txForm.amount || !txForm.transactionDate) {
-      alert('請填寫帳戶、金額和日期');
+      showToast('請填寫帳戶、金額和日期', 'error');
       return;
     }
     if (txForm.type === '移轉' && !txForm.transferAccountId) {
-      alert('移轉交易必須指定目的帳戶');
+      showToast('移轉交易必須指定目的帳戶', 'error');
       return;
     }
     try {
@@ -286,9 +288,9 @@ export default function CashFlowPage() {
         fetchAccounts();
       } else {
         const err = await res.json();
-        alert(err.error || '建立失敗');
+        showToast(err.error || '建立失敗', 'error');
       }
-    } catch { alert('建立交易失敗'); }
+    } catch { showToast('建立交易失敗', 'error'); }
   }
 
   async function handleDeleteTransaction(id) {
@@ -300,9 +302,9 @@ export default function CashFlowPage() {
         fetchAccounts();
       } else {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
       }
-    } catch { alert('刪除交易失敗'); }
+    } catch { showToast('刪除交易失敗', 'error'); }
   }
 
   // ==================== Helpers ====================
@@ -1576,7 +1578,7 @@ function CashCountTab({ accounts, warehouses }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!selectedAccount) return alert('請選擇帳戶');
+    if (!selectedAccount) return showToast('請選擇帳戶', 'error');
     setSaving(true);
     try {
       const res = await fetch('/api/cash-count', {
@@ -1600,10 +1602,10 @@ function CashCountTab({ accounts, warehouses }) {
         fetchCashCounts();
       } else {
         const err = await res.json();
-        alert(err.error?.message || '建立失敗');
+        showToast(err.error?.message || '建立失敗', 'error');
       }
     } catch (err) {
-      alert('系統錯誤');
+      showToast('系統錯誤', 'error');
     }
     setSaving(false);
   }

@@ -56,5 +56,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Sync schema, seed, then start Next.js
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss 2>/dev/null || true; node node_modules/prisma/build/index.js generate 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; exec node server.js"]
+# Sync schema (no --accept-data-loss: keeps all data), generate client, optional seed, then start
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js generate 2>/dev/null || true; node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; exec node server.js"]

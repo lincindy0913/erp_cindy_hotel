@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { ROLE_CODES, ROLE_LABELS, ROLE_COLORS, PERMISSIONS, ROLE_DEFAULTS, hasRoleConflict } from '@/lib/permissions';
+import { useToast } from '@/context/ToastContext';
 
 // 權限分類（用於顯示）
 const PERMISSION_GROUPS = [
@@ -36,11 +37,13 @@ const WAREHOUSE_OPTIONS = [
 ];
 
 export default function UserManagementPage() {
+  const { showToast } = useToast();
   const { data: session, status } = useSession();
   const router = useRouter();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userSaving, setUserSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formData, setFormData] = useState({
@@ -139,6 +142,7 @@ export default function UserManagementPage() {
       warehouseRestriction: formData.warehouseRestriction || null,
     };
 
+    setUserSaving(true);
     try {
       const response = await fetch(url, {
         method,
@@ -147,17 +151,19 @@ export default function UserManagementPage() {
       });
 
       if (response.ok) {
-        alert(editingUser ? '使用者更新成功' : '使用者新增成功');
+        showToast(editingUser ? '使用者更新成功' : '使用者新增成功', 'success');
         setShowForm(false);
         setEditingUser(null);
         resetForm();
         fetchUsers();
       } else {
         const error = await response.json();
-        alert('操作失敗：' + (error.error?.message || error.error));
+        showToast('操作失敗：' + (error.error?.message || error.error), 'error');
       }
     } catch (error) {
-      alert('操作失敗：' + error.message);
+      showToast('操作失敗：' + error.message, 'error');
+    } finally {
+      setUserSaving(false);
     }
   }
 
@@ -167,14 +173,14 @@ export default function UserManagementPage() {
     try {
       const response = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
       if (response.ok) {
-        alert('使用者已停用');
+        showToast('使用者已停用', 'success');
         fetchUsers();
       } else {
         const error = await response.json();
-        alert('操作失敗：' + (error.error?.message || error.error));
+        showToast('操作失敗：' + (error.error?.message || error.error), 'error');
       }
     } catch (error) {
-      alert('操作失敗：' + error.message);
+      showToast('操作失敗：' + error.message, 'error');
     }
   }
 
@@ -399,9 +405,10 @@ export default function UserManagementPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  disabled={userSaving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                 >
-                  {editingUser ? '更新' : '新增'}
+                  {userSaving ? '儲存中…' : (editingUser ? '更新' : '新增')}
                 </button>
               </div>
             </form>

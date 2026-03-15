@@ -40,7 +40,7 @@ export async function POST(request) {
     const { openingDate, note } = body;
 
     if (!openingDate) {
-      return NextResponse.json({ error: { message: '開帳基準日為必填' } }, { status: 400 });
+      return NextResponse.json({ error: '開帳基準日為必填', code: 'REQUIRED_FIELD_MISSING' }, { status: 400 });
     }
 
     // Generate session number

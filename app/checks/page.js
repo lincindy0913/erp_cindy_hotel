@@ -5,6 +5,7 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 const TABS = [
   { key: 'pending', label: '待兌現' },
@@ -82,6 +83,7 @@ function Modal({ isOpen, onClose, title, children, width = 'max-w-lg' }) {
 
 // ============== Main Page ==============
 export default function ChecksPage() {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('pending');
   const [checks, setChecks] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -231,14 +233,14 @@ export default function ChecksPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '新增失敗');
+        showToast(err.error || '新增失敗', 'error');
         return;
       }
       setShowAddModal(false);
       resetAddForm();
       fetchChecks(activeTab === 'payable' ? { checkType: 'payable' } : activeTab === 'receivable' ? { checkType: 'receivable' } : {});
       fetchSummary();
-    } catch (e) { alert('新增失敗: ' + e.message); }
+    } catch (e) { showToast('新增失敗: ' + e.message, 'error'); }
   };
 
   const handleClear = async () => {
@@ -256,7 +258,7 @@ export default function ChecksPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || err.message || '兌現失敗');
+        showToast(err.error || err.message || '兌現失敗', 'error');
         return;
       }
       setShowClearModal(false);
@@ -264,7 +266,7 @@ export default function ChecksPage() {
       setClearForm({ clearDate: '', actualAmount: '', clearedBy: '' });
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
-    } catch (e) { alert('兌現失敗: ' + e.message); }
+    } catch (e) { showToast('兌現失敗: ' + e.message, 'error'); }
   };
 
   const handleBounce = async () => {
@@ -277,7 +279,7 @@ export default function ChecksPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '退票失敗');
+        showToast(err.error || '退票失敗', 'error');
         return;
       }
       setShowBounceModal(false);
@@ -285,13 +287,13 @@ export default function ChecksPage() {
       setActionReason('');
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
-    } catch (e) { alert('退票失敗: ' + e.message); }
+    } catch (e) { showToast('退票失敗: ' + e.message, 'error'); }
   }
 
   const handleReissue = async (bouncedCheck) => {
     if (!bouncedCheck || bouncedCheck.status !== 'bounced' || bouncedCheck.checkType !== 'payable') return;
     if ((bouncedCheck.reissuedByChecks || []).length > 0) {
-      alert('此退票已重新開票過，請至「應付支票」或「出納」查看新支票。');
+      showToast('此退票已重新開票過，請至「應付支票」或「出納」查看新支票。', 'info');
       return;
     }
     setReissueLoading(bouncedCheck.id);
@@ -304,14 +306,14 @@ export default function ChecksPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || '重新開票失敗');
       fetchChecks();
-      alert(`${data.message}\n付款單號：${data.orderNo}\n請至「出納」執行付款，執行後新支票將顯示於本頁並可標記為已兌現。`);
+      showToast(`${data.message}\n付款單號：${data.orderNo}\n請至「出納」執行付款，執行後新支票將顯示於本頁並可標記為已兌現。`, 'success');
       window.open('/cashier', '_blank');
     } catch (e) {
-      alert(e.message || '重新開票失敗');
+      showToast(e.message || '重新開票失敗', 'error');
     } finally {
       setReissueLoading(null);
     }
-  };;
+  };
 
   const handleVoid = async () => {
     if (!selectedCheck) return;
@@ -323,7 +325,7 @@ export default function ChecksPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '作廢失敗');
+        showToast(err.error || '作廢失敗', 'error');
         return;
       }
       setShowVoidModal(false);
@@ -331,7 +333,7 @@ export default function ChecksPage() {
       setActionReason('');
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
-    } catch (e) { alert('作廢失敗: ' + e.message); }
+    } catch (e) { showToast('作廢失敗: ' + e.message, 'error'); }
   };
 
   const handleUpdate = async () => {
@@ -344,14 +346,14 @@ export default function ChecksPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || err.message || '更新失敗');
+        showToast(err.error || err.message || '更新失敗', 'error');
         return;
       }
       setShowEditModal(false);
       setSelectedCheck(null);
       resetAddForm();
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
-    } catch (e) { alert('更新失敗: ' + e.message); }
+    } catch (e) { showToast('更新失敗: ' + e.message, 'error'); }
   };
 
   const handleDelete = async (check) => {
@@ -360,23 +362,23 @@ export default function ChecksPage() {
       const res = await fetch(`/api/checks/${check.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
         return;
       }
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
-    } catch (e) { alert('刪除失敗: ' + e.message); }
+    } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
   };
 
   const openBatchClearModal = () => {
-    if (selectedIds.length === 0) { alert('請選擇要兌現的支票'); return; }
+    if (selectedIds.length === 0) { showToast('請選擇要兌現的支票', 'error'); return; }
     setBatchClearDate(new Date().toISOString().split('T')[0]);
     setShowBatchClearModal(true);
   };
 
   const handleBatchClear = async () => {
     if (!batchClearDate || !batchClearDate.trim()) {
-      alert('請填寫兌現日');
+      showToast('請填寫兌現日', 'error');
       return;
     }
     try {
@@ -389,12 +391,12 @@ export default function ChecksPage() {
         })
       });
       const result = await res.json();
-      alert(result.message || '批次兌現完成');
+      showToast(result.message || '批次兌現完成', 'success');
       setShowBatchClearModal(false);
       setSelectedIds([]);
       fetchChecks({});
       fetchSummary();
-    } catch (e) { alert('批次兌現失敗: ' + e.message); }
+    } catch (e) { showToast('批次兌現失敗: ' + e.message, 'error'); }
   };
 
   const openEdit = (check) => {

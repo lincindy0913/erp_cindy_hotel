@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
+import { useToast } from '@/context/ToastContext';
 
 // 進銷存每月費用已移至 /purchasing 小分頁
 const MAIN_TABS = [
@@ -42,6 +43,7 @@ const EMPTY_PURCHASE_ITEM = {
 
 export default function ExpensesPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [mainTab, setMainTab] = useState('fixed');
   const [subTab, setSubTab] = useState('templates');
@@ -388,30 +390,30 @@ export default function ExpensesPage() {
 
   async function handleSaveTemplate() {
     if (!templateForm.name.trim()) {
-      alert('請輸入範本名稱');
+      showToast('請輸入範本名稱', 'error');
       return;
     }
 
     if (mainTab === 'fixed') {
       if (!templateForm.entryLines.length) {
-        alert('請至少新增一筆費用項目');
+        showToast('請至少新增一筆費用項目', 'error');
         return;
       }
       for (const line of templateForm.entryLines) {
         if (!line.accountingName?.trim()) {
-          alert('每筆費用項目必須填寫名稱');
+          showToast('每筆費用項目必須填寫名稱', 'error');
           return;
         }
         if (!line.warehouse?.trim()) {
-          alert('每筆費用項目必須選擇館別');
+          showToast('每筆費用項目必須選擇館別', 'error');
           return;
         }
         if (!line.paymentMethod?.trim()) {
-          alert('每筆費用項目必須選擇付款方式');
+          showToast('每筆費用項目必須選擇付款方式', 'error');
           return;
         }
         if ((line.paymentMethod === '轉帳' || line.paymentMethod === '匯款') && !line.accountId) {
-          alert(`費用「${line.accountingName}」：轉帳/匯款時必須選擇轉帳存簿`);
+          showToast(`費用「${line.accountingName}」：轉帳/匯款時必須選擇轉帳存簿`, 'error');
           return;
         }
       }
@@ -419,12 +421,12 @@ export default function ExpensesPage() {
 
     if (mainTab === 'purchase') {
       if (!templateForm.defaultSupplierId) {
-        alert('請選擇預設廠商');
+        showToast('請選擇預設廠商', 'error');
         return;
       }
       const validItems = templateForm.purchaseItems.filter(item => item.productId);
       if (validItems.length === 0) {
-        alert('請至少新增一筆進貨品項');
+        showToast('請至少新增一筆進貨品項', 'error');
         return;
       }
     }
@@ -481,15 +483,15 @@ export default function ExpensesPage() {
         body: JSON.stringify(body)
       });
       if (res.ok) {
-        alert(editingTemplate ? '範本更新成功' : '範本新增成功');
+        showToast(editingTemplate ? '範本更新成功' : '範本新增成功', 'success');
         resetTemplateForm();
         fetchTemplates();
       } else {
         const err = await res.json();
-        alert(err.error || '儲存失敗');
+        showToast(err.error || '儲存失敗', 'error');
       }
     } catch (err) {
-      alert('儲存範本失敗: ' + err.message);
+      showToast('儲存範本失敗: ' + err.message, 'error');
     }
   }
 
@@ -498,14 +500,14 @@ export default function ExpensesPage() {
     try {
       const res = await fetch(`/api/expense-templates/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        alert('範本已刪除');
+        showToast('範本已刪除', 'success');
         fetchTemplates();
       } else {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
       }
     } catch (err) {
-      alert('刪除失敗: ' + err.message);
+      showToast('刪除失敗: ' + err.message, 'error');
     }
   }
 
@@ -524,7 +526,7 @@ export default function ExpensesPage() {
       });
       if (res.ok) fetchTemplates();
     } catch (err) {
-      alert('更新失敗');
+      showToast('更新失敗', 'error');
     }
   }
 
@@ -541,16 +543,16 @@ export default function ExpensesPage() {
         fetchRecords();
       } else {
         const err = await res.json();
-        alert(err.error || '確認失敗');
+        showToast(err.error || '確認失敗', 'error');
       }
     } catch (err) {
-      alert('確認失敗');
+      showToast('確認失敗', 'error');
     }
   }
 
   async function handleVoidRecord(id) {
     if (!voidReason.trim()) {
-      alert('請輸入作廢原因');
+      showToast('請輸入作廢原因', 'error');
       return;
     }
     try {
@@ -569,10 +571,10 @@ export default function ExpensesPage() {
         fetchRecords();
       } else {
         const err = await res.json();
-        alert(err.error || '作廢失敗');
+        showToast(err.error || '作廢失敗', 'error');
       }
     } catch (err) {
-      alert('作廢失敗');
+      showToast('作廢失敗', 'error');
     }
   }
 
@@ -583,10 +585,10 @@ export default function ExpensesPage() {
       if (res.ok) fetchRecords();
       else {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
       }
     } catch (err) {
-      alert('刪除失敗');
+      showToast('刪除失敗', 'error');
     }
   }
 
@@ -615,7 +617,7 @@ export default function ExpensesPage() {
       sortOrder: i
     }));
     const debitTotal = debitLines.reduce((s, l) => s + l.amount, 0);
-    if (debitTotal <= 0) { alert('金額必須大於 0'); return; }
+    if (debitTotal <= 0) { showToast('金額必須大於 0', 'error'); return; }
     // Auto-add credit line to balance
     const creditLines = [{
       entryType: 'credit',
@@ -641,10 +643,10 @@ export default function ExpensesPage() {
         fetchRecords();
       } else {
         const err = await res.json();
-        alert(err.error || '儲存失敗');
+        showToast(err.error || '儲存失敗', 'error');
       }
     } catch (err) {
-      alert('儲存失敗');
+      showToast('儲存失敗', 'error');
     }
   }
 
@@ -768,15 +770,15 @@ export default function ExpensesPage() {
 
   async function handleExecute(allowDuplicate = false) {
     if (!selectedTemplateId) {
-      alert('請選擇範本');
+      showToast('請選擇範本', 'error');
       return;
     }
     if (mainTab === 'purchase' && !executeForm.warehouse) {
-      alert('請選擇館別');
+      showToast('請選擇館別', 'error');
       return;
     }
     if (!executeForm.expenseMonth) {
-      alert('請選擇費用月份');
+      showToast('請選擇費用月份', 'error');
       return;
     }
 
@@ -788,12 +790,12 @@ export default function ExpensesPage() {
         // Execute purchase type
         const validItems = executeForm.items.filter(item => item.productId);
         if (validItems.length === 0) {
-          alert('請至少新增一筆進貨品項');
+          showToast('請至少新增一筆進貨品項', 'error');
           setSubmitting(false);
           return;
         }
         if (!executeForm.supplierId) {
-          alert('請選擇廠商');
+          showToast('請選擇廠商', 'error');
           setSubmitting(false);
           return;
         }
@@ -832,7 +834,7 @@ export default function ExpensesPage() {
           let msg = `執行成功！\n進貨單號: ${result.linkedPurchaseNo}`;
           if (result.linkedSalesNo) msg += `\n發票單號: ${result.linkedSalesNo}`;
           msg += `\n費用記錄: ${result.recordNo}`;
-          alert(msg);
+          showToast(msg, 'error');
           setSelectedTemplateId('');
           setExecuteForm(prev => ({ ...prev, items: [], invoiceNo: '', invoiceDate: '', invoiceTitle: '' }));
           if (subTab === 'records') fetchRecords();
@@ -841,16 +843,16 @@ export default function ExpensesPage() {
           if (err.duplicate) {
             setDuplicateWarning(err.error);
           } else {
-            alert(err.error || '執行失敗');
+            showToast(err.error || '執行失敗', 'error');
           }
         } else {
           const err = await res.json();
-          alert(err.error || '執行失敗');
+          showToast(err.error || '執行失敗', 'error');
         }
       } else {
         // Execute fixed type: 每筆分錄含館別/付款方式/存簿，依館別分組建立記錄
         if (!executeForm.expenseMonth?.trim()) {
-          alert('請選擇費用月份');
+          showToast('請選擇費用月份', 'error');
           setSubmitting(false);
           return;
         }
@@ -858,13 +860,13 @@ export default function ExpensesPage() {
           .map((l, idx) => ({ ...l, amount: parseFloat(l.amount) || 0, sortOrder: idx }))
           .filter(l => l.amount > 0);
         if (lines.length === 0) {
-          alert('請至少填寫一筆金額大於 0 的分錄');
+          showToast('請至少填寫一筆金額大於 0 的分錄', 'error');
           setSubmitting(false);
           return;
         }
         if (executeForm.paymentMethod === '支票') {
           if (!executeForm.checkIssueDate || !executeForm.checkDate || !executeForm.checkNo?.trim() || !executeForm.checkAccountId) {
-            alert('付款方式為支票時，請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶');
+            showToast('付款方式為支票時，請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 'error');
             setSubmitting(false);
             return;
           }
@@ -908,7 +910,7 @@ export default function ExpensesPage() {
           const result = await res.json();
           let msg = result.message || `執行成功！已建立 ${result.created?.length || 0} 筆記錄`;
           if (executeForm.paymentMethod === '支票') msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
-          alert(msg);
+          showToast(msg, 'error');
           setSelectedTemplateId('');
           setExecuteForm(prev => ({
             ...prev,
@@ -925,15 +927,15 @@ export default function ExpensesPage() {
           if (err.duplicate) {
             setDuplicateWarning(err.error);
           } else {
-            alert(err.error || '執行失敗');
+            showToast(err.error || '執行失敗', 'error');
           }
         } else {
           const err = await res.json();
-          alert(err.error || '執行失敗');
+          showToast(err.error || '執行失敗', 'error');
         }
       }
     } catch (err) {
-      alert('執行失敗: ' + err.message);
+      showToast('執行失敗: ' + err.message, 'error');
     }
     setSubmitting(false);
   }

@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 const TABS = [
   { key: 'overview', label: '貸款總覽' },
@@ -47,6 +48,7 @@ function formatDate(d) {
 
 export default function LoansPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -57,6 +59,7 @@ export default function LoansPage() {
   const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loanSaving, setLoanSaving] = useState(false);
 
   // Filters
   const [filterWarehouse, setFilterWarehouse] = useState('');
@@ -274,9 +277,10 @@ export default function LoansPage() {
     if (!loanForm.endDate) missing.push('到期日');
     if (!loanForm.deductAccountId) missing.push('扣款帳戶');
     if (missing.length > 0) {
-      alert(`請填寫必填欄位：${missing.join('、')}`);
+      showToast(`請填寫必填欄位：${missing.join('、')}`, 'error');
       return;
     }
+    setLoanSaving(true);
     try {
       const url = editingLoan ? `/api/loans/${editingLoan.id}` : '/api/loans';
       const method = editingLoan ? 'PUT' : 'POST';
@@ -288,13 +292,15 @@ export default function LoansPage() {
       if (!res.ok) {
         const err = await res.json();
         const msg = err?.error?.message || (typeof err?.error === 'string' ? err.error : '儲存失敗');
-        alert(msg);
+        showToast(msg, 'error');
         return;
       }
       setShowLoanModal(false);
       fetchAll();
     } catch (e) {
-      alert('儲存失敗: ' + (e.message || '請稍後再試'));
+      showToast('儲存失敗: ' + (e.message || '請稍後再試'), 'error');
+    } finally {
+      setLoanSaving(false);
     }
   }
 
@@ -304,12 +310,12 @@ export default function LoansPage() {
       const res = await fetch(`/api/loans/${loan.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
         return;
       }
       fetchAll();
     } catch (e) {
-      alert('刪除失敗: ' + e.message);
+      showToast('刪除失敗: ' + e.message, 'error');
     }
   }
 
@@ -329,7 +335,7 @@ export default function LoansPage() {
 
   async function confirmPayment() {
     if (!confirmForm.actualPrincipal || !confirmForm.actualInterest) {
-      alert('請填寫實際本金和利息');
+      showToast('請填寫實際本金和利息', 'error');
       return;
     }
     try {
@@ -346,14 +352,14 @@ export default function LoansPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '核實失敗');
+        showToast(err.error || '核實失敗', 'error');
         return;
       }
       setShowConfirmModal(false);
       fetchMonthlyRecords();
       fetchAll();
     } catch (e) {
-      alert('核實失敗: ' + e.message);
+      showToast('核實失敗: ' + e.message, 'error');
     }
   }
 
@@ -364,14 +370,14 @@ export default function LoansPage() {
       const res = await fetch(`/api/loans/records/${record.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
         return;
       }
       fetchMonthlyRecords();
       fetchAllRecords();
       fetchAll();
     } catch (e) {
-      alert('刪除失敗: ' + e.message);
+      showToast('刪除失敗: ' + e.message, 'error');
     }
   }
 
@@ -389,7 +395,7 @@ export default function LoansPage() {
 
   async function executeBatch() {
     if (batchLoanIds.length === 0) {
-      alert('請至少選擇一筆貸款');
+      showToast('請至少選擇一筆貸款', 'error');
       return;
     }
     try {
@@ -400,14 +406,14 @@ export default function LoansPage() {
       });
       const result = await res.json();
       if (!res.ok) {
-        alert(result.error || '批次建立失敗');
+        showToast(result.error || '批次建立失敗', 'error');
         return;
       }
-      alert(result.message || `成功建立 ${result.created} 筆，跳過 ${result.skipped} 筆`);
+      showToast(result.message || `成功建立 ${result.created} 筆，跳過 ${result.skipped} 筆`, 'success');
       setShowBatchModal(false);
       fetchMonthlyRecords();
     } catch (e) {
-      alert('批次建立失敗: ' + e.message);
+      showToast('批次建立失敗: ' + e.message, 'error');
     }
   }
 
@@ -426,16 +432,16 @@ export default function LoansPage() {
 
   async function executeTransfer() {
     if (!transferForm.sourceAccountId || !transferForm.amount || !transferTargetAccount) {
-      alert('請填寫來源帳戶和金額');
+      showToast('請填寫來源帳戶和金額', 'error');
       return;
     }
     if (parseInt(transferForm.sourceAccountId) === transferTargetAccount.id) {
-      alert('來源帳戶與目的帳戶不可相同');
+      showToast('來源帳戶與目的帳戶不可相同', 'error');
       return;
     }
     const amount = parseFloat(transferForm.amount);
     if (amount <= 0) {
-      alert('金額必須大於零');
+      showToast('金額必須大於零', 'error');
       return;
     }
     setTransfering(true);
@@ -457,10 +463,10 @@ export default function LoansPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err?.error?.message || err?.error || '移轉失敗');
+        showToast(err?.error?.message || err?.error || '移轉失敗', 'error');
         return;
       }
-      alert(`已成功移轉 ${formatCurrency(amount)} 至 ${transferTargetAccount.name}`);
+      showToast(`已成功移轉 ${formatCurrency(amount)} 至 ${transferTargetAccount.name}`, 'success');
       setShowTransferModal(false);
       // If linked to a record, update status to 已預付
       if (transferForm._recordId) {
@@ -475,7 +481,7 @@ export default function LoansPage() {
       fetchAll();
       fetchMonthlyRecords();
     } catch (e) {
-      alert('移轉失敗: ' + e.message);
+      showToast('移轉失敗: ' + e.message, 'error');
     } finally {
       setTransfering(false);
     }
@@ -497,7 +503,7 @@ export default function LoansPage() {
     const acctId = record.deductAccountId || loan.deductAccountId;
     const acct = accounts.find(a => a.id === acctId);
     if (!acct) {
-      alert('找不到扣款帳戶');
+      showToast('找不到扣款帳戶', 'error');
       return;
     }
     if (!confirm(`確定推送「${loan.loanName}」(預估 ${formatCurrency(record.estimatedTotal)}) 至出納？`)) return;
@@ -523,7 +529,7 @@ export default function LoansPage() {
       });
       if (!payRes.ok) {
         const err = await payRes.json();
-        alert(err?.error?.message || err?.error || '建立付款單失敗');
+        showToast(err?.error?.message || err?.error || '建立付款單失敗', 'error');
         return;
       }
 
@@ -536,10 +542,10 @@ export default function LoansPage() {
         body: JSON.stringify({ status: '待出納', paymentOrderId: payData.id })
       });
 
-      alert(`已推送至出納，出納可在「出納管理」頁面查看並執行付款`);
+      showToast(`已推送至出納，出納可在「出納管理」頁面查看並執行付款`, 'success');
       fetchMonthlyRecords();
     } catch (e) {
-      alert('推送失敗: ' + e.message);
+      showToast('推送失敗: ' + e.message, 'error');
     }
   }
 
@@ -550,7 +556,7 @@ export default function LoansPage() {
       return days !== null && days <= 7;
     });
     if (dueRecords.length === 0) {
-      alert('目前沒有7天內到期且未推送的記錄');
+      showToast('目前沒有7天內到期且未推送的記錄', 'info');
       return;
     }
     if (!confirm(`共 ${dueRecords.length} 筆即將到期，確定全部推送出納？\n將為每筆建立付款單。`)) return;
@@ -591,7 +597,7 @@ export default function LoansPage() {
         pushed++;
       } catch (_) { failed++; }
     }
-    alert(`已推送 ${pushed} 筆至出納${failed > 0 ? `，${failed} 筆失敗` : ''}`);
+    showToast(`已推送 ${pushed} 筆至出納${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
     fetchMonthlyRecords();
   }
 
@@ -1884,11 +1890,11 @@ export default function LoansPage() {
             </div>
           </div>
           <div className="sticky bottom-0 bg-gray-50 border-t px-6 py-4 rounded-b-2xl flex justify-end gap-3">
-            <button onClick={() => setShowLoanModal(false)} className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm">
+            <button onClick={() => setShowLoanModal(false)} className="px-4 py-2 text-gray-600 hover:text-gray-800 text-sm" disabled={loanSaving}>
               取消
             </button>
-            <button onClick={saveLoan} className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors">
-              {editingLoan ? '更新' : '新增'}
+            <button onClick={saveLoan} disabled={loanSaving} className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50">
+              {loanSaving ? '儲存中…' : (editingLoan ? '更新' : '新增')}
             </button>
           </div>
         </div>

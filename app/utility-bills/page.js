@@ -43,6 +43,9 @@ export default function UtilityBillsPage() {
   const [listFilter, setListFilter] = useState({ warehouse: '', year: '', month: '', billType: '' });
   const [listLoading, setListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editRecord, setEditRecord] = useState(null);
+  const [editSummary, setEditSummary] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'water') setStartPage(2);
@@ -104,18 +107,33 @@ export default function UtilityBillsPage() {
 
   async function extractTextFromPdf(file, fromPage = 2) {
     const pdfjsLib = await import('pdfjs-dist');
-    if (typeof window !== 'undefined' && (!pdfjsLib.GlobalWorkerOptions?.workerSrc)) {
+    if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions?.workerSrc) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
     }
     const arrayBuffer = await file.arrayBuffer();
-    const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const doc = await pdfjsLib.getDocument({ data: arrayBuffer, useSystemFonts: true }).promise;
     const numPages = doc.numPages;
     const texts = [];
     const from = Math.max(1, Math.min(fromPage, numPages));
     for (let i = from; i <= numPages; i++) {
       const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      const pageStr = content.items.map(item => item.str || '').join(' ');
+      const content = await page.getTextContent({ includeMarkedContent: true });
+      const items = content?.items || [];
+      if (items.length === 0) {
+        texts.push({ pageNum: i, text: '' });
+        continue;
+      }
+      let ordered = items;
+      const hasTransform = items.some(it => it.transform && it.transform.length >= 6);
+      if (hasTransform) {
+        ordered = [...items].sort((a, b) => {
+          const y1 = a.transform?.[5] ?? 0;
+          const y2 = b.transform?.[5] ?? 0;
+          if (Math.abs(y1 - y2) > 3) return y2 - y1;
+          return (a.transform?.[4] ?? 0) - (b.transform?.[4] ?? 0);
+        });
+      }
+      const pageStr = ordered.map(item => (item.str != null ? String(item.str) : '')).join(' ').replace(/\s+/g, ' ').trim();
       texts.push({ pageNum: i, text: pageStr });
     }
     return { texts, numPages };
@@ -167,25 +185,26 @@ export default function UtilityBillsPage() {
 
   // 從電費單文字中解析：地址、電號、使用度數、電費金額、應繳稅額、應繳總金額（支援台電等常見格式）
   function parseTaipowerFields(allText) {
-    const t = allText.replace(/\s+/g, ' ');
+    const raw = allText.replace(/\s+/g, ' ').replace(/　/g, ' ');
+    const t = raw;
     const out = { 地址: '', 電號: '', 使用度數: '', 電費金額: '', 應繳稅額: '', 應繳總金額: '' };
 
-    const addrMatch = t.match(/(?:用電地址|裝設地址|地址|繳費地點)[：:\s]*([^\n\d]{2,80}?(?:市|縣|區|鄉|鎮|村|路|街|段|巷|弄|號|樓)[^\n]{0,40}?)(?=\s*(?:電號|用戶|計費|流動|應繳|$))/);
+    const addrMatch = t.match(/(?:用電地址|裝設地址|繳費地點|地址)[\s：:]*([^\d]{2,100}?(?:市|縣|區|鄉|鎮|村|路|街|段|巷|弄|號|樓)[^\d]{0,50}?)(?=\s*(?:電號|用戶|計費|流動|應繳|總計|$))/);
     if (addrMatch) out.地址 = addrMatch[1].replace(/\s+/g, ' ').trim();
 
-    const acctMatch = t.match(/(?:電號|用戶編號|用電戶號|戶號)[：:\s]*([\d\-]{8,20})/);
+    const acctMatch = t.match(/(?:電號|用戶編號|用電戶號|戶號|用戶號碼)[\s：:]*([\d\-]{6,25})/);
     if (acctMatch) out.電號 = acctMatch[1].trim();
 
-    const degreeMatch = t.match(/(?:總用電度數|用電度數|使用度數|度數|本期用電)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*(?:度|kWh)?/);
+    const degreeMatch = t.match(/(?:總用電度數|用電度數|使用度數|度數|本期用電|流動電費計算度數)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*(?:度|kWh)?/);
     if (degreeMatch) out.使用度數 = degreeMatch[1].replace(/,/g, '');
 
-    const feeMatch = t.match(/(?:流動電費|本月電費|電費金額|電費)[：:\s]*([\d,]+(?:\.[\d]+)?)/);
+    const feeMatch = t.match(/(?:流動電費|本月電費|電費金額|電費|應付電費)[\s：:]*([\d,]+(?:\.[\d]+)?)/);
     if (feeMatch) out.電費金額 = feeMatch[1].replace(/,/g, '');
 
-    const taxMatch = t.match(/(?:應繳稅額|營業稅|稅額)[：:\s]*([\d,]+(?:\.[\d]+)?)/);
+    const taxMatch = t.match(/(?:應繳稅額|營業稅|稅額|代收稅額)[\s：:]*([\d,]+(?:\.[\d]+)?)/);
     if (taxMatch) out.應繳稅額 = taxMatch[1].replace(/,/g, '');
 
-    const totalMatch = t.match(/(?:應繳總金額|總計|合計|總金額|本期應繳)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const totalMatch = t.match(/(?:應繳總金額|總計|合計|總金額|本期應繳|應繳金額)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
     if (totalMatch) out.應繳總金額 = totalMatch[1].replace(/,/g, '');
 
     const anyAmount = t.match(/([\d,]+\.?\d*)\s*元/g);
@@ -193,42 +212,56 @@ export default function UtilityBillsPage() {
       const nums = anyAmount.map(m => parseFloat(m[1].replace(/,/g, ''))).filter(n => n > 0 && n < 10000000);
       if (nums.length) out.應繳總金額 = String(Math.max(...nums));
     }
+    if (!out.應繳總金額) {
+      const bigNum = t.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*元/g);
+      if (bigNum) {
+        const n = bigNum.map(m => parseFloat(m.replace(/[^\d.]/g, ''))).filter(x => x > 10 && x < 10000000);
+        if (n.length) out.應繳總金額 = String(Math.max(...n));
+      }
+    }
     return out;
   }
 
   // 從水費單文字中解析：用水地址、水號、用水量、基本費、水費、營業稅、其他費用、總金額（支援台水等常見格式）
   function parseWaterBillFields(allText) {
-    const t = allText.replace(/\s+/g, ' ');
+    const t = allText.replace(/\s+/g, ' ').replace(/　/g, ' ');
     const out = { 用水地址: '', 水號: '', 用水量: '', 基本費: '', 水費: '', 營業稅: '', 其他費用: '', 總金額: '' };
 
-    const addrMatch = t.match(/(?:用水地址|用水地點|裝表地址|地址)[：:\s]*([^\n\d]{2,80}?(?:市|縣|區|鄉|鎮|村|路|街|段|巷|弄|號|樓)[^\n]{0,50}?)(?=\s*(?:水號|用戶|計費|基本費|$))/);
+    const addrMatch = t.match(/(?:用水地址|用水地點|裝表地址|地址)[\s：:]*([^\d]{2,100}?(?:市|縣|區|鄉|鎮|村|路|街|段|巷|弄|號|樓)[^\d]{0,50}?)(?=\s*(?:水號|用戶|計費|基本費|$))/);
     if (addrMatch) out.用水地址 = addrMatch[1].replace(/\s+/g, ' ').trim();
 
-    const acctMatch = t.match(/(?:水號|用戶編號|用水戶號|戶號)[：:\s]*([\d\-]{6,20})/);
+    const acctMatch = t.match(/(?:水號|用戶編號|用水戶號|戶號)[\s：:]*([\d\-]{6,25})/);
     if (acctMatch) out.水號 = acctMatch[1].trim();
 
-    const volMatch = t.match(/(?:用水量|使用量|度數|本期用水)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*(?:度|立方公尺|m³)?/);
+    const volMatch = t.match(/(?:用水量|使用量|度數|本期用水|計費度數)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*(?:度|立方公尺|m³|度)?/);
     if (volMatch) out.用水量 = volMatch[1].replace(/,/g, '');
 
-    const baseMatch = t.match(/(?:基本費|基本水費)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const baseMatch = t.match(/(?:基本費|基本水費)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
     if (baseMatch) out.基本費 = baseMatch[1].replace(/,/g, '');
 
-    const feeMatch = t.match(/(?:水費|用水費|流動水費)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const feeMatch = t.match(/(?:水費|用水費|流動水費|用水費金額)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
     if (feeMatch) out.水費 = feeMatch[1].replace(/,/g, '');
 
-    const taxMatch = t.match(/(?:營業稅|稅額|應繳稅額)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const taxMatch = t.match(/(?:營業稅|稅額|應繳稅額|代收稅額)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
     if (taxMatch) out.營業稅 = taxMatch[1].replace(/,/g, '');
 
-    const otherMatch = t.match(/(?:其他費用|雜費|代收費用)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const otherMatch = t.match(/(?:其他費用|雜費|代收費用)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
     if (otherMatch) out.其他費用 = otherMatch[1].replace(/,/g, '');
 
-    const totalMatch = t.match(/(?:總金額|應繳總額|總計|合計|本期應繳)[：:\s]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const totalMatch = t.match(/(?:總金額|應繳總額|總計|合計|本期應繳|應繳金額)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
     if (totalMatch) out.總金額 = totalMatch[1].replace(/,/g, '');
 
     const anyAmount = t.match(/([\d,]+\.?\d*)\s*元/g);
     if (anyAmount && !out.總金額) {
       const nums = anyAmount.map(m => parseFloat(m[1].replace(/,/g, ''))).filter(n => n > 0 && n < 10000000);
       if (nums.length) out.總金額 = String(Math.max(...nums));
+    }
+    if (!out.總金額) {
+      const bigNum = t.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*元/g);
+      if (bigNum) {
+        const n = bigNum.map(m => parseFloat(m.replace(/[^\d.]/g, ''))).filter(x => x > 10 && x < 10000000);
+        if (n.length) out.總金額 = String(Math.max(...n));
+      }
     }
     return out;
   }
@@ -450,13 +483,21 @@ export default function UtilityBillsPage() {
 
             {summary && (
               <div className="border-t pt-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">第一頁格式（自動辨識結果，可複製使用）</h4>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">第一頁格式（可手動修改欄位後再儲存）</h4>
                 <div className={isWater ? 'bg-sky-50 border border-sky-200 rounded-lg p-4' : 'bg-teal-50 border border-teal-200 rounded-lg p-4'}>
-                  <ul className="space-y-1 text-sm">
-                    {Object.entries(summary).map(([k, v]) => (
-                      <li key={k}><span className="font-medium text-gray-700">{k}:</span> {String(v)}</li>
+                  <div className="space-y-3 text-sm">
+                    {Object.keys(summary).map(k => (
+                      <div key={k} className="flex flex-wrap items-center gap-2">
+                        <label className="font-medium text-gray-700 w-24 shrink-0">{k}</label>
+                        <input
+                          type="text"
+                          value={summary[k] ?? ''}
+                          onChange={e => setSummary(prev => ({ ...prev, [k]: e.target.value }))}
+                          className="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm"
+                        />
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                   <div className="mt-3 flex gap-2">
                     <button
                       type="button"
@@ -537,20 +578,100 @@ export default function UtilityBillsPage() {
                       <th className="px-4 py-2 text-left font-medium text-gray-700">類型</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">檔名</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">儲存日</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {records.map(r => (
-                        <tr key={r.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 font-medium">{r.warehouse}</td>
-                          <td className="px-4 py-2">{r.billYear}年{r.billMonth}月</td>
-                          <td className="px-4 py-2">{r.billType}</td>
-                          <td className="px-4 py-2 text-gray-600">{r.fileName || '－'}</td>
-                          <td className="px-4 py-2 text-gray-500">{new Date(r.createdAt).toLocaleDateString('zh-TW')}</td>
-                        </tr>
-                      ))}
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium">{r.warehouse}</td>
+                        <td className="px-4 py-2">{r.billYear}年{r.billMonth}月</td>
+                        <td className="px-4 py-2">{r.billType}</td>
+                        <td className="px-4 py-2 text-gray-600">{r.fileName || '－'}</td>
+                        <td className="px-4 py-2 text-gray-500">{new Date(r.createdAt).toLocaleDateString('zh-TW')}</td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              try {
+                                const sum = typeof r.summaryJson === 'string' ? JSON.parse(r.summaryJson) : (r.summaryJson || {});
+                                setEditRecord(r);
+                                setEditSummary(typeof sum === 'object' && sum !== null ? { ...sum } : {});
+                              } catch {
+                                setEditRecord(r);
+                                setEditSummary({});
+                              }
+                            }}
+                            className="text-teal-600 hover:underline text-sm"
+                          >
+                            編輯
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {editRecord && editSummary !== null && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditRecord(null)}>
+                <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">
+                    編輯 — {editRecord.warehouse} {editRecord.billYear}年{editRecord.billMonth}月 {editRecord.billType}
+                  </h4>
+                  <div className="space-y-3 text-sm mb-4">
+                    {Object.keys(editSummary).map(k => (
+                      <div key={k} className="flex flex-wrap items-center gap-2">
+                        <label className="font-medium text-gray-700 w-24 shrink-0">{k}</label>
+                        <input
+                          type="text"
+                          value={editSummary[k] ?? ''}
+                          onChange={e => setEditSummary(prev => ({ ...prev, [k]: e.target.value }))}
+                          className="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSavingEdit(true);
+                        try {
+                          const res = await fetch(`/api/utility-bills/${editRecord.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ summaryJson: editSummary }),
+                          });
+                          const data = await res.json();
+                          if (res.ok) {
+                            showMessage('已更新');
+                            setEditRecord(null);
+                            setEditSummary(null);
+                            fetchRecords();
+                          } else {
+                            showMessage(data.error || '更新失敗', 'error');
+                          }
+                        } catch {
+                          showMessage('更新失敗', 'error');
+                        }
+                        setSavingEdit(false);
+                      }}
+                      disabled={savingEdit}
+                      className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm"
+                    >
+                      {savingEdit ? '儲存中…' : '儲存'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEditRecord(null); setEditSummary(null); }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

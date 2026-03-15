@@ -4,6 +4,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import { useToast } from '@/context/ToastContext';
 
 // Determine the correct display order number based on source
 function getDisplayOrderNo(order) {
@@ -23,6 +24,7 @@ function getDisplayOrderNo(order) {
 
 export default function CashierPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('pending');
   const [orders, setOrders] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -63,6 +65,7 @@ export default function CashierPage() {
   const [batchAdvancedBy, setBatchAdvancedBy] = useState('');
   const [batchAdvancePaymentMethod, setBatchAdvancePaymentMethod] = useState('現金');
   const [batchExtraAmounts, setBatchExtraAmounts] = useState({}); // orderId -> extraAmount for loan orders
+  const [executingOrderId, setExecutingOrderId] = useState(null);
 
   useEffect(() => {
     fetchAll();
@@ -196,23 +199,23 @@ export default function CashierPage() {
 
   async function handleBatchExecute() {
     if (selectedOrderIds.size === 0) {
-      alert('請至少勾選一筆付款單');
+      showToast('請至少勾選一筆付款單', 'error');
       return;
     }
     const validAccounts = batchAccounts.filter(a => a.accountId && parseFloat(a.amount) > 0);
     if (validAccounts.length === 0) {
-      alert('請新增至少一個資金帳戶並輸入金額');
+      showToast('請新增至少一個資金帳戶並輸入金額', 'error');
       return;
     }
     if (Math.abs(batchAmountDiff) > 0.01) {
-      alert(`資金帳戶總額 NT$ ${batchAccountsTotal.toLocaleString()} 與付款單總額 NT$ ${selectedTotal.toLocaleString()} 不符，差額 NT$ ${batchAmountDiff.toLocaleString()}`);
+      showToast(`資金帳戶總額 NT$ ${batchAccountsTotal.toLocaleString()} 與付款單總額 NT$ ${selectedTotal.toLocaleString()} 不符，差額 NT$ ${batchAmountDiff.toLocaleString()}`, 'error');
       return;
     }
 
     // Check duplicate accounts
     const accIds = validAccounts.map(a => a.accountId);
     if (new Set(accIds).size !== accIds.length) {
-      alert('不可重複選擇相同帳戶');
+      showToast('不可重複選擇相同帳戶', 'error');
       return;
     }
 
@@ -226,7 +229,7 @@ export default function CashierPage() {
 
     // Validate employee advance fields
     if (batchIsEmployeeAdvance && !batchAdvancedBy.trim()) {
-      alert('請輸入代墊員工姓名');
+      showToast('請輸入代墊員工姓名', 'error');
       return;
     }
 
@@ -261,12 +264,12 @@ export default function CashierPage() {
       try {
         result = await res.json();
       } catch {
-        alert(`批次執行失敗 (HTTP ${res.status})：伺服器回應無法解析`);
+        showToast(`批次執行失敗 (HTTP ${res.status})：伺服器回應無法解析`, 'error');
         setBatchExecuting(false);
         return;
       }
       if (res.ok) {
-        alert(result.message || '批次執行成功');
+        showToast(result.message || '批次執行成功', 'success');
         setSelectedOrderIds(new Set());
         setBatchAccounts([{ accountId: '', amount: '' }]);
         setBatchExtraAmounts({});
@@ -277,11 +280,11 @@ export default function CashierPage() {
         fetchAccounts();
       } else {
         const msg = result?.error?.message || result?.error?.details?.message || result?.message || JSON.stringify(result);
-        alert(`批次執行失敗：${msg}`);
+        showToast(`批次執行失敗：${msg}`, 'error');
       }
     } catch (err) {
       console.error('Batch execute error:', err);
-      alert('批次執行失敗: ' + (err?.message || String(err)));
+      showToast('批次執行失敗: ' + (err?.message || String(err)), 'error');
     }
     setBatchExecuting(false);
   }
@@ -289,10 +292,11 @@ export default function CashierPage() {
   async function handleExecute(e, order) {
     e.preventDefault();
     if (!executeData.accountId) {
-      alert('請選擇付款帳戶');
+      showToast('請選擇付款帳戶', 'error');
       return;
     }
 
+    setExecutingOrderId(order.id);
     try {
       const res = await fetch('/api/cashier/execute', {
         method: 'POST',
@@ -313,21 +317,23 @@ export default function CashierPage() {
             cashTransactionNo: result.cashTransactionNo,
           }
         }));
-        alert(`出納確認成功！\n執行單號：${result.executionNo}\n現金交易：${result.cashTransactionNo}`);
+        showToast(`出納確認成功！\n執行單號：${result.executionNo}\n現金交易：${result.cashTransactionNo}`, 'success');
         setExpandedOrderId(null);
         fetchOrders();
       } else {
         const err = await res.json();
-        alert(err.error || err.message || '執行失敗');
+        showToast(err.error || err.message || '執行失敗', 'error');
       }
     } catch {
-      alert('操作失敗');
+      showToast('操作失敗', 'error');
+    } finally {
+      setExecutingOrderId(null);
     }
   }
 
   async function handleReject(order) {
     if (!rejectReason.trim()) {
-      alert('請輸入退回原因');
+      showToast('請輸入退回原因', 'error');
       return;
     }
 
@@ -338,17 +344,17 @@ export default function CashierPage() {
         body: JSON.stringify({ action: 'reject', reason: rejectReason.trim() }),
       });
       if (res.ok) {
-        alert('付款單已退回');
+        showToast('付款單已退回', 'success');
         setExpandedOrderId(null);
         setRejectingOrderId(null);
         setRejectReason('');
         fetchOrders();
       } else {
         const err = await res.json();
-        alert(err.error || err.message || '退回失敗');
+        showToast(err.error || err.message || '退回失敗', 'error');
       }
     } catch {
-      alert('操作失敗');
+      showToast('操作失敗', 'error');
     }
   }
 
@@ -894,8 +900,9 @@ export default function CashierPage() {
                                         <button type="button" onClick={() => setExpandedOrderId(null)}
                                           className="px-4 py-2 border rounded text-sm hover:bg-gray-50">取消</button>
                                         <button type="submit"
-                                          className="px-4 py-2 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 font-medium">
-                                          確認執行
+                                          disabled={executingOrderId === order.id}
+                                          className="px-4 py-2 bg-amber-600 text-white rounded text-sm hover:bg-amber-700 font-medium disabled:opacity-50">
+                                          {executingOrderId === order.id ? '執行中…' : '確認執行'}
                                         </button>
                                       </div>
                                     </div>

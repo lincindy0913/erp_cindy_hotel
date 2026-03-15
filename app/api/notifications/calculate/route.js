@@ -466,28 +466,23 @@ export async function POST(request) {
 
       const dueCreditCards = await prisma.creditCardStatement.findMany({
         where: {
-          status: { in: ['unpaid', 'partial'] },
-          paymentDueDate: {
+          status: { in: ['pending', 'unpaid', 'partial'] },
+          paymentDate: {
             gte: todayStr,
             lte: threeDaysLaterStr,
           },
         },
         select: {
           id: true,
-          accountId: true,
           totalAmount: true,
-          paidAmount: true,
-          paymentDueDate: true,
+          netAmount: true,
+          paymentDate: true,
           status: true,
         },
       });
 
       if (dueCreditCards.length > 0) {
-        const totalAmount = dueCreditCards.reduce((sum, s) => {
-          const paid = Number(s.paidAmount || 0);
-          const total = Number(s.totalAmount || 0);
-          return sum + Math.max(0, total - paid);
-        }, 0);
+        const totalAmount = dueCreditCards.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0);
         const def = NOTIFICATION_DEFS.N12;
         notifications.push({
           code: 'N12',

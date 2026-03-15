@@ -7,9 +7,11 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import NotificationBanner from '@/components/NotificationBanner';
+import { useToast } from '@/context/ToastContext';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [orders, setOrders] = useState([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState([]);
@@ -58,6 +60,8 @@ export default function PaymentPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [reportWarehouse, setReportWarehouse] = useState('');
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [submittingOrderId, setSubmittingOrderId] = useState(null);
 
   // 表單資料
   const [formData, setFormData] = useState({
@@ -218,12 +222,12 @@ export default function PaymentPage() {
       setSelectedInvoiceIds(new Set());
 
       if (invoices.length === 0) {
-        alert('查詢完成，但沒有找到未付款的發票。\n\n請檢查：\n1. 篩選條件是否正確\n2. 是否有建立發票資料\n3. 該發票是否已被付款');
+        showToast('查詢完成，但沒有找到未付款的發票。\n\n請檢查：\n1. 篩選條件是否正確\n2. 是否有建立發票資料\n3. 該發票是否已被付款', 'info');
       }
     } catch (error) {
       console.error('取得未付款發票失敗:', error);
       setUnpaidInvoices([]);
-      alert('查詢失敗：' + (error.message || '請稍後再試'));
+      showToast('查詢失敗：' + (error.message || '請稍後再試'), 'error');
     } finally {
       setLoadingInvoices(false);
     }
@@ -287,7 +291,7 @@ export default function PaymentPage() {
     e.preventDefault();
 
     if (selectedInvoiceIds.size === 0) {
-      alert('請至少勾選一張發票進行付款');
+      showToast('請至少勾選一張發票進行付款', 'error');
       return;
     }
 
@@ -298,7 +302,7 @@ export default function PaymentPage() {
     const expectedPayment = invoiceTotal - discountVal;
 
     if (Math.abs(expectedPayment - paymentAmountVal) > 0.01) {
-      alert(`付款金額驗證失敗！\n\n發票總金額：NT$ ${invoiceTotal.toFixed(2)}\n會計折讓：NT$ ${discountVal.toFixed(2)}\n應付金額：NT$ ${expectedPayment.toFixed(2)}\n輸入付款金額：NT$ ${paymentAmountVal.toFixed(2)}\n\n「發票總金額 - 會計折讓」必須等於「付款金額」`);
+      showToast(`付款金額驗證失敗！\n\n發票總金額：NT$ ${invoiceTotal.toFixed(2)}\n會計折讓：NT$ ${discountVal.toFixed(2)}\n應付金額：NT$ ${expectedPayment.toFixed(2)}\n輸入付款金額：NT$ ${paymentAmountVal.toFixed(2)}\n\n「發票總金額 - 會計折讓」必須等於「付款金額」`, 'error');
       return;
     }
 
@@ -312,23 +316,23 @@ export default function PaymentPage() {
 
     if (isCheck) {
       if (!formData.checkIssueDate?.trim()) {
-        alert('請填寫付款(開票)日期');
+        showToast('請填寫付款(開票)日期', 'error');
         return;
       }
       if (!formData.checkDate?.trim()) {
-        alert('請填寫支票日期');
+        showToast('請填寫支票日期', 'error');
         return;
       }
       if (!formData.checkNo?.trim()) {
-        alert('請填寫支票號碼');
+        showToast('請填寫支票號碼', 'error');
         return;
       }
       if (!formData.checkAccountId) {
-        alert('請選擇開票帳戶（資金帳戶）');
+        showToast('請選擇開票帳戶（資金帳戶）', 'error');
         return;
       }
       if (!formData.paymentAmount || parseFloat(formData.paymentAmount) <= 0) {
-        alert('請先勾選發票，支票金額將自動帶入勾選發票的加總金額');
+        showToast('請先勾選發票，支票金額將自動帶入勾選發票的加總金額', 'error');
         return;
       }
     }
@@ -376,7 +380,7 @@ export default function PaymentPage() {
         const result = await response.json();
         if (isCheck) saveLastCheckValues(formData);
         const checkMsg = result.linkedCheckNo ? `\n已自動建立支票記錄：${result.linkedCheckNo}` : '';
-        alert(`付款單建立成功（草稿）！${checkMsg}`);
+        showToast(`付款單建立成功（草稿）！${checkMsg}`, 'success');
         setShowAddForm(false);
         setSelectedInvoiceIds(new Set());
         setUnpaidInvoices([]);
@@ -385,11 +389,11 @@ export default function PaymentPage() {
         fetchOrders();
       } else {
         const error = await response.json();
-        alert('建立失敗：' + (error.error || error.message || '未知錯誤'));
+        showToast('建立失敗：' + (error.error || error.message || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('建立付款單失敗:', error);
-      alert('建立付款單失敗，請稍後再試');
+      showToast('建立付款單失敗，請稍後再試', 'error');
     }
   }
 
@@ -418,15 +422,15 @@ export default function PaymentPage() {
       });
 
       if (response.ok) {
-        alert('付款單刪除成功！');
+        showToast('付款單刪除成功！', 'success');
         fetchOrders();
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || error.message || '未知錯誤'));
+        showToast('刪除失敗：' + (error.error || error.message || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('刪除付款單失敗:', error);
-      alert('刪除付款單失敗，請稍後再試');
+      showToast('刪除付款單失敗，請稍後再試', 'error');
     }
   }
 
@@ -459,39 +463,45 @@ export default function PaymentPage() {
     const actionLabel = isSubmit ? '提交出納' : isResubmit ? '重新提交' : '提交/重新提交';
     if (!confirm(`確定要將選取的 ${ids.length} 筆付款單${actionLabel}嗎？`)) return;
 
-    let ok = 0;
-    const errors = [];
-    for (const orderId of ids) {
-      const order = orders.find(o => o.id === orderId);
-      const action = order?.status === '已拒絕' ? 'resubmit' : 'submit';
-      try {
-        const response = await fetch(`/api/payment-orders/${orderId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action })
-        });
-        if (response.ok) ok++;
-        else {
-          const err = await response.json();
-          errors.push(`${order?.orderNo || orderId}: ${err.error || err.message || '未知錯誤'}`);
+    setBatchSubmitting(true);
+    try {
+      let ok = 0;
+      const errors = [];
+      for (const orderId of ids) {
+        const order = orders.find(o => o.id === orderId);
+        const action = order?.status === '已拒絕' ? 'resubmit' : 'submit';
+        try {
+          const response = await fetch(`/api/payment-orders/${orderId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+          });
+          if (response.ok) ok++;
+          else {
+            const err = await response.json();
+            errors.push(`${order?.orderNo || orderId}: ${err.error || err.message || '未知錯誤'}`);
+          }
+        } catch (e) {
+          errors.push(`${order?.orderNo || orderId}: 網路錯誤`);
         }
-      } catch (e) {
-        errors.push(`${order?.orderNo || orderId}: 網路錯誤`);
       }
-    }
-    if (ok > 0) {
-      setSelectedOrderIds(new Set());
-      fetchOrders();
-      alert(`成功 ${actionLabel} ${ok} 筆${errors.length ? `，失敗 ${errors.length} 筆` : ''}`);
-    }
-    if (errors.length > 0) {
-      alert(`部分失敗：\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...等 ${errors.length} 筆` : ''}`);
+      if (ok > 0) {
+        setSelectedOrderIds(new Set());
+        fetchOrders();
+        showToast(`成功 ${actionLabel} ${ok} 筆${errors.length ? `，失敗 ${errors.length} 筆` : ''}`, errors.length ? 'warning' : 'success');
+      }
+      if (errors.length > 0) {
+        showToast(`部分失敗：\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...等 ${errors.length} 筆` : ''}`, 'error');
+      }
+    } finally {
+      setBatchSubmitting(false);
     }
   }
 
   async function handleSubmitToCashier(orderId) {
     if (!confirm('確定要提交此付款單到出納嗎？')) return;
 
+    setSubmittingOrderId(orderId);
     try {
       const response = await fetch(`/api/payment-orders/${orderId}`, {
         method: 'PUT',
@@ -500,21 +510,24 @@ export default function PaymentPage() {
       });
 
       if (response.ok) {
-        alert('付款單已提交出納！');
+        showToast('付款單已提交出納！', 'success');
         fetchOrders();
       } else {
         const error = await response.json();
-        alert('提交失敗：' + (error.error || error.message || '未知錯誤'));
+        showToast('提交失敗：' + (error.error || error.message || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('提交出納失敗:', error);
-      alert('提交出納失敗，請稍後再試');
+      showToast('提交出納失敗，請稍後再試', 'error');
+    } finally {
+      setSubmittingOrderId(null);
     }
   }
 
   async function handleResubmit(orderId) {
     if (!confirm('確定要重新提交此付款單到出納嗎？')) return;
 
+    setSubmittingOrderId(orderId);
     try {
       const response = await fetch(`/api/payment-orders/${orderId}`, {
         method: 'PUT',
@@ -523,15 +536,17 @@ export default function PaymentPage() {
       });
 
       if (response.ok) {
-        alert('付款單已重新提交出納！');
+        showToast('付款單已重新提交出納！', 'success');
         fetchOrders();
       } else {
         const error = await response.json();
-        alert('重新提交失敗：' + (error.error || error.message || '未知錯誤'));
+        showToast('重新提交失敗：' + (error.error || error.message || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('重新提交失敗:', error);
-      alert('重新提交失敗，請稍後再試');
+      showToast('重新提交失敗，請稍後再試', 'error');
+    } finally {
+      setSubmittingOrderId(null);
     }
   }
 
@@ -546,11 +561,11 @@ export default function PaymentPage() {
       });
 
       if (response.ok) {
-        alert('付款單已作廢！');
+        showToast('付款單已作廢！', 'success');
         fetchOrders();
       } else {
         const error = await response.json();
-        alert('作廢失敗：' + (error.error || error.message || '未知錯誤'));
+        showToast('作廢失敗：' + (error.error || error.message || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('作廢失敗:', error);
@@ -1349,9 +1364,10 @@ export default function PaymentPage() {
               <button
                 type="button"
                 onClick={handleBatchSubmitToCashier}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium"
+                disabled={batchSubmitting}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50"
               >
-                批量提交出納
+                {batchSubmitting ? '提交中…' : '批量提交出納'}
               </button>
             </div>
           )}
@@ -1445,9 +1461,10 @@ export default function PaymentPage() {
                               <>
                                 <button
                                   onClick={() => handleSubmitToCashier(order.id)}
-                                  className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600"
+                                  disabled={submittingOrderId === order.id}
+                                  className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600 disabled:opacity-50"
                                 >
-                                  提交出納
+                                  {submittingOrderId === order.id ? '提交中…' : '提交出納'}
                                 </button>
                                 <button
                                   onClick={() => handleVoid(order.id)}
@@ -1478,9 +1495,10 @@ export default function PaymentPage() {
                               <>
                                 <button
                                   onClick={() => handleResubmit(order.id)}
-                                  className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600"
+                                  disabled={submittingOrderId === order.id}
+                                  className="bg-yellow-500 text-white px-2 py-0.5 rounded text-xs hover:bg-yellow-600 disabled:opacity-50"
                                 >
-                                  重新提交
+                                  {submittingOrderId === order.id ? '提交中…' : '重新提交'}
                                 </button>
                                 <button
                                   onClick={() => handleVoid(order.id)}

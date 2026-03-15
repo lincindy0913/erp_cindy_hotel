@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useToast } from '@/context/ToastContext';
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -43,10 +44,10 @@ export default function AttachmentSection({ sourceModule, sourceRecordId, canUpl
           // success
         } else {
           const err = await res.json();
-          alert(err.error || '上傳失敗');
+          showToast(err.error || '上傳失敗', 'error');
         }
       } catch {
-        alert('上傳發生錯誤');
+        showToast('上傳發生錯誤', 'error');
       }
     }
 
@@ -73,10 +74,10 @@ export default function AttachmentSection({ sourceModule, sourceRecordId, canUpl
         fetchAttachments();
       } else {
         const err = await res.json();
-        alert(err.error || '刪除失敗');
+        showToast(err.error || '刪除失敗', 'error');
       }
     } catch {
-      alert('刪除發生錯誤');
+      showToast('刪除發生錯誤', 'error');
     }
   }
 

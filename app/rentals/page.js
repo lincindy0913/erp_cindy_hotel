@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import { useToast } from '@/context/ToastContext';
 
 const TABS = [
   { key: 'overview', label: '總覽' },
@@ -62,6 +63,7 @@ export default function RentalsPageWrapper() {
 function RentalsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { showToast } = useToast();
   const tabParam = searchParams.get('tab') || 'overview';
   const [activeTab, setActiveTab] = useState(tabParam);
 
@@ -130,6 +132,13 @@ function RentalsPage() {
   const [taxTableYear, setTaxTableYear] = useState(new Date().getFullYear());
   const [taxTableRows, setTaxTableRows] = useState([]);
   const [taxTableSaving, setTaxTableSaving] = useState(false);
+  const [tenantSaving, setTenantSaving] = useState(false);
+  const [propertySaving, setPropertySaving] = useState(false);
+  const [contractSaving, setContractSaving] = useState(false);
+  const [taxSaving, setTaxSaving] = useState(false);
+  const [maintenanceSaving, setMaintenanceSaving] = useState(false);
+  const [utilitySaving, setUtilitySaving] = useState(false);
+  const [incomePaymentSaving, setIncomePaymentSaving] = useState(false);
 
   const [utilityFilter, setUtilityFilter] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [utilityList, setUtilityList] = useState([]);
@@ -310,11 +319,11 @@ function RentalsPage() {
         })
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '儲存失敗');
-      alert('已儲存年度稅額');
+      if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
+      showToast('已儲存年度稅額', 'success');
       fetchTaxTable();
       fetchTaxes();
-    } catch (e) { alert('儲存失敗: ' + e.message); }
+    } catch (e) { showToast('儲存失敗: ' + e.message, 'error'); }
     finally { setTaxTableSaving(false); }
   }
 
@@ -338,19 +347,20 @@ function RentalsPage() {
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (!res.ok) return alert(data.error || '儲存失敗');
+        if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
       } else {
         const res = await fetch('/api/rentals/utility-income', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (!res.ok) return alert(data.error || '儲存失敗');
+        if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
       }
       setShowUtilityModal(false);
       setEditingUtility(null);
       fetchUtilityList();
-    } catch (e) { alert('儲存失敗: ' + e.message); }
+    } catch (e) { showToast('儲存失敗: ' + e.message, 'error'); }
+    finally { setUtilitySaving(false); }
   }
 
   async function deleteUtility(id) {
@@ -358,9 +368,9 @@ function RentalsPage() {
     try {
       const res = await fetch(`/api/rentals/utility-income/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '刪除失敗');
+      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
       fetchUtilityList();
-    } catch (e) { alert('刪除失敗: ' + e.message); }
+    } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
   }
 
   async function fetchMaintenances() {
@@ -391,15 +401,17 @@ function RentalsPage() {
   }
 
   async function saveTenant() {
+    setTenantSaving(true);
     try {
       const url = editingTenant ? `/api/rentals/tenants/${editingTenant.id}` : '/api/rentals/tenants';
       const method = editingTenant ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tenantForm) });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '儲存失敗');
+      if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
       setShowTenantModal(false);
       fetchTenants();
-    } catch (err) { alert('儲存失敗: ' + err.message); }
+    } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
+    finally { setTenantSaving(false); }
   }
 
   async function deleteTenant(id) {
@@ -407,9 +419,9 @@ function RentalsPage() {
     try {
       const res = await fetch(`/api/rentals/tenants/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '刪除失敗');
+      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
       fetchTenants();
-    } catch (err) { alert('刪除失敗: ' + err.message); }
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
   }
 
   // ==================== PROPERTY CRUD ====================
@@ -430,15 +442,17 @@ function RentalsPage() {
   }
 
   async function saveProperty() {
+    setPropertySaving(true);
     try {
       const url = editingProperty ? `/api/rentals/properties/${editingProperty.id}` : '/api/rentals/properties';
       const method = editingProperty ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(propertyForm) });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '儲存失敗');
+      if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
       setShowPropertyModal(false);
       fetchProperties();
-    } catch (err) { alert('儲存失敗: ' + err.message); }
+    } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
+    finally { setPropertySaving(false); }
   }
 
   async function deleteProperty(id) {
@@ -446,9 +460,9 @@ function RentalsPage() {
     try {
       const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '刪除失敗');
+      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
       fetchProperties();
-    } catch (err) { alert('刪除失敗: ' + err.message); }
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
   }
 
   // ==================== CONTRACT CRUD ====================
@@ -477,19 +491,21 @@ function RentalsPage() {
 
   async function saveContract() {
     if (!contractForm.accountingSubjectId) {
-      alert('請選擇會計科目');
+      showToast('請選擇會計科目', 'error');
       return;
     }
+    setContractSaving(true);
     try {
       const url = editingContract ? `/api/rentals/contracts/${editingContract.id}` : '/api/rentals/contracts';
       const method = editingContract ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractForm) });
       const data = await res.json();
-      if (!res.ok) return alert(data?.error?.message || data?.error || '儲存失敗');
+      if (!res.ok) return showToast(data?.error?.message || data?.error || '儲存失敗', 'error');
       setShowContractModal(false);
       fetchContracts();
       fetchProperties();
-    } catch (err) { alert('儲存失敗: ' + err.message); }
+    } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
+    finally { setContractSaving(false); }
   }
 
   async function deleteContract(id) {
@@ -497,9 +513,9 @@ function RentalsPage() {
     try {
       const res = await fetch(`/api/rentals/contracts/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '刪除失敗');
+      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
       fetchContracts();
-    } catch (err) { alert('刪除失敗: ' + err.message); }
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
   }
 
   async function handleDepositAction(contractId, action) {
@@ -510,10 +526,10 @@ function RentalsPage() {
         body: JSON.stringify({ action })
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '操作失敗');
-      alert('操作成功');
+      if (!res.ok) return showToast(data.error || '操作失敗', 'error');
+      showToast('操作成功', 'success');
       fetchContracts();
-    } catch (err) { alert('操作失敗: ' + err.message); }
+    } catch (err) { showToast('操作失敗: ' + err.message, 'error'); }
   }
 
   // ==================== INCOME (CASHIER) ====================
@@ -525,10 +541,10 @@ function RentalsPage() {
         body: JSON.stringify({ year: incomeFilter.year, month: incomeFilter.month })
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '產生失敗');
-      alert(`已產生 ${data.created} 筆，跳過 ${data.skipped} 筆`);
+      if (!res.ok) return showToast(data.error || '產生失敗', 'error');
+      showToast(`已產生 ${data.created} 筆，跳過 ${data.skipped} 筆`, 'success');
       fetchIncomes();
-    } catch (err) { alert('產生失敗: ' + err.message); }
+    } catch (err) { showToast('產生失敗: ' + err.message, 'error'); }
   }
 
   function openIncomePayment(income) {
@@ -561,6 +577,7 @@ function RentalsPage() {
   }
 
   async function confirmIncomePayment() {
+    setIncomePaymentSaving(true);
     try {
       const method = incomeFormMode === 'edit' ? 'PATCH' : 'PUT';
       const res = await fetch(`/api/rentals/income/${payingIncomeId}`, {
@@ -569,12 +586,13 @@ function RentalsPage() {
         body: JSON.stringify(incomePayForm)
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || (incomeFormMode === 'edit' ? '更新失敗' : '確認失敗'));
-      alert(incomeFormMode === 'edit' ? '已更新收款資料' : `已確認收款 (${data.status === 'partial' ? '部分收款' : '全額收款'})`);
+      if (!res.ok) return showToast(data.error || (incomeFormMode === 'edit' ? '更新失敗' : '確認失敗'), 'error');
+      showToast(incomeFormMode === 'edit' ? '已更新收款資料' : `已確認收款 (${data.status === 'partial' ? '部分收款' : '全額收款'})`, 'success');
       setPayingIncomeId(null);
       fetchIncomes();
       fetchSummary();
-    } catch (err) { alert(incomeFormMode === 'edit' ? '更新失敗: ' + err.message : '確認失敗: ' + err.message); }
+    } catch (err) { showToast(incomeFormMode === 'edit' ? '更新失敗: ' + err.message : '確認失敗: ' + err.message, 'error'); }
+    finally { setIncomePaymentSaving(false); }
   }
 
   async function voidIncomePayment(incomeId) {
@@ -582,11 +600,11 @@ function RentalsPage() {
     try {
       const res = await fetch(`/api/rentals/income/${incomeId}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '作廢失敗');
+      if (!res.ok) return showToast(data.error || '作廢失敗', 'error');
       setPayingIncomeId(null);
       fetchIncomes();
       fetchSummary();
-    } catch (err) { alert('作廢失敗: ' + err.message); }
+    } catch (err) { showToast('作廢失敗: ' + err.message, 'error'); }
   }
 
   // ==================== TAXES ====================
@@ -603,6 +621,7 @@ function RentalsPage() {
   }
 
   async function saveTax() {
+    setTaxSaving(true);
     try {
       if (editingTax) {
         const res = await fetch(`/api/rentals/taxes/${editingTax.id}`, {
@@ -615,7 +634,7 @@ function RentalsPage() {
           })
         });
         const data = await res.json();
-        if (!res.ok) return alert(data.error || data.message || '更新失敗');
+        if (!res.ok) return showToast(data.error || data.message || '更新失敗', 'error');
         setShowTaxModal(false);
         setEditingTax(null);
         fetchTaxes();
@@ -625,11 +644,12 @@ function RentalsPage() {
           body: JSON.stringify(taxForm)
         });
         const data = await res.json();
-        if (!res.ok) return alert(data.error || '儲存失敗');
+        if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
         setShowTaxModal(false);
         fetchTaxes();
       }
-    } catch (err) { alert(editingTax ? '更新失敗: ' + err.message : '儲存失敗: ' + err.message); }
+    } catch (err) { showToast(editingTax ? '更新失敗: ' + err.message : '儲存失敗: ' + err.message, 'error'); }
+    finally { setTaxSaving(false); }
   }
 
   async function confirmTaxPayment() {
@@ -639,33 +659,34 @@ function RentalsPage() {
         body: JSON.stringify(taxPayForm)
       });
       const data = await res.json();
-      if (!res.ok) return alert(data.error || '確認失敗');
-      alert('稅款已確認繳納');
+      if (!res.ok) return showToast(data.error || '確認失敗', 'error');
+      showToast('稅款已確認繳納', 'success');
       setPayingTaxId(null);
       fetchTaxes();
-    } catch (err) { alert('確認失敗: ' + err.message); }
+    } catch (err) { showToast('確認失敗: ' + err.message, 'error'); }
   }
 
   async function deleteTax(tax) {
     if (tax.status === 'paid') {
-      alert('已付款的稅款不可刪除');
+      showToast('已付款的稅款不可刪除', 'error');
       return;
     }
     if (!confirm(`確定要刪除此筆稅款（${tax.property?.name} ${tax.taxYear} ${tax.taxType}）？`)) return;
     try {
       const res = await fetch(`/api/rentals/taxes/${tax.id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) return alert(data.message || data.error || '刪除失敗');
+      if (!res.ok) return showToast(data.message || data.error || '刪除失敗', 'error');
       fetchTaxes();
-    } catch (err) { alert('刪除失敗: ' + err.message); }
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
   }
 
   // ==================== MAINTENANCE ====================
   async function saveMaintenance() {
     if (!maintenanceForm.accountingSubjectId) {
-      alert('請選擇會計科目');
+      showToast('請選擇會計科目', 'error');
       return;
     }
+    setMaintenanceSaving(true);
     if (editingMaintenance) {
       try {
         const res = await fetch(`/api/rentals/maintenance/${editingMaintenance.id}`, {
@@ -681,15 +702,17 @@ function RentalsPage() {
           })
         });
         const data = await res.json();
-        if (!res.ok) return alert(data?.error?.message || data?.error || '更新失敗');
+        if (!res.ok) return showToast(data?.error?.message || data?.error || '更新失敗', 'error');
         setShowMaintenanceModal(false);
         setEditingMaintenance(null);
         fetchMaintenances();
-      } catch (err) { alert('更新失敗: ' + err.message); }
+      } catch (err) { showToast('更新失敗: ' + err.message, 'error'); }
+      finally { setMaintenanceSaving(false); }
       return;
     }
     if (!maintenanceForm.accountId) {
-      alert('請選擇支出戶頭（存檔後將同步至出納待出納）');
+      showToast('請選擇支出戶頭（存檔後將同步至出納待出納）', 'error');
+      setMaintenanceSaving(false);
       return;
     }
     try {
@@ -699,15 +722,16 @@ function RentalsPage() {
         body: JSON.stringify(maintenanceForm)
       });
       const data = await res.json();
-      if (!res.ok) return alert(data?.error?.message || data?.error || '儲存失敗');
+      if (!res.ok) return showToast(data?.error?.message || data?.error || '儲存失敗', 'error');
       setShowMaintenanceModal(false);
       fetchMaintenances();
-    } catch (err) { alert('儲存失敗: ' + err.message); }
+    } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
+    finally { setMaintenanceSaving(false); }
   }
 
   async function deleteMaintenance(m) {
     if (m.status === 'paid' || m.cashTransactionId) {
-      alert('已付款的維護費不可刪除');
+      showToast('已付款的維護費不可刪除', 'error');
       return;
     }
     if (!confirm(`確定要刪除此筆維護紀錄嗎？`)) return;
@@ -715,10 +739,10 @@ function RentalsPage() {
       const res = await fetch(`/api/rentals/maintenance/${m.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
-        return alert(data?.error?.message || data?.error || '刪除失敗');
+        return showToast(data?.error?.message || data?.error || '刪除失敗', 'error');
       }
       fetchMaintenances();
-    } catch (err) { alert('刪除失敗: ' + err.message); }
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
   }
 
   // ==================== HELPER ====================
@@ -990,7 +1014,7 @@ function RentalsPage() {
                       )}
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <button onClick={confirmIncomePayment} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700">{incomeFormMode === 'edit' ? '儲存' : '確認'}</button>
+                      <button onClick={confirmIncomePayment} disabled={incomePaymentSaving} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">{incomePaymentSaving ? '處理中…' : (incomeFormMode === 'edit' ? '儲存' : '確認')}</button>
                       <button onClick={() => setPayingIncomeId(null)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
                     </div>
                   </div>
@@ -1230,7 +1254,7 @@ function RentalsPage() {
                       ))}
                     </select>
                     <button onClick={fetchTaxTable} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">載入</button>
-                    <button onClick={saveTaxTable} disabled={taxTableSaving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50">儲存</button>
+                    <button onClick={saveTaxTable} disabled={taxTableSaving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50">{taxTableSaving ? '儲存中…' : '儲存'}</button>
                   </div>
                   <div className="bg-white rounded-lg shadow overflow-x-auto border border-gray-200">
                     <table className="w-full text-sm">
@@ -1562,7 +1586,7 @@ function RentalsPage() {
                         </div>
                         <div className="flex justify-end gap-2 mt-6">
                           <button onClick={() => setShowUtilityModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                          <button onClick={saveUtility} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                          <button onClick={saveUtility} disabled={utilitySaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{utilitySaving ? '儲存中…' : '儲存'}</button>
                         </div>
                       </div>
                     </div>
@@ -1744,7 +1768,7 @@ function RentalsPage() {
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowTenantModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveTenant} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                <button onClick={saveTenant} disabled={tenantSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{tenantSaving ? '儲存中…' : '儲存'}</button>
               </div>
             </div>
           </div>
@@ -1809,7 +1833,7 @@ function RentalsPage() {
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowPropertyModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveProperty} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                <button onClick={saveProperty} disabled={propertySaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{propertySaving ? '儲存中…' : '儲存'}</button>
               </div>
             </div>
           </div>
@@ -1915,7 +1939,7 @@ function RentalsPage() {
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowContractModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveContract} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{contractSaving ? '儲存中…' : '儲存'}</button>
               </div>
             </div>
           </div>
@@ -1965,7 +1989,7 @@ function RentalsPage() {
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => { setShowTaxModal(false); setEditingTax(null); }} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveTax} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                <button onClick={saveTax} disabled={taxSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{taxSaving ? '儲存中…' : '儲存'}</button>
               </div>
             </div>
           </div>
@@ -2056,7 +2080,7 @@ function RentalsPage() {
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => { setShowMaintenanceModal(false); setEditingMaintenance(null); }} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveMaintenance} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700">儲存</button>
+                <button onClick={saveMaintenance} disabled={maintenanceSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{maintenanceSaving ? '儲存中…' : '儲存'}</button>
               </div>
             </div>
           </div>

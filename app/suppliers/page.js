@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { useToast } from '@/context/ToastContext';
 
 export default function SuppliersPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,7 @@ export default function SuppliersPage() {
   });
   const [contracts, setContracts] = useState([]);
   const [uploadingContract, setUploadingContract] = useState(false);
+  const [supplierSaving, setSupplierSaving] = useState(false);
   const [allSuppliers, setAllSuppliers] = useState([]);
   const [sortType, setSortType] = useState('id-asc');
   const [filterKeyword, setFilterKeyword] = useState('');
@@ -266,7 +269,7 @@ export default function SuppliersPage() {
       });
 
       if (response.ok) {
-        alert(`廠商${isEditing ? '更新' : '新增'}成功！`);
+        showToast(`廠商${isEditing ? '更新' : '新增'}成功！`, 'success');
         setShowAddForm(false);
         setEditingSupplier(null);
         setFormData(emptyForm);
@@ -275,11 +278,13 @@ export default function SuppliersPage() {
       } else {
         const error = await response.json().catch(() => ({}));
         const msg = error?.error?.message || error?.error?.code || (typeof error?.error === 'string' ? error.error : '未知錯誤');
-        alert(`${isEditing ? '更新' : '新增'}失敗：${msg}`);
+        showToast(`${isEditing ? '更新' : '新增'}失敗：${msg}`, 'error');
       }
     } catch (err) {
       console.error('操作失敗:', err);
-      alert('操作失敗，請稍後再試');
+      showToast('操作失敗，請稍後再試', 'error');
+    } finally {
+      setSupplierSaving(false);
     }
   }
 
@@ -312,16 +317,16 @@ export default function SuppliersPage() {
       });
 
       if (response.ok) {
-        alert('廠商刪除成功！');
+        showToast('廠商刪除成功！', 'success');
         fetchSuppliers();
       } else {
         const error = await response.json();
         const msg = error?.error?.message || (typeof error?.error === 'string' ? error.error : '未知錯誤');
-        alert('刪除失敗：' + msg);
+        showToast('刪除失敗：' + msg, 'error');
       }
     } catch (error) {
       console.error('刪除廠商失敗:', error);
-      alert('刪除廠商失敗，請稍後再試');
+      showToast('刪除廠商失敗，請稍後再試', 'error');
     }
   }
 
@@ -353,15 +358,15 @@ export default function SuppliersPage() {
       });
 
       if (response.ok) {
-        alert('合約上傳成功！');
+        showToast('合約上傳成功！', 'success');
         await fetchContracts(editingSupplier.id);
       } else {
         const error = await response.json();
-        alert('上傳失敗：' + (error.error || '未知錯誤'));
+        showToast('上傳失敗：' + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('上傳合約失敗:', error);
-      alert('上傳合約失敗，請稍後再試');
+      showToast('上傳合約失敗，請稍後再試', 'error');
     } finally {
       setUploadingContract(false);
       e.target.value = '';
@@ -377,16 +382,16 @@ export default function SuppliersPage() {
       });
 
       if (response.ok) {
-        alert('合約已刪除');
+        showToast('合約已刪除', 'success');
         await fetchContracts(editingSupplier.id);
       } else {
         const error = await response.json();
         const msg = error?.error?.message || (typeof error?.error === 'string' ? error.error : '未知錯誤');
-        alert('刪除失敗：' + msg);
+        showToast('刪除失敗：' + msg, 'error');
       }
     } catch (error) {
       console.error('刪除合約失敗:', error);
-      alert('刪除合約失敗，請稍後再試');
+      showToast('刪除合約失敗，請稍後再試', 'error');
     }
   }
 
@@ -709,11 +714,11 @@ export default function SuppliersPage() {
               </div>
               <div className="col-span-2 flex justify-end gap-3">
                 <button type="button" onClick={() => { setShowAddForm(false); setEditingSupplier(null); setFormData(emptyForm); setContracts([]); }}
-                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" disabled={supplierSaving}>
                   取消
                 </button>
-                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                  {editingSupplier ? '更新' : '儲存'}
+                <button type="submit" disabled={supplierSaving} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                  {supplierSaving ? '儲存中…' : (editingSupplier ? '更新' : '儲存')}
                 </button>
               </div>
             </form>

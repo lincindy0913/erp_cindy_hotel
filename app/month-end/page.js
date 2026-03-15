@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
@@ -25,6 +26,7 @@ function formatNumber(num) {
 
 export default function MonthEndPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isAdmin = session?.user?.role === 'admin';
   const userName = session?.user?.name || '';
 
@@ -142,10 +144,10 @@ export default function MonthEndPage() {
       if (data.success) {
         fetchMonthData();
       } else {
-        alert(data.error || '鎖定失敗');
+        showToast(data.error || '鎖定失敗', 'error');
       }
     } catch (error) {
-      alert('鎖定失敗: ' + error.message);
+      showToast('鎖定失敗: ' + error.message, 'error');
     }
     setLockLoading(false);
   }
@@ -160,7 +162,7 @@ export default function MonthEndPage() {
   // Submit unlock
   async function handleUnlockSubmit() {
     if (!unlockReason.trim()) {
-      alert('請輸入解鎖原因');
+      showToast('請輸入解鎖原因', 'error');
       return;
     }
     setUnlockLoading(true);
@@ -179,10 +181,10 @@ export default function MonthEndPage() {
         setShowUnlock(false);
         fetchMonthData();
       } else {
-        alert(data.error || '解鎖失敗');
+        showToast(data.error || '解鎖失敗', 'error');
       }
     } catch (error) {
-      alert('解鎖失敗: ' + error.message);
+      showToast('解鎖失敗: ' + error.message, 'error');
     }
     setUnlockLoading(false);
   }

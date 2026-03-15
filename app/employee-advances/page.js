@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { useToast } from '@/context/ToastContext';
 
 export default function EmployeeAdvancesPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('pending');
   const [advances, setAdvances] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -80,8 +82,8 @@ export default function EmployeeAdvancesPage() {
   }
 
   async function handleSettle() {
-    if (selectedIds.size === 0) return alert('請勾選要結算的代墊款');
-    if (!settleAccountId) return alert('請選擇付款帳戶');
+    if (selectedIds.size === 0) return showToast('請勾選要結算的代墊款', 'error');
+    if (!settleAccountId) return showToast('請選擇付款帳戶', 'error');
 
     const acct = accounts.find(a => a.id === parseInt(settleAccountId));
     if (!confirm(`確定從「${acct?.name || '帳戶'}」支付 ${selectedIds.size} 筆代墊款，共 NT$ ${selectedTotal.toLocaleString()}？`)) return;
@@ -100,22 +102,22 @@ export default function EmployeeAdvancesPage() {
       });
       const result = await res.json();
       if (res.ok) {
-        alert(result.message || '結算成功');
+        showToast(result.message || '結算成功', 'success');
         setSelectedIds(new Set());
         setSettleNote('');
         fetchAll();
       } else {
-        alert(result.error?.message || result.message || '結算失敗');
+        showToast(result.error?.message || result.message || '結算失敗', 'error');
       }
     } catch (err) {
-      alert('結算失敗: ' + err.message);
+      showToast('結算失敗: ' + err.message, 'error');
     }
     setSettling(false);
   }
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!addForm.employeeName || !addForm.amount) return alert('請填寫員工姓名和金額');
+    if (!addForm.employeeName || !addForm.amount) return showToast('請填寫員工姓名和金額', 'error');
     try {
       const res = await fetch('/api/employee-advances', {
         method: 'POST',
@@ -123,15 +125,15 @@ export default function EmployeeAdvancesPage() {
         body: JSON.stringify(addForm),
       });
       if (res.ok) {
-        alert('新增成功');
+        showToast('新增成功', 'success');
         setShowAddForm(false);
         setAddForm({ employeeName: '', paymentMethod: '現金', amount: '', sourceDescription: '', expenseName: '', summary: '', warehouse: '', note: '' });
         fetchAll();
       } else {
         const err = await res.json();
-        alert(err.error?.message || '新增失敗');
+        showToast(err.error?.message || '新增失敗', 'error');
       }
-    } catch { alert('新增失敗'); }
+    } catch { showToast('新增失敗', 'error'); }
   }
 
   const bankAccounts = accounts.filter(a => a.isActive && (a.type === '銀行存款' || a.type === '現金'));

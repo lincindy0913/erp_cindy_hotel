@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { useToast } from '@/context/ToastContext';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 
 export default function FundManagementPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -114,10 +116,10 @@ export default function FundManagementPage() {
         fetchAccounts();
       } else {
         const data = await res.json();
-        alert(data.error || '刪除失敗，可能有關聯的交易紀錄');
+        showToast(data.error || '刪除失敗，可能有關聯的交易紀錄', 'error');
       }
     } catch (err) {
-      alert('刪除失敗');
+      showToast('刪除失敗', 'error');
     }
   }
 

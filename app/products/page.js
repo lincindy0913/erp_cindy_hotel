@@ -6,12 +6,15 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 export default function ProductsPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [productSaving, setProductSaving] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [accountingSubjects, setAccountingSubjects] = useState([]);
@@ -90,7 +93,7 @@ export default function ProductsPage() {
     const trimmed = newWarehouse.trim();
     if (!trimmed) return;
     if (warehouseOptions.includes(trimmed)) {
-      alert('此倉庫位置已存在');
+      showToast('此倉庫位置已存在', 'error');
       return;
     }
     setWarehouseOptions([...warehouseOptions, trimmed]);
@@ -126,16 +129,17 @@ export default function ProductsPage() {
     
     // 前端驗證：會計科目必選
     if (!formData.accountingSubject) {
-      alert('請選擇會計科目');
+      showToast('請選擇會計科目', 'error');
       return;
     }
 
     // 前端驗證：如果列入庫存為「是」，倉庫位置必須填寫
     if (formData.isInStock && !formData.warehouseLocation) {
-      alert('列入庫存時必須填寫倉庫位置');
+      showToast('列入庫存時必須填寫倉庫位置', 'error');
       return;
     }
     
+    setProductSaving(true);
     try {
       const isEditing = !!editingProduct;
       const method = isEditing ? 'PUT' : 'POST';
@@ -154,7 +158,7 @@ export default function ProductsPage() {
       });
 
       if (response.ok) {
-        alert(`產品${isEditing ? '更新' : '新增'}成功！`);
+        showToast(`產品${isEditing ? '更新' : '新增'}成功！`, 'success');
         setShowAddForm(false);
         setEditingProduct(null);
         setFormData({
@@ -177,11 +181,11 @@ export default function ProductsPage() {
         }
       } else {
         const error = await response.json();
-        alert(`${isEditing ? '更新' : '新增'}失敗：` + (error.error || '未知錯誤'));
+        showToast(`${isEditing ? '更新' : '新增'}失敗：` + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('操作失敗:', error);
-      alert('操作失敗，請稍後再試');
+      showToast('操作失敗，請稍後再試', 'error');
     }
   }
 
@@ -211,20 +215,20 @@ export default function ProductsPage() {
       });
 
       if (response.ok) {
-        alert('產品刪除成功！');
+        showToast('產品刪除成功！', 'success');
         fetchProducts();
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || '未知錯誤'));
+        showToast('刪除失敗：' + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('刪除產品失敗:', error);
-      alert('刪除產品失敗，請稍後再試');
+      showToast('刪除產品失敗，請稍後再試', 'error');
     }
   }
 
   function handleViewDetails(product) {
-    alert(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n數量：${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}`);
+    showToast(`產品詳情：\n\n代碼：${product.code}\n名稱：${product.name}\n類別：${product.category || '未設定'}\n單位：${product.unit || '未設定'}\n成本價：NT$ ${product.costPrice}\n數量：${product.salesPrice}\n列入庫存：${product.isInStock ? '是' : '否'}\n倉庫位置：${product.warehouseLocation || '未設定'}\n會計科目：${product.accountingSubject || '未設定'}`, 'info');
   }
 
   // Old handleExport removed - replaced by ExportButtons component
@@ -242,7 +246,7 @@ export default function ProductsPage() {
         const lines = text.split('\n');
         
         if (lines.length < 2) {
-          alert('CSV 檔案格式錯誤：至少需要標題列和一筆資料');
+          showToast('CSV 檔案格式錯誤：至少需要標題列和一筆資料', 'error');
           return;
         }
 
@@ -272,7 +276,7 @@ export default function ProductsPage() {
         }
 
         if (importedProducts.length === 0) {
-          alert('沒有有效資料可匯入');
+          showToast('沒有有效資料可匯入', 'error');
           return;
         }
 
@@ -302,11 +306,11 @@ export default function ProductsPage() {
           }
         }
 
-        alert(`匯入完成！\n成功：${successCount} 筆\n失敗：${failCount} 筆`);
+        showToast(`匯入完成！\n成功：${successCount} 筆\n失敗：${failCount} 筆`, failCount > 0 ? 'warning' : 'success');
         fetchProducts();
       } catch (error) {
         console.error('讀取檔案失敗:', error);
-        alert('讀取檔案失敗，請確認檔案格式正確');
+        showToast('讀取檔案失敗，請確認檔案格式正確', 'error');
       }
     };
     input.click();
@@ -610,9 +614,10 @@ export default function ProductsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  disabled={productSaving}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {editingProduct ? '更新' : '儲存'}
+                  {productSaving ? '儲存中…' : (editingProduct ? '更新' : '儲存')}
                 </button>
               </div>
             </form>

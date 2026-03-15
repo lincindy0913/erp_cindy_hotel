@@ -25,13 +25,13 @@ export async function POST(request, { params }) {
     });
 
     if (!batch || batch.sessionId !== sessionId) {
-      return NextResponse.json({ error: { message: '批次不存在' } }, { status: 404 });
+      return NextResponse.json({ error: '批次不存在', code: 'NOT_FOUND' }, { status: 404 });
     }
     if (batch.status === 'imported') {
       return NextResponse.json({ error: { message: '此批次已匯入' } }, { status: 400 });
     }
     if (batch.status === 'error') {
-      return NextResponse.json({ error: { message: '批次有驗證錯誤，請修正後重新上傳' } }, { status: 400 });
+      return NextResponse.json({ error: '批次有驗證錯誤，請修正後重新上傳', code: 'VALIDATION_FAILED' }, { status: 400 });
     }
 
     const body = await request.json();

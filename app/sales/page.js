@@ -7,10 +7,12 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { useToast } from '@/context/ToastContext';
 
 function InvoicePageInner() {
   const router = useRouter();
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -21,6 +23,7 @@ function InvoicePageInner() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [salesSaving, setSalesSaving] = useState(false);
   const [expandedInvoices, setExpandedInvoices] = useState(new Set()); // 追蹤展開的發票ID
 
   // 發票抬頭：連動系統設定 /api/settings/invoice-titles
@@ -93,7 +96,7 @@ function InvoicePageInner() {
       .then(invoice => {
         if (cancelled || !invoice) return;
         if (['草稿', '待出納', '已付款'].includes(invoice.paymentStatus)) {
-          alert(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`);
+          showToast(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`, 'error');
           return;
         }
         handleEdit(invoice);
@@ -174,12 +177,12 @@ function InvoicePageInner() {
       setSelectedItems([]); // 清空已選品項
       
       if (items.length === 0) {
-        alert('查詢完成，但沒有找到未核銷的進貨單品項。\n\n請檢查：\n1. 篩選條件是否正確\n2. 是否有建立進貨單資料\n3. 該品項是否已被核銷');
+        showToast('查詢完成，但沒有找到未核銷的進貨單品項。\n\n請檢查：\n1. 篩選條件是否正確\n2. 是否有建立進貨單資料\n3. 該品項是否已被核銷', 'info');
       }
     } catch (error) {
       console.error('取得未核銷品項失敗:', error);
       setAvailableItems([]);
-      alert('查詢失敗：' + (error.message || '請稍後再試'));
+      showToast('查詢失敗：' + (error.message || '請稍後再試'), 'error');
     } finally {
       setLoadingItems(false);
     }
@@ -233,7 +236,7 @@ function InvoicePageInner() {
     const title = newTitleName.trim();
     if (!title) return;
     if (invoiceTitles.some(t => t.title === title)) {
-      alert('此抬頭已存在');
+      showToast('此抬頭已存在', 'error');
       return;
     }
     try {
@@ -248,10 +251,10 @@ function InvoicePageInner() {
         setNewTitleName('');
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error?.message || '新增發票抬頭失敗');
+        showToast(err.error?.message || '新增發票抬頭失敗', 'error');
       }
     } catch (err) {
-      alert('新增發票抬頭失敗');
+      showToast('新增發票抬頭失敗', 'error');
     }
   }
 
@@ -267,10 +270,10 @@ function InvoicePageInner() {
           setFormData(prev => ({ ...prev, invoiceTitle: '' }));
         }
       } else {
-        alert('刪除失敗');
+        showToast('刪除失敗', 'error');
       }
     } catch {
-      alert('刪除失敗');
+      showToast('刪除失敗', 'error');
     }
   }
 
@@ -278,15 +281,16 @@ function InvoicePageInner() {
     e.preventDefault();
 
     if (selectedItems.length === 0) {
-      alert('請至少勾選一項進貨單品項');
+      showToast('請至少勾選一項進貨單品項', 'error');
       return;
     }
 
     if (!formData.invoiceNo) {
-      alert('請輸入發票號碼');
+      showToast('請輸入發票號碼', 'error');
       return;
     }
 
+    setSalesSaving(true);
     try {
       const totals = calculateTotal();
       const invoiceAmountVal = parseFloat(formData.invoiceAmount) || 0;
@@ -296,14 +300,15 @@ function InvoicePageInner() {
       // 驗證：銷售金額 + 營業稅金額 - 廠商折讓金額 是否等於 發票金額
       const expectedInvoiceAmount = salesTotalVal + taxAmount - discountVal;
       if (Math.abs(expectedInvoiceAmount - invoiceAmountVal) > 0.01) {
-        alert(
+        showToast(
           `金額驗證不通過！\n\n` +
           `銷售金額合計：NT$ ${salesTotalVal.toFixed(2)}\n` +
           `+ 營業稅金額：NT$ ${taxAmount.toFixed(2)}\n` +
           `- 廠商折讓金額：NT$ ${discountVal.toFixed(2)}\n` +
           `= NT$ ${expectedInvoiceAmount.toFixed(2)}\n\n` +
           `但發票金額為：NT$ ${invoiceAmountVal.toFixed(2)}\n\n` +
-          `兩者不相等，請確認金額後再儲存。`
+          `兩者不相等，請確認金額後再儲存。`,
+          'error'
         );
         return;
       }
@@ -363,11 +368,13 @@ function InvoicePageInner() {
         }
       } else {
         const error = await response.json();
-        alert(`${isEditing ? '更新' : '登錄'}失敗：` + (error.error || '未知錯誤'));
+        showToast(`${isEditing ? '更新' : '登錄'}失敗：` + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error(`${editingInvoice ? '更新' : '登錄'}發票失敗:`, error);
-      alert(`${editingInvoice ? '更新' : '登錄'}發票失敗，請稍後再試`);
+      showToast(`${editingInvoice ? '更新' : '登錄'}發票失敗，請稍後再試`, 'error');
+    } finally {
+      setSalesSaving(false);
     }
   }
 
@@ -384,7 +391,7 @@ function InvoicePageInner() {
   function handleEdit(invoice) {
     // 若發票付款狀態為草稿 / 待出納 / 已付款，不可再修改
     if (['草稿', '待出納', '已付款'].includes(invoice.paymentStatus)) {
-      alert(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`);
+      showToast(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`, 'error');
       return;
     }
     setEditingInvoice(invoice);
@@ -409,15 +416,15 @@ function InvoicePageInner() {
       });
 
       if (response.ok) {
-        alert('發票刪除成功！');
+        showToast('發票刪除成功！', 'success');
         fetchInvoices();
       } else {
         const error = await response.json();
-        alert('刪除失敗：' + (error.error || '未知錯誤'));
+        showToast('刪除失敗：' + (error.error || '未知錯誤'), 'error');
       }
     } catch (error) {
       console.error('刪除發票失敗:', error);
-      alert('刪除發票失敗，請稍後再試');
+      showToast('刪除發票失敗，請稍後再試', 'error');
     }
   }
 
@@ -899,14 +906,14 @@ function InvoicePageInner() {
                 </button>
                 <button
                   type="submit"
-                  disabled={selectedItems.length === 0}
+                  disabled={selectedItems.length === 0 || salesSaving}
                   className={`px-6 py-2 rounded-lg ${
-                    selectedItems.length === 0
+                    selectedItems.length === 0 || salesSaving
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
+                  } disabled:opacity-50`}
                 >
-                  儲存
+                  {salesSaving ? '儲存中…' : '儲存'}
                 </button>
               </div>
             </form>
