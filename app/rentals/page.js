@@ -160,8 +160,13 @@ function RentalsPage() {
     if (activeTab === 'properties') fetchProperties();
     if (activeTab === 'contracts') fetchContracts();
     if (activeTab === 'taxes') fetchTaxes();
+    // 維護費頁面也需要物業清單供下拉選單使用
+    if (activeTab === 'maintenance') {
+      fetchMaintenances();
+      fetchProperties();
+      return;
+    }
     if (activeTab === 'utilityIncome') fetchUtilityList();
-    if (activeTab === 'maintenance') fetchMaintenances();
     if (activeTab === 'overview') fetchSummary();
     if (activeTab === 'incomeReport') fetchIncomeReport();
     if (activeTab === 'operatingReport') fetchOperatingReport();

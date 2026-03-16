@@ -57,5 +57,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Sync schema (migrate deploy or db push without --accept-data-loss to keep all data), seed, then start
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js generate 2>/dev/null || true; node node_modules/prisma/build/index.js migrate deploy 2>/dev/null || node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; exec node server.js"]
+# Sync schema, seed users + roles, then start
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js generate 2>/dev/null || true; node node_modules/prisma/build/index.js migrate deploy 2>/dev/null || node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; node prisma/seed.js 2>/dev/null || true; node prisma/seed-roles.js 2>/dev/null || true; exec node server.js"]
