@@ -192,30 +192,30 @@ export default function UtilityBillsPage() {
     const addrMatch = t.match(/(?:用電地址|裝設地址|繳費地點|地址)[\s：:]*([^\d]{2,100}?(?:市|縣|區|鄉|鎮|村|路|街|段|巷|弄|號|樓)[^\d]{0,50}?)(?=\s*(?:電號|用戶|計費|流動|應繳|總計|$))/);
     if (addrMatch) out.地址 = addrMatch[1].replace(/\s+/g, ' ').trim();
 
-    const acctMatch = t.match(/(?:電號|用戶編號|用電戶號|戶號|用戶號碼)[\s：:]*([\d\-]{6,25})/);
+    const acctMatch = t.match(/(?:電號|電費戶號|用戶編號|用電戶號|戶號|用戶號碼)[\s：:]*[\s\S]{0,50}?([\d\-]{6,25})/);
     if (acctMatch) out.電號 = acctMatch[1].trim();
 
     const degreeMatch = t.match(/(?:總用電度數|用電度數|使用度數|度數|本期用電|流動電費計算度數)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*(?:度|kWh)?/);
     if (degreeMatch) out.使用度數 = degreeMatch[1].replace(/,/g, '');
 
-    const feeMatch = t.match(/(?:流動電費|本月電費|電費金額|電費|應付電費)[\s：:]*([\d,]+(?:\.[\d]+)?)/);
+    const feeMatch = t.match(/(?:流動電費|本月電費|本期電費|電費金額|電費|應付電費)[\s：:]*([\d,]+(?:\.[\d]+)?)/);
     if (feeMatch) out.電費金額 = feeMatch[1].replace(/,/g, '');
 
     const taxMatch = t.match(/(?:應繳稅額|營業稅|稅額|代收稅額)[\s：:]*([\d,]+(?:\.[\d]+)?)/);
     if (taxMatch) out.應繳稅額 = taxMatch[1].replace(/,/g, '');
 
-    const totalMatch = t.match(/(?:應繳總金額|總計|合計|總金額|本期應繳|應繳金額)[\s：:]*([\d,]+(?:\.[\d]+)?)\s*元?/);
+    const totalMatch = t.match(/(?:本期應繳金額|應繳電費|應繳總金額|總計|合計|總金額|本期應繳|應繳金額)[\s：:]*[\s\S]{0,100}?([\d,]{3,}(?:\.[\d]+)?)\s*元?/);
     if (totalMatch) out.應繳總金額 = totalMatch[1].replace(/,/g, '');
 
     const anyAmount = t.match(/([\d,]+\.?\d*)\s*元/g);
     if (anyAmount && !out.應繳總金額) {
-      const nums = anyAmount.map(m => parseFloat(m[1].replace(/,/g, ''))).filter(n => n > 0 && n < 10000000);
+      const nums = anyAmount.map(m => parseFloat(m.replace(/[^\d.,]/g, ''))).filter(n => n > 0 && n < 10000000);
       if (nums.length) out.應繳總金額 = String(Math.max(...nums));
     }
     if (!out.應繳總金額) {
       const bigNum = t.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*元/g);
       if (bigNum) {
-        const n = bigNum.map(m => parseFloat(m.replace(/[^\d.]/g, ''))).filter(x => x > 10 && x < 10000000);
+        const n = bigNum.map(m => parseFloat(m.replace(/[^\d.,]/g, ''))).filter(x => x > 10 && x < 10000000);
         if (n.length) out.應繳總金額 = String(Math.max(...n));
       }
     }
@@ -253,13 +253,13 @@ export default function UtilityBillsPage() {
 
     const anyAmount = t.match(/([\d,]+\.?\d*)\s*元/g);
     if (anyAmount && !out.總金額) {
-      const nums = anyAmount.map(m => parseFloat(m[1].replace(/,/g, ''))).filter(n => n > 0 && n < 10000000);
+      const nums = anyAmount.map(m => parseFloat(m.replace(/[^\d.,]/g, ''))).filter(n => n > 0 && n < 10000000);
       if (nums.length) out.總金額 = String(Math.max(...nums));
     }
     if (!out.總金額) {
       const bigNum = t.match(/(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*元/g);
       if (bigNum) {
-        const n = bigNum.map(m => parseFloat(m.replace(/[^\d.]/g, ''))).filter(x => x > 10 && x < 10000000);
+        const n = bigNum.map(m => parseFloat(m.replace(/[^\d.,]/g, ''))).filter(x => x > 10 && x < 10000000);
         if (n.length) out.總金額 = String(Math.max(...n));
       }
     }
