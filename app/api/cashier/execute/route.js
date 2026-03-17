@@ -191,7 +191,7 @@ export async function POST(request) {
         if (linkedTerm && linkedTerm.status !== 'paid') {
           // Sum all executed payment orders for this term (including this one)
           const allPOs = await tx.paymentOrder.findMany({
-            where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已付款' },
+            where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已執行' },
             select: { amount: true },
           });
           const totalPaid = allPOs.reduce((s, po) => s + Number(po.amount), 0) + Number(order.amount);

@@ -82,6 +82,7 @@ function RentalsPage() {
   // Search / filter states
   const [tenantSearch, setTenantSearch] = useState('');
   const [propertyFilter, setPropertyFilter] = useState({ buildingName: '', status: '' });
+  const [propertySort, setPropertySort] = useState({ key: '', dir: 'asc' });
   const [contractFilter, setContractFilter] = useState({ status: '', propertyId: '' });
   const [incomeFilter, setIncomeFilter] = useState({
     year: new Date().getFullYear(),
@@ -1176,10 +1177,39 @@ function RentalsPage() {
                   </button>
                 </div>
 
-                {/* Group by building */}
+                {/* Sortable table */}
                 {(() => {
+                  const sortArrow = (key) => {
+                    const active = propertySort.key === key;
+                    return (
+                      <button onClick={() => setPropertySort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))} className="ml-1 inline-flex flex-col leading-none text-[10px]">
+                        <span className={active && propertySort.dir === 'asc' ? 'text-teal-700' : 'text-gray-300'}>▲</span>
+                        <span className={active && propertySort.dir === 'desc' ? 'text-teal-700' : 'text-gray-300'}>▼</span>
+                      </button>
+                    );
+                  };
+                  const sorted = [...properties].sort((a, b) => {
+                    if (!propertySort.key) return 0;
+                    const dir = propertySort.dir === 'asc' ? 1 : -1;
+                    const keyMap = {
+                      name: p => p.name || '',
+                      address: p => p.address || '',
+                      unitNo: p => p.unitNo || '',
+                      status: p => p.status || '',
+                      tenant: p => p.currentTenantName || '',
+                      account: p => p.rentCollectAccount?.name || '',
+                      publicInterest: p => p.publicInterestLandlord ? 1 : 0,
+                      note: p => p.note || '',
+                      building: p => p.buildingName || '',
+                    };
+                    const fn = keyMap[propertySort.key];
+                    if (!fn) return 0;
+                    const va = fn(a), vb = fn(b);
+                    if (typeof va === 'number') return (va - vb) * dir;
+                    return String(va).localeCompare(String(vb)) * dir;
+                  });
                   const grouped = {};
-                  properties.forEach(p => {
+                  sorted.forEach(p => {
                     const key = p.buildingName || '未分類';
                     if (!grouped[key]) grouped[key] = [];
                     grouped[key].push(p);
@@ -1192,14 +1222,14 @@ function RentalsPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-teal-50">
                             <tr>
-                              <th className="text-left px-3 py-2">名稱</th>
-                              <th className="text-left px-3 py-2">地址</th>
-                              <th className="text-left px-3 py-2">單元</th>
-                              <th className="text-center px-3 py-2">狀態</th>
-                              <th className="text-left px-3 py-2">目前租客</th>
-                              <th className="text-left px-3 py-2">收租帳戶</th>
-                              <th className="text-center px-3 py-2">公益出租人</th>
-                              <th className="text-left px-3 py-2">備註</th>
+                              <th className="text-left px-3 py-2">名稱{sortArrow('name')}</th>
+                              <th className="text-left px-3 py-2">地址{sortArrow('address')}</th>
+                              <th className="text-left px-3 py-2">單元{sortArrow('unitNo')}</th>
+                              <th className="text-center px-3 py-2">狀態{sortArrow('status')}</th>
+                              <th className="text-left px-3 py-2">目前租客{sortArrow('tenant')}</th>
+                              <th className="text-left px-3 py-2">收租帳戶{sortArrow('account')}</th>
+                              <th className="text-center px-3 py-2">公益出租人{sortArrow('publicInterest')}</th>
+                              <th className="text-left px-3 py-2">備註{sortArrow('note')}</th>
                               <th className="text-center px-3 py-2">操作</th>
                             </tr>
                           </thead>

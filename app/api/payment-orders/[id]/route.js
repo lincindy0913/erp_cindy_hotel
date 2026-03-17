@@ -157,6 +157,8 @@ export async function PUT(request, { params }) {
     if (data.checkIssueDate !== undefined) updateData.checkIssueDate = data.checkIssueDate;
     if (data.checkDueDate !== undefined) updateData.checkDueDate = data.checkDueDate;
     if (data.note !== undefined) updateData.note = data.note;
+    if (data.summary !== undefined) updateData.summary = data.summary;
+    if (data.supplierName !== undefined) updateData.supplierName = data.supplierName;
     if (data.discount !== undefined) updateData.discount = data.discount;
     if (data.netAmount !== undefined) updateData.netAmount = data.netAmount;
     if (data.amount !== undefined) updateData.amount = data.amount;

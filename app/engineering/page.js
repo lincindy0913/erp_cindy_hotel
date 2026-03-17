@@ -506,7 +506,7 @@ export default function EngineeringPage() {
                               {(c.terms || []).map(t => {
                                 const termMaterials = (c.materials || []).filter(m => m.termId === t.id);
                                 const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
-                                const paidPOs = termPOs.filter(po => po.status === '已付款');
+                                const paidPOs = termPOs.filter(po => po.status === '已執行');
                                 const pendingPOs = termPOs.filter(po => po.status === '待出納');
                                 const paidAmount = paidPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
                                 const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
@@ -592,7 +592,7 @@ export default function EngineeringPage() {
                 const projContracts = contracts.filter(c => c.projectId === proj.id);
                 const totalContractAmount = projContracts.reduce((s, c) => s + Number(c.totalAmount), 0);
                 const totalPaid = projContracts.reduce((s, c) => s + (c.terms || []).reduce((ts, t) => {
-                  const tPOs = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款');
+                  const tPOs = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行');
                   return ts + tPOs.reduce((ps, po) => ps + Number(po.amount || 0), 0);
                 }, 0), 0);
                 const budget = Number(proj.budget) || 0;
@@ -630,7 +630,7 @@ export default function EngineeringPage() {
                             let paidByPO = 0;
                             let fullyPaidCount = 0;
                             for (const t of terms) {
-                              const tPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款').reduce((ps, po) => ps + Number(po.amount || 0), 0);
+                              const tPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + Number(po.amount || 0), 0);
                               paidByPO += tPaid;
                               if (tPaid >= Number(t.amount) && Number(t.amount) > 0) fullyPaidCount++;
                             }
@@ -697,6 +697,7 @@ export default function EngineeringPage() {
                                     amount: String(o.amount || o.netAmount), netAmount: String(o.netAmount),
                                     paymentMethod: o.paymentMethod || '轉帳', accountId: o.accountId ? String(o.accountId) : '',
                                     dueDate: o.dueDate || '', summary: o.summary || '', note: o.note || '',
+                                    materials: [],
                                   });
                                   setShowPaymentModal(true);
                                 }} className="text-amber-600 hover:underline text-xs">編輯</button>
@@ -912,7 +913,7 @@ export default function EngineeringPage() {
                     const proj = projects.find(p => p.id === contract.projectId);
                     const whName = proj?.warehouseRef?.name || proj?.warehouse || '';
                     const deptName = proj?.departmentRef?.name || '';
-                    const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === tid && (po.status === '已付款' || po.status === '待出納')).reduce((s, po) => s + Number(po.amount || 0), 0);
+                    const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === tid && (po.status === '已執行' || po.status === '待出納')).reduce((s, po) => s + Number(po.amount || 0), 0);
                     const remaining = Math.max(0, Number(term.amount) - termPaidAmt);
                     const fillAmount = remaining > 0 ? String(remaining) : String(term.amount);
                     setPaymentForm(f => ({ ...f, termId: tid, contractId: cid, supplierId: String(contract.supplierId),
@@ -924,10 +925,10 @@ export default function EngineeringPage() {
                   <option value="">一般工程付款（不連結期數）</option>
                   {contracts.map(c =>
                     (c.terms || []).filter(t => {
-                      const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + Number(po.amount || 0), 0);
                       return paid < Number(t.amount); // show terms not fully paid by actual amount
                     }).map(t => {
-                      const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + Number(po.amount || 0), 0);
                       const pendingAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
                       const remaining = Number(t.amount) - paidAmt;
                       return (
@@ -946,7 +947,7 @@ export default function EngineeringPage() {
                 const selContract = contracts.find(c => c.id === Number(paymentForm.contractId));
                 const selTerm = selContract?.terms?.find(t => t.id === Number(paymentForm.termId));
                 if (!selTerm) return null;
-                const selPaidPOs = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '已付款');
+                const selPaidPOs = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '已執行');
                 const selPaidAmt = selPaidPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
                 const selPendingAmt = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
                 const selRemaining = Number(selTerm.amount) - selPaidAmt;
