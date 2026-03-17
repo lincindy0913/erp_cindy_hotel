@@ -119,7 +119,7 @@ function RentalsPage() {
   // Inline payment forms
   const [payingIncomeId, setPayingIncomeId] = useState(null);
   const [incomeFormMode, setIncomeFormMode] = useState('confirm'); // 'confirm' | 'edit'
-  const [incomePayForm, setIncomePayForm] = useState({ actualAmount: '', actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '現金', matchTransferRef: '', matchBankAccountName: '' });
+  const [incomePayForm, setIncomePayForm] = useState({ actualAmount: '', actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '現金', matchTransferRef: '', matchBankAccountName: '', matchNote: '' });
 
   const [payingTaxId, setPayingTaxId] = useState(null);
   const [taxPayForm, setTaxPayForm] = useState({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] });
@@ -553,8 +553,9 @@ function RentalsPage() {
       actualDate: new Date().toISOString().split('T')[0],
       accountId: income.accountId || '',
       paymentMethod: income.paymentMethod || '現金',
-      matchTransferRef: income.matchTransferRef || '',
-      matchBankAccountName: income.matchBankAccountName || ''
+      matchTransferRef: '',
+      matchBankAccountName: income.matchBankAccountName || '',
+      matchNote: ''
     });
   }
 
@@ -567,7 +568,8 @@ function RentalsPage() {
       accountId: income.accountId || '',
       paymentMethod: income.paymentMethod || '現金',
       matchTransferRef: income.matchTransferRef || '',
-      matchBankAccountName: income.matchBankAccountName || ''
+      matchBankAccountName: income.matchBankAccountName || '',
+      matchNote: income.matchNote || ''
     });
   }
 
@@ -936,15 +938,20 @@ function RentalsPage() {
                               <StatusBadge value={isOverdue ? 'overdue' : income.status} list={INCOME_STATUSES} />
                             </td>
                             <td className="px-3 py-2 text-xs text-gray-600">
-                              {paymentList.length === 0 ? '-' : paymentList.map((p, i) => (
-                                <span key={i} className="block">{p.label} ${fmt(p.amount)} ({p.date})</span>
-                              ))}
+                              {paymentList.length === 0 ? '-' : (
+                                <div className="space-y-0.5">
+                                  {paymentList.map((p, i) => (
+                                    <div key={i}><span className="font-medium">{p.label}</span> ${fmt(p.amount)} <span className="text-gray-400">({p.date})</span></div>
+                                  ))}
+                                  {remaining > 0 && <div className="text-red-500 font-medium">尚欠 ${fmt(remaining)}</div>}
+                                </div>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              {(income.status === 'pending') && (
+                              {(income.status === 'pending' || income.status === 'partial') && (
                                 <button onClick={() => openIncomePayment(income)}
                                   className="text-teal-600 hover:text-teal-800 text-xs font-medium mr-1">
-                                  {paymentList.length > 0 ? '第' + (paymentList.length + 1) + '次收款' : '確認收款'}
+                                  {paymentList.length > 0 ? `第${paymentList.length + 1}次收款` : '確認收款'}
                                 </button>
                               )}
                               {(income.status === 'completed' || income.status === 'partial') && (
@@ -964,9 +971,23 @@ function RentalsPage() {
                 </div>
 
                 {/* Inline payment form */}
-                {payingIncomeId && (
+                {payingIncomeId && (() => {
+                  const currentIncome = incomes.find(i => i.id === payingIncomeId);
+                  const expectedAmt = Number(currentIncome?.expectedAmount || 0);
+                  const receivedAmt = Number(currentIncome?.actualAmount || 0);
+                  const remainingAmt = Math.max(0, expectedAmt - receivedAmt);
+                  const payHistory = currentIncome?.payments || [];
+                  return (
                   <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
-                    <h4 className="font-medium text-teal-800 mb-3">{incomeFormMode === 'edit' ? '編輯收款' : '確認收款'}</h4>
+                    <h4 className="font-medium text-teal-800 mb-3">{incomeFormMode === 'edit' ? '編輯收款' : '新增收款'}</h4>
+
+                    {/* 收款狀態摘要 */}
+                    <div className="bg-white rounded-lg px-3 py-2 mb-3 flex gap-4 text-sm">
+                      <span>應收：<b className="text-gray-800">${fmt(expectedAmt)}</b></span>
+                      <span>已收：<b className="text-green-700">${fmt(receivedAmt)}</b></span>
+                      <span>尚欠：<b className={remainingAmt > 0 ? 'text-red-600' : 'text-green-600'}>${fmt(remainingAmt)}</b></span>
+                    </div>
+
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       <div>
                         <label className="text-xs text-gray-600">實收金額</label>
@@ -1007,13 +1028,55 @@ function RentalsPage() {
                           </div>
                         </>
                       )}
+                      <div>
+                        <label className="text-xs text-gray-600">備註</label>
+                        <input type="text" value={incomePayForm.matchNote} onChange={e => setIncomePayForm(f => ({ ...f, matchNote: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-sm" placeholder="收款備註" />
+                      </div>
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <button onClick={confirmIncomePayment} disabled={incomePaymentSaving} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">{incomePaymentSaving ? '處理中…' : (incomeFormMode === 'edit' ? '儲存' : '確認')}</button>
+                      <button onClick={confirmIncomePayment} disabled={incomePaymentSaving} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">{incomePaymentSaving ? '處理中…' : (incomeFormMode === 'edit' ? '儲存' : '確認收款')}</button>
                       <button onClick={() => setPayingIncomeId(null)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
                     </div>
+
+                    {/* 歷次收款紀錄 */}
+                    {payHistory.length > 0 && (
+                      <div className="mt-4 border-t border-teal-200 pt-3">
+                        <h5 className="text-sm font-medium text-teal-700 mb-2">歷次收款紀錄</h5>
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-gray-500 border-b">
+                              <th className="text-left py-1">次數</th>
+                              <th className="text-left py-1">收款日期</th>
+                              <th className="text-right py-1">金額</th>
+                              <th className="text-left py-1">帳戶</th>
+                              <th className="text-left py-1">付款方式</th>
+                              <th className="text-left py-1">備註</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payHistory.map((p, i) => (
+                              <tr key={p.id || i} className="border-b border-gray-100">
+                                <td className="py-1 font-medium">第{p.sequenceNo || (i + 1)}次</td>
+                                <td className="py-1">{p.paymentDate || '-'}</td>
+                                <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
+                                <td className="py-1">{accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
+                                <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
+                                <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
+                              </tr>
+                            ))}
+                            <tr className="font-medium bg-teal-100/50">
+                              <td className="py-1" colSpan={2}>合計已收</td>
+                              <td className="py-1 text-right text-green-700">${fmt(receivedAmt)}</td>
+                              <td className="py-1" colSpan={3}>{remainingAmt > 0 ? <span className="text-red-600">尚欠 ${fmt(remainingAmt)}</span> : <span className="text-green-600">已收齊</span>}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
