@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const maxDuration = 300; // 5 minutes for AI inference
+
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || 'http://ocr:5001';
 
 export async function POST(request) {
@@ -20,7 +22,7 @@ export async function POST(request) {
 
     const ocrRes = await fetch(
       `${OCR_SERVICE_URL}/ocr?bill_type=${encodeURIComponent(billType)}&page=${page}`,
-      { method: 'POST', body: ocrForm }
+      { method: 'POST', body: ocrForm, signal: AbortSignal.timeout(290000) }
     );
 
     if (!ocrRes.ok) {

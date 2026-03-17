@@ -1,8 +1,8 @@
 import os
 import base64
-import tempfile
+import traceback
 import httpx
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import fitz  # PyMuPDF
 
@@ -51,7 +51,7 @@ WATER_PROMPT = """你是一個專業的台灣水費帳單辨識助手。
 只回傳 JSON，不要其他說明文字。"""
 
 
-def pdf_page_to_base64(pdf_bytes: bytes, page_num: int = 0, dpi: int = 200) -> str:
+def pdf_page_to_base64(pdf_bytes: bytes, page_num: int = 0, dpi: int = 120) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     page = doc[page_num]
     mat = fitz.Matrix(dpi / 72, dpi / 72)
@@ -69,8 +69,8 @@ def health():
 @app.post("/ocr")
 async def ocr_pdf(
     file: UploadFile = File(...),
-    bill_type: str = "電費",
-    page: int = 0,
+    bill_type: str = Query(default="電費"),
+    page: int = Query(default=0),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -86,12 +86,13 @@ async def ocr_pdf(
         target_page = min(page, num_pages - 1)
         img_b64 = pdf_page_to_base64(pdf_bytes, target_page)
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"PDF conversion failed: {str(e)}")
 
     prompt = WATER_PROMPT if bill_type == "水費" else PROMPT
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             resp = await client.post(
                 f"{OLLAMA_URL}/api/generate",
                 json={
@@ -108,6 +109,7 @@ async def ocr_pdf(
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="Ollama 服務無法連線，請確認 Ollama 容器是否啟動")
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ollama 呼叫失敗: {str(e)}")
 
     # Try to extract JSON from response
