@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
+import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
@@ -24,26 +25,6 @@ async function generateTransactionNo(date) {
   }
 
   return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
-
-// Recalculate account balance
-async function recalcBalance(accountId) {
-  const incomes = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '收入' },
-    _sum: { amount: true }
-  });
-  const expenses = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '支出' },
-    _sum: { amount: true }
-  });
-  const account = await prisma.cashAccount.findUnique({ where: { id: accountId } });
-  if (!account) return;
-
-  const newBalance = Number(account.openingBalance) + Number(incomes._sum.amount || 0) - Number(expenses._sum.amount || 0);
-  await prisma.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: newBalance }
-  });
 }
 
 export async function POST(request) {
@@ -150,7 +131,7 @@ export async function POST(request) {
 
     // Recalculate all affected account balances
     for (const accountId of affectedAccountIds) {
-      await recalcBalance(accountId);
+      await recalcBalance(prisma, accountId);
     }
 
     return NextResponse.json({

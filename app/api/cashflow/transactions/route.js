@@ -1,46 +1,11 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
-
-// Helper: recalculate account balance from opening + all transactions
-async function recalcBalance(tx, accountId) {
-  const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
-  if (!account) return;
-
-  const transactions = await tx.cashTransaction.findMany({
-    where: { accountId },
-    select: { type: true, amount: true, fee: true, hasFee: true, linkedTransactionId: true }
-  });
-
-  let balance = Number(account.openingBalance);
-  for (const t of transactions) {
-    const amt = Number(t.amount);
-    const fee = t.hasFee ? Number(t.fee) : 0;
-
-    if (t.type === '收入') {
-      balance += amt;
-    } else if (t.type === '支出') {
-      balance -= amt;
-      balance -= fee;
-    } else if (t.type === '移轉') {
-      // 移轉 on this account means money is leaving
-      balance -= amt;
-      balance -= fee;
-    } else if (t.type === '移轉入') {
-      // 移轉入 on this account means money is arriving
-      balance += amt;
-    }
-  }
-
-  await tx.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: balance }
-  });
-}
 
 // Generate transaction number: CF-YYYYMMDD-XXXX
 async function generateTransactionNo(date) {
@@ -86,16 +51,28 @@ export async function GET(request) {
     if (type) where.type = type;
     if (accountId) where.accountId = parseInt(accountId);
     if (sourceType) where.sourceType = sourceType;
+    const categoryId = searchParams.get('categoryId');
+    if (categoryId) where.categoryId = parseInt(categoryId);
 
-    const transactions = await prisma.cashTransaction.findMany({
-      where,
-      include: {
-        account: { select: { id: true, name: true, type: true, warehouse: true } },
-        category: { select: { id: true, name: true, type: true, warehouse: true, accountingSubject: { select: { code: true, name: true } } } },
-        transferAccount: { select: { id: true, name: true, type: true, warehouse: true } }
-      },
-      orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }]
-    });
+    // Pagination support
+    const page = parseInt(searchParams.get('page')) || 1;
+    const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+    const skip = (page - 1) * limit;
+
+    const [transactions, totalCount] = await Promise.all([
+      prisma.cashTransaction.findMany({
+        where,
+        include: {
+          account: { select: { id: true, name: true, type: true, warehouse: true } },
+          category: { select: { id: true, name: true, type: true, warehouse: true, accountingSubject: { select: { code: true, name: true } } } },
+          transferAccount: { select: { id: true, name: true, type: true, warehouse: true } }
+        },
+        orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.cashTransaction.count({ where }),
+    ]);
 
     const result = transactions.map(t => ({
       ...t,
@@ -111,7 +88,15 @@ export async function GET(request) {
       isNonCashExpense: t.isNonCashExpense || false,
     }));
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      data: result,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

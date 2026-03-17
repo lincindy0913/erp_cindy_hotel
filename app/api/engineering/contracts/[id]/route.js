@@ -46,6 +46,17 @@ export async function PUT(request, { params }) {
   if (Number.isNaN(id)) return createErrorResponse('BAD_REQUEST', '無效的 ID', 400);
   try {
     const data = await request.json();
+
+    // Check if contract has any paid terms — prevent editing paid contracts
+    const existingContract = await prisma.engineeringContract.findUnique({
+      where: { id },
+      include: { terms: true },
+    });
+    if (!existingContract) return createErrorResponse('NOT_FOUND', '找不到合約', 404);
+    if (existingContract.status === 'completed') {
+      return createErrorResponse('VALIDATION_FAILED', '已完成付款的合約不可修改', 400);
+    }
+
     if (data.content !== undefined && !String(data.content).trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫合約內容後再存檔', 400);
     }
@@ -135,6 +146,16 @@ export async function DELETE(request, { params }) {
   const id = parseInt(params.id);
   if (Number.isNaN(id)) return createErrorResponse('BAD_REQUEST', '無效的 ID', 400);
   try {
+    // Check if contract has any paid terms — prevent deleting
+    const contract = await prisma.engineeringContract.findUnique({
+      where: { id },
+      include: { terms: { where: { status: 'paid' } } },
+    });
+    if (!contract) return createErrorResponse('NOT_FOUND', '找不到合約', 404);
+    if (contract.terms.length > 0) {
+      return createErrorResponse('VALIDATION_FAILED', '合約含有已付款的期數，不可刪除', 400);
+    }
+
     await prisma.engineeringContract.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {

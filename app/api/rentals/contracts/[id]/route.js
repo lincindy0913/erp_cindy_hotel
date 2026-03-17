@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,24 +25,6 @@ async function generateTransactionNo(date) {
   }
 
   return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
-
-// Recalculate account balance
-async function recalcBalance(accountId) {
-  const incomes = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '收入' },
-    _sum: { amount: true }
-  });
-  const expenses = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '支出' },
-    _sum: { amount: true }
-  });
-  const account = await prisma.cashAccount.findUnique({ where: { id: accountId } });
-  const newBalance = Number(account.openingBalance) + Number(incomes._sum.amount || 0) - Number(expenses._sum.amount || 0);
-  await prisma.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: newBalance }
-  });
 }
 
 export async function GET(request, { params }) {
@@ -126,30 +109,47 @@ export async function PUT(request, { params }) {
         }
       });
 
-      await recalcBalance(accountId);
+      await recalcBalance(prisma, accountId);
 
       return NextResponse.json({ success: true, transactionId: tx.id });
     }
 
-    // Handle deposit refund action
+    // Handle deposit refund action — create PaymentOrder for cashier to execute
     if (body.action === 'depositRefund') {
-      const accountId = existing.depositAccountId || existing.rentAccountId;
+      const amt = Number(existing.depositAmount);
       const today = new Date().toISOString().split('T')[0];
-      const transactionNo = await generateTransactionNo(today);
+      const dateStr = today.replace(/-/g, '');
+      const prefix = `RENT-${dateStr}-`;
 
-      const depositOutCatId = await getCategoryId(prisma, 'rental_deposit_out');
-      const tx = await prisma.cashTransaction.create({
+      const existingOrders = await prisma.paymentOrder.findMany({
+        where: { orderNo: { startsWith: prefix } },
+        select: { orderNo: true }
+      });
+      let maxSeq = 0;
+      for (const item of existingOrders) {
+        const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
+        if (seq > maxSeq) maxSeq = seq;
+      }
+      const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+
+      const summary = `押金退還 - 合約 ${existing.contractNo}`;
+      const accountId = existing.depositAccountId || existing.rentAccountId;
+
+      const order = await prisma.paymentOrder.create({
         data: {
-          transactionNo,
-          transactionDate: today,
-          type: '支出',
-          accountId,
-          categoryId: depositOutCatId,
-          amount: Number(existing.depositAmount),
-          description: `押金退還 - 合約 ${existing.contractNo}`,
+          orderNo,
+          invoiceIds: [],
+          supplierName: summary,
+          paymentMethod: '轉帳',
+          amount: amt,
+          discount: 0,
+          netAmount: amt,
+          dueDate: today,
+          accountId: accountId || null,
+          summary,
           sourceType: 'rental_deposit_out',
           sourceRecordId: contractId,
-          status: '已確認'
+          status: '待出納'
         }
       });
 
@@ -157,13 +157,11 @@ export async function PUT(request, { params }) {
         where: { id: contractId },
         data: {
           depositRefunded: true,
-          depositRefundCashTransactionId: tx.id
+          depositRefundPaymentOrderId: order.id
         }
       });
 
-      await recalcBalance(accountId);
-
-      return NextResponse.json({ success: true, transactionId: tx.id });
+      return NextResponse.json({ success: true, paymentOrderId: order.id, orderNo: order.orderNo });
     }
 
     // Standard update

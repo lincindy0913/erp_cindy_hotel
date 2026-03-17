@@ -68,16 +68,24 @@ export default function CashFlowPage() {
     warehouse: '',
     type: '',
     accountId: '',
-    sourceType: ''
+    sourceType: '',
+    categoryId: ''
   });
+  const [txPage, setTxPage] = useState(1);
+  const [txPagination, setTxPagination] = useState({ page: 1, limit: 50, totalCount: 0, totalPages: 1 });
 
   // Report state
   const [reportData, setReportData] = useState(null);
   const [reportFilter, setReportFilter] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
-    warehouse: ''
+    warehouse: '',
+    supplierId: '',
+    categoryId: ''
   });
+
+  // Overview category summary (current month)
+  const [overviewCategorySummary, setOverviewCategorySummary] = useState(null);
 
   // Forecast state
   const [summaryData, setSummaryData] = useState(null);
@@ -94,9 +102,21 @@ export default function CashFlowPage() {
       fetchCategories(),
       fetchSuppliers(),
       fetchWarehouses(),
-      fetchAccountingSubjects()
+      fetchAccountingSubjects(),
+      fetchOverviewCategorySummary()
     ]);
     setLoading(false);
+  }
+
+  async function fetchOverviewCategorySummary() {
+    try {
+      const now = new Date();
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const endDate = now.toISOString().split('T')[0];
+      const res = await fetch(`/api/cashflow/report?startDate=${startDate}&endDate=${endDate}`);
+      const data = await res.json();
+      setOverviewCategorySummary(data);
+    } catch { setOverviewCategorySummary(null); }
   }
 
   async function fetchAccountingSubjects() {
@@ -123,8 +143,9 @@ export default function CashFlowPage() {
     } catch { setCategories([]); }
   }
 
-  async function fetchTransactions() {
+  async function fetchTransactions(page) {
     try {
+      const p = page || txPage;
       const params = new URLSearchParams();
       if (txFilter.startDate) params.append('startDate', txFilter.startDate);
       if (txFilter.endDate) params.append('endDate', txFilter.endDate);
@@ -132,10 +153,20 @@ export default function CashFlowPage() {
       if (txFilter.type) params.append('type', txFilter.type);
       if (txFilter.accountId) params.append('accountId', txFilter.accountId);
       if (txFilter.sourceType) params.append('sourceType', txFilter.sourceType);
+      if (txFilter.categoryId) params.append('categoryId', txFilter.categoryId);
+      params.append('page', String(p));
+      params.append('limit', '50');
 
       const res = await fetch(`/api/cashflow/transactions?${params.toString()}`);
       const data = await res.json();
-      setTransactions(Array.isArray(data) ? data : []);
+      if (data && data.data) {
+        setTransactions(Array.isArray(data.data) ? data.data : []);
+        setTxPagination(data.pagination || { page: 1, limit: 50, totalCount: 0, totalPages: 1 });
+      } else {
+        // Backward compatibility: if API returns array directly
+        setTransactions(Array.isArray(data) ? data : []);
+        setTxPagination({ page: 1, limit: 50, totalCount: (Array.isArray(data) ? data.length : 0), totalPages: 1 });
+      }
     } catch { setTransactions([]); }
   }
 
@@ -420,6 +451,60 @@ export default function CashFlowPage() {
               </span>
             </div>
 
+            {/* Monthly category summary */}
+            {overviewCategorySummary && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {/* Income by category */}
+                <div className="bg-white rounded-lg shadow-sm p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-green-700">本月收入分類</h4>
+                    <span className="text-lg font-bold text-green-700">{formatMoney(overviewCategorySummary.totalIncome)}</span>
+                  </div>
+                  {overviewCategorySummary.incomeByCategory?.length > 0 ? (
+                    <div className="space-y-2">
+                      {overviewCategorySummary.incomeByCategory.slice(0, 5).map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">{item.name}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-24 bg-gray-100 rounded-full h-2">
+                              <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min((item.amount / overviewCategorySummary.totalIncome) * 100, 100)}%` }} />
+                            </div>
+                            <span className="text-sm font-medium w-24 text-right">{formatMoney(item.amount)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400">本月尚無收入</div>
+                  )}
+                </div>
+                {/* Expense by category */}
+                <div className="bg-white rounded-lg shadow-sm p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-semibold text-red-700">本月支出分類</h4>
+                    <span className="text-lg font-bold text-red-700">{formatMoney(overviewCategorySummary.totalExpense)}</span>
+                  </div>
+                  {overviewCategorySummary.expenseByCategory?.length > 0 ? (
+                    <div className="space-y-2">
+                      {overviewCategorySummary.expenseByCategory.slice(0, 5).map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">{item.name}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-24 bg-gray-100 rounded-full h-2">
+                              <div className="bg-red-500 h-2 rounded-full" style={{ width: `${Math.min((item.amount / overviewCategorySummary.totalExpense) * 100, 100)}%` }} />
+                            </div>
+                            <span className="text-sm font-medium w-24 text-right">{formatMoney(item.amount)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-400">本月尚無支出</div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Add account button */}
             {isLoggedIn && (
               <div className="mb-4">
@@ -632,9 +717,22 @@ export default function CashFlowPage() {
                     <option value="manual">手動</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
+                  <select
+                    value={txFilter.categoryId}
+                    onChange={(e) => setTxFilter({ ...txFilter, categoryId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">全部</option>
+                    {categories.filter(c => c.isActive).map(c => (
+                      <option key={c.id} value={c.id}>{c.type === '收入' ? '📈' : '📉'} {c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <button
-                onClick={fetchTransactions}
+                onClick={() => { setTxPage(1); fetchTransactions(1); }}
                 className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 text-sm"
               >
                 查詢
@@ -982,6 +1080,48 @@ export default function CashFlowPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination controls */}
+            {txPagination.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4 px-2">
+                <div className="text-sm text-gray-600">
+                  共 {txPagination.totalCount.toLocaleString()} 筆，第 {txPagination.page}/{txPagination.totalPages} 頁
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    disabled={txPagination.page <= 1}
+                    onClick={() => { const p = txPagination.page - 1; setTxPage(p); fetchTransactions(p); }}
+                    className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-100"
+                  >上一頁</button>
+                  {Array.from({ length: Math.min(txPagination.totalPages, 7) }, (_, i) => {
+                    let pageNum;
+                    if (txPagination.totalPages <= 7) {
+                      pageNum = i + 1;
+                    } else if (txPagination.page <= 4) {
+                      pageNum = i + 1;
+                    } else if (txPagination.page >= txPagination.totalPages - 3) {
+                      pageNum = txPagination.totalPages - 6 + i;
+                    } else {
+                      pageNum = txPagination.page - 3 + i;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => { setTxPage(pageNum); fetchTransactions(pageNum); }}
+                        className={`px-3 py-1 text-sm border rounded ${
+                          pageNum === txPagination.page ? 'bg-emerald-600 text-white border-emerald-600' : 'hover:bg-gray-100'
+                        }`}
+                      >{pageNum}</button>
+                    );
+                  })}
+                  <button
+                    disabled={txPagination.page >= txPagination.totalPages}
+                    onClick={() => { const p = txPagination.page + 1; setTxPage(p); fetchTransactions(p); }}
+                    className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-100"
+                  >下一頁</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1064,149 +1204,103 @@ export default function CashFlowPage() {
               </div>
             )}
 
-            {/* Income categories */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3 text-green-700">收入類別</h3>
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-green-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">交易筆數</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
-                      {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {categories.filter(c => c.type === '收入').map(c => (
-                      <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium">
-                          {c.name}
-                          {c.isSystemDefault && <span className="ml-1 text-xs text-gray-400">(系統)</span>}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {c.accountingSubject ? (
-                            <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">未設定</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
-                        <td className="px-4 py-3 text-sm text-right font-medium">{c._count?.transactions || 0}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                            {c.isActive ? '啟用' : '停用'}
-                          </span>
-                        </td>
-                        {isLoggedIn && (
-                          <td className="px-4 py-3 text-center flex gap-2 justify-center">
-                            <select
-                              value={c.accountingSubjectId || ''}
-                              onChange={(e) => {
-                                fetch(`/api/cashflow/categories/${c.id}`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ accountingSubjectId: e.target.value || null })
-                                }).then(() => fetchCategories());
-                              }}
-                              className="text-xs border border-gray-300 rounded px-1 py-0.5"
-                            >
-                              <option value="">設定科目</option>
-                              {accountingSubjects.map(s => (
-                                <option key={s.id} value={s.id}>{s.code} {s.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => handleDeleteCategory(c.id)}
-                              className="text-red-600 hover:underline text-sm"
-                            >
-                              刪除
-                            </button>
-                          </td>
-                        )}
+            {/* Category tables - reusable for income and expense */}
+            {[
+              { type: '收入', label: '收入類別', color: 'green', bgHead: 'bg-green-50' },
+              { type: '支出', label: '支出類別', color: 'red', bgHead: 'bg-red-50' },
+            ].map(({ type: catType, label, color, bgHead }) => (
+              <div key={catType} className={catType === '收入' ? 'mb-6' : ''}>
+                <h3 className={`text-lg font-semibold mb-3 text-${color}-700`}>{label}</h3>
+                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                  <table className="w-full">
+                    <thead className={bgHead}>
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">交易筆數</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">累計金額</th>
+                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">狀態</th>
+                        {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
                       </tr>
-                    ))}
-                    {categories.filter(c => c.type === '收入').length === 0 && (
-                      <tr><td colSpan={isLoggedIn ? 6 : 5} className="px-4 py-4 text-center text-gray-500">尚無收入類別</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Expense categories */}
-            <div>
-              <h3 className="text-lg font-semibold mb-3 text-red-700">支出類別</h3>
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-red-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">交易筆數</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
-                      {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {categories.filter(c => c.type === '支出').map(c => (
-                      <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium">
-                          {c.name}
-                          {c.isSystemDefault && <span className="ml-1 text-xs text-gray-400">(系統)</span>}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {c.accountingSubject ? (
-                            <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">未設定</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
-                        <td className="px-4 py-3 text-sm text-right font-medium">{c._count?.transactions || 0}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                            {c.isActive ? '啟用' : '停用'}
-                          </span>
-                        </td>
-                        {isLoggedIn && (
-                          <td className="px-4 py-3 text-center flex gap-2 justify-center">
-                            <select
-                              value={c.accountingSubjectId || ''}
-                              onChange={(e) => {
-                                fetch(`/api/cashflow/categories/${c.id}`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ accountingSubjectId: e.target.value || null })
-                                }).then(() => fetchCategories());
-                              }}
-                              className="text-xs border border-gray-300 rounded px-1 py-0.5"
-                            >
-                              <option value="">設定科目</option>
-                              {accountingSubjects.map(s => (
-                                <option key={s.id} value={s.id}>{s.code} {s.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => handleDeleteCategory(c.id)}
-                              className="text-red-600 hover:underline text-sm"
-                            >
-                              刪除
-                            </button>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {categories.filter(c => c.type === catType).map(c => (
+                        <tr key={c.id} className={`hover:bg-gray-50 ${!c.isActive ? 'opacity-50' : ''}`}>
+                          <td className="px-4 py-3 text-sm font-medium">
+                            {c.name}
+                            {c.isSystemDefault && <span className="ml-1 text-xs text-gray-400">(系統)</span>}
                           </td>
-                        )}
-                      </tr>
-                    ))}
-                    {categories.filter(c => c.type === '支出').length === 0 && (
-                      <tr><td colSpan={isLoggedIn ? 6 : 5} className="px-4 py-4 text-center text-gray-500">尚無支出類別</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                          <td className="px-4 py-3 text-sm">
+                            {c.accountingSubject ? (
+                              <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">未設定</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">{c._count?.transactions || 0}</td>
+                          <td className={`px-4 py-3 text-sm text-right font-semibold ${catType === '收入' ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatMoney(c.totalAmount || 0)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {isLoggedIn ? (
+                              <button
+                                onClick={() => {
+                                  fetch(`/api/cashflow/categories/${c.id}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ isActive: !c.isActive })
+                                  }).then(() => fetchCategories());
+                                }}
+                                className={`px-2 py-0.5 rounded text-xs cursor-pointer ${c.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                              >
+                                {c.isActive ? '啟用' : '停用'}
+                              </button>
+                            ) : (
+                              <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                {c.isActive ? '啟用' : '停用'}
+                              </span>
+                            )}
+                          </td>
+                          {isLoggedIn && (
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex gap-2 justify-center">
+                                <select
+                                  value={c.accountingSubjectId || ''}
+                                  onChange={(e) => {
+                                    fetch(`/api/cashflow/categories/${c.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ accountingSubjectId: e.target.value || null })
+                                    }).then(() => fetchCategories());
+                                  }}
+                                  className="text-xs border border-gray-300 rounded px-1 py-0.5"
+                                >
+                                  <option value="">設定科目</option>
+                                  {accountingSubjects.map(s => (
+                                    <option key={s.id} value={s.id}>{s.code} {s.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => handleDeleteCategory(c.id)}
+                                  className="text-red-600 hover:underline text-sm"
+                                >
+                                  刪除
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {categories.filter(c => c.type === catType).length === 0 && (
+                        <tr><td colSpan={isLoggedIn ? 7 : 6} className="px-4 py-4 text-center text-gray-500">尚無{label}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         )}
 
@@ -1215,7 +1309,7 @@ export default function CashFlowPage() {
           <div>
             {/* Report filters */}
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-              <div className="grid grid-cols-3 gap-4 mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">起始日期 *</label>
                   <input
@@ -1243,6 +1337,30 @@ export default function CashFlowPage() {
                   >
                     <option value="">全部</option>
                     {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
+                  <select
+                    value={reportFilter.supplierId}
+                    onChange={(e) => setReportFilter({ ...reportFilter, supplierId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">全部</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
+                  <select
+                    value={reportFilter.categoryId}
+                    onChange={(e) => setReportFilter({ ...reportFilter, categoryId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">全部</option>
+                    {categories.filter(c => c.isActive).map(c => (
+                      <option key={c.id} value={c.id}>{c.type === '收入' ? '收' : '支'} {c.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1348,6 +1466,33 @@ export default function CashFlowPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Expense by supplier */}
+                {reportData.expenseBySupplier && reportData.expenseBySupplier.length > 0 && (
+                  <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+                    <h4 className="text-md font-semibold mb-4 text-orange-700">廠商支出明細</h4>
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left text-sm font-medium text-gray-700 pb-2">廠商</th>
+                          <th className="text-right text-sm font-medium text-gray-700 pb-2">金額</th>
+                          <th className="text-right text-sm font-medium text-gray-700 pb-2">占比</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportData.expenseBySupplier.map((item, idx) => (
+                          <tr key={idx} className="border-b border-gray-100">
+                            <td className="py-2 text-sm">{item.name}</td>
+                            <td className="py-2 text-sm text-right font-medium">{formatMoney(item.amount)}</td>
+                            <td className="py-2 text-sm text-right text-gray-500">
+                              {reportData.totalExpense > 0 ? `${((item.amount / reportData.totalExpense) * 100).toFixed(1)}%` : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
                 <div className="mt-4 text-sm text-gray-500 text-right">
                   報表期間：{reportData.period?.startDate} ~ {reportData.period?.endDate} |

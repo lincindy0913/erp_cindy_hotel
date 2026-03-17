@@ -24,6 +24,7 @@ export async function POST(request, { params }) {
         contractId,
         termNo,
         termName: data.termName?.trim() || `第${termNo}期`,
+        content: data.content?.trim() || null,
         amount: parseFloat(data.amount) || 0,
         dueDate: data.dueDate || null,
         status: 'pending',

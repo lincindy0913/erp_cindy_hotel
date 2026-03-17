@@ -91,6 +91,29 @@ export async function PUT(request, { params }) {
       }
     });
 
+    // Sync linked PaymentOrder when amount/note/category changes
+    if (record.paymentOrderId) {
+      const orderUpdate = {};
+      if (amount != null) {
+        const newAmt = parseFloat(amount);
+        orderUpdate.amount = newAmt;
+        orderUpdate.netAmount = newAmt;
+      }
+      if (category != null || amount != null || note !== undefined) {
+        const advanceLabel = (updated.isEmployeeAdvance && updated.advancedBy) ? ` (員工代墊: ${updated.advancedBy})` : '';
+        const summary = `租賃維護費 - ${updated.property.name} - ${updated.category}${advanceLabel}`;
+        orderUpdate.supplierName = null;
+        orderUpdate.summary = summary;
+      }
+      if (note !== undefined) orderUpdate.note = note || null;
+      if (Object.keys(orderUpdate).length > 0) {
+        await prisma.paymentOrder.update({
+          where: { id: record.paymentOrderId },
+          data: orderUpdate
+        });
+      }
+    }
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error('PUT /api/rentals/maintenance/[id] error:', error);
@@ -117,6 +140,11 @@ export async function DELETE(request, { params }) {
 
     if (record.status === 'paid' || record.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的維護費不可刪除', 400);
+    }
+
+    // Delete linked PaymentOrder if exists
+    if (record.paymentOrderId) {
+      await prisma.paymentOrder.delete({ where: { id: record.paymentOrderId } }).catch(() => {});
     }
 
     await prisma.rentalMaintenance.delete({

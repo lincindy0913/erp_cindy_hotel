@@ -15,6 +15,7 @@ export async function GET(request) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const warehouse = searchParams.get('warehouse');
+    const supplierId = searchParams.get('supplierId');
 
     if (!startDate || !endDate) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供起始與結束日期', 400);
@@ -25,19 +26,24 @@ export async function GET(request) {
       type: { in: ['收入', '支出'] } // 移轉 excluded from report
     };
     if (warehouse) where.warehouse = warehouse;
+    if (supplierId) where.supplierId = parseInt(supplierId);
+    const categoryId = searchParams.get('categoryId');
+    if (categoryId) where.categoryId = parseInt(categoryId);
 
     const transactions = await prisma.cashTransaction.findMany({
       where,
       include: {
         category: { select: { id: true, name: true, type: true } },
-        account: { select: { id: true, name: true, type: true, warehouse: true } }
+        account: { select: { id: true, name: true, type: true, warehouse: true } },
+        supplier: { select: { id: true, name: true } }
       },
       orderBy: [{ transactionDate: 'asc' }, { type: 'asc' }]
     });
 
-    // Group by category
+    // Group by category and by supplier
     const incomeByCategory = {};
     const expenseByCategory = {};
+    const expenseBySupplier = {};
     let totalIncome = 0;
     let totalExpense = 0;
     let totalFees = 0;
@@ -54,6 +60,9 @@ export async function GET(request) {
         expenseByCategory[catName] = (expenseByCategory[catName] || 0) + amt;
         totalExpense += amt;
         totalFees += fee;
+        // Group expense by supplier
+        const supplierName = tx.supplier?.name || '未指定廠商';
+        expenseBySupplier[supplierName] = (expenseBySupplier[supplierName] || 0) + amt;
       }
     }
 
@@ -85,6 +94,10 @@ export async function GET(request) {
       totalExpense: Math.round(totalExpense * 100) / 100,
       totalFees: Math.round(totalFees * 100) / 100,
       netCashFlow: Math.round(netCashFlow * 100) / 100,
+      expenseBySupplier: Object.entries(expenseBySupplier).map(([name, amount]) => ({
+        name,
+        amount: Math.round(amount * 100) / 100
+      })).sort((a, b) => b.amount - a.amount),
       transactionCount: transactions.length
     });
   } catch (error) {

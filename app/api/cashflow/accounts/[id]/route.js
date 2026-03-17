@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.CASHFLOW_EDIT);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const id = parseInt(params.id);
     const data = await request.json();
@@ -17,21 +18,44 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '帳戶不存在', 404);
     }
 
+    // If opening balance is being changed, return transaction count as warning info
+    if (data.openingBalance !== undefined && !data.confirmOpeningBalanceChange) {
+      const newOpening = parseFloat(data.openingBalance);
+      if (newOpening !== Number(existing.openingBalance)) {
+        const txCount = await prisma.cashTransaction.count({ where: { accountId: id } });
+        if (txCount > 0) {
+          return NextResponse.json({
+            warning: true,
+            message: `此帳戶有 ${txCount} 筆交易紀錄，修改期初餘額將重新計算目前餘額。`,
+            txCount,
+            oldBalance: Number(existing.openingBalance),
+            newBalance: newOpening,
+          });
+        }
+      }
+    }
+
     const updateData = {};
     if (data.name !== undefined) updateData.name = data.name.trim();
     if (data.type !== undefined) updateData.type = data.type;
     if (data.warehouse !== undefined) updateData.warehouse = data.warehouse;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     if (data.openingBalance !== undefined) {
-      const newOpening = parseFloat(data.openingBalance);
-      const diff = newOpening - Number(existing.openingBalance);
-      updateData.openingBalance = newOpening;
-      updateData.currentBalance = Number(existing.currentBalance) + diff;
+      updateData.openingBalance = parseFloat(data.openingBalance);
     }
 
-    const account = await prisma.cashAccount.update({
-      where: { id },
-      data: updateData
+    const account = await prisma.$transaction(async (tx) => {
+      const updated = await tx.cashAccount.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // If opening balance changed, fully recalculate current balance
+      if (data.openingBalance !== undefined) {
+        await recalcBalance(tx, id);
+        return tx.cashAccount.findUnique({ where: { id } });
+      }
+      return updated;
     });
 
     return NextResponse.json({
@@ -49,7 +73,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.CASHFLOW_EDIT);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const id = parseInt(params.id);
 

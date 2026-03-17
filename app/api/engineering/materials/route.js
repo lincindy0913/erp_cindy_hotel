@@ -15,7 +15,7 @@ export async function GET(request) {
     const where = projectId ? { projectId: parseInt(projectId) } : {};
     const materials = await prisma.engineeringMaterial.findMany({
       where,
-      include: { project: true, product: true, contract: true },
+      include: { project: true, product: true, contract: true, term: true },
       orderBy: [{ projectId: 'asc' }, { usedAt: 'desc' }, { id: 'desc' }],
     });
     return NextResponse.json(materials.map(m => ({
@@ -25,6 +25,7 @@ export async function GET(request) {
       createdAt: m.createdAt.toISOString(),
       updatedAt: m.updatedAt.toISOString(),
       contractNo: m.contract?.contractNo ?? null,
+      termName: m.term?.termName ?? null,
     })));
   } catch (e) {
     return handleApiError(e);
@@ -53,6 +54,8 @@ export async function POST(request) {
       data: {
         projectId,
         productId,
+        contractId: data.contractId ? parseInt(data.contractId) : null,
+        termId: data.termId ? parseInt(data.termId) : null,
         description: data.description?.trim() || null,
         quantity,
         unit: data.unit?.trim() || null,

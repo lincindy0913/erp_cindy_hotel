@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,28 +20,6 @@ async function generateTransactionNo(tx, date) {
     if (seq > maxSeq) maxSeq = seq;
   }
   return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
-
-async function recalcBalance(tx, accountId) {
-  const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
-  if (!account) return;
-  const transactions = await tx.cashTransaction.findMany({
-    where: { accountId },
-    select: { type: true, amount: true, fee: true, hasFee: true }
-  });
-  let balance = Number(account.openingBalance);
-  for (const t of transactions) {
-    const amt = Number(t.amount);
-    const fee = t.hasFee ? Number(t.fee) : 0;
-    if (t.type === '收入') balance += amt;
-    else if (t.type === '支出') { balance -= amt; balance -= fee; }
-    else if (t.type === '移轉') { balance -= amt; balance -= fee; }
-    else if (t.type === '移轉入') balance += amt;
-  }
-  await tx.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: balance }
-  });
 }
 
 // POST: 將收入記錄明細的「借方」收款方式依帳戶設定同步至現金流交易

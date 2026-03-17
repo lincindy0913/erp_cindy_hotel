@@ -17,12 +17,17 @@ export async function GET() {
         accountingSubject: {
           select: { id: true, code: true, name: true, category: true, subcategory: true }
         },
-        _count: { select: { transactions: true } }
+        _count: { select: { transactions: true } },
+        transactions: {
+          select: { amount: true },
+        }
       }
     });
 
     const result = categories.map(c => ({
       ...c,
+      totalAmount: c.transactions.reduce((sum, t) => sum + Number(t.amount), 0),
+      transactions: undefined,
       createdAt: c.createdAt.toISOString()
     }));
 

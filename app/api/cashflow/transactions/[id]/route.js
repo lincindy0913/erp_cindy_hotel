@@ -1,44 +1,11 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
-
-// Helper: recalculate account balance
-async function recalcBalance(tx, accountId) {
-  const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
-  if (!account) return;
-
-  const transactions = await tx.cashTransaction.findMany({
-    where: { accountId },
-    select: { type: true, amount: true, fee: true, hasFee: true }
-  });
-
-  let balance = Number(account.openingBalance);
-  for (const t of transactions) {
-    const amt = Number(t.amount);
-    const fee = t.hasFee ? Number(t.fee) : 0;
-
-    if (t.type === '收入') {
-      balance += amt;
-    } else if (t.type === '支出') {
-      balance -= amt;
-      balance -= fee;
-    } else if (t.type === '移轉') {
-      balance -= amt;
-      balance -= fee;
-    } else if (t.type === '移轉入') {
-      balance += amt;
-    }
-  }
-
-  await tx.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: balance }
-  });
-}
 
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.CASHFLOW_VIEW);
@@ -110,9 +77,69 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '交易不存在', 404);
     }
 
-    // 移轉交易不允許單獨編輯
+    // 移轉交易：允許修改金額、手續費、備註、日期（同步更新配對交易）
     if (existing.type === '移轉' || existing.type === '移轉入') {
-      return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', '移轉交易無法單獨編輯，請刪除後重新建立', 403);
+      // Only allow amount, fee, description, date edits for transfers
+      const allowedKeys = ['amount', 'fee', 'hasFee', 'description', 'transactionDate'];
+      const disallowedKeys = Object.keys(data).filter(k => !allowedKeys.includes(k));
+      if (disallowedKeys.length > 0) {
+        return createErrorResponse('VALIDATION_FAILED', '移轉交易僅可修改金額、手續費、備註和日期', 403);
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const transferUpdateData = {};
+        if (data.amount !== undefined) transferUpdateData.amount = parseFloat(data.amount);
+        if (data.fee !== undefined) transferUpdateData.fee = parseFloat(data.fee);
+        if (data.hasFee !== undefined) transferUpdateData.hasFee = data.hasFee;
+        if (data.description !== undefined) transferUpdateData.description = data.description || null;
+        if (data.transactionDate !== undefined) transferUpdateData.transactionDate = data.transactionDate;
+
+        // Update this transaction
+        const updated = await tx.cashTransaction.update({
+          where: { id },
+          data: transferUpdateData,
+        });
+
+        // Update the linked (paired) transaction
+        if (existing.linkedTransactionId) {
+          const linkedUpdate = { ...transferUpdateData };
+          // The linked transaction should not have fee (fee only on outgoing 移轉)
+          if (existing.type === '移轉入') {
+            // This is the incoming side; the linked is the outgoing side — keep fee on linked
+          } else {
+            // This is the outgoing side; the linked is the incoming side — no fee on linked
+            delete linkedUpdate.fee;
+            delete linkedUpdate.hasFee;
+          }
+          await tx.cashTransaction.update({
+            where: { id: existing.linkedTransactionId },
+            data: linkedUpdate,
+          });
+
+          // Get linked transaction to know its account
+          const linked = await tx.cashTransaction.findUnique({
+            where: { id: existing.linkedTransactionId },
+            select: { accountId: true },
+          });
+          if (linked) {
+            await recalcBalance(tx, linked.accountId);
+          }
+        }
+
+        await recalcBalance(tx, updated.accountId);
+        return updated;
+      });
+
+      return NextResponse.json({
+        ...result,
+        amount: Number(result.amount),
+        fee: Number(result.fee),
+        createdAt: result.createdAt.toISOString(),
+        updatedAt: result.updatedAt.toISOString(),
+        isReversal: result.isReversal,
+        reversedById: result.reversedById,
+        reversalOfId: result.reversalOfId,
+      });
     }
 
     // 系統產生的交易不可修改金額或帳戶

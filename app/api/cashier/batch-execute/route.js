@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -299,6 +300,35 @@ export async function POST(request) {
           }
         }
 
+        // If this order is linked to engineering contract term, update term to paid
+        if (order.sourceType === 'engineering' && order.sourceRecordId) {
+          const linkedTerm = await tx.engineeringContractTerm.findUnique({
+            where: { id: order.sourceRecordId },
+            include: { contract: { include: { terms: true } } },
+          });
+          if (linkedTerm && linkedTerm.status !== 'paid') {
+            await tx.engineeringContractTerm.update({
+              where: { id: linkedTerm.id },
+              data: {
+                status: 'paid',
+                paidAt: executionDate,
+                paymentOrderId: order.id,
+              },
+            });
+            // Auto-update contract status if all terms are now paid
+            if (linkedTerm.contract) {
+              const allTerms = linkedTerm.contract.terms;
+              const allPaidAfter = allTerms.every(t => t.id === linkedTerm.id ? true : t.status === 'paid');
+              if (allPaidAfter) {
+                await tx.engineeringContract.update({
+                  where: { id: linkedTerm.contractId },
+                  data: { status: 'completed' },
+                });
+              }
+            }
+          }
+        }
+
         // 若此付款單為租賃稅款，連動更新 PropertyTax 為已繳並寫入金流
         const linkedTax = await tx.propertyTax.findFirst({
           where: { paymentOrderId: order.id },
@@ -355,25 +385,7 @@ export async function POST(request) {
 
       // Recalculate balance for all affected accounts
       for (const accId of affectedAccountIds) {
-        const allTx = await tx.cashTransaction.findMany({
-          where: { accountId: accId },
-        });
-        const account = await tx.cashAccount.findUnique({ where: { id: accId } });
-        let balance = Number(account.openingBalance);
-        for (const t of allTx) {
-          const amt = Number(t.amount);
-          const fee = Number(t.fee);
-          if (t.type === '收入' || t.type === '移轉入') {
-            balance += amt;
-          } else {
-            balance -= amt;
-          }
-          if (fee > 0) balance -= fee;
-        }
-        await tx.cashAccount.update({
-          where: { id: accId },
-          data: { currentBalance: balance },
-        });
+        await recalcBalance(tx, accId);
       }
 
       return { executions, cashTransactions };

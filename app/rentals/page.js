@@ -346,30 +346,20 @@ function RentalsPage() {
   async function saveUtility() {
     try {
       const payload = { ...utilityForm, incomeYear: utilityForm.incomeYear || new Date().getFullYear(), incomeMonth: utilityForm.incomeMonth || new Date().getMonth() + 1 };
-      if (editingUtility) {
-        const res = await fetch(`/api/rentals/utility-income/${editingUtility.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
-      } else {
-        const res = await fetch('/api/rentals/utility-income', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
-      }
+      const res = await fetch('/api/rentals/utility-income', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
       setShowUtilityModal(false);
-      setEditingUtility(null);
       fetchUtilityList();
     } catch (e) { showToast('儲存失敗: ' + e.message, 'error'); }
     finally { setUtilitySaving(false); }
   }
 
   async function deleteUtility(id) {
-    if (!confirm('確定刪除此筆水電收入？')) return;
+    if (!confirm('確定刪除此筆水電收入？相關現金流紀錄也會一併刪除。')) return;
     try {
       const res = await fetch(`/api/rentals/utility-income/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -1220,8 +1210,11 @@ function RentalsPage() {
                                     ? <span className="text-xs text-green-600">已收</span>
                                     : <button onClick={() => handleDepositAction(c.id, 'depositReceive')} className="text-xs text-blue-600 hover:underline">收押金</button>
                                   }
-                                  {c.depositReceived && !c.depositRefunded && (
+                                  {c.depositReceived && !c.depositRefunded && !c.depositRefundPaymentOrderId && (
                                     <button onClick={() => handleDepositAction(c.id, 'depositRefund')} className="text-xs text-orange-600 hover:underline ml-1">退押金</button>
+                                  )}
+                                  {c.depositRefundPaymentOrderId && !c.depositRefunded && (
+                                    <a href="/cashier" className="text-xs text-teal-600 hover:underline ml-1">待出納</a>
                                   )}
                                   {c.depositRefunded && <span className="text-xs text-gray-500 ml-1">已退</span>}
                                 </div>
@@ -1529,7 +1522,6 @@ function RentalsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <button onClick={() => { setEditingUtility(u); setUtilityForm({ propertyId: u.propertyId, incomeYear: u.incomeYear, incomeMonth: u.incomeMonth, expectedAmount: String(u.expectedAmount ?? ''), actualAmount: u.actualAmount != null ? String(u.actualAmount) : '', actualDate: u.actualDate || '', accountId: u.accountId || '', note: u.note || '' }); setShowUtilityModal(true); }} className="text-teal-600 hover:text-teal-800 text-xs mr-2">編輯</button>
                             <button onClick={() => deleteUtility(u.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
                           </td>
                         </tr>
@@ -1543,12 +1535,12 @@ function RentalsPage() {
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowUtilityModal(false)}>
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
                       <div className="p-6">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">{editingUtility ? '編輯水電收入' : '登記水電收入'}</h3>
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">登記水電收入</h3>
                         <div className="space-y-3">
                           <div>
                             <label className="text-sm text-gray-600">物業 *</label>
                             <select value={utilityForm.propertyId} onChange={e => setUtilityForm(f => ({ ...f, propertyId: e.target.value }))}
-                              className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingUtility}>
+                              className="w-full border rounded px-3 py-2 text-sm">
                               <option value="">選擇物業</option>
                               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>

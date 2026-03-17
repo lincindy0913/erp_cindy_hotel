@@ -87,6 +87,7 @@ export async function POST(request) {
               create: terms.map((t, i) => ({
                 termNo: i + 1,
                 termName: t.termName || `第${i + 1}期`,
+                content: t.content?.trim() || null,
                 amount: parseFloat(t.amount) || 0,
                 dueDate: t.dueDate || null,
                 status: 'pending',

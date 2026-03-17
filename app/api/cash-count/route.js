@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,40 +25,6 @@ async function generateCountNo(countDate) {
   }
 
   return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
-
-// Helper: recalculate account balance from opening + all transactions
-async function recalcBalance(tx, accountId) {
-  const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
-  if (!account) return;
-
-  const transactions = await tx.cashTransaction.findMany({
-    where: { accountId },
-    select: { type: true, amount: true, fee: true, hasFee: true }
-  });
-
-  let balance = Number(account.openingBalance);
-  for (const t of transactions) {
-    const amt = Number(t.amount);
-    const fee = t.hasFee ? Number(t.fee) : 0;
-
-    if (t.type === '收入') {
-      balance += amt;
-    } else if (t.type === '支出') {
-      balance -= amt;
-      balance -= fee;
-    } else if (t.type === '移轉') {
-      balance -= amt;
-      balance -= fee;
-    } else if (t.type === '移轉入') {
-      balance += amt;
-    }
-  }
-
-  await tx.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: balance }
-  });
 }
 
 // GET /api/cash-count - List cash counts with filters

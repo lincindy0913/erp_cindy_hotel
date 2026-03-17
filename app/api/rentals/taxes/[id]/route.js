@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,24 +25,6 @@ async function generateTransactionNo(date) {
   }
 
   return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
-
-// Recalculate account balance
-async function recalcBalance(accountId) {
-  const incomes = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '收入' },
-    _sum: { amount: true }
-  });
-  const expenses = await prisma.cashTransaction.aggregate({
-    where: { accountId, type: '支出' },
-    _sum: { amount: true }
-  });
-  const account = await prisma.cashAccount.findUnique({ where: { id: accountId } });
-  const newBalance = Number(account.openingBalance) + Number(incomes._sum.amount || 0) - Number(expenses._sum.amount || 0);
-  await prisma.cashAccount.update({
-    where: { id: accountId },
-    data: { currentBalance: newBalance }
-  });
 }
 
 export async function PUT(request, { params }) {
@@ -103,7 +86,7 @@ export async function PUT(request, { params }) {
     });
 
     // Recalculate balance
-    await recalcBalance(acctId);
+    await recalcBalance(prisma, acctId);
 
     return NextResponse.json({ success: true, transactionId: tx.id });
   } catch (error) {
@@ -150,17 +133,27 @@ export async function PATCH(request, { params }) {
       data: updateData
     });
 
-    if (tax.cashTransactionId && amount !== undefined) {
-      const tx = await prisma.cashTransaction.findUnique({
-        where: { id: tax.cashTransactionId },
-        select: { accountId: true }
-      });
-      if (tx) {
-        await prisma.cashTransaction.update({
-          where: { id: tax.cashTransactionId },
-          data: { amount: Number(amount) }
+    // Sync linked PaymentOrder when amount/dueDate/taxType changes
+    if (tax.paymentOrderId) {
+      const orderUpdate = {};
+      if (amount !== undefined) {
+        const newAmt = Number(amount);
+        orderUpdate.amount = newAmt;
+        orderUpdate.netAmount = newAmt;
+      }
+      if (dueDate !== undefined) {
+        orderUpdate.dueDate = dueDate;
+      }
+      if (taxType !== undefined || amount !== undefined) {
+        const newTaxType = taxType || tax.taxType;
+        orderUpdate.supplierName = `房屋稅款 - ${tax.property.name} - ${tax.taxYear} ${newTaxType}`;
+        orderUpdate.summary = orderUpdate.supplierName;
+      }
+      if (Object.keys(orderUpdate).length > 0) {
+        await prisma.paymentOrder.update({
+          where: { id: tax.paymentOrderId },
+          data: orderUpdate
         });
-        await recalcBalance(tx.accountId);
       }
     }
 
@@ -194,6 +187,11 @@ export async function DELETE(request, { params }) {
 
     if (tax.status === 'paid' || tax.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的稅款不可刪除', 400);
+    }
+
+    // Delete linked PaymentOrder if exists
+    if (tax.paymentOrderId) {
+      await prisma.paymentOrder.delete({ where: { id: tax.paymentOrderId } }).catch(() => {});
     }
 
     await prisma.propertyTax.delete({
