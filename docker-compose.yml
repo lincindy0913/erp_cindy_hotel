@@ -27,6 +27,13 @@ services:
       - "5432:5432"
     restart: unless-stopped
 
+  ocr:
+    build: ./ocr-service
+    container_name: erp_ocr
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: pgadmin

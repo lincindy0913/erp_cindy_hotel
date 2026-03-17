@@ -183,6 +183,42 @@ export default function UtilityBillsPage() {
     setLoading(false);
   };
 
+  const handleOcrScan = async () => {
+    if (!pdfFile) {
+      showMessage('請先選擇 PDF 檔案', 'error');
+      return;
+    }
+    setLoading(true);
+    setExtractedText('');
+    setPageTexts([]);
+    setSummary(null);
+    try {
+      const form = new FormData();
+      form.append('file', pdfFile);
+      const res = await fetch('/api/utility-bills/ocr', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        showMessage(data.error || 'OCR 失敗', 'error');
+        setLoading(false);
+        return;
+      }
+      const pages = data.pages || [];
+      setPageTexts(pages.map(p => ({ pageNum: p.page, text: p.text })));
+      setExtractedText(pages.map(p => `--- 第 ${p.page} 頁 ---\n${p.text}`).join('\n\n'));
+      if (pages.length === 0 || pages.every(p => !p.text)) {
+        showMessage('OCR 無法識別任何文字，請確認 PDF 品質', 'error');
+      } else {
+        showMessage(`OCR 完成，共 ${pages.length} 頁`);
+        const fullText = pages.map(p => p.text).join('\n');
+        const detected = autoDetectMeta(pdfFile.name, fullText);
+        if (Object.keys(detected).length) setMeta(prev => ({ ...prev, ...detected }));
+      }
+    } catch (err) {
+      showMessage('OCR 服務無法連線：' + (err?.message || ''), 'error');
+    }
+    setLoading(false);
+  };
+
   // 從電費單文字中解析：地址、電號、使用度數、電費金額、應繳稅額、應繳總金額（支援台電等常見格式）
   function parseTaipowerFields(allText) {
     const raw = allText.replace(/\s+/g, ' ').replace(/　/g, ' ');
@@ -463,6 +499,15 @@ export default function UtilityBillsPage() {
                 className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 text-sm"
               >
                 {loading ? '讀取中…' : '讀取 PDF'}
+              </button>
+              <button
+                type="button"
+                onClick={handleOcrScan}
+                disabled={!pdfFile || loading}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm"
+                title="適用於掃描版 PDF（無文字層）"
+              >
+                {loading ? '掃描中…' : 'OCR 掃描'}
               </button>
               <button
                 type="button"
