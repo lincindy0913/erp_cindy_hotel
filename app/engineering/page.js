@@ -506,26 +506,51 @@ export default function EngineeringPage() {
                               {(c.terms || []).map(t => {
                                 const termMaterials = (c.materials || []).filter(m => m.termId === t.id);
                                 const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
-                                const paidAmount = termPOs.filter(po => po.status === '已付款').reduce((s, po) => s + Number(po.amount || 0), 0);
-                                const pendingAmount = termPOs.filter(po => po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
-                                const unpaidAmount = Number(t.amount) - paidAmount;
-                                const isPartial = paidAmount > 0 && unpaidAmount > 0 && t.status !== 'paid';
-                                const isFullyPaid = t.status === 'paid' || (paidAmount > 0 && paidAmount >= Number(t.amount));
+                                const paidPOs = termPOs.filter(po => po.status === '已付款');
+                                const pendingPOs = termPOs.filter(po => po.status === '待出納');
+                                const paidAmount = paidPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
+                                const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
+                                const termAmt = Number(t.amount);
+                                const unpaidAmount = termAmt - paidAmount;
+                                const isFullyPaid = paidAmount >= termAmt && termAmt > 0;
+                                const isPartial = paidAmount > 0 && !isFullyPaid;
                                 return (
-                                <div key={t.id} className="border-b border-gray-100 pb-1 last:border-0">
+                                <div key={t.id} className="border-b border-gray-100 pb-1.5 last:border-0">
                                   <div className="flex items-center gap-2 text-xs flex-wrap">
                                     <span className="font-medium">{t.termName || `第${t.termNo}期`}</span>
-                                    <span className="text-gray-500">{formatNum(t.amount)}</span>
+                                    <span className="text-gray-500">期款 {formatNum(termAmt)}</span>
                                     <span className={isFullyPaid ? 'text-green-600 font-medium' : isPartial ? 'text-blue-600 font-medium' : 'text-amber-600'}>
-                                      {isFullyPaid ? '已付款' : isPartial ? '部分付款' : '待付款'}
+                                      {isFullyPaid ? '已付清' : isPartial ? '部分付款' : '待付款'}
                                     </span>
-                                    {isPartial && <span className="text-green-600">已付 {formatNum(paidAmount)}</span>}
-                                    {isPartial && <span className="text-amber-600">未付 {formatNum(unpaidAmount)}</span>}
-                                    {pendingAmount > 0 && !isFullyPaid && <span className="text-orange-500">待出納 {formatNum(pendingAmount)}</span>}
-                                    {t.paidAt && <span className="text-gray-400">{t.paidAt}</span>}
                                     {!isFullyPaid && <button onClick={() => openMarkTermPaid(t)} className="text-amber-600 hover:underline">標記已付</button>}
                                     {isFullyPaid && <button onClick={() => openUnmarkTermPaid(t)} className="text-gray-400 hover:text-red-600 hover:underline text-xs">取消</button>}
                                   </div>
+                                  {/* 付款明細 */}
+                                  {(isPartial || isFullyPaid) && (
+                                    <div className="pl-3 mt-0.5 space-y-0.5">
+                                      <div className="grid grid-cols-3 gap-1 text-xs">
+                                        <span className="text-green-700 font-medium">已付：{formatNum(paidAmount)}</span>
+                                        <span className={`font-medium ${unpaidAmount > 0 ? 'text-amber-600' : 'text-green-600'}`}>未付：{formatNum(Math.max(0, unpaidAmount))}</span>
+                                        {pendingAmount > 0 && <span className="text-orange-500">待出納：{formatNum(pendingAmount)}</span>}
+                                      </div>
+                                      {paidPOs.map((po, pi) => (
+                                        <div key={pi} className="text-xs text-gray-500 flex gap-2">
+                                          <span className="font-mono">{po.paymentNo}</span>
+                                          <span>{po.dueDate || po.createdAt?.slice(0,10) || ''}</span>
+                                          <span className="text-green-600">{formatNum(Number(po.amount))}</span>
+                                          <span className="text-gray-400">{po.paymentMethod || ''}</span>
+                                        </div>
+                                      ))}
+                                      {pendingPOs.map((po, pi) => (
+                                        <div key={`p${pi}`} className="text-xs text-orange-500 flex gap-2">
+                                          <span className="font-mono">{po.paymentNo}</span>
+                                          <span>{po.dueDate || ''}</span>
+                                          <span>{formatNum(Number(po.amount))}</span>
+                                          <span className="text-orange-400">待出納</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                   {t.content && <div className="text-xs text-gray-500 pl-2 mt-0.5">內容：{t.content}</div>}
                                   {t.note && <div className="text-xs text-gray-400 pl-2">備註：{t.note}</div>}
                                   {termMaterials.length > 0 && (
@@ -601,12 +626,14 @@ export default function EngineeringPage() {
                         <tbody>
                           {projContracts.map(c => {
                             const terms = c.terms || [];
-                            const paidTerms = terms.filter(t => t.status === 'paid');
                             const totalSum = terms.reduce((s, t) => s + Number(t.amount), 0);
-                            const paidByPO = terms.reduce((s, t) => {
-                              const tPOs = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款');
-                              return s + tPOs.reduce((ps, po) => ps + Number(po.amount || 0), 0);
-                            }, 0);
+                            let paidByPO = 0;
+                            let fullyPaidCount = 0;
+                            for (const t of terms) {
+                              const tPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款').reduce((ps, po) => ps + Number(po.amount || 0), 0);
+                              paidByPO += tPaid;
+                              if (tPaid >= Number(t.amount) && Number(t.amount) > 0) fullyPaidCount++;
+                            }
                             return (
                               <tr key={c.id} className="border-t">
                                 <td className="py-2">{c.supplier?.name}</td>
@@ -617,7 +644,7 @@ export default function EngineeringPage() {
                                     {c.status === 'completed' ? '已完成' : '進行中'}
                                   </span>
                                 </td>
-                                <td className="py-2 text-center">{paidTerms.length}／{terms.length} 期</td>
+                                <td className="py-2 text-center">{fullyPaidCount}／{terms.length} 期</td>
                                 <td className="py-2 text-right">{formatNum(paidByPO)}／{formatNum(totalSum)}</td>
                               </tr>
                             );
@@ -895,17 +922,48 @@ export default function EngineeringPage() {
                   }
                 }} className="w-full border rounded-lg px-3 py-2 text-sm">
                   <option value="">一般工程付款（不連結期數）</option>
-                  {contracts.filter(c => (c.terms || []).some(t => t.status !== 'paid')).map(c =>
-                    (c.terms || []).filter(t => t.status !== 'paid').map(t => {
-                      const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && (po.status === '已付款' || po.status === '待出納')).reduce((s, po) => s + Number(po.amount || 0), 0);
-                      const remaining = Number(t.amount) - termPaidAmt;
+                  {contracts.map(c =>
+                    (c.terms || []).filter(t => {
+                      const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      return paid < Number(t.amount); // show terms not fully paid by actual amount
+                    }).map(t => {
+                      const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已付款').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      const pendingAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      const remaining = Number(t.amount) - paidAmt;
                       return (
-                        <option key={t.id} value={`${t.id}-${c.id}`}>{c.project?.code} {c.contractNo} － {t.termName || `第${t.termNo}期`} {formatNum(t.amount)}{termPaidAmt > 0 ? ` (已付${formatNum(termPaidAmt)}, 餘${formatNum(remaining)})` : ''}</option>
+                        <option key={t.id} value={`${t.id}-${c.id}`}>
+                          {c.project?.code} {c.contractNo} － {t.termName || `第${t.termNo}期`} 期款{formatNum(t.amount)}
+                          {paidAmt > 0 ? ` (已付${formatNum(paidAmt)}, 餘${formatNum(remaining)})` : ''}
+                          {pendingAmt > 0 ? ` [待出納${formatNum(pendingAmt)}]` : ''}
+                        </option>
                       );
                     })
                   ).flat()}
                 </select>
               </div>}
+              {/* 選擇期數後顯示付款狀態 */}
+              {!editingPaymentOrder && paymentForm.termId && (() => {
+                const selContract = contracts.find(c => c.id === Number(paymentForm.contractId));
+                const selTerm = selContract?.terms?.find(t => t.id === Number(paymentForm.termId));
+                if (!selTerm) return null;
+                const selPaidPOs = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '已付款');
+                const selPaidAmt = selPaidPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
+                const selPendingAmt = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
+                const selRemaining = Number(selTerm.amount) - selPaidAmt;
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs space-y-1">
+                    <div className="flex justify-between font-medium">
+                      <span>期款金額：{formatNum(selTerm.amount)}</span>
+                      <span className={selRemaining > 0 ? 'text-amber-600' : 'text-green-600'}>剩餘應付：{formatNum(Math.max(0, selRemaining))}</span>
+                    </div>
+                    {selPaidAmt > 0 && <div className="text-green-700">已付款合計：{formatNum(selPaidAmt)}（{selPaidPOs.length} 筆）</div>}
+                    {selPendingAmt > 0 && <div className="text-orange-600">待出納合計：{formatNum(selPendingAmt)}</div>}
+                    {selPaidPOs.map((po, i) => (
+                      <div key={i} className="text-gray-500 pl-2">• {po.paymentNo} {po.dueDate || ''} {formatNum(Number(po.amount))} {po.paymentMethod || ''}</div>
+                    ))}
+                  </div>
+                );
+              })()}
               {(paymentForm.warehouse || paymentForm.department) && (
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-600">
                   館別：{paymentForm.warehouse || '—'} {paymentForm.department ? `／ 部門：${paymentForm.department}` : ''}
