@@ -98,7 +98,7 @@ function RentalsPage() {
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -125,6 +125,9 @@ function RentalsPage() {
   const [taxPayForm, setTaxPayForm] = useState({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] });
 
   const [reportYear, setReportYear] = useState(new Date().getFullYear());
+  const [reportStartDate, setReportStartDate] = useState('');
+  const [reportEndDate, setReportEndDate] = useState('');
+  const [reportPropertyId, setReportPropertyId] = useState('');
   const [incomeReportData, setIncomeReportData] = useState({ year: null, rows: [] });
   const [operatingReportData, setOperatingReportData] = useState({ year: null, rows: [] });
   const [reportLoading, setReportLoading] = useState(false);
@@ -168,8 +171,8 @@ function RentalsPage() {
     }
     if (activeTab === 'utilityIncome') fetchUtilityList();
     if (activeTab === 'overview') fetchSummary();
-    if (activeTab === 'incomeReport') fetchIncomeReport();
-    if (activeTab === 'operatingReport') fetchOperatingReport();
+    if (activeTab === 'incomeReport') { fetchIncomeReport(); fetchProperties(); }
+    if (activeTab === 'operatingReport') { fetchOperatingReport(); fetchProperties(); }
   }, [activeTab]);
 
   // 從出納執行回來時自動更新稅款/維護費清單（頁面重新顯示時 refetch）
@@ -183,10 +186,22 @@ function RentalsPage() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [activeTab]);
 
+  function buildReportParams() {
+    const params = new URLSearchParams();
+    if (reportStartDate && reportEndDate) {
+      params.set('startDate', reportStartDate);
+      params.set('endDate', reportEndDate);
+    } else {
+      params.set('year', reportYear);
+    }
+    if (reportPropertyId) params.set('propertyId', reportPropertyId);
+    return params.toString();
+  }
+
   async function fetchIncomeReport() {
     setReportLoading(true);
     try {
-      const res = await fetch(`/api/rentals/reports/income-by-month?year=${reportYear}`);
+      const res = await fetch(`/api/rentals/reports/income-by-month?${buildReportParams()}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setIncomeReportData({ year: data.year, rows: data.rows || [] });
@@ -200,7 +215,7 @@ function RentalsPage() {
   async function fetchOperatingReport() {
     setReportLoading(true);
     try {
-      const res = await fetch(`/api/rentals/reports/operating?year=${reportYear}`);
+      const res = await fetch(`/api/rentals/reports/operating?${buildReportParams()}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setOperatingReportData({ year: data.year, rows: data.rows || [] });
@@ -427,11 +442,11 @@ function RentalsPage() {
         name: property.name || '', address: property.address || '', buildingName: property.buildingName || '',
         unitNo: property.unitNo || '', status: property.status || 'available',
         rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
-        note: property.note || ''
+        note: property.note || '', publicInterestLandlord: property.publicInterestLandlord || false
       });
     } else {
       setEditingProperty(null);
-      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '' });
+      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false });
     }
     setShowPropertyModal(true);
   }
@@ -1183,6 +1198,8 @@ function RentalsPage() {
                               <th className="text-center px-3 py-2">狀態</th>
                               <th className="text-left px-3 py-2">目前租客</th>
                               <th className="text-left px-3 py-2">收租帳戶</th>
+                              <th className="text-center px-3 py-2">公益出租人</th>
+                              <th className="text-left px-3 py-2">備註</th>
                               <th className="text-center px-3 py-2">操作</th>
                             </tr>
                           </thead>
@@ -1197,6 +1214,8 @@ function RentalsPage() {
                                 </td>
                                 <td className="px-3 py-2">{p.currentTenantName || '-'}</td>
                                 <td className="px-3 py-2 text-xs text-gray-500">{p.rentCollectAccount?.name || '-'}</td>
+                                <td className="px-3 py-2 text-center">{p.publicInterestLandlord ? <span className="text-green-600 font-medium">是</span> : <span className="text-gray-400">否</span>}</td>
+                                <td className="px-3 py-2 text-xs text-gray-500 max-w-[150px] truncate" title={p.note || ''}>{p.note || '-'}</td>
                                 <td className="px-3 py-2 text-center">
                                   <button onClick={() => openPropertyModal(p)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
                                   <button onClick={() => deleteProperty(p.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
@@ -1665,6 +1684,16 @@ function RentalsPage() {
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
+                  <span className="text-gray-400 text-xs">或</span>
+                  <label className="text-sm">日期區間：</label>
+                  <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+                  <span className="text-sm">～</span>
+                  <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+                  <label className="text-sm">單元：</label>
+                  <select value={reportPropertyId} onChange={e => setReportPropertyId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+                    <option value="">全部</option>
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                   <button onClick={fetchIncomeReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
                   <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
                 </div>
@@ -1714,11 +1743,21 @@ function RentalsPage() {
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
+                  <span className="text-gray-400 text-xs">或</span>
+                  <label className="text-sm">日期區間：</label>
+                  <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+                  <span className="text-sm">～</span>
+                  <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+                  <label className="text-sm">單元：</label>
+                  <select value={reportPropertyId} onChange={e => setReportPropertyId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+                    <option value="">全部</option>
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                   <button onClick={fetchOperatingReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
                   <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
                 </div>
                 <h2 className="text-lg font-bold text-gray-800 mb-2 print:block">物業營運狀況分析報表 — {operatingReportData.year || reportYear} 年</h2>
-                <p className="text-sm text-gray-600 mb-2 no-print">收租金額、維修、稅金等支出，淨利與淨利率（投報率需物業成本，可於設定中維護後顯示）。</p>
+                <p className="text-sm text-gray-600 mb-2 no-print">收租金額、維修、房務稅/地價稅等支出，淨利與淨利率（投報率需物業成本，可於設定中維護後顯示）。</p>
                 {reportLoading ? (
                   <p className="text-gray-500">載入中...</p>
                 ) : (
@@ -1729,7 +1768,7 @@ function RentalsPage() {
                           <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                           <th className="text-right px-3 py-2 border border-gray-200">收租金額</th>
                           <th className="text-right px-3 py-2 border border-gray-200">維修金額</th>
-                          <th className="text-right px-3 py-2 border border-gray-200">稅金</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">房務稅/地價稅</th>
                           <th className="text-right px-3 py-2 border border-gray-200">總支出</th>
                           <th className="text-right px-3 py-2 border border-gray-200">淨利</th>
                           <th className="text-right px-3 py-2 border border-gray-200">淨利率 %</th>
@@ -1889,6 +1928,11 @@ function RentalsPage() {
                   <label className="text-sm text-gray-600">備註</label>
                   <textarea value={propertyForm.note} onChange={e => setPropertyForm(f => ({ ...f, note: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" rows={2} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="publicInterestLandlord" checked={propertyForm.publicInterestLandlord}
+                    onChange={e => setPropertyForm(f => ({ ...f, publicInterestLandlord: e.target.checked }))} className="rounded" />
+                  <label htmlFor="publicInterestLandlord" className="text-sm text-gray-600">公益出租人</label>
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">

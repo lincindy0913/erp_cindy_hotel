@@ -57,7 +57,8 @@ export async function PUT(request, { params }) {
         rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         status: body.status,
-        note: body.note
+        note: body.note,
+        publicInterestLandlord: body.publicInterestLandlord === true
       }
     });
 

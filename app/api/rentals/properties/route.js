@@ -78,7 +78,8 @@ export async function POST(request) {
         rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         status: body.status || 'available',
-        note: body.note || null
+        note: body.note || null,
+        publicInterestLandlord: body.publicInterestLandlord === true
       }
     });
 

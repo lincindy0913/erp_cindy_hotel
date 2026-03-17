@@ -7,9 +7,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET ?year=2025&propertyId= (optional)
- * Per property: 收租金額, 維修金額, 稅金, 淨利, 淨利率(淨利/收租).
- * 投報率: 若無物業成本欄位則不計算，僅顯示淨利與淨利率。
+ * GET ?year=2025&propertyId=&startDate=&endDate=
+ * Per property: 收租金額, 維修金額, 房務稅/地價稅, 淨利, 淨利率.
  */
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
@@ -18,38 +17,57 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
     const propertyIdParam = searchParams.get('propertyId');
-    const y = year ? parseInt(year, 10) : new Date().getFullYear();
-    if (Number.isNaN(y)) {
-      return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
-    }
     const propertyIdFilter = propertyIdParam ? parseInt(propertyIdParam, 10) : null;
-    if (propertyIdParam != null && Number.isNaN(propertyIdFilter)) {
-      return NextResponse.json({ error: 'Invalid propertyId' }, { status: 400 });
+
+    let displayYear;
+    let incomeYearFilter;
+    let dateRangeFilter;
+    let taxYearFilter;
+
+    if (startDate && endDate) {
+      const sDate = new Date(startDate);
+      const eDate = new Date(endDate);
+      const sYear = sDate.getFullYear();
+      const eYear = eDate.getFullYear();
+      displayYear = sYear === eYear ? sYear : `${sYear}-${eYear}`;
+      incomeYearFilter = sYear === eYear ? { incomeYear: sYear } : { incomeYear: { gte: sYear, lte: eYear } };
+      dateRangeFilter = { maintenanceDate: { gte: startDate, lte: endDate } };
+      taxYearFilter = sYear === eYear ? { taxYear: sYear } : { taxYear: { gte: sYear, lte: eYear } };
+    } else {
+      const y = year ? parseInt(year, 10) : new Date().getFullYear();
+      if (Number.isNaN(y)) {
+        return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
+      }
+      displayYear = y;
+      incomeYearFilter = { incomeYear: y };
+      dateRangeFilter = { maintenanceDate: { gte: `${y}-01-01`, lte: `${y}-12-31` } };
+      taxYearFilter = { taxYear: y };
     }
+
+    const propFilter = propertyIdFilter ? { propertyId: propertyIdFilter } : {};
 
     const [incomes, utilityIncomes, maintenances, taxes, properties] = await Promise.all([
       prisma.rentalIncome.findMany({
-        where: { incomeYear: y, ...(propertyIdFilter != null ? { propertyId: propertyIdFilter } : {}) },
+        where: { ...incomeYearFilter, ...propFilter },
         select: { propertyId: true, actualAmount: true, status: true }
       }),
       prisma.rentalUtilityIncome.findMany({
-        where: { incomeYear: y, ...(propertyIdFilter != null ? { propertyId: propertyIdFilter } : {}) },
+        where: { ...incomeYearFilter, ...propFilter },
         select: { propertyId: true, actualAmount: true, status: true }
       }),
       prisma.rentalMaintenance.findMany({
-        where: {
-          maintenanceDate: { gte: `${y}-01-01`, lte: `${y}-12-31` },
-          ...(propertyIdFilter != null ? { propertyId: propertyIdFilter } : {})
-        },
+        where: { ...dateRangeFilter, ...propFilter },
         select: { propertyId: true, amount: true }
       }),
       prisma.propertyTax.findMany({
-        where: { taxYear: y, ...(propertyIdFilter != null ? { propertyId: propertyIdFilter } : {}) },
+        where: { ...taxYearFilter, ...propFilter },
         select: { propertyId: true, amount: true }
       }),
       prisma.rentalProperty.findMany({
-        where: propertyIdFilter != null ? { id: propertyIdFilter } : {},
+        where: propertyIdFilter ? { id: propertyIdFilter } : {},
         select: { id: true, name: true, buildingName: true, unitNo: true, address: true }
       })
     ]);
@@ -60,7 +78,7 @@ export async function GET(request) {
       ...maintenances.map(m => m.propertyId),
       ...taxes.map(t => t.propertyId)
     ]);
-    const allProperties = propertyIdFilter != null
+    const allProperties = propertyIdFilter
       ? properties
       : await prisma.rentalProperty.findMany({
           where: { id: { in: Array.from(propertyIds) } },
@@ -110,7 +128,7 @@ export async function GET(request) {
 
     rows.sort((a, b) => (a.propertyLabel || '').localeCompare(b.propertyLabel || ''));
 
-    return NextResponse.json({ year: y, rows });
+    return NextResponse.json({ year: displayYear, rows });
   } catch (error) {
     console.error('GET /api/rentals/reports/operating error:', error);
     return handleApiError(error);

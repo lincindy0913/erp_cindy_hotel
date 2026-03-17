@@ -7,10 +7,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET ?year=2025
+ * GET ?year=2025&propertyId=&startDate=&endDate=
  * Returns pivot: 房號(property label) x 1..12 months, total.
- * Row = property (with optional tenant name from latest income in that year).
- * Cell = actualAmount (completed/partial) or 0.
  */
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
@@ -19,14 +17,47 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year');
-    const y = year ? parseInt(year, 10) : new Date().getFullYear();
-    if (Number.isNaN(y)) {
-      return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+    const propertyIdParam = searchParams.get('propertyId');
+    const propertyIdFilter = propertyIdParam ? parseInt(propertyIdParam, 10) : null;
+
+    // Determine year(s) to query
+    let yearFilter;
+    let startMonth = 1;
+    let endMonth = 12;
+    let displayYear;
+
+    if (startDate && endDate) {
+      // Date range mode: extract year/month from dates
+      const sDate = new Date(startDate);
+      const eDate = new Date(endDate);
+      const sYear = sDate.getFullYear();
+      const eYear = eDate.getFullYear();
+      displayYear = sYear === eYear ? sYear : `${sYear}-${eYear}`;
+      yearFilter = sYear === eYear ? { equals: sYear } : { gte: sYear, lte: eYear };
+      if (sYear === eYear) {
+        startMonth = sDate.getMonth() + 1;
+        endMonth = eDate.getMonth() + 1;
+      }
+    } else {
+      const y = year ? parseInt(year, 10) : new Date().getFullYear();
+      if (Number.isNaN(y)) {
+        return NextResponse.json({ error: 'Invalid year' }, { status: 400 });
+      }
+      yearFilter = { equals: y };
+      displayYear = y;
     }
+
+    const incomeWhere = {
+      ...(yearFilter.equals != null ? { incomeYear: yearFilter.equals } : { incomeYear: { gte: yearFilter.gte, lte: yearFilter.lte } }),
+      ...(propertyIdFilter ? { propertyId: propertyIdFilter } : {})
+    };
+    const utilityWhere = { ...incomeWhere };
 
     const [incomes, utilityIncomes] = await Promise.all([
       prisma.rentalIncome.findMany({
-        where: { incomeYear: y },
+        where: incomeWhere,
         select: {
           propertyId: true,
           incomeMonth: true,
@@ -38,7 +69,7 @@ export async function GET(request) {
         orderBy: [{ propertyId: 'asc' }, { incomeMonth: 'asc' }]
       }),
       prisma.rentalUtilityIncome.findMany({
-        where: { incomeYear: y },
+        where: utilityWhere,
         select: { propertyId: true, incomeMonth: true, actualAmount: true, status: true }
       })
     ]);
@@ -90,7 +121,7 @@ export async function GET(request) {
       .filter(r => r.total > 0 || r.tenantName)
       .sort((a, b) => (a.propertyLabel || '').localeCompare(b.propertyLabel || ''));
 
-    return NextResponse.json({ year: y, rows });
+    return NextResponse.json({ year: displayYear, rows });
   } catch (error) {
     console.error('GET /api/rentals/reports/income-by-month error:', error);
     return handleApiError(error);
