@@ -35,10 +35,17 @@ export async function GET(request) {
       include: {
         category: { select: { id: true, name: true, type: true } },
         account: { select: { id: true, name: true, type: true, warehouse: true } },
-        supplier: { select: { id: true, name: true } }
       },
       orderBy: [{ transactionDate: 'asc' }, { type: 'asc' }]
     });
+
+    // Build supplier name map for grouping
+    const supplierIds = [...new Set(transactions.filter(t => t.supplierId).map(t => t.supplierId))];
+    const supplierMap = {};
+    if (supplierIds.length > 0) {
+      const suppliers = await prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, name: true } });
+      for (const s of suppliers) supplierMap[s.id] = s.name;
+    }
 
     // Group by category and by supplier
     const incomeByCategory = {};
@@ -61,7 +68,7 @@ export async function GET(request) {
         totalExpense += amt;
         totalFees += fee;
         // Group expense by supplier
-        const supplierName = tx.supplier?.name || '未指定廠商';
+        const supplierName = tx.supplierId ? (supplierMap[tx.supplierId] || '未指定廠商') : '未指定廠商';
         expenseBySupplier[supplierName] = (expenseBySupplier[supplierName] || 0) + amt;
       }
     }

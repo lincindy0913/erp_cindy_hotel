@@ -188,11 +188,17 @@ export default function CashFlowPage() {
 
   async function fetchReport() {
     try {
-      const params = new URLSearchParams(reportFilter);
+      const params = new URLSearchParams();
+      if (reportFilter.startDate) params.set('startDate', reportFilter.startDate);
+      if (reportFilter.endDate) params.set('endDate', reportFilter.endDate);
+      if (reportFilter.warehouse) params.set('warehouse', reportFilter.warehouse);
+      if (reportFilter.supplierId) params.set('supplierId', reportFilter.supplierId);
+      if (reportFilter.categoryId) params.set('categoryId', reportFilter.categoryId);
       const res = await fetch(`/api/cashflow/report?${params.toString()}`);
       const data = await res.json();
+      if (!res.ok) { showToast(data.error?.message || '產生報表失敗', 'error'); setReportData(null); return; }
       setReportData(data);
-    } catch { setReportData(null); }
+    } catch (e) { showToast('產生報表失敗: ' + (e.message || ''), 'error'); setReportData(null); }
   }
 
   async function fetchSummary() {
@@ -970,19 +976,18 @@ export default function CashFlowPage() {
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">類別</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">館別</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">帳戶</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">分類</th>
+                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">付款單號</th>
                     <th className="px-3 py-3 text-right text-sm font-medium text-gray-700">金額</th>
                     <th className="px-3 py-3 text-right text-sm font-medium text-gray-700">手續費</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">備註</th>
                     <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">來源</th>
-                    {isLoggedIn && <th className="px-3 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={isLoggedIn ? 12 : 11} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                         尚無交易紀錄，請先查詢或新增交易
                       </td>
                     </tr>
@@ -1003,14 +1008,12 @@ export default function CashFlowPage() {
                         <td className="px-3 py-2 text-sm">{tx.warehouse || '-'}</td>
                         <td className="px-3 py-2 text-sm">{tx.account ? `${tx.account.name}` : '-'}</td>
                         <td className="px-3 py-2 text-sm">
-                          {tx.category ? (
+                          {tx.category?.accountingSubject ? (
                             <div>
-                              <div>{tx.category.name}</div>
-                              {tx.category.accountingSubject && (
-                                <div className="text-xs text-gray-400 font-mono">{tx.category.accountingSubject.code}</div>
-                              )}
+                              <div className="font-mono text-xs">{tx.category.accountingSubject.code}</div>
+                              <div className="text-xs text-gray-500">{tx.category.accountingSubject.name}</div>
                             </div>
-                          ) : '-'}
+                          ) : (tx.accountingSubject || '-')}
                         </td>
                         <td className="px-3 py-2 text-sm font-mono">{tx.paymentNo || '-'}</td>
                         <td className={`px-3 py-2 text-sm text-right font-semibold ${
@@ -1064,16 +1067,6 @@ export default function CashFlowPage() {
                             <span className="text-xs text-gray-400">手動</span>
                           )}
                         </td>
-                        {isLoggedIn && (
-                          <td className="px-3 py-2 text-center">
-                            <button
-                              onClick={() => handleDeleteTransaction(tx.id)}
-                              className="text-red-600 hover:underline text-sm"
-                            >
-                              刪除
-                            </button>
-                          </td>
-                        )}
                       </tr>
                     ))
                   )}

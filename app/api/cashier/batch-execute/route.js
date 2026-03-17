@@ -300,30 +300,38 @@ export async function POST(request) {
           }
         }
 
-        // If this order is linked to engineering contract term, update term to paid
+        // If this order is linked to engineering contract term, check partial vs full payment
         if (order.sourceType === 'engineering' && order.sourceRecordId) {
           const linkedTerm = await tx.engineeringContractTerm.findUnique({
             where: { id: order.sourceRecordId },
             include: { contract: { include: { terms: true } } },
           });
           if (linkedTerm && linkedTerm.status !== 'paid') {
-            await tx.engineeringContractTerm.update({
-              where: { id: linkedTerm.id },
-              data: {
-                status: 'paid',
-                paidAt: executionDate,
-                paymentOrderId: order.id,
-              },
+            const allPOs = await tx.paymentOrder.findMany({
+              where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已付款' },
+              select: { amount: true },
             });
-            // Auto-update contract status if all terms are now paid
-            if (linkedTerm.contract) {
-              const allTerms = linkedTerm.contract.terms;
-              const allPaidAfter = allTerms.every(t => t.id === linkedTerm.id ? true : t.status === 'paid');
-              if (allPaidAfter) {
-                await tx.engineeringContract.update({
-                  where: { id: linkedTerm.contractId },
-                  data: { status: 'completed' },
-                });
+            const totalPaid = allPOs.reduce((s, po) => s + Number(po.amount), 0) + Number(order.amount);
+            const termAmount = Number(linkedTerm.amount);
+
+            if (totalPaid >= termAmount) {
+              await tx.engineeringContractTerm.update({
+                where: { id: linkedTerm.id },
+                data: {
+                  status: 'paid',
+                  paidAt: executionDate,
+                  paymentOrderId: order.id,
+                },
+              });
+              if (linkedTerm.contract) {
+                const allTerms = linkedTerm.contract.terms;
+                const allPaidAfter = allTerms.every(t => t.id === linkedTerm.id ? true : t.status === 'paid');
+                if (allPaidAfter) {
+                  await tx.engineeringContract.update({
+                    where: { id: linkedTerm.contractId },
+                    data: { status: 'completed' },
+                  });
+                }
               }
             }
           }
