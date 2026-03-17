@@ -663,7 +663,7 @@ export default function EngineeringPage() {
         {activeTab === 'payments' && (
           <>
             <div className="flex gap-3 mb-4 items-center">
-              <button onClick={() => { setEditingPaymentOrder(null); setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: new Date().toISOString().slice(0, 10), summary: '', note: '', materials: [] }); setShowPaymentModal(true); }} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 建立付款單</button>
+              <button onClick={() => { setEditingPaymentOrder(null); setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: new Date().toISOString().slice(0, 10), summary: '', note: '', materials: [] }); setShowPaymentModal(true);}} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 建立付款單</button>
               <Link href="/cashier" className="text-sm text-amber-600 hover:underline">→ 至出納執行付款</Link>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -980,30 +980,50 @@ export default function EngineeringPage() {
               </div>
               <div><label className="block text-xs text-gray-500 mb-1">預計付款日</label><input type="date" value={paymentForm.dueDate} onChange={e => setPaymentForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="block text-xs text-gray-500 mb-1">備註</label><input value={paymentForm.note} onChange={e => setPaymentForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              {/* 領用材料 */}
+              {/* 領用材料 — 從合約材料選取 */}
+              {(() => {
+                const selContract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
+                const contractMats = selContract?.materials || [];
+                if (contractMats.length === 0 && paymentForm.materials.length === 0) return null;
+                return (
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-xs text-gray-500">領用材料</label>
-                  <button type="button" onClick={() => setPaymentForm(f => ({ ...f, materials: [...f.materials, { description: '', quantity: '', amount: '', note: '' }] }))} className="text-amber-600 text-xs hover:underline">＋ 新增材料</button>
+                  {contractMats.length > 0 && (
+                    <button type="button" onClick={() => setPaymentForm(f => ({ ...f, materials: [...f.materials, { materialId: '', quantity: '', note: '' }] }))} className="text-amber-600 text-xs hover:underline">＋ 新增領用</button>
+                  )}
                 </div>
+                {contractMats.length === 0 && <div className="text-xs text-gray-400 mb-1">此合約尚無材料可領用</div>}
                 {paymentForm.materials.length > 0 && (
                   <div className="space-y-2">
-                    {paymentForm.materials.map((mat, mi) => (
+                    {paymentForm.materials.map((mat, mi) => {
+                      const selMat = contractMats.find(cm => cm.id === Number(mat.materialId));
+                      return (
                       <div key={mi} className="border rounded-lg p-2 bg-gray-50">
-                        <div className="grid grid-cols-4 gap-2 mb-1">
-                          <div className="col-span-2"><input placeholder="材料名稱" value={mat.description} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], description: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs" /></div>
-                          <div><input placeholder="數量" type="number" value={mat.quantity} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], quantity: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs" /></div>
-                          <div><input placeholder="金額" type="number" value={mat.amount} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], amount: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs" /></div>
+                        <div className="grid grid-cols-12 gap-2 mb-1">
+                          <div className="col-span-7">
+                            <select value={mat.materialId} onChange={e => { const ms = [...paymentForm.materials]; const cm = contractMats.find(c => c.id === Number(e.target.value)); ms[mi] = { ...ms[mi], materialId: e.target.value, quantity: cm ? String(cm.quantity) : '' }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs">
+                              <option value="">選擇材料</option>
+                              {contractMats.map(cm => (
+                                <option key={cm.id} value={cm.id}>{cm.description} （數量{cm.quantity}，單價{cm.unitPrice}）</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-3"><input placeholder="領用數量" type="number" value={mat.quantity} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], quantity: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs" step="any" min="0" max={selMat ? selMat.quantity : undefined} /></div>
+                          <div className="col-span-2 flex items-center justify-end">
+                            <button type="button" onClick={() => { const ms = paymentForm.materials.filter((_, i) => i !== mi); setPaymentForm(f => ({ ...f, materials: ms })); }} className="text-red-500 text-xs hover:underline">移除</button>
+                          </div>
                         </div>
-                        <div className="flex gap-2 items-center">
-                          <input placeholder="備註" value={mat.note} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], note: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="flex-1 border rounded px-2 py-1 text-xs" />
-                          <button type="button" onClick={() => { const ms = paymentForm.materials.filter((_, i) => i !== mi); setPaymentForm(f => ({ ...f, materials: ms })); }} className="text-red-500 text-xs hover:underline">移除</button>
-                        </div>
+                        {selMat && <div className="text-xs text-gray-500">單價 {selMat.unitPrice} × {mat.quantity || 0} = {((parseFloat(mat.quantity) || 0) * selMat.unitPrice).toLocaleString()}</div>}
+                        <input placeholder="備註" value={mat.note || ''} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], note: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs mt-1" />
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
+                );
+              })()}
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={paymentSaving}>取消</button>
@@ -1046,23 +1066,24 @@ export default function EngineeringPage() {
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error?.message || '建立失敗');
-                    // Create material records if any
-                    const matRows = (paymentForm.materials || []).filter(m => m.description?.trim() && parseFloat(m.quantity) > 0);
+                    // Create material requisition records from selected contract materials
+                    const selContract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
+                    const contractMats = selContract?.materials || [];
+                    const matRows = (paymentForm.materials || []).filter(m => m.materialId && parseFloat(m.quantity) > 0);
                     if (matRows.length > 0) {
-                      const contract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
-                      const projId = contract?.projectId || (paymentForm.projectId ? parseInt(paymentForm.projectId) : null);
+                      const projId = selContract?.projectId || (paymentForm.projectId ? parseInt(paymentForm.projectId) : null);
                       for (const mat of matRows) {
+                        const cm = contractMats.find(c => c.id === Number(mat.materialId));
+                        if (!cm) continue;
                         const qty = parseFloat(mat.quantity) || 0;
-                        const amt = parseFloat(mat.amount) || 0;
-                        const unitPrice = qty > 0 ? amt / qty : 0;
                         await fetch('/api/engineering/materials', {
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             projectId: projId, contractId: paymentForm.contractId ? parseInt(paymentForm.contractId) : null,
                             termId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
-                            description: mat.description.trim(), quantity: qty, unit: '式', unitPrice,
+                            description: cm.description, quantity: qty, unit: cm.unit || '式', unitPrice: cm.unitPrice,
                             usedAt: new Date().toISOString().slice(0, 10),
-                            note: mat.note?.trim() || `付款單 ${data.paymentNo || ''}`,
+                            note: mat.note?.trim() || `付款單 ${data.paymentNo || ''} 領用`,
                           }),
                         });
                       }
