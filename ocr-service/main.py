@@ -1,11 +1,10 @@
 import os
-import io
-import re
+import base64
 import tempfile
+import httpx
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import fitz  # PyMuPDF
-from paddleocr import PaddleOCR
 
 app = FastAPI()
 
@@ -16,48 +15,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize PaddleOCR once at startup (Traditional Chinese + English)
-ocr = PaddleOCR(use_angle_cls=True, lang="chinese_cht", use_gpu=False, show_log=False)
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3-vl:4b")
+
+PROMPT = """你是一個專業的台灣電費/水費帳單辨識助手。
+請仔細閱讀這張帳單圖片，找出以下欄位並以 JSON 格式回傳（若找不到填 null）：
+
+電費帳單欄位：
+- 地址 (用電地址/裝設地址)
+- 電號 (電費戶號/用戶編號)
+- 使用度數 (本期用電度數)
+- 電費金額 (流動電費/本期電費)
+- 應繳稅額 (營業稅/稅額)
+- 應繳總金額 (本期應繳金額/應繳電費)
+- 計費期間
+
+只回傳 JSON，不要其他說明文字。範例格式：
+{"地址":"台北市...","電號":"12345678","使用度數":"1234","電費金額":"5678","應繳稅額":"284","應繳總金額":"5962","計費期間":"113年04月"}
+"""
+
+WATER_PROMPT = """你是一個專業的台灣水費帳單辨識助手。
+請仔細閱讀這張帳單圖片，找出以下欄位並以 JSON 格式回傳（若找不到填 null）：
+
+水費帳單欄位：
+- 用水地址
+- 水號 (水費戶號/用戶編號)
+- 用水量
+- 基本費
+- 水費
+- 營業稅
+- 其他費用
+- 總金額 (本期應繳金額)
+- 計費期間
+
+只回傳 JSON，不要其他說明文字。"""
 
 
-def pdf_to_images(pdf_bytes: bytes, dpi: int = 200):
-    """Convert PDF pages to PIL images using PyMuPDF."""
+def pdf_page_to_base64(pdf_bytes: bytes, page_num: int = 0, dpi: int = 200) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images = []
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        mat = fitz.Matrix(dpi / 72, dpi / 72)
-        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
-        img_bytes = pix.tobytes("png")
-        images.append({"page": page_num + 1, "data": img_bytes})
+    page = doc[page_num]
+    mat = fitz.Matrix(dpi / 72, dpi / 72)
+    pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+    img_bytes = pix.tobytes("png")
     doc.close()
-    return images
-
-
-def run_ocr_on_image(img_bytes: bytes) -> str:
-    """Run PaddleOCR on image bytes and return sorted text."""
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(img_bytes)
-        tmp_path = tmp.name
-
-    try:
-        result = ocr.ocr(tmp_path, cls=True)
-        if not result or not result[0]:
-            return ""
-
-        # Sort by Y position (top to bottom), then X (left to right)
-        lines = []
-        for line in result[0]:
-            box, (text, confidence) = line
-            # box is [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-            y_center = (box[0][1] + box[2][1]) / 2
-            x_center = (box[0][0] + box[2][0]) / 2
-            lines.append((y_center, x_center, text))
-
-        lines.sort(key=lambda l: (round(l[0] / 15) * 15, l[1]))
-        return " ".join(t for _, _, t in lines)
-    finally:
-        os.unlink(tmp_path)
+    return base64.b64encode(img_bytes).decode("utf-8")
 
 
 @app.get("/health")
@@ -66,26 +67,62 @@ def health():
 
 
 @app.post("/ocr")
-async def ocr_pdf(file: UploadFile = File(...)):
+async def ocr_pdf(
+    file: UploadFile = File(...),
+    bill_type: str = "電費",
+    page: int = 0,
+):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     pdf_bytes = await file.read()
-    if len(pdf_bytes) == 0:
+    if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
     try:
-        images = pdf_to_images(pdf_bytes)
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        num_pages = len(doc)
+        doc.close()
+        target_page = min(page, num_pages - 1)
+        img_b64 = pdf_page_to_base64(pdf_bytes, target_page)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF conversion failed: {str(e)}")
 
-    pages = []
-    for img in images:
-        try:
-            text = run_ocr_on_image(img["data"])
-            pages.append({"page": img["page"], "text": text})
-        except Exception as e:
-            pages.append({"page": img["page"], "text": "", "error": str(e)})
+    prompt = WATER_PROMPT if bill_type == "水費" else PROMPT
 
-    full_text = "\n".join(p["text"] for p in pages)
-    return {"pages": pages, "full_text": full_text, "num_pages": len(pages)}
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "images": [img_b64],
+                    "stream": False,
+                    "options": {"temperature": 0.1},
+                },
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            raw_text = result.get("response", "")
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Ollama 服務無法連線，請確認 Ollama 容器是否啟動")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ollama 呼叫失敗: {str(e)}")
+
+    # Try to extract JSON from response
+    import re, json
+    json_match = re.search(r'\{[^{}]+\}', raw_text, re.DOTALL)
+    parsed = {}
+    if json_match:
+        try:
+            parsed = json.loads(json_match.group())
+        except Exception:
+            pass
+
+    return {
+        "raw": raw_text,
+        "parsed": parsed,
+        "num_pages": num_pages,
+        "page_used": target_page + 1,
+    }

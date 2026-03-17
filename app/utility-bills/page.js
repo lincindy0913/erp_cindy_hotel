@@ -195,6 +195,8 @@ export default function UtilityBillsPage() {
     try {
       const form = new FormData();
       form.append('file', pdfFile);
+      form.append('bill_type', isWater ? '水費' : '電費');
+      form.append('page', '0');
       const res = await fetch('/api/utility-bills/ocr', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) {
@@ -202,17 +204,47 @@ export default function UtilityBillsPage() {
         setLoading(false);
         return;
       }
-      const pages = data.pages || [];
-      setPageTexts(pages.map(p => ({ pageNum: p.page, text: p.text })));
-      setExtractedText(pages.map(p => `--- 第 ${p.page} 頁 ---\n${p.text}`).join('\n\n'));
-      if (pages.length === 0 || pages.every(p => !p.text)) {
-        showMessage('OCR 無法識別任何文字，請確認 PDF 品質', 'error');
+
+      // Show raw response in text area
+      const rawText = data.raw || '';
+      setPageTexts([{ pageNum: 1, text: rawText }]);
+      setExtractedText(rawText);
+
+      // Auto-detect meta from filename
+      const detected = autoDetectMeta(pdfFile.name, rawText);
+      const updatedMeta = { ...meta, ...detected };
+      if (Object.keys(detected).length) setMeta(updatedMeta);
+
+      // Auto-fill summary from parsed fields
+      const p = data.parsed || {};
+      const year = updatedMeta.year || meta.year || String(new Date().getFullYear() - 1911);
+      const month = updatedMeta.month || meta.month || String(new Date().getMonth() + 1).padStart(2, '0');
+      const warehouse = updatedMeta.warehouse || meta.warehouse || '麗軒';
+      const fmt = (v) => (v && !isNaN(Number(v)) ? `NT$ ${Number(v).toLocaleString()}` : (v || '（未辨識，請手動填入）'));
+
+      if (isWater) {
+        setSummary({
+          館別: warehouse, 類型: '水費',
+          計費期間: p.計費期間 || `${year}年${month}月`,
+          用水地址: p.用水地址 || '（未辨識，請手動填入）',
+          水號: p.水號 || '（未辨識，請手動填入）',
+          用水量: p.用水量 || '（未辨識，請手動填入）',
+          基本費: fmt(p.基本費), 水費: fmt(p.水費),
+          營業稅: fmt(p.營業稅), 其他費用: fmt(p.其他費用),
+          總金額: fmt(p.總金額),
+        });
       } else {
-        showMessage(`OCR 完成，共 ${pages.length} 頁`);
-        const fullText = pages.map(p => p.text).join('\n');
-        const detected = autoDetectMeta(pdfFile.name, fullText);
-        if (Object.keys(detected).length) setMeta(prev => ({ ...prev, ...detected }));
+        setSummary({
+          館別: warehouse, 類型: '電費',
+          計費期間: p.計費期間 || `${year}年${month}月`,
+          地址: p.地址 || '（未辨識，請手動填入）',
+          電號: p.電號 || '（未辨識，請手動填入）',
+          使用度數: p.使用度數 || '（未辨識，請手動填入）',
+          電費金額: fmt(p.電費金額), 應繳稅額: fmt(p.應繳稅額),
+          應繳總金額: fmt(p.應繳總金額),
+        });
       }
+      showMessage('AI 辨識完成，請核對欄位內容');
     } catch (err) {
       showMessage('OCR 服務無法連線：' + (err?.message || ''), 'error');
     }

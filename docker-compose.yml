@@ -27,11 +27,25 @@ services:
       - "5432:5432"
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: erp_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
   ocr:
     build: ./ocr-service
     container_name: erp_ocr
     ports:
       - "5001:5001"
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3-vl:4b
+    depends_on:
+      - ollama
     restart: unless-stopped
 
   pgadmin:
@@ -49,3 +63,4 @@ services:
 volumes:
   postgres_data:
   pgadmin-data:
+  ollama-data:
