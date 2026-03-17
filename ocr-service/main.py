@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3-vl:4b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5vl:3b")
 
 PROMPT = """你是一個專業的台灣電費/水費帳單辨識助手。
 請仔細閱讀這張帳單圖片，找出以下欄位並以 JSON 格式回傳（若找不到填 null）：
@@ -51,7 +51,7 @@ WATER_PROMPT = """你是一個專業的台灣水費帳單辨識助手。
 只回傳 JSON，不要其他說明文字。"""
 
 
-def pdf_page_to_base64(pdf_bytes: bytes, page_num: int = 0, dpi: int = 120) -> str:
+def pdf_page_to_base64(pdf_bytes: bytes, page_num: int = 0, dpi: int = 96) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     page = doc[page_num]
     mat = fitz.Matrix(dpi / 72, dpi / 72)
@@ -100,12 +100,23 @@ async def ocr_pdf(
                     "prompt": prompt,
                     "images": [img_b64],
                     "stream": False,
-                    "options": {"temperature": 0.1},
+                    "think": False,
+                    "options": {"temperature": 0.1, "num_predict": 300},
                 },
             )
             resp.raise_for_status()
             result = resp.json()
-            raw_text = result.get("response", "")
+            # qwen models may return thinking in separate field or use <think> tags
+            raw_text = result.get("response", "") or result.get("thinking", "")
+            # Strip <think>...</think> blocks, keep only the answer
+            import re as _re
+            raw_text = _re.sub(r'<think>.*?</think>', '', raw_text, flags=_re.DOTALL).strip()
+            if not raw_text:
+                # fallback: check all string values in result
+                for k, v in result.items():
+                    if isinstance(v, str) and len(v) > 10:
+                        raw_text = v
+                        break
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="Ollama 服務無法連線，請確認 Ollama 容器是否啟動")
     except Exception as e:
