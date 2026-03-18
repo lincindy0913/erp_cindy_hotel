@@ -439,7 +439,7 @@ export default function CashierPage() {
     () =>
       sortRows(displayOrders, cashSortKey, cashSortDir, {
         orderNo: (o) => getDisplayOrderNo(o),
-        sourceType: (o) => getSourceCategory(o.sourceType),
+        sourceType: (o) => getSourceCategory(o.sourceType, o),
         supplierName: (o) => o.supplierName || '',
         warehouse: (o) => o.warehouse || '',
         paymentMethod: (o) => o.paymentMethod || '',
@@ -463,15 +463,28 @@ export default function CashierPage() {
     { value: '工程', label: '工程' },
   ];
 
-  // 根據 sourceType 判斷所屬類別
-  function getSourceCategory(sourceType) {
-    if (!sourceType) return '-';
-    if (['payment_order', 'purchasing', 'check_reissue'].includes(sourceType)) return '進銷存';
-    if (['common_expense', 'fixed_expense', 'expense'].includes(sourceType)) return '固定費用';
-    if (['rental_deposit_out', 'rental_deposit_in', 'rental'].includes(sourceType)) return '租屋';
-    if (['loan_predeposit', 'loan_payment'].includes(sourceType)) return '貸款';
-    if (sourceType === 'engineering') return '工程';
-    return sourceType;
+  // 根據 sourceType + 付款單號前綴 + 摘要 判斷所屬類別
+  function getSourceCategory(sourceType, order) {
+    // 1. 先用 sourceType 判斷
+    if (sourceType) {
+      if (['payment_order', 'purchasing', 'check_reissue'].includes(sourceType)) return '進銷存';
+      if (['common_expense', 'fixed_expense', 'expense'].includes(sourceType)) return '固定費用';
+      if (['rental_deposit_out', 'rental_deposit_in', 'rental'].includes(sourceType)) return '租屋';
+      if (['loan_predeposit', 'loan_payment'].includes(sourceType)) return '貸款';
+      if (sourceType === 'engineering') return '工程';
+    }
+    // 2. Fallback：用付款單號前綴判斷
+    if (order) {
+      const no = order.orderNo || '';
+      const summary = order.summary || '';
+      if (no.startsWith('LN-') || summary.includes('貸款')) return '貸款';
+      if (no.startsWith('RENT-') || no.startsWith('TC-') || summary.includes('租賃') || summary.includes('房屋稅') || summary.includes('地價稅') || summary.includes('維護費')) return '租屋';
+      if (summary.includes('工程')) return '工程';
+      if (summary.includes('水電費') || summary.includes('支出') || summary.includes('固定費用')) return '固定費用';
+      if (no.startsWith('PAY-') && (summary.includes('進貨') || summary.includes('採購'))) return '進銷存';
+    }
+    if (sourceType) return sourceType;
+    return '-';
   }
 
   return (
@@ -654,8 +667,8 @@ export default function CashierPage() {
                         <td className="px-4 py-3 font-medium text-amber-800">{getDisplayOrderNo(order)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                            { '進銷存': 'bg-blue-100 text-blue-700', '固定費用': 'bg-orange-100 text-orange-700', '租屋': 'bg-green-100 text-green-700', '貸款': 'bg-purple-100 text-purple-700', '工程': 'bg-rose-100 text-rose-700' }[getSourceCategory(order.sourceType)] || 'bg-gray-100 text-gray-600'
-                          }`}>{getSourceCategory(order.sourceType)}</span>
+                            { '進銷存': 'bg-blue-100 text-blue-700', '固定費用': 'bg-orange-100 text-orange-700', '租屋': 'bg-green-100 text-green-700', '貸款': 'bg-purple-100 text-purple-700', '工程': 'bg-rose-100 text-rose-700' }[getSourceCategory(order.sourceType, order)] || 'bg-gray-100 text-gray-600'
+                          }`}>{getSourceCategory(order.sourceType, order)}</span>
                         </td>
                         <td className="px-4 py-3">{order.supplierName || '-'}</td>
                         <td className="px-4 py-3">{order.warehouse || '-'}</td>
