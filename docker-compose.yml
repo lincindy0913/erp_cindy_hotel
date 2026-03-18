@@ -32,8 +32,6 @@ services:
     container_name: erp_ocr
     ports:
       - "5001:5001"
-    environment:
-      GOOGLE_VISION_API_KEY: ${GOOGLE_VISION_API_KEY}
     restart: unless-stopped
 
   pgadmin:

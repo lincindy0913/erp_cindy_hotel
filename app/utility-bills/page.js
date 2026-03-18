@@ -39,6 +39,8 @@ export default function UtilityBillsPage() {
   const [meta, setMeta] = useState({ warehouse: '', year: '', month: '', billType: '電費' });
   const fileInputRef = useRef(null);
   const isWater = activeTab === 'water';
+  const [ocrRecords, setOcrRecords] = useState([]);
+  const [ocrValidation, setOcrValidation] = useState(null);
   const [records, setRecords] = useState([]);
   const [listFilter, setListFilter] = useState({ warehouse: '', year: '', month: '', billType: '' });
   const [listLoading, setListLoading] = useState(false);
@@ -192,6 +194,8 @@ export default function UtilityBillsPage() {
     setExtractedText('');
     setPageTexts([]);
     setSummary(null);
+    setOcrRecords([]);
+    setOcrValidation(null);
     try {
       const form = new FormData();
       form.append('file', pdfFile);
@@ -205,46 +209,51 @@ export default function UtilityBillsPage() {
         return;
       }
 
-      // Show raw response in text area
-      const rawText = data.raw || '';
-      setPageTexts([{ pageNum: 1, text: rawText }]);
-      setExtractedText(rawText);
+      // Multi-record response
+      const allRecords = Array.isArray(data.records) && data.records.length > 0 ? data.records : [];
+      setOcrRecords(allRecords);
+      if (data.validation) setOcrValidation(data.validation);
 
       // Auto-detect meta from filename
-      const detected = autoDetectMeta(pdfFile.name, rawText);
+      const detected = autoDetectMeta(pdfFile.name, '');
       const updatedMeta = { ...meta, ...detected };
       if (Object.keys(detected).length) setMeta(updatedMeta);
 
-      // Auto-fill summary from parsed fields
-      const p = data.parsed || {};
-      const year = updatedMeta.year || meta.year || String(new Date().getFullYear() - 1911);
-      const month = updatedMeta.month || meta.month || String(new Date().getMonth() + 1).padStart(2, '0');
-      const warehouse = updatedMeta.warehouse || meta.warehouse || '麗軒';
       const fmt = (v) => (v && !isNaN(Number(v)) ? `NT$ ${Number(v).toLocaleString()}` : (v || '（未辨識，請手動填入）'));
 
-      if (isWater) {
-        setSummary({
-          館別: warehouse, 類型: '水費',
-          計費期間: p.計費期間 || `${year}年${month}月`,
-          用水地址: p.用水地址 || '（未辨識，請手動填入）',
-          水號: p.水號 || '（未辨識，請手動填入）',
-          用水量: p.用水量 || '（未辨識，請手動填入）',
-          基本費: fmt(p.基本費), 水費: fmt(p.水費),
-          營業稅: fmt(p.營業稅), 其他費用: fmt(p.其他費用),
-          總金額: fmt(p.總金額),
-        });
-      } else {
-        setSummary({
-          館別: warehouse, 類型: '電費',
-          計費期間: p.計費期間 || `${year}年${month}月`,
-          地址: p.地址 || '（未辨識，請手動填入）',
-          電號: p.電號 || '（未辨識，請手動填入）',
-          使用度數: p.使用度數 || '（未辨識，請手動填入）',
-          電費金額: fmt(p.電費金額), 應繳稅額: fmt(p.應繳稅額),
-          應繳總金額: fmt(p.應繳總金額),
-        });
+      if (allRecords.length > 0) {
+        const p = allRecords[0];
+        const year = updatedMeta.year || meta.year || String(new Date().getFullYear() - 1911);
+        const month = updatedMeta.month || meta.month || String(new Date().getMonth() + 1).padStart(2, '0');
+        const warehouse = p.館別 || updatedMeta.warehouse || meta.warehouse || '麗軒';
+        if (isWater) {
+          setSummary({
+            館別: warehouse, 類型: '水費',
+            計費期間: p.計費期間 || `${year}年${month}月`,
+            用水地址: p.用水地址 || '（未辨識，請手動填入）',
+            水號: p.水號 || '（未辨識，請手動填入）',
+            用水量: p.用水量 || '（未辨識，請手動填入）',
+            基本費: fmt(p.基本費), 水費: fmt(p.水費),
+            營業稅: fmt(p.營業稅), 其他費用: fmt(p.其他費用),
+            總金額: fmt(p.總金額),
+          });
+        } else {
+          setSummary({
+            館別: warehouse, 類型: '電費',
+            計費期間: p.計費期間 || `${year}年${month}月`,
+            地址: p.地址 || '（未辨識，請手動填入）',
+            電號: p.電號 || '（未辨識，請手動填入）',
+            使用度數: p.使用度數 || '（未辨識，請手動填入）',
+            電費金額: fmt(p.電費金額), 應繳稅額: fmt(p.應繳稅額),
+            應繳總金額: fmt(p.應繳總金額),
+          });
+        }
       }
-      showMessage('AI 辨識完成，請核對欄位內容');
+
+      const msg = allRecords.length > 1
+        ? `辨識完成，共 ${allRecords.length} 筆電費單，請核對欄位內容`
+        : 'OCR 辨識完成，請核對欄位內容';
+      showMessage(msg);
     } catch (err) {
       showMessage('OCR 服務無法連線：' + (err?.message || ''), 'error');
     }
@@ -555,6 +564,61 @@ export default function UtilityBillsPage() {
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">擷取內容（第 {startPage} 頁起）</h4>
                 <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs overflow-auto max-h-64 whitespace-pre-wrap">{extractedText}</pre>
+              </div>
+            )}
+
+            {ocrRecords.length > 1 && (
+              <div className="border-t pt-6">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                  OCR 辨識結果 — 共 {ocrRecords.length} 筆電費單
+                </h4>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-teal-50">
+                      <tr>
+                        {['#', '電號', '地址', '計費期間', '使用度數', '電費金額', '應繳稅額', '應繳總金額'].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {ocrRecords.map((r, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-3 py-1.5 text-gray-500">{i + 1}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap">{r.電號}</td>
+                          <td className="px-3 py-1.5 max-w-[160px] truncate" title={r.地址}>{r.地址}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap">{r.計費期間}</td>
+                          <td className="px-3 py-1.5 text-right">{r.使用度數}</td>
+                          <td className="px-3 py-1.5 text-right">{r.電費金額}</td>
+                          <td className="px-3 py-1.5 text-right">{r.應繳稅額}</td>
+                          <td className="px-3 py-1.5 text-right font-medium">{r.應繳總金額}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-100 font-semibold">
+                      <tr>
+                        <td colSpan={4} className="px-3 py-2 text-right text-gray-700">合計</td>
+                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.使用度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.電費金額) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.應繳稅額) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.應繳總金額) || 0), 0).toLocaleString()}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {ocrValidation && (
+                  <div className={`mt-3 p-3 rounded-lg text-xs border ${ocrValidation.passed ? 'bg-green-50 border-green-300 text-green-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
+                    <span className="font-semibold">{ocrValidation.passed ? '✓ 合計驗證通過' : '⚠ 合計驗證差異'}</span>
+                    {!ocrValidation.passed && (
+                      <span className="ml-2">
+                        度數: {ocrValidation.computed.使用度數} (應為 {ocrValidation.expected.使用度數}) ／
+                        電費: {ocrValidation.computed.電費金額} ／
+                        稅額: {ocrValidation.computed.應繳稅額} ／
+                        總計: {ocrValidation.computed.應繳總金額}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
