@@ -25,7 +25,21 @@ export async function GET(request) {
     if (status) where.status = status;
     if (warehouse) where.warehouse = warehouse;
     if (supplierId) where.supplierId = parseInt(supplierId);
-    if (sourceType) where.sourceType = sourceType;
+    if (sourceType) {
+      // Support category-based filtering (maps to multiple sourceType values)
+      const categoryMap = {
+        '進銷存': ['payment_order', 'purchasing', 'check_reissue'],
+        '固定費用': ['common_expense', 'fixed_expense', 'expense'],
+        '租屋': ['rental_deposit_out', 'rental_deposit_in', 'rental'],
+        '貸款': ['loan_predeposit', 'loan_payment'],
+        '工程': ['engineering'],
+      };
+      if (categoryMap[sourceType]) {
+        where.sourceType = { in: categoryMap[sourceType] };
+      } else {
+        where.sourceType = sourceType;
+      }
+    }
     if (dateFrom || dateTo) {
       where.createdAt = {};
       if (dateFrom) where.createdAt.gte = new Date(dateFrom + 'T00:00:00.000Z');

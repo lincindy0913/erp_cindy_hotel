@@ -439,6 +439,7 @@ export default function CashierPage() {
     () =>
       sortRows(displayOrders, cashSortKey, cashSortDir, {
         orderNo: (o) => getDisplayOrderNo(o),
+        sourceType: (o) => getSourceCategory(o.sourceType),
         supplierName: (o) => o.supplierName || '',
         warehouse: (o) => o.warehouse || '',
         paymentMethod: (o) => o.paymentMethod || '',
@@ -452,17 +453,26 @@ export default function CashierPage() {
   );
   const isPendingTab = activeTab === 'pending';
 
-  // 來源選項（對應 PaymentOrder.sourceType）
+  // 來源選項（五大類別，對應多個 PaymentOrder.sourceType）
   const SOURCE_OPTIONS = [
     { value: '', label: '全部來源' },
-    { value: 'payment_order', label: '付款單/進銷存' },
-    { value: 'loan_predeposit', label: '貸款預付' },
-    { value: 'loan_payment', label: '貸款還款' },
-    { value: 'rental', label: '租賃' },
-    { value: 'purchase', label: '採購' },
-    { value: 'engineering', label: '工程' },
-    { value: 'common_expense', label: '固定費用' },
+    { value: '進銷存', label: '進銷存' },
+    { value: '固定費用', label: '固定費用' },
+    { value: '租屋', label: '租屋' },
+    { value: '貸款', label: '貸款' },
+    { value: '工程', label: '工程' },
   ];
+
+  // 根據 sourceType 判斷所屬類別
+  function getSourceCategory(sourceType) {
+    if (!sourceType) return '-';
+    if (['payment_order', 'purchasing', 'check_reissue'].includes(sourceType)) return '進銷存';
+    if (['common_expense', 'fixed_expense', 'expense'].includes(sourceType)) return '固定費用';
+    if (['rental_deposit_out', 'rental_deposit_in', 'rental'].includes(sourceType)) return '租屋';
+    if (['loan_predeposit', 'loan_payment'].includes(sourceType)) return '貸款';
+    if (sourceType === 'engineering') return '工程';
+    return sourceType;
+  }
 
   return (
     <div className="min-h-screen page-bg-cashier">
@@ -520,7 +530,7 @@ export default function CashierPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">來源</label>
+              <label className="block text-xs text-gray-500 mb-1">類別</label>
               <select
                 value={searchFilter.sourceType}
                 onChange={e => setSearchFilter({ ...searchFilter, sourceType: e.target.value })}
@@ -607,6 +617,7 @@ export default function CashierPage() {
                     </th>
                   )}
                   <SortableTh label="付款單號" colKey="orderNo" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="類別" colKey="sourceType" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
                   <SortableTh label="廠商" colKey="supplierName" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
                   <SortableTh label="館別" colKey="warehouse" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
                   <SortableTh label="付款方式" colKey="paymentMethod" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
@@ -624,7 +635,7 @@ export default function CashierPage() {
                   const exec = order.executions?.[0];
                   const storedResult = executionResults[order.id];
                   const isSelected = selectedOrderIds.has(order.id);
-                  const colSpan = isPendingTab ? 11 : 10;
+                  const colSpan = isPendingTab ? 12 : 11;
 
                   return (
                     <Fragment key={order.id}>
@@ -641,6 +652,11 @@ export default function CashierPage() {
                           </td>
                         )}
                         <td className="px-4 py-3 font-medium text-amber-800">{getDisplayOrderNo(order)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                            { '進銷存': 'bg-blue-100 text-blue-700', '固定費用': 'bg-orange-100 text-orange-700', '租屋': 'bg-green-100 text-green-700', '貸款': 'bg-purple-100 text-purple-700', '工程': 'bg-rose-100 text-rose-700' }[getSourceCategory(order.sourceType)] || 'bg-gray-100 text-gray-600'
+                          }`}>{getSourceCategory(order.sourceType)}</span>
+                        </td>
                         <td className="px-4 py-3">{order.supplierName || '-'}</td>
                         <td className="px-4 py-3">{order.warehouse || '-'}</td>
                         <td className="px-4 py-3">{order.paymentMethod}</td>
