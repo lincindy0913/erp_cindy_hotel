@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 const TX_TYPES = ['收入', '支出', '移轉'];
@@ -73,6 +74,28 @@ export default function CashFlowPage() {
   });
   const [txPage, setTxPage] = useState(1);
   const [txPagination, setTxPagination] = useState({ page: 1, limit: 50, totalCount: 0, totalPages: 1 });
+
+  const { sortKey: cfTxKey, sortDir: cfTxDir, toggleSort: cfTxToggle } = useColumnSort('transactionDate', 'desc');
+  const sortedTransactions = useMemo(
+    () =>
+      sortRows(transactions, cfTxKey, cfTxDir, {
+        transactionNo: (tx) => tx.transactionNo || '',
+        transactionDate: (tx) => tx.transactionDate || '',
+        type: (tx) => tx.type || '',
+        warehouse: (tx) => tx.warehouse || '',
+        accountName: (tx) => tx.account?.name || '',
+        accountingSubject: (tx) =>
+          tx.category?.accountingSubject
+            ? `${tx.category.accountingSubject.code || ''} ${tx.category.accountingSubject.name || ''}`
+            : String(tx.accountingSubject || ''),
+        paymentNo: (tx) => tx.paymentNo || '',
+        amount: (tx) => Number(tx.amount || 0),
+        fee: (tx) => (tx.hasFee ? Number(tx.fee || 0) : -1),
+        description: (tx) => tx.description || '',
+        sourceType: (tx) => tx.sourceType || '',
+      }),
+    [transactions, cfTxKey, cfTxDir]
+  );
 
   // Report state
   const [reportData, setReportData] = useState(null);
@@ -172,7 +195,7 @@ export default function CashFlowPage() {
 
   async function fetchSuppliers() {
     try {
-      const res = await fetch('/api/suppliers');
+      const res = await fetch('/api/suppliers?all=true');
       const data = await res.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch { setSuppliers([]); }
@@ -971,17 +994,17 @@ export default function CashFlowPage() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">交易編號</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">日期</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">類別</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">館別</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">帳戶</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">付款單號</th>
-                    <th className="px-3 py-3 text-right text-sm font-medium text-gray-700">金額</th>
-                    <th className="px-3 py-3 text-right text-sm font-medium text-gray-700">手續費</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">備註</th>
-                    <th className="px-3 py-3 text-left text-sm font-medium text-gray-700">來源</th>
+                    <SortableTh label="交易編號" colKey="transactionNo" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="日期" colKey="transactionDate" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="類別" colKey="type" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="館別" colKey="warehouse" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="帳戶" colKey="accountName" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="會計科目" colKey="accountingSubject" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="付款單號" colKey="paymentNo" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="金額" colKey="amount" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" align="right" />
+                    <SortableTh label="手續費" colKey="fee" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" align="right" />
+                    <SortableTh label="備註" colKey="description" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="來源" colKey="sourceType" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -992,7 +1015,7 @@ export default function CashFlowPage() {
                       </td>
                     </tr>
                   ) : (
-                    transactions.map((tx, idx) => (
+                    sortedTransactions.map((tx, idx) => (
                       <tr key={tx.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-3 py-2 text-sm font-mono">{tx.transactionNo}</td>
                         <td className="px-3 py-2 text-sm">{tx.transactionDate}</td>

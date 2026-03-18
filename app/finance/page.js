@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
@@ -8,6 +8,7 @@ import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
@@ -168,7 +169,7 @@ export default function PaymentPage() {
 
   async function fetchSuppliers() {
     try {
-      const response = await fetch('/api/suppliers');
+      const response = await fetch('/api/suppliers?all=true');
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -617,6 +618,22 @@ export default function PaymentPage() {
   }
 
   const displayOrders = getDisplayOrders();
+  const { sortKey: finSortKey, sortDir: finSortDir, toggleSort: toggleFinSort } = useColumnSort('createdAt', 'desc');
+  const sortedDisplayOrders = useMemo(
+    () =>
+      sortRows(displayOrders, finSortKey, finSortDir, {
+        orderNo: (o) => o.orderNo || '',
+        supplierName: (o) => o.supplierName || '',
+        warehouse: (o) => o.warehouse || '',
+        paymentMethod: (o) => o.paymentMethod || '',
+        invoiceCount: (o) => o.invoices?.length || 0,
+        discount: (o) => Number(o.discount || 0),
+        netAmount: (o) => Number(o.netAmount || 0),
+        status: (o) => o.status || '',
+        createdAt: (o) => o.createdAt || '',
+      }),
+    [displayOrders, finSortKey, finSortDir]
+  );
 
   // 按館別列印報表：依報表月份篩選草稿，再依館別分組
   const draftOrdersInReportMonth = draftOrders.filter(o => {
@@ -1387,15 +1404,15 @@ export default function PaymentPage() {
                     />
                   </th>
                 )}
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款單號</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款方式</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票數</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">折讓</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">淨額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">建立日期</th>
+                <SortableTh label="付款單號" colKey="orderNo" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
+                <SortableTh label="廠商" colKey="supplierName" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
+                <SortableTh label="館別" colKey="warehouse" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
+                <SortableTh label="付款方式" colKey="paymentMethod" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
+                <SortableTh label="發票數" colKey="invoiceCount" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
+                <SortableTh label="折讓" colKey="discount" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" align="right" />
+                <SortableTh label="淨額" colKey="netAmount" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" align="right" />
+                <SortableTh label="狀態" colKey="status" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
+                <SortableTh label="建立日期" colKey="createdAt" sortKey={finSortKey} sortDir={finSortDir} onSort={toggleFinSort} className="px-4 py-3" />
                 <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
@@ -1414,7 +1431,7 @@ export default function PaymentPage() {
                   </td>
                 </tr>
               ) : (
-                displayOrders.map((order, index) => {
+                sortedDisplayOrders.map((order, index) => {
                   const invoiceIds = getInvoicesForOrder(order);
                   const isExpanded = expandedOrders.has(order.id);
                   return (

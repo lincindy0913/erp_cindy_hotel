@@ -13,22 +13,40 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword');
+    const page = parseInt(searchParams.get('page')) || 1;
+    const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+    const skip = (page - 1) * limit;
+    const all = searchParams.get('all') === 'true'; // 向下相容：all=true 回傳全部
 
     const where = keyword
       ? {
           OR: [
-            { code: { contains: keyword } },
-            { name: { contains: keyword } }
+            { code: { contains: keyword, mode: 'insensitive' } },
+            { name: { contains: keyword, mode: 'insensitive' } },
+            { category: { contains: keyword, mode: 'insensitive' } }
           ]
         }
       : {};
 
-    const products = await prisma.product.findMany({
-      where,
-      orderBy: { id: 'asc' }
-    });
+    if (all) {
+      const products = await prisma.product.findMany({ where, orderBy: { id: 'asc' } });
+      return NextResponse.json(products);
+    }
 
-    return NextResponse.json(products);
+    const [products, totalCount] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        skip,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: products,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) }
+    });
   } catch (error) {
     return handleApiError(error);
   }

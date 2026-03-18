@@ -1,11 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+
+const CHECK_SORT_ACCESSORS = {
+  status: (c) => c.status || '',
+  checkNumber: (c) => c.checkNumber || '',
+  checkTypeLabel: (c) => (c.checkType === 'payable' ? '應付' : '應收'),
+  amount: (c) => Number(c.amount || 0),
+  dueDate: (c) => c.dueDate || '',
+  account: (c) => (c.checkType === 'payable' ? c.sourceAccount?.name || '' : c.destinationAccount?.name || ''),
+  warehouse: (c) => c.warehouse || '',
+};
 
 const TABS = [
   { key: 'pending', label: '待兌現' },
@@ -175,7 +186,7 @@ export default function ChecksPage() {
 
   const fetchSuppliers = useCallback(async () => {
     try {
-      const res = await fetch('/api/suppliers');
+      const res = await fetch('/api/suppliers?all=true');
       const data = await res.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (e) { console.error(e); }
@@ -451,6 +462,29 @@ export default function ChecksPage() {
   const pendingPayable = pendingChecks.filter(c => c.checkType === 'payable');
   const pendingReceivable = pendingChecks.filter(c => c.checkType === 'receivable');
 
+  const { sortKey: chkPPk, sortDir: chkPPd, toggleSort: chkPPt } = useColumnSort('dueDate', 'asc');
+  const sortedPendingPayable = useMemo(
+    () => sortRows(pendingPayable, chkPPk, chkPPd, CHECK_SORT_ACCESSORS),
+    [pendingPayable, chkPPk, chkPPd]
+  );
+  const { sortKey: chkPRk, sortDir: chkPRd, toggleSort: chkPRt } = useColumnSort('dueDate', 'asc');
+  const sortedPendingReceivable = useMemo(
+    () => sortRows(pendingReceivable, chkPRk, chkPRd, CHECK_SORT_ACCESSORS),
+    [pendingReceivable, chkPRk, chkPRd]
+  );
+  const payableCrudList = useMemo(() => checks.filter((c) => c.checkType === 'payable'), [checks]);
+  const receivableCrudList = useMemo(() => checks.filter((c) => c.checkType === 'receivable'), [checks]);
+  const { sortKey: chkPayk, sortDir: chkPayd, toggleSort: chkPayt } = useColumnSort('dueDate', 'desc');
+  const sortedPayableCrud = useMemo(
+    () => sortRows(payableCrudList, chkPayk, chkPayd, CHECK_SORT_ACCESSORS),
+    [payableCrudList, chkPayk, chkPayd]
+  );
+  const { sortKey: chkReck, sortDir: chkRecd, toggleSort: chkRect } = useColumnSort('dueDate', 'desc');
+  const sortedReceivableCrud = useMemo(
+    () => sortRows(receivableCrudList, chkReck, chkRecd, CHECK_SORT_ACCESSORS),
+    [receivableCrudList, chkReck, chkRecd]
+  );
+
   // Schedule data (includes overdue checks)
   const getScheduleData = () => {
     const days = [];
@@ -639,7 +673,7 @@ export default function ChecksPage() {
   );
 
   // ============== CHECK TABLE ==============
-  const renderCheckTable = (data, showActions = true, showSelect = false) => (
+  const renderCheckTable = (data, showActions = true, showSelect = false, sortKey, sortDir, toggleSort) => (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
@@ -650,14 +684,14 @@ export default function ChecksPage() {
                 if (e.target.checked) setSelectedIds(prev => [...new Set([...prev, ...data.map(c => c.id)])]);
                 else setSelectedIds(prev => prev.filter(id => !data.some(c => c.id === id)));
               }} /></th>}
-            <th className="px-3 py-2 text-left">狀態</th>
-            <th className="px-3 py-2 text-left">支票號碼</th>
-            <th className="px-3 py-2 text-left">類型</th>
-            <th className="px-3 py-2 text-right">金額</th>
-            <th className="px-3 py-2 text-left">到期日</th>
-            <th className="px-3 py-2 text-left">帳戶</th>
-            <th className="px-3 py-2 text-left">館別</th>
-            {showActions && <th className="px-3 py-2 text-center">操作</th>}
+            <SortableTh label="狀態" colKey="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="支票號碼" colKey="checkNumber" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="類型" colKey="checkTypeLabel" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="金額" colKey="amount" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="right" />
+            <SortableTh label="到期日" colKey="dueDate" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="帳戶" colKey="account" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+            <SortableTh label="館別" colKey="warehouse" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+            {showActions && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700">操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -779,7 +813,7 @@ export default function ChecksPage() {
           <span className="w-3 h-3 rounded-full bg-red-400"></span>
           應付支票 ({pendingPayable.length})
         </h3>
-        {renderCheckTable(pendingPayable, true, true)}
+        {renderCheckTable(sortedPendingPayable, true, true, chkPPk, chkPPd, chkPPt)}
       </div>
 
       {/* Receivable section */}
@@ -788,14 +822,17 @@ export default function ChecksPage() {
           <span className="w-3 h-3 rounded-full bg-green-400"></span>
           應收支票 ({pendingReceivable.length})
         </h3>
-        {renderCheckTable(pendingReceivable, true, true)}
+        {renderCheckTable(sortedPendingReceivable, true, true, chkPRk, chkPRd, chkPRt)}
       </div>
     </div>
   );
 
   // ============== TAB: PAYABLE / RECEIVABLE ==============
   const renderCrudTab = (type) => {
-    const filtered = checks.filter(c => c.checkType === type);
+    const filtered = type === 'payable' ? sortedPayableCrud : sortedReceivableCrud;
+    const crudSortKey = type === 'payable' ? chkPayk : chkReck;
+    const crudSortDir = type === 'payable' ? chkPayd : chkRecd;
+    const crudToggle = type === 'payable' ? chkPayt : chkRect;
     return (
       <div className="space-y-4">
         {/* Filters */}
@@ -858,7 +895,7 @@ export default function ChecksPage() {
           </span>
         </div>
 
-        {renderCheckTable(filtered)}
+        {renderCheckTable(filtered, true, false, crudSortKey, crudSortDir, crudToggle)}
       </div>
     );
   };

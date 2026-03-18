@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
   { key: 'overview', label: '總覽' },
@@ -73,6 +74,21 @@ function RentalsPage() {
   const [properties, setProperties] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [incomes, setIncomes] = useState([]);
+  const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('dueDate', 'desc');
+  const sortedIncomes = useMemo(
+    () =>
+      sortRows(incomes, rentIncKey, rentIncDir, {
+        propertyName: (i) => i.propertyName || '',
+        tenantName: (i) => i.tenantName || '',
+        expectedAmount: (i) => Number(i.expectedAmount || 0),
+        actualAmount: (i) => Number(i.actualAmount || 0),
+        remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
+        dueDate: (i) => i.dueDate || '',
+        status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
+        payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
+      }),
+    [incomes, rentIncKey, rentIncDir]
+  );
   const [taxes, setTaxes] = useState([]);
   const [maintenances, setMaintenances] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -928,21 +944,21 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
-                        <th className="text-left px-3 py-2">物業</th>
-                        <th className="text-left px-3 py-2">租客</th>
-                        <th className="text-right px-3 py-2">應收</th>
-                        <th className="text-right px-3 py-2">實收</th>
-                        <th className="text-right px-3 py-2">未收</th>
-                        <th className="text-left px-3 py-2">到期日</th>
-                        <th className="text-center px-3 py-2">狀態</th>
-                        <th className="text-left px-3 py-2">付款紀錄</th>
-                        <th className="text-center px-3 py-2">操作</th>
+                        <SortableTh label="物業" colKey="propertyName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
+                        <SortableTh label="租客" colKey="tenantName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
+                        <SortableTh label="應收" colKey="expectedAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
+                        <SortableTh label="實收" colKey="actualAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
+                        <SortableTh label="未收" colKey="remaining" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
+                        <SortableTh label="到期日" colKey="dueDate" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
+                        <SortableTh label="狀態" colKey="status" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="center" />
+                        <SortableTh label="付款紀錄" colKey="payCount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {incomes.length === 0 ? (
                         <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-                      ) : incomes.map(income => {
+                      ) : sortedIncomes.map(income => {
                         const isOverdue = income.status === 'pending' && income.dueDate < new Date().toISOString().split('T')[0];
                         const expected = Number(income.expectedAmount || 0);
                         const actual = Number(income.actualAmount || 0);

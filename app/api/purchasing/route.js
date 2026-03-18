@@ -9,16 +9,34 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
   if (!auth.ok) return auth.response;
-  
-  try {
-    const purchases = await prisma.purchaseMaster.findMany({
-      include: {
-        details: true
-      },
-      orderBy: { id: 'asc' }
-    });
 
-    const result = purchases.map(p => ({
+  try {
+    const { searchParams } = new URL(request.url);
+    const keyword = searchParams.get('keyword');
+    const page = parseInt(searchParams.get('page')) || 0;  // 0 = 不分頁
+    const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+    const all = searchParams.get('all') === 'true';
+    const supplierId = searchParams.get('supplierId');
+    const status = searchParams.get('status');
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
+
+    const where = {};
+    if (supplierId) where.supplierId = parseInt(supplierId);
+    if (status) where.status = status;
+    if (dateFrom || dateTo) {
+      where.purchaseDate = {};
+      if (dateFrom) where.purchaseDate.gte = dateFrom;
+      if (dateTo) where.purchaseDate.lte = dateTo;
+    }
+    if (keyword) {
+      where.OR = [
+        { purchaseNo: { contains: keyword, mode: 'insensitive' } },
+        { warehouse: { contains: keyword, mode: 'insensitive' } },
+      ];
+    }
+
+    const formatPurchase = (p) => ({
       id: p.id,
       purchaseNo: p.purchaseNo,
       warehouse: p.warehouse,
@@ -41,9 +59,32 @@ export async function GET(request) {
       })),
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString()
-    }));
+    });
 
-    return NextResponse.json(result);
+    const includeOpts = { details: true };
+    const orderByOpts = { id: 'desc' };
+
+    // 不分頁模式（向下相容）
+    if (all || page === 0) {
+      const purchases = await prisma.purchaseMaster.findMany({
+        where, include: includeOpts, orderBy: orderByOpts,
+      });
+      return NextResponse.json(purchases.map(formatPurchase));
+    }
+
+    // 分頁模式
+    const skip = (page - 1) * limit;
+    const [purchases, totalCount] = await Promise.all([
+      prisma.purchaseMaster.findMany({
+        where, include: includeOpts, orderBy: orderByOpts, skip, take: limit,
+      }),
+      prisma.purchaseMaster.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: purchases.map(formatPurchase),
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) }
+    });
   } catch (error) {
     return handleApiError(error);
   }

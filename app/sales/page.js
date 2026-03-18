@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Fragment, Suspense } from 'react';
+import { useState, useEffect, Fragment, Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -8,6 +8,7 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 function InvoicePageInner() {
   const router = useRouter();
@@ -131,7 +132,7 @@ function InvoicePageInner() {
 
   async function fetchProducts() {
     try {
-      const response = await fetch('/api/products');
+      const response = await fetch('/api/products?all=true');
       const data = await response.json();
       setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -142,7 +143,7 @@ function InvoicePageInner() {
 
   async function fetchSuppliers() {
     try {
-      const response = await fetch('/api/suppliers');
+      const response = await fetch('/api/suppliers?all=true');
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -197,6 +198,33 @@ function InvoicePageInner() {
     const supplier = suppliers.find(s => s.id === supplierId);
     return supplier ? supplier.name : '未知廠商';
   }
+
+  const filteredInvoicesForList = useMemo(
+    () =>
+      invoices.filter((inv) => {
+        if (searchSupplier && !(inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())) return false;
+        const invDate = inv.invoiceDate || inv.salesDate || '';
+        if (searchDateFrom && invDate < searchDateFrom) return false;
+        if (searchDateTo && invDate > searchDateTo) return false;
+        return true;
+      }),
+    [invoices, searchSupplier, searchDateFrom, searchDateTo]
+  );
+  const { sortKey: saleInvKey, sortDir: saleInvDir, toggleSort: toggleSaleInv } = useColumnSort('invoiceDate', 'desc');
+  const sortedInvoicesForList = useMemo(
+    () =>
+      sortRows(filteredInvoicesForList, saleInvKey, saleInvDir, {
+        warehouse: (i) => i.warehouse || '',
+        invoiceTitle: (i) => i.invoiceTitle || '',
+        supplierName: (i) => i.supplierName || '',
+        invoiceNo: (i) => i.invoiceNo || i.salesNo || '',
+        invoiceDate: (i) => i.invoiceDate || i.salesDate || '',
+        itemCount: (i) => i.items?.length || 0,
+        totalAmount: (i) => Number(i.totalAmount || (Number(i.amount || 0) + Number(i.tax || 0)) || 0),
+        paymentStatus: (i) => i.paymentStatus || '',
+      }),
+    [filteredInvoicesForList, saleInvKey, saleInvDir]
+  );
 
   function handleItemToggle(item) {
     const isSelected = selectedItems.some(selected => selected.id === item.id);
@@ -962,14 +990,14 @@ function InvoicePageInner() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票抬頭</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票號</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票日期</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">品項數</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">總金額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款狀態</th>
+                <SortableTh label="館別" colKey="warehouse" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
+                <SortableTh label="發票抬頭" colKey="invoiceTitle" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
+                <SortableTh label="廠商" colKey="supplierName" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
+                <SortableTh label="發票號" colKey="invoiceNo" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
+                <SortableTh label="發票日期" colKey="invoiceDate" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
+                <SortableTh label="品項數" colKey="itemCount" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
+                <SortableTh label="總金額" colKey="totalAmount" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" align="right" />
+                <SortableTh label="付款狀態" colKey="paymentStatus" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
@@ -986,23 +1014,14 @@ function InvoicePageInner() {
                     尚無發票資料
                   </td>
                 </tr>
+              ) : filteredInvoicesForList.length === 0 ? (
+                <tr>
+                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
+                    無符合篩選的發票
+                  </td>
+                </tr>
               ) : (
-                invoices
-                  .filter(inv => {
-                    if (searchSupplier && !(inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())) return false;
-                    const invDate = inv.invoiceDate || inv.salesDate || '';
-                    if (searchDateFrom && invDate < searchDateFrom) return false;
-                    if (searchDateTo && invDate > searchDateTo) return false;
-                    return true;
-                  })
-                  .sort((a, b) => {
-                    const statusOrder = { '待核銷': 0, '未核銷': 0, '已核銷': 1 };
-                    const aOrder = statusOrder[a.status] ?? 0;
-                    const bOrder = statusOrder[b.status] ?? 0;
-                    if (aOrder !== bOrder) return aOrder - bOrder;
-                    return new Date(b.invoiceDate || b.salesDate || 0) - new Date(a.invoiceDate || a.salesDate || 0);
-                  })
-                  .map((invoice, index) => {
+                sortedInvoicesForList.map((invoice, index) => {
                   const isExpanded = expandedInvoices.has(invoice.id);
                   return (
                     <Fragment key={invoice.id}>

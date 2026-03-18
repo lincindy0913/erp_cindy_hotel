@@ -35,6 +35,10 @@ export default function SuppliersPage() {
   const [sortType, setSortType] = useState('id-asc');
   const [filterKeyword, setFilterKeyword] = useState('');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchTimer, setSearchTimer] = useState(null);
   const [showDateFilterMenu, setShowDateFilterMenu] = useState(false);
   const [dateFilterType, setDateFilterType] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
@@ -83,18 +87,30 @@ export default function SuppliersPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSortMenu, showDateFilterMenu]);
 
-  async function fetchSuppliers() {
+  async function fetchSuppliers(page = currentPage, limit = itemsPerPage, keyword = filterKeyword) {
     try {
-      const response = await fetch('/api/suppliers');
-      const data = await response.json();
-      const suppliersList = Array.isArray(data) ? data : [];
-      setAllSuppliers(suppliersList);
-      applySortAndFilter(suppliersList, sortType, filterKeyword);
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (keyword) params.set('keyword', keyword);
+      const response = await fetch(`/api/suppliers?${params}`);
+      const result = await response.json();
+      if (result.data && result.pagination) {
+        const suppliersList = result.data;
+        setAllSuppliers(suppliersList);
+        setTotalCount(result.pagination.totalCount);
+        setCurrentPage(result.pagination.page);
+        applySortAndFilter(suppliersList, sortType, '');
+      } else {
+        const suppliersList = Array.isArray(result) ? result : [];
+        setAllSuppliers(suppliersList);
+        setTotalCount(suppliersList.length);
+        applySortAndFilter(suppliersList, sortType, '');
+      }
       setLoading(false);
     } catch (error) {
       console.error('取得廠商列表失敗:', error);
       setAllSuppliers([]);
       setSuppliers([]);
+      setTotalCount(0);
       setLoading(false);
     }
   }
@@ -274,7 +290,7 @@ export default function SuppliersPage() {
         setEditingSupplier(null);
         setFormData(emptyForm);
         setContracts([]);
-        await fetchSuppliers();
+        await fetchSuppliers(currentPage, itemsPerPage, filterKeyword);
       } else {
         const error = await response.json().catch(() => ({}));
         const msg = error?.error?.message || error?.error?.code || (typeof error?.error === 'string' ? error.error : '未知錯誤');
@@ -318,7 +334,7 @@ export default function SuppliersPage() {
 
       if (response.ok) {
         showToast('廠商刪除成功！', 'success');
-        fetchSuppliers();
+        fetchSuppliers(currentPage, itemsPerPage, filterKeyword);
       } else {
         const error = await response.json();
         const msg = error?.error?.message || (typeof error?.error === 'string' ? error.error : '未知錯誤');
@@ -423,7 +439,20 @@ export default function SuppliersPage() {
               <input
                 type="text"
                 value={filterKeyword}
-                onChange={(e) => handleFilterChange(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilterKeyword(val);
+                  if (searchTimer) clearTimeout(searchTimer);
+                  setSearchTimer(setTimeout(() => {
+                    fetchSuppliers(1, itemsPerPage, val);
+                  }, 400));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (searchTimer) clearTimeout(searchTimer);
+                    fetchSuppliers(1, itemsPerPage, filterKeyword);
+                  }
+                }}
                 placeholder="搜尋廠商名稱、聯絡人、電話..."
                 className="w-64 px-4 py-2 pl-9 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
@@ -432,7 +461,7 @@ export default function SuppliersPage() {
               </svg>
               {filterKeyword && (
                 <button
-                  onClick={() => { setFilterKeyword(''); applySortAndFilter(allSuppliers, sortType === 'filter' ? 'id-asc' : sortType, ''); }}
+                  onClick={() => { setFilterKeyword(''); if (searchTimer) clearTimeout(searchTimer); fetchSuppliers(1, itemsPerPage, ''); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   ✕
@@ -867,6 +896,52 @@ export default function SuppliersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* 分頁器 */}
+        {(() => {
+          const totalPages = Math.ceil(totalCount / itemsPerPage);
+          if (totalPages <= 0) return null;
+          const getPageNumbers = () => {
+            const pages = [];
+            if (totalPages <= 5) {
+              for (let i = 1; i <= totalPages; i++) pages.push(i);
+            } else if (currentPage <= 3) {
+              for (let i = 1; i <= 5; i++) pages.push(i);
+            } else if (currentPage >= totalPages - 2) {
+              for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+            } else {
+              for (let i = currentPage - 2; i <= currentPage + 2; i++) pages.push(i);
+            }
+            return pages;
+          };
+          return (
+            <div className="flex justify-center items-center gap-4 mt-6">
+              <button onClick={() => fetchSuppliers(Math.max(1, currentPage - 1))} disabled={currentPage === 1}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">&lt; Prev</button>
+              {totalPages > 5 && currentPage > 3 && (<>
+                <button onClick={() => fetchSuppliers(1)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">1</button>
+                <span className="px-2 text-gray-500">...</span>
+              </>)}
+              {getPageNumbers().map(p => (
+                <button key={p} onClick={() => fetchSuppliers(p)}
+                  className={`px-4 py-2 rounded-lg ${p === currentPage ? 'bg-blue-600 text-white' : 'border hover:bg-gray-100'}`}>{p}</button>
+              ))}
+              {totalPages > 5 && currentPage < totalPages - 2 && (<>
+                <span className="px-2 text-gray-500">...</span>
+                <button onClick={() => fetchSuppliers(totalPages)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">{totalPages}</button>
+              </>)}
+              <button onClick={() => fetchSuppliers(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Next &gt;</button>
+              <span className="ml-4 text-sm text-gray-600">每頁</span>
+              <select value={itemsPerPage} onChange={(e) => { const n = Number(e.target.value); setItemsPerPage(n); fetchSuppliers(1, n); }}
+                className="px-2 py-1 border rounded">
+                <option value={20}>20</option><option value={50}>50</option><option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-600">筆</span>
+              <span className="ml-2 text-sm text-gray-600">(共 {totalCount} 筆{filterKeyword ? `，搜尋 "${filterKeyword}"` : ''}，第 {currentPage} / {totalPages} 頁)</span>
+            </div>
+          );
+        })()}
       </main>
     </div>
   );

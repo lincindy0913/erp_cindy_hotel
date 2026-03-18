@@ -14,8 +14,12 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
     const supplierId = searchParams.get('supplierId');
     const sourceType = searchParams.get('sourceType');
-    const dateFrom = searchParams.get('dateFrom'); // YYYY-MM-DD 建立日期起
-    const dateTo = searchParams.get('dateTo');   // YYYY-MM-DD 建立日期迄
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
+    const keyword = searchParams.get('keyword');
+    const page = parseInt(searchParams.get('page')) || 0;  // 0 = 不分頁（向下相容）
+    const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+    const all = searchParams.get('all') === 'true';
 
     const where = {};
     if (status) where.status = status;
@@ -27,14 +31,15 @@ export async function GET(request) {
       if (dateFrom) where.createdAt.gte = new Date(dateFrom + 'T00:00:00.000Z');
       if (dateTo) where.createdAt.lte = new Date(dateTo + 'T23:59:59.999Z');
     }
+    if (keyword) {
+      where.OR = [
+        { orderNo: { contains: keyword, mode: 'insensitive' } },
+        { supplierName: { contains: keyword, mode: 'insensitive' } },
+        { summary: { contains: keyword, mode: 'insensitive' } },
+      ];
+    }
 
-    const orders = await prisma.paymentOrder.findMany({
-      where,
-      include: { executions: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return NextResponse.json(orders.map(o => ({
+    const formatOrder = (o) => ({
       ...o,
       amount: Number(o.amount),
       discount: Number(o.discount),
@@ -48,7 +53,35 @@ export async function GET(request) {
         createdAt: e.createdAt.toISOString(),
         updatedAt: e.updatedAt.toISOString(),
       })),
-    })));
+    });
+
+    // 不分頁模式（向下相容：page 未帶或 all=true）
+    if (all || page === 0) {
+      const orders = await prisma.paymentOrder.findMany({
+        where,
+        include: { executions: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      return NextResponse.json(orders.map(formatOrder));
+    }
+
+    // 分頁模式
+    const skip = (page - 1) * limit;
+    const [orders, totalCount] = await Promise.all([
+      prisma.paymentOrder.findMany({
+        where,
+        include: { executions: true },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.paymentOrder.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: orders.map(formatOrder),
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) }
+    });
   } catch (error) {
     return handleApiError(error);
   }

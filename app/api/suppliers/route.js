@@ -13,12 +13,47 @@ export async function GET(request) {
     PERMISSIONS.SETTINGS_EDIT,
   ]);
   if (!auth.ok) return auth.response;
-  
+
   try {
-    const suppliers = await prisma.supplier.findMany({
-      orderBy: { id: 'asc' }
+    const { searchParams } = new URL(request.url);
+    const keyword = searchParams.get('keyword');
+    const page = parseInt(searchParams.get('page')) || 1;
+    const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+    const skip = (page - 1) * limit;
+    const all = searchParams.get('all') === 'true';
+    const activeOnly = searchParams.get('activeOnly') === 'true';
+
+    const conditions = [];
+    if (keyword) {
+      conditions.push({
+        OR: [
+          { name: { contains: keyword, mode: 'insensitive' } },
+          { contact: { contains: keyword, mode: 'insensitive' } },
+          { phone: { contains: keyword, mode: 'insensitive' } },
+          { taxId: { contains: keyword, mode: 'insensitive' } },
+          { address: { contains: keyword, mode: 'insensitive' } },
+        ]
+      });
+    }
+    if (activeOnly) {
+      conditions.push({ isActive: true });
+    }
+    const where = conditions.length > 0 ? { AND: conditions } : {};
+
+    if (all || activeOnly) {
+      const suppliers = await prisma.supplier.findMany({ where, orderBy: { id: 'asc' } });
+      return NextResponse.json(suppliers);
+    }
+
+    const [suppliers, totalCount] = await Promise.all([
+      prisma.supplier.findMany({ where, orderBy: { id: 'asc' }, skip, take: limit }),
+      prisma.supplier.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: suppliers,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) }
     });
-    return NextResponse.json(suppliers);
   } catch (error) {
     console.error('查詢廠商錯誤:', error);
     return NextResponse.json([]);

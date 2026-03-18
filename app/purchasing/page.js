@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 export default function PurchasingPage() {
   const { data: session } = useSession();
@@ -26,6 +27,9 @@ export default function PurchasingPage() {
     startDate: '',
     endDate: ''
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
   // 館別和部門的對應關係（從 API 載入）
   const [warehouseDepartments, setWarehouseDepartments] = useState({});
   const [showWarehouseManager, setShowWarehouseManager] = useState(false);
@@ -136,7 +140,7 @@ export default function PurchasingPage() {
   useEffect(() => {
     fetchSuppliers();
     fetchProducts();
-    fetchPurchases();
+    fetchPurchases(1, 50, { supplierId: '', startDate: '', endDate: '' });
     fetchWarehouseDepartments();
     fetchInvoices();
     fetchInvoiceTitles();
@@ -690,64 +694,81 @@ export default function PurchasingPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showProductDropdown, showSupplierDropdown]);
 
-  async function fetchPurchases() {
+  async function fetchPurchases(page = currentPage, limit = itemsPerPage, filters = filterData) {
     try {
-      const response = await fetch('/api/purchasing');
-      const data = await response.json();
-      const purchasesList = Array.isArray(data) ? data : [];
-      console.log('取得進貨單資料:', purchasesList.length, '筆');
-      setAllPurchases(purchasesList);
-      // 初始載入時，如果有篩選條件則應用，否則顯示全部
-      if (filterData.supplierId || filterData.startDate || filterData.endDate) {
-        applyFilters(purchasesList);
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (filters.supplierId) params.set('supplierId', filters.supplierId);
+      if (filters.startDate) params.set('dateFrom', filters.startDate);
+      if (filters.endDate) params.set('dateTo', filters.endDate);
+      const response = await fetch(`/api/purchasing?${params}`);
+      const result = await response.json();
+      if (result.data && result.pagination) {
+        setAllPurchases(result.data);
+        setPurchases(result.data);
+        setTotalCount(result.pagination.totalCount);
+        setCurrentPage(result.pagination.page);
       } else {
-        setPurchases(purchasesList); // 沒有篩選條件時顯示全部
+        const list = Array.isArray(result) ? result : [];
+        setAllPurchases(list);
+        setPurchases(list);
+        setTotalCount(list.length);
       }
       setLoading(false);
     } catch (error) {
       console.error('取得進貨單列表失敗:', error);
       setAllPurchases([]);
       setPurchases([]);
+      setTotalCount(0);
       setLoading(false);
     }
   }
 
-  function applyFilters(data) {
-    let filtered = [...data];
-
-    // 篩選廠商
-    if (filterData.supplierId) {
-      filtered = filtered.filter(p => p.supplierId === parseInt(filterData.supplierId));
-    }
-
-    // 篩選日期範圍
-    if (filterData.startDate) {
-      filtered = filtered.filter(p => p.purchaseDate >= filterData.startDate);
-    }
-    if (filterData.endDate) {
-      filtered = filtered.filter(p => p.purchaseDate <= filterData.endDate);
-    }
-
-    setPurchases(filtered);
-  }
-
   function handleFilterChange() {
-    applyFilters(allPurchases);
+    fetchPurchases(1, itemsPerPage, filterData);
   }
 
   function handleResetFilter() {
-    setFilterData({
-      supplierId: '',
-      startDate: '',
-      endDate: ''
-    });
-    setPurchases(allPurchases);
+    const emptyFilter = { supplierId: '', startDate: '', endDate: '' };
+    setFilterData(emptyFilter);
+    fetchPurchases(1, itemsPerPage, emptyFilter);
   }
 
   function getSupplierName(supplierId) {
     const supplier = suppliers.find(s => s.id === supplierId);
     return supplier ? supplier.name : '未知廠商';
   }
+
+  const { sortKey: purSortKey, sortDir: purSortDir, toggleSort: togglePurSort } = useColumnSort('purchaseDate', 'desc');
+  const sortedPurchases = useMemo(() => {
+    const acc = {
+      purchaseNo: (r) => r.purchaseNo || '',
+      warehouse: (r) => r.warehouse || '',
+      department: (r) => r.department || '',
+      supplier: (r) => getSupplierName(r.supplierId),
+      purchaseDate: (r) => r.purchaseDate || '',
+      totalAmount: (r) => Number(r.totalAmount || r.amount || 0),
+      stockStatus: (r) => {
+        if (!r.items?.length) return r.status || '';
+        const m = {};
+        r.items.forEach((item) => {
+          const s = item.status || r.status || '待入庫';
+          m[s] = (m[s] || 0) + 1;
+        });
+        return Object.keys(m).sort().map((k) => `${k}:${m[k]}`).join('|');
+      },
+      invoiceStatus: (r) => {
+        if (!r.items?.length) return '0-1';
+        let inv = 0;
+        let uni = 0;
+        r.items.forEach((item, idx) => {
+          if (isItemInvoiced(r.id, idx)) inv++;
+          else uni++;
+        });
+        return `${String(inv).padStart(4, '0')}-${String(uni).padStart(4, '0')}`;
+      },
+    };
+    return sortRows(purchases, purSortKey, purSortDir, acc);
+  }, [purchases, purSortKey, purSortDir, suppliers, invoices]);
 
   function handleViewDetails(purchaseId) {
     // 切換展開/收回狀態
@@ -809,15 +830,7 @@ export default function PurchasingPage() {
 
       if (response.ok) {
         showToast('進貨單刪除成功！', 'success');
-        // 從所有資料中移除
-        const updatedList = allPurchases.filter(p => p.id !== purchaseId);
-        setAllPurchases(updatedList);
-        // 重新應用篩選條件
-        if (filterData.supplierId || filterData.startDate || filterData.endDate) {
-          applyFilters(updatedList);
-        } else {
-          setPurchases(updatedList);
-        }
+        fetchPurchases(currentPage, itemsPerPage, filterData);
       } else {
         const error = await response.json();
         showToast('刪除失敗：' + (error.error || '未知錯誤'), 'error');
@@ -830,7 +843,7 @@ export default function PurchasingPage() {
 
   async function fetchSuppliers() {
     try {
-      const response = await fetch('/api/suppliers');
+      const response = await fetch('/api/suppliers?all=true');
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -841,7 +854,7 @@ export default function PurchasingPage() {
 
   async function fetchProducts() {
     try {
-      const response = await fetch('/api/products', { credentials: 'include' });
+      const response = await fetch('/api/products?all=true', { credentials: 'include' });
       const data = await response.json().catch(() => []);
       setProducts(Array.isArray(data) ? data : (data?.products || []));
     } catch (error) {
@@ -984,13 +997,7 @@ export default function PurchasingPage() {
           paymentTerms: '月結'
         });
         setSupplierSearch('');
-        fetchPurchases();
-        // 重新應用篩選條件
-        setTimeout(() => {
-          if (filterData.supplierId || filterData.startDate || filterData.endDate) {
-            handleFilterChange();
-          }
-        }, 100);
+        fetchPurchases(currentPage, itemsPerPage, filterData);
       } else {
         const error = await response.json();
         showToast(`${isEditing ? '更新' : '新增'}失敗：` + (error.error || '未知錯誤'), 'error');
@@ -1628,7 +1635,7 @@ export default function PurchasingPage() {
               </button>
             )}
             <span className="text-sm text-gray-600">
-              顯示 {purchases.length} 筆（共 {allPurchases.length} 筆）
+              顯示 {purchases.length} 筆（共 {totalCount} 筆）
             </span>
           </div>
         </div>
@@ -1638,14 +1645,14 @@ export default function PurchasingPage() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">單號</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">部門</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">日期</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">總金額</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">入庫狀態</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票狀態</th>
+                <SortableTh label="單號" colKey="purchaseNo" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
+                <SortableTh label="館別" colKey="warehouse" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
+                <SortableTh label="部門" colKey="department" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
+                <SortableTh label="廠商" colKey="supplier" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
+                <SortableTh label="日期" colKey="purchaseDate" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
+                <SortableTh label="總金額" colKey="totalAmount" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" align="right" />
+                <SortableTh label="入庫狀態" colKey="stockStatus" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
+                <SortableTh label="發票狀態" colKey="invoiceStatus" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
@@ -1663,7 +1670,7 @@ export default function PurchasingPage() {
                   </td>
                 </tr>
               ) : (
-                purchases.map((purchase, index) => {
+                sortedPurchases.map((purchase, index) => {
                   const totalAmount = purchase.totalAmount || parseFloat(purchase.amount || 0);
                   const isExpanded = expandedPurchaseId === purchase.id;
                   return (
@@ -1875,6 +1882,52 @@ export default function PurchasingPage() {
             </tbody>
           </table>
         </div>
+
+        {/* 分頁器 */}
+        {(() => {
+          const totalPages = Math.ceil(totalCount / itemsPerPage);
+          if (totalPages <= 0) return null;
+          const getPageNumbers = () => {
+            const pages = [];
+            if (totalPages <= 5) {
+              for (let i = 1; i <= totalPages; i++) pages.push(i);
+            } else if (currentPage <= 3) {
+              for (let i = 1; i <= 5; i++) pages.push(i);
+            } else if (currentPage >= totalPages - 2) {
+              for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+            } else {
+              for (let i = currentPage - 2; i <= currentPage + 2; i++) pages.push(i);
+            }
+            return pages;
+          };
+          return (
+            <div className="flex justify-center items-center gap-4 mt-6">
+              <button onClick={() => fetchPurchases(Math.max(1, currentPage - 1), itemsPerPage, filterData)} disabled={currentPage === 1}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">&lt; Prev</button>
+              {totalPages > 5 && currentPage > 3 && (<>
+                <button onClick={() => fetchPurchases(1, itemsPerPage, filterData)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">1</button>
+                <span className="px-2 text-gray-500">...</span>
+              </>)}
+              {getPageNumbers().map(p => (
+                <button key={p} onClick={() => fetchPurchases(p, itemsPerPage, filterData)}
+                  className={`px-4 py-2 rounded-lg ${p === currentPage ? 'bg-blue-600 text-white' : 'border hover:bg-gray-100'}`}>{p}</button>
+              ))}
+              {totalPages > 5 && currentPage < totalPages - 2 && (<>
+                <span className="px-2 text-gray-500">...</span>
+                <button onClick={() => fetchPurchases(totalPages, itemsPerPage, filterData)} className="px-4 py-2 border rounded-lg hover:bg-gray-100">{totalPages}</button>
+              </>)}
+              <button onClick={() => fetchPurchases(Math.min(totalPages, currentPage + 1), itemsPerPage, filterData)} disabled={currentPage === totalPages}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed">Next &gt;</button>
+              <span className="ml-4 text-sm text-gray-600">每頁</span>
+              <select value={itemsPerPage} onChange={(e) => { const n = Number(e.target.value); setItemsPerPage(n); fetchPurchases(1, n, filterData); }}
+                className="px-2 py-1 border rounded">
+                <option value={20}>20</option><option value={50}>50</option><option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-600">筆</span>
+              <span className="ml-2 text-sm text-gray-600">(共 {totalCount} 筆，第 {currentPage} / {totalPages} 頁)</span>
+            </div>
+          );
+        })()}
           </>
         )}
 

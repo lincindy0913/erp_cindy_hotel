@@ -652,8 +652,8 @@ export default function SettingsPage() {
   async function fetchMasterDataCounts() {
     try {
       const [productsRes, suppliersRes, accountingRes, warehouseRes] = await Promise.all([
-        fetch('/api/products').catch(() => null),
-        fetch('/api/suppliers').catch(() => null),
+        fetch('/api/products?all=true').catch(() => null),
+        fetch('/api/suppliers?all=true').catch(() => null),
         fetch('/api/accounting-subjects').catch(() => null),
         fetch('/api/warehouse-departments').catch(() => null),
       ]);

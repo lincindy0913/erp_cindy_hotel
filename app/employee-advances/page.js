@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 
 export default function EmployeeAdvancesPage() {
   const { data: session } = useSession();
@@ -41,9 +42,9 @@ export default function EmployeeAdvancesPage() {
 
   const pendingAdvances = useMemo(() => advances.filter(a => a.status === '待結算'), [advances]);
   const settledAdvances = useMemo(() => advances.filter(a => a.status === '已結算'), [advances]);
+  const [filterEmployee, setFilterEmployee] = useState('');
 
-  // Group by employee
-  const employeeSummary = useMemo(() => {
+  const employeeSummaryList = useMemo(() => {
     const map = {};
     advances.forEach(a => {
       if (!map[a.employeeName]) {
@@ -54,15 +55,57 @@ export default function EmployeeAdvancesPage() {
       if (a.status === '待結算') { e.pending++; e.pendingAmount += Number(a.amount); }
       else { e.settled++; e.settledAmount += Number(a.settledAmount || a.amount); }
     });
-    return Object.values(map).sort((a, b) => b.pendingAmount - a.pendingAmount);
+    return Object.values(map);
   }, [advances]);
+  const { sortKey: advEmpKey, sortDir: advEmpDir, toggleSort: toggleAdvEmp } = useColumnSort('pendingAmount', 'desc');
+  const sortedEmployeeSummary = useMemo(
+    () =>
+      sortRows(employeeSummaryList, advEmpKey, advEmpDir, {
+        name: (e) => e.name,
+        pending: (e) => e.pending,
+        pendingAmount: (e) => e.pendingAmount,
+        settled: (e) => e.settled,
+        settledAmount: (e) => e.settledAmount,
+        total: (e) => e.total,
+      }),
+    [employeeSummaryList, advEmpKey, advEmpDir]
+  );
 
-  // Filter pending by employee for settlement
-  const [filterEmployee, setFilterEmployee] = useState('');
   const filteredPending = useMemo(() => {
     if (!filterEmployee) return pendingAdvances;
     return pendingAdvances.filter(a => a.employeeName === filterEmployee);
   }, [pendingAdvances, filterEmployee]);
+
+  const { sortKey: advPenKey, sortDir: advPenDir, toggleSort: toggleAdvPen } = useColumnSort('createdAt', 'desc');
+  const sortedFilteredPending = useMemo(
+    () =>
+      sortRows(filteredPending, advPenKey, advPenDir, {
+        advanceNo: (a) => a.advanceNo || '',
+        employeeName: (a) => a.employeeName || '',
+        paymentMethod: (a) => a.paymentMethod || '',
+        source: (a) => a.sourceType || '',
+        expenseName: (a) => a.expenseName || '',
+        summary: (a) => a.summary || a.sourceDescription || '',
+        amount: (a) => Number(a.amount || 0),
+        createdAt: (a) => a.createdAt || '',
+      }),
+    [filteredPending, advPenKey, advPenDir]
+  );
+
+  const { sortKey: advSetKey, sortDir: advSetDir, toggleSort: toggleAdvSet } = useColumnSort('settledDate', 'desc');
+  const sortedSettledAdvances = useMemo(
+    () =>
+      sortRows(settledAdvances, advSetKey, advSetDir, {
+        advanceNo: (a) => a.advanceNo || '',
+        employeeName: (a) => a.employeeName || '',
+        paymentMethod: (a) => a.paymentMethod || '',
+        description: (a) => a.sourceDescription || '',
+        amount: (a) => Number(a.amount || 0),
+        settledDate: (a) => a.settledDate || '',
+        settlementTxNo: (a) => a.settlementTxNo || '',
+      }),
+    [settledAdvances, advSetKey, advSetDir]
+  );
 
   const selectedAdvances = filteredPending.filter(a => selectedIds.has(a.id));
   const selectedTotal = selectedAdvances.reduce((sum, a) => sum + Number(a.amount), 0);
@@ -142,7 +185,7 @@ export default function EmployeeAdvancesPage() {
   const TABS = [
     { key: 'pending', label: `待結算 (${pendingAdvances.length})` },
     { key: 'settled', label: `已結算 (${settledAdvances.length})` },
-    { key: 'employees', label: `員工總覽 (${employeeSummary.length})` },
+    { key: 'employees', label: `員工總覽 (${employeeSummaryList.length})` },
   ];
 
   const thStyle = { padding: '10px 12px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
@@ -184,7 +227,7 @@ export default function EmployeeAdvancesPage() {
           </div>
           <div style={{ background: '#e0e7ff', borderRadius: 8, padding: 16 }}>
             <div style={{ fontSize: 12, color: '#3730a3' }}>代墊員工數</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#3730a3' }}>{employeeSummary.length}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#3730a3' }}>{employeeSummaryList.length}</div>
           </div>
         </div>
 
@@ -287,18 +330,18 @@ export default function EmployeeAdvancesPage() {
                     <th style={thStyle}>
                       <input type="checkbox" checked={selectedIds.size === filteredPending.length && filteredPending.length > 0} onChange={toggleSelectAll} />
                     </th>
-                    <th style={thStyle}>代墊單號</th>
-                    <th style={thStyle}>代墊員工</th>
-                    <th style={thStyle}>代墊方式</th>
-                    <th style={thStyle}>來源</th>
-                    <th style={thStyle}>費用名稱</th>
-                    <th style={thStyle}>摘要</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>金額</th>
-                    <th style={thStyle}>建立日期</th>
+                    <SortableThInline label="代墊單號" colKey="advanceNo" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
+                    <SortableThInline label="代墊員工" colKey="employeeName" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
+                    <SortableThInline label="代墊方式" colKey="paymentMethod" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
+                    <SortableThInline label="來源" colKey="source" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
+                    <SortableThInline label="費用名稱" colKey="expenseName" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
+                    <SortableThInline label="摘要" colKey="summary" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
+                    <SortableThInline label="金額" colKey="amount" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={{ ...thStyle, textAlign: 'right' }} align="right" />
+                    <SortableThInline label="建立日期" colKey="createdAt" sortKey={advPenKey} sortDir={advPenDir} onSort={toggleAdvPen} thStyle={thStyle} />
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPending.map(a => (
+                  {sortedFilteredPending.map(a => (
                     <tr key={a.id} style={{ background: selectedIds.has(a.id) ? '#eff6ff' : 'transparent' }}>
                       <td style={tdStyle}>
                         <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} />
@@ -339,17 +382,17 @@ export default function EmployeeAdvancesPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f9fafb' }}>
-                    <th style={thStyle}>代墊單號</th>
-                    <th style={thStyle}>代墊員工</th>
-                    <th style={thStyle}>代墊方式</th>
-                    <th style={thStyle}>說明</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>代墊金額</th>
-                    <th style={thStyle}>結算日期</th>
-                    <th style={thStyle}>結算交易</th>
+                    <SortableThInline label="代墊單號" colKey="advanceNo" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
+                    <SortableThInline label="代墊員工" colKey="employeeName" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
+                    <SortableThInline label="代墊方式" colKey="paymentMethod" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
+                    <SortableThInline label="說明" colKey="description" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
+                    <SortableThInline label="代墊金額" colKey="amount" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={{ ...thStyle, textAlign: 'right' }} align="right" />
+                    <SortableThInline label="結算日期" colKey="settledDate" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
+                    <SortableThInline label="結算交易" colKey="settlementTxNo" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
                   </tr>
                 </thead>
                 <tbody>
-                  {settledAdvances.map(a => (
+                  {sortedSettledAdvances.map(a => (
                     <tr key={a.id}>
                       <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{a.advanceNo}</span></td>
                       <td style={tdStyle}><span style={{ fontWeight: 600 }}>{a.employeeName}</span></td>
@@ -373,23 +416,23 @@ export default function EmployeeAdvancesPage() {
         {/* Employees Tab */}
         {activeTab === 'employees' && (
           <div>
-            {employeeSummary.length === 0 ? (
+            {employeeSummaryList.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無代墊款紀錄</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f9fafb' }}>
-                    <th style={thStyle}>員工</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>待結算筆數</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>待結算金額</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>已結算筆數</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>已結算金額</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>總筆數</th>
+                    <SortableThInline label="員工" colKey="name" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={thStyle} />
+                    <SortableThInline label="待結算筆數" colKey="pending" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={{ ...thStyle, textAlign: 'center' }} align="center" />
+                    <SortableThInline label="待結算金額" colKey="pendingAmount" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={{ ...thStyle, textAlign: 'right' }} align="right" />
+                    <SortableThInline label="已結算筆數" colKey="settled" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={{ ...thStyle, textAlign: 'center' }} align="center" />
+                    <SortableThInline label="已結算金額" colKey="settledAmount" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={{ ...thStyle, textAlign: 'right' }} align="right" />
+                    <SortableThInline label="總筆數" colKey="total" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={{ ...thStyle, textAlign: 'center' }} align="center" />
                     <th style={thStyle}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {employeeSummary.map(emp => (
+                  {sortedEmployeeSummary.map(emp => (
                     <tr key={emp.name}>
                       <td style={tdStyle}><span style={{ fontWeight: 600, fontSize: 14 }}>{emp.name}</span></td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>

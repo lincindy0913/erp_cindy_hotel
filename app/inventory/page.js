@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
   { key: 'query', label: '庫存查詢', icon: '📦' },
@@ -49,6 +50,79 @@ export default function InventoryPage() {
   const [countForm, setCountForm] = useState({ warehouse: '', countDate: todayStr(), items: [] });
   const [countSubmitting, setCountSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
+
+  const { sortKey: invQKey, sortDir: invQDir, toggleSort: invQT } = useColumnSort('productName', 'asc');
+  const sortedInventory = useMemo(
+    () =>
+      sortRows(inventory, invQKey, invQDir, {
+        productName: (row) => row.product?.name || '',
+        warehouseLoc: (row) => warehouse || row.product?.warehouseLocation || '',
+        purchaseIn: (row) => Number(row.purchaseQty ?? row.purchaseIncr ?? 0),
+        requisitionQty: (row) => Number(row.requisitionQty ?? 0),
+        transferOutQty: (row) => Number(row.transferOutQty ?? 0),
+        transferInQty: (row) => Number(row.transferInQty ?? 0),
+        countAdjustQty: (row) => Number(row.countAdjustQty ?? 0),
+        currentQty: (row) => Number(row.currentQty ?? 0),
+        status: (row) => row.status || '',
+      }),
+    [inventory, warehouse, invQKey, invQDir]
+  );
+
+  const { sortKey: reqKey, sortDir: reqDir, toggleSort: reqT } = useColumnSort('requisitionDate', 'desc');
+  const sortedRequisitions = useMemo(
+    () =>
+      sortRows(requisitions, reqKey, reqDir, {
+        requisitionNo: (r) => r.requisitionNo || '',
+        warehouse: (r) => r.warehouse || '',
+        department: (r) => r.department || '',
+        productName: (r) => r.product?.name || '',
+        quantity: (r) => Number(r.quantity || 0),
+        requisitionDate: (r) => r.requisitionDate || '',
+      }),
+    [requisitions, reqKey, reqDir]
+  );
+
+  const transferFlatRows = useMemo(() => {
+    const rows = [];
+    transfers.forEach((t) => {
+      (t.items || []).forEach((i, idx) => {
+        rows.push({
+          _key: `${t.id}-${idx}`,
+          transferNo: t.transferNo,
+          fromWarehouse: t.fromWarehouse,
+          toWarehouse: t.toWarehouse,
+          productName: i.product?.name || '-',
+          quantity: Number(i.quantity || 0),
+          transferDate: t.transferDate || '',
+        });
+      });
+    });
+    return rows;
+  }, [transfers]);
+  const { sortKey: trfKey, sortDir: trfDir, toggleSort: trfT } = useColumnSort('transferDate', 'desc');
+  const sortedTransferRows = useMemo(
+    () => sortRows(transferFlatRows, trfKey, trfDir, {
+      transferNo: (r) => r.transferNo || '',
+      fromWarehouse: (r) => r.fromWarehouse || '',
+      toWarehouse: (r) => r.toWarehouse || '',
+      productName: (r) => r.productName || '',
+      quantity: (r) => r.quantity,
+      transferDate: (r) => r.transferDate || '',
+    }),
+    [transferFlatRows, trfKey, trfDir]
+  );
+
+  const { sortKey: cntKey, sortDir: cntDir, toggleSort: cntT } = useColumnSort('countDate', 'desc');
+  const sortedStockCounts = useMemo(
+    () =>
+      sortRows(stockCounts, cntKey, cntDir, {
+        countNo: (s) => s.countNo || '',
+        warehouse: (s) => s.warehouse || '',
+        countDate: (s) => s.countDate || '',
+        itemCount: (s) => s.items?.length || 0,
+      }),
+    [stockCounts, cntKey, cntDir]
+  );
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
@@ -107,7 +181,7 @@ export default function InventoryPage() {
 
   async function fetchProducts() {
     try {
-      const res = await fetch('/api/products');
+      const res = await fetch('/api/products?all=true');
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data?.products || data?.data || []);
       setProducts(arr.filter(p => p.isInStock !== false));
@@ -361,15 +435,15 @@ export default function InventoryPage() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">產品</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">進貨</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">領用</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">調出</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">調入</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">盤點調整</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">現存量</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">狀態</th>
+                    <SortableTh label="產品" colKey="productName" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
+                    <SortableTh label="倉庫" colKey="warehouseLoc" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
+                    <SortableTh label="進貨" colKey="purchaseIn" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="領用" colKey="requisitionQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="調出" colKey="transferOutQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="調入" colKey="transferInQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="盤點調整" colKey="countAdjustQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="現存量" colKey="currentQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="狀態" colKey="status" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -378,7 +452,7 @@ export default function InventoryPage() {
                   ) : inventory.length === 0 ? (
                     <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-500">尚無庫存資料</td></tr>
                   ) : (
-                    inventory.map((item, i) => (
+                    sortedInventory.map((item, i) => (
                       <tr key={item.productId || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-3 text-sm">{item.product?.name || '-'}</td>
                         <td className="px-4 py-3 text-sm">{warehouse || item.product?.warehouseLocation || '-'}</td>
@@ -474,17 +548,17 @@ export default function InventoryPage() {
               <h3 className="text-lg font-semibold p-4 border-b">領用記錄</h3>
               <table className="w-full">
                 <thead className="bg-gray-50"><tr>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">單號</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">倉庫</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">部門</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">產品</th>
-                  <th className="px-4 py-2 text-right text-sm font-medium text-gray-600">數量</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">日期</th>
+                  <SortableTh label="單號" colKey="requisitionNo" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
+                  <SortableTh label="倉庫" colKey="warehouse" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
+                  <SortableTh label="部門" colKey="department" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
+                  <SortableTh label="產品" colKey="productName" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
+                  <SortableTh label="數量" colKey="quantity" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" align="right" />
+                  <SortableTh label="日期" colKey="requisitionDate" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
                 </tr></thead>
                 <tbody>
                   {requisitionLoading ? <tr><td colSpan="6" className="px-4 py-6 text-center text-gray-500">載入中...</td></tr> :
                     requisitions.length === 0 ? <tr><td colSpan="6" className="px-4 py-6 text-center text-gray-500">尚無領用記錄</td></tr> :
-                    requisitions.map(r => (
+                    sortedRequisitions.map(r => (
                       <tr key={r.id} className="border-t"><td className="px-4 py-2 text-sm">{r.requisitionNo}</td>
                         <td className="px-4 py-2 text-sm">{r.warehouse}</td><td className="px-4 py-2 text-sm">{r.department || '-'}</td>
                         <td className="px-4 py-2 text-sm">{r.product?.name || '-'}</td>
@@ -572,26 +646,26 @@ export default function InventoryPage() {
               <h3 className="text-lg font-semibold p-4 border-b">調撥記錄</h3>
               <table className="w-full">
                 <thead className="bg-gray-50"><tr>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">單號</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">來源</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">目標</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">產品</th>
-                  <th className="px-4 py-2 text-right text-sm font-medium text-gray-600">數量</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">日期</th>
+                  <SortableTh label="單號" colKey="transferNo" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
+                  <SortableTh label="來源" colKey="fromWarehouse" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
+                  <SortableTh label="目標" colKey="toWarehouse" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
+                  <SortableTh label="產品" colKey="productName" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
+                  <SortableTh label="數量" colKey="quantity" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" align="right" />
+                  <SortableTh label="日期" colKey="transferDate" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
                 </tr></thead>
                 <tbody>
                   {transferLoading ? <tr><td colSpan="6" className="px-4 py-6 text-center text-gray-500">載入中...</td></tr> :
                     transfers.length === 0 ? <tr><td colSpan="6" className="px-4 py-6 text-center text-gray-500">尚無調撥記錄</td></tr> :
-                    transfers.flatMap(t => t.items?.map((i, idx) => (
-                      <tr key={`${t.id}-${idx}`} className="border-t">
-                        <td className="px-4 py-2 text-sm">{t.transferNo}</td>
-                        <td className="px-4 py-2 text-sm">{t.fromWarehouse}</td>
-                        <td className="px-4 py-2 text-sm">{t.toWarehouse}</td>
-                        <td className="px-4 py-2 text-sm">{i.product?.name || '-'}</td>
-                        <td className="px-4 py-2 text-sm text-right">{i.quantity}</td>
-                        <td className="px-4 py-2 text-sm">{t.transferDate}</td>
+                    sortedTransferRows.map((row) => (
+                      <tr key={row._key} className="border-t">
+                        <td className="px-4 py-2 text-sm">{row.transferNo}</td>
+                        <td className="px-4 py-2 text-sm">{row.fromWarehouse}</td>
+                        <td className="px-4 py-2 text-sm">{row.toWarehouse}</td>
+                        <td className="px-4 py-2 text-sm">{row.productName}</td>
+                        <td className="px-4 py-2 text-sm text-right">{row.quantity}</td>
+                        <td className="px-4 py-2 text-sm">{row.transferDate}</td>
                       </tr>
-                    )) || [])}
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -685,15 +759,15 @@ export default function InventoryPage() {
               <h3 className="text-lg font-semibold p-4 border-b">盤點記錄</h3>
               <table className="w-full">
                 <thead className="bg-gray-50"><tr>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">單號</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">倉庫</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">日期</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-600">品項數</th>
+                  <SortableTh label="單號" colKey="countNo" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />
+                  <SortableTh label="倉庫" colKey="warehouse" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />
+                  <SortableTh label="日期" colKey="countDate" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />
+                  <SortableTh label="品項數" colKey="itemCount" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />
                 </tr></thead>
                 <tbody>
                   {countLoading ? <tr><td colSpan="4" className="px-4 py-6 text-center text-gray-500">載入中...</td></tr> :
                     stockCounts.length === 0 ? <tr><td colSpan="4" className="px-4 py-6 text-center text-gray-500">尚無盤點記錄</td></tr> :
-                    stockCounts.map(s => (
+                    sortedStockCounts.map(s => (
                       <tr key={s.id} className="border-t">
                         <td className="px-4 py-2 text-sm">{s.countNo}</td>
                         <td className="px-4 py-2 text-sm">{s.warehouse}</td>

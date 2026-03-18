@@ -48,6 +48,8 @@ model Product {
   engineeringMaterials EngineeringMaterial[]
 
   @@index([code])
+  @@index([name])
+  @@index([category])
   @@index([isInStock])
   @@index([supplierId])
   @@index([productType])
@@ -87,6 +89,9 @@ model Supplier {
 
   @@index([sortOrder])
   @@index([paymentStatus])
+  @@index([name])
+  @@index([isActive])
+  @@index([taxId])
   @@map("suppliers")
 }
 
@@ -176,6 +181,8 @@ model PurchaseMaster {
   @@index([supplierId])
   @@index([purchaseDate])
   @@index([warehouse])
+  @@index([purchaseNo])
+  @@index([status])
   @@map("purchase_masters")
 }
 
@@ -427,6 +434,7 @@ model CashAccount {
 
   @@index([warehouse])
   @@index([type])
+  @@index([isActive])
   @@map("cash_accounts")
 }
 
@@ -1969,6 +1977,8 @@ model PaymentOrder {
   @@index([warehouse])
   @@index([dueDate])
   @@index([sourceType])
+  @@index([orderNo])
+  @@index([createdAt])
   @@map("payment_orders")
 }
 

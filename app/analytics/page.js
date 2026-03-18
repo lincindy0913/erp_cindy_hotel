@@ -158,7 +158,7 @@ export default function AnalyticsPage() {
 
   async function fetchProducts() {
     try {
-      const response = await fetch('/api/products');
+      const response = await fetch('/api/products?all=true');
       const data = await response.json();
       setProducts(Array.isArray(data) ? data : []);
     } catch (error) {

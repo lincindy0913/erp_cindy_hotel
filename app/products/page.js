@@ -21,8 +21,10 @@ export default function ProductsPage() {
   const [accountingSearch, setAccountingSearch] = useState('');
   const [showAccountingDropdown, setShowAccountingDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchTimer, setSearchTimer] = useState(null);
   const [warehouseOptions, setWarehouseOptions] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('warehouseOptions');
@@ -45,7 +47,7 @@ export default function ProductsPage() {
   });
 
   useEffect(() => {
-    fetchProducts();
+    fetchProducts(1, itemsPerPage, '');
     fetchAccountingSubjects();
   }, []);
 
@@ -108,17 +110,28 @@ export default function ProductsPage() {
     }
   }
 
-  async function fetchProducts() {
+  async function fetchProducts(page = currentPage, limit = itemsPerPage, keyword = searchKeyword) {
     try {
-      const response = await fetch('/api/products');
-      const data = await response.json();
-      const productsList = Array.isArray(data) ? data : [];
-      setProducts(productsList);
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (keyword) params.set('keyword', keyword);
+      const response = await fetch(`/api/products?${params}`);
+      const result = await response.json();
+      if (result.data && result.pagination) {
+        setProducts(result.data);
+        setTotalCount(result.pagination.totalCount);
+        setCurrentPage(result.pagination.page);
+      } else {
+        // 向下相容 all=true 回傳的陣列
+        const list = Array.isArray(result) ? result : [];
+        setProducts(list);
+        setTotalCount(list.length);
+      }
       setLoading(false);
-      return productsList;
+      return result;
     } catch (error) {
       console.error('取得產品列表失敗:', error);
       setProducts([]);
+      setTotalCount(0);
       setLoading(false);
       return [];
     }
@@ -173,11 +186,15 @@ export default function ProductsPage() {
           accountingSubject: ''
         });
         setAccountingSearch('');
-        const productsList = await fetchProducts();
-        // 新增產品後跳到最後一頁
         if (!isEditing) {
-          const totalItems = productsList.length;
-          setCurrentPage(Math.ceil(totalItems / itemsPerPage));
+          // 新增產品後取得最後一頁
+          const countRes = await fetch('/api/products?page=1&limit=1');
+          const countData = await countRes.json();
+          const total = countData?.pagination?.totalCount || 0;
+          const lastPage = Math.ceil(total / itemsPerPage) || 1;
+          await fetchProducts(lastPage, itemsPerPage, searchKeyword);
+        } else {
+          await fetchProducts(currentPage, itemsPerPage, searchKeyword);
         }
       } else {
         const error = await response.json();
@@ -216,7 +233,7 @@ export default function ProductsPage() {
 
       if (response.ok) {
         showToast('產品刪除成功！', 'success');
-        fetchProducts();
+        fetchProducts(currentPage, itemsPerPage, searchKeyword);
       } else {
         const error = await response.json();
         showToast('刪除失敗：' + (error.error || '未知錯誤'), 'error');
@@ -307,7 +324,7 @@ export default function ProductsPage() {
         }
 
         showToast(`匯入完成！\n成功：${successCount} 筆\n失敗：${failCount} 筆`, failCount > 0 ? 'warning' : 'success');
-        fetchProducts();
+        fetchProducts(1, itemsPerPage, searchKeyword);
       } catch (error) {
         console.error('讀取檔案失敗:', error);
         showToast('讀取檔案失敗，請確認檔案格式正確', 'error');
@@ -316,20 +333,9 @@ export default function ProductsPage() {
     input.click();
   }
 
-  // 搜尋過濾
-  const filteredProducts = searchKeyword
-    ? products.filter(p =>
-        p.code.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-        p.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-        (p.category && p.category.toLowerCase().includes(searchKeyword.toLowerCase()))
-      )
-    : products;
-
-  // 計算分頁
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentProducts = filteredProducts.slice(startIndex, endIndex);
+  // 伺服器端分頁 — products 已是當頁資料
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const currentProducts = products;
 
   // 生成頁碼陣列
   const getPageNumbers = () => {
@@ -632,20 +638,28 @@ export default function ProductsPage() {
               placeholder="搜尋產品（代碼、名稱、類別）..."
               value={searchKeyword}
               onChange={(e) => {
-                setSearchKeyword(e.target.value);
-                setCurrentPage(1);
+                const val = e.target.value;
+                setSearchKeyword(val);
+                if (searchTimer) clearTimeout(searchTimer);
+                setSearchTimer(setTimeout(() => {
+                  fetchProducts(1, itemsPerPage, val);
+                }, 400));
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  setCurrentPage(1);
+                  if (searchTimer) clearTimeout(searchTimer);
+                  fetchProducts(1, itemsPerPage, searchKeyword);
                 }
               }}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={() => {
-                setSearchKeyword('');
-                setCurrentPage(1);
+                if (searchKeyword) {
+                  setSearchKeyword('');
+                  if (searchTimer) clearTimeout(searchTimer);
+                  fetchProducts(1, itemsPerPage, '');
+                }
               }}
               className="px-6 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
             >
@@ -694,7 +708,7 @@ export default function ProductsPage() {
               {currentProducts.length === 0 ? (
                 <tr>
                   <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
-                    {products.length === 0 ? '尚無產品資料' : searchKeyword ? '找不到符合條件的產品' : '此頁無資料'}
+                    {totalCount === 0 ? (searchKeyword ? '找不到符合條件的產品' : '尚無產品資料') : '此頁無資料'}
                   </td>
                 </tr>
               ) : (
@@ -749,7 +763,7 @@ export default function ProductsPage() {
         {totalPages > 0 && (
           <div className="flex justify-center items-center gap-4 mt-6">
             <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              onClick={() => fetchProducts(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
               className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -759,7 +773,7 @@ export default function ProductsPage() {
             {totalPages > 5 && currentPage > 3 && (
               <>
                 <button
-                  onClick={() => setCurrentPage(1)}
+                  onClick={() => fetchProducts(1)}
                   className="px-4 py-2 border rounded-lg hover:bg-gray-100"
                 >
                   1
@@ -771,7 +785,7 @@ export default function ProductsPage() {
             {getPageNumbers().map((pageNum) => (
               <button
                 key={pageNum}
-                onClick={() => setCurrentPage(pageNum)}
+                onClick={() => fetchProducts(pageNum)}
                 className={`px-4 py-2 rounded-lg ${
                   pageNum === currentPage
                     ? 'bg-blue-600 text-white'
@@ -786,7 +800,7 @@ export default function ProductsPage() {
               <>
                 <span className="px-2 text-gray-500">...</span>
                 <button
-                  onClick={() => setCurrentPage(totalPages)}
+                  onClick={() => fetchProducts(totalPages)}
                   className="px-4 py-2 border rounded-lg hover:bg-gray-100"
                 >
                   {totalPages}
@@ -795,7 +809,7 @@ export default function ProductsPage() {
             )}
             
             <button
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              onClick={() => fetchProducts(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
               className="px-4 py-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -806,8 +820,9 @@ export default function ProductsPage() {
             <select
               value={itemsPerPage}
               onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
+                const newLimit = Number(e.target.value);
+                setItemsPerPage(newLimit);
+                fetchProducts(1, newLimit);
               }}
               className="px-2 py-1 border rounded"
             >
@@ -817,7 +832,7 @@ export default function ProductsPage() {
             </select>
             <span className="text-sm text-gray-600">筆</span>
             <span className="ml-2 text-sm text-gray-600">
-              (共 {filteredProducts.length} 筆{searchKeyword ? `，搜尋 "${searchKeyword}"` : ''}，第 {currentPage} / {totalPages} 頁)
+              (共 {totalCount} 筆{searchKeyword ? `，搜尋 "${searchKeyword}"` : ''}，第 {currentPage} / {totalPages} 頁)
             </span>
           </div>
         )}

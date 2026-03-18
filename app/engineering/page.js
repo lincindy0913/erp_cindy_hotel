@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import AttachmentSection from '@/components/AttachmentSection';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -57,6 +58,69 @@ export default function EngineeringPage() {
   const [filterProjectId, setFilterProjectId] = useState('');
   const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
   const [paymentOrders, setPaymentOrders] = useState([]);
+
+  const { sortKey: engProjKey, sortDir: engProjDir, toggleSort: engProjToggle } = useColumnSort('code', 'asc');
+  const sortedProjects = useMemo(
+    () =>
+      sortRows(projects, engProjKey, engProjDir, {
+        code: (p) => p.code || '',
+        name: (p) => p.name || '',
+        clientName: (p) => p.clientName || '',
+        whDept: (p) => `${p.warehouseRef?.name || p.warehouse || ''} ${p.departmentRef?.name || ''}`,
+        location: (p) => [p.location, p.buildingNo, p.permitNo].filter(Boolean).join(' '),
+        startDate: (p) => p.startDate || '',
+        endDate: (p) => p.endDate || '',
+        budget: (p) => Number(p.budget || 0),
+        status: (p) => p.status || '',
+      }),
+    [projects, engProjKey, engProjDir]
+  );
+
+  const { sortKey: engConKey, sortDir: engConDir, toggleSort: engConToggle } = useColumnSort('signDate', 'desc');
+  const sortedContracts = useMemo(
+    () =>
+      sortRows(contracts, engConKey, engConDir, {
+        projectLabel: (c) => `${c.project?.code || ''} ${c.project?.name || ''}`,
+        contractNo: (c) => c.contractNo || '',
+        supplier: (c) => c.supplier?.name || '',
+        totalAmount: (c) => Number(c.totalAmount || 0),
+        conStatus: (c) => (c.status === 'completed' ? '已完成' : '進行中'),
+        signDate: (c) => c.signDate || '',
+      }),
+    [contracts, engConKey, engConDir]
+  );
+
+  const { sortKey: engPayKey, sortDir: engPayDir, toggleSort: engPayToggle } = useColumnSort('orderNo', 'asc');
+  const sortedPaymentOrders = useMemo(
+    () =>
+      sortRows(paymentOrders, engPayKey, engPayDir, {
+        orderNo: (o) => o.orderNo || '',
+        summary: (o) => o.summary || '',
+        supplierName: (o) => o.supplierName || '',
+        netAmount: (o) => Number(o.netAmount || 0),
+        poStatus: (o) => o.status || '',
+      }),
+    [paymentOrders, engPayKey, engPayDir]
+  );
+
+  const { sortKey: engMatKey, sortDir: engMatDir, toggleSort: engMatToggle } = useColumnSort('usedAt', 'desc');
+  const sortedMaterials = useMemo(
+    () =>
+      sortRows(materials, engMatKey, engMatDir, {
+        projectCode: (m) => m.project?.code || '',
+        contractNo: (m) => m.contractNo || '',
+        termName: (m) => m.termName || '',
+        itemDesc: (m) =>
+          m.product ? `${m.product.code || ''} ${m.product.name || ''}`.trim() : m.description || '',
+        quantity: (m) => Number(m.quantity || 0),
+        unit: (m) => m.unit || '',
+        unitPrice: (m) => Number(m.unitPrice || 0),
+        subtotal: (m) => Number(m.quantity || 0) * Number(m.unitPrice || 0),
+        usedQty: (m) => (m.usedAt ? Number(m.quantity || 0) : 0),
+        usedAt: (m) => m.usedAt || '',
+      }),
+    [materials, engMatKey, engMatDir]
+  );
   const [accounts, setAccounts] = useState([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡']);
   const [showContractUploadModal, setShowContractUploadModal] = useState(false);
@@ -121,7 +185,7 @@ export default function EngineeringPage() {
 
   async function fetchSuppliers() {
     try {
-      const res = await fetch('/api/suppliers');
+      const res = await fetch('/api/suppliers?all=true');
       const data = await res.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch { setSuppliers([]); }
@@ -129,7 +193,7 @@ export default function EngineeringPage() {
 
   async function fetchProducts() {
     try {
-      const res = await fetch('/api/products');
+      const res = await fetch('/api/products?all=true');
       const data = await res.json();
       setProducts(Array.isArray(data) ? data : []);
     } catch { setProducts([]); }
@@ -437,24 +501,30 @@ export default function EngineeringPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left">代碼</th><th className="px-4 py-2 text-left">名稱</th>
-                    <th className="px-4 py-2 text-left">業主</th><th className="px-4 py-2 text-left">館別／部門</th>
-                    <th className="px-4 py-2 text-left">工程地點／建造(使)造號碼</th><th className="px-4 py-2 text-left">起訖</th>
-                    <th className="px-4 py-2 text-right">預算</th><th className="px-4 py-2 text-left">狀態</th>
-                    <th className="px-4 py-2 text-center">操作</th>
+                    <SortableTh label="代碼" colKey="code" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="名稱" colKey="name" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="業主" colKey="clientName" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="館別／部門" colKey="whDept" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="工程地點／建造(使)造號碼" colKey="location" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="起日" colKey="startDate" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="迄日" colKey="endDate" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <SortableTh label="預算" colKey="budget" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" align="right" />
+                    <SortableTh label="狀態" colKey="status" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
+                    <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {projects.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">尚無工程案，請新增</td></tr>
-                  ) : projects.map(p => (
+                    <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">尚無工程案，請新增</td></tr>
+                  ) : sortedProjects.map(p => (
                     <tr key={p.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 font-mono">{p.code}</td>
                       <td className="px-4 py-2 font-medium">{p.name}</td>
                       <td className="px-4 py-2">{p.clientName || '－'}</td>
                       <td className="px-4 py-2">{p.warehouseRef?.name || p.warehouse || '－'} {p.departmentRef ? `／${p.departmentRef.name}` : ''}</td>
                       <td className="px-4 py-2 text-xs">{p.location || '－'} {(p.buildingNo || p.permitNo) ? `（${[p.buildingNo, p.permitNo].filter(Boolean).join('、')}）` : ''}</td>
-                      <td className="px-4 py-2">{p.startDate || '－'} ～ {p.endDate || '－'}</td>
+                      <td className="px-4 py-2">{p.startDate || '－'}</td>
+                      <td className="px-4 py-2">{p.endDate || '－'}</td>
                       <td className="px-4 py-2 text-right">{formatNum(p.budget)}</td>
                       <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs ${p.status === '已結案' ? 'bg-gray-200' : 'bg-amber-100 text-amber-800'}`}>{p.status}</span></td>
                       <td className="px-4 py-2 text-center">
@@ -485,16 +555,20 @@ export default function EngineeringPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-2 text-left">工程案</th><th className="px-4 py-2 text-left">合約編號</th>
-                      <th className="px-4 py-2 text-left">廠商</th><th className="px-4 py-2 text-right">合約金額</th>
-                      <th className="px-4 py-2 text-left">狀態</th><th className="px-4 py-2 text-left">簽約日</th>
-                      <th className="px-4 py-2 text-center">期數／付款</th><th className="px-4 py-2 text-center">操作</th>
+                      <SortableTh label="工程案" colKey="projectLabel" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
+                      <SortableTh label="合約編號" colKey="contractNo" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
+                      <SortableTh label="廠商" colKey="supplier" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
+                      <SortableTh label="合約金額" colKey="totalAmount" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="狀態" colKey="conStatus" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
+                      <SortableTh label="簽約日" colKey="signDate" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
+                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">期數／付款</th>
+                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {contracts.length === 0 ? (
                       <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無合約或請選擇工程案</td></tr>
-                    ) : contracts.map(c => {
+                    ) : sortedContracts.map(c => {
                       const hasPaidTerms = (c.terms || []).some(t => t.status === 'paid');
                       const isCompleted = c.status === 'completed';
                       return (
@@ -681,11 +755,18 @@ export default function EngineeringPage() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left">付款單號</th><th className="px-4 py-2 text-left">摘要</th><th className="px-4 py-2 text-left">廠商</th><th className="px-4 py-2 text-right">金額</th><th className="px-4 py-2 text-left">狀態</th><th className="px-4 py-2 text-center">操作</th></tr></thead>
+                  <thead className="bg-gray-50"><tr>
+                    <SortableTh label="付款單號" colKey="orderNo" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
+                    <SortableTh label="摘要" colKey="summary" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
+                    <SortableTh label="廠商" colKey="supplierName" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
+                    <SortableTh label="金額" colKey="netAmount" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" align="right" />
+                    <SortableTh label="狀態" colKey="poStatus" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
+                    <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
+                  </tr></thead>
                   <tbody className="divide-y">
                     {paymentOrders.length === 0 ? (
                       <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">尚無工程付款單</td></tr>
-                    ) : paymentOrders.map(o => {
+                    ) : sortedPaymentOrders.map(o => {
                       const isExecuted = o.status === '已執行';
                       return (
                         <tr key={o.id} className="hover:bg-gray-50">
@@ -739,18 +820,23 @@ export default function EngineeringPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-2 text-left">工程案</th><th className="px-4 py-2 text-left">合約</th>
-                      <th className="px-4 py-2 text-left">期別</th><th className="px-4 py-2 text-left">品項／說明</th>
-                      <th className="px-4 py-2 text-right">數量</th><th className="px-4 py-2 text-left">單位</th>
-                      <th className="px-4 py-2 text-right">單價</th><th className="px-4 py-2 text-right">小計</th>
-                      <th className="px-4 py-2 text-right">領用</th>
-                      <th className="px-4 py-2 text-left">使用日</th><th className="px-4 py-2 text-center">操作</th>
+                      <SortableTh label="工程案" colKey="projectCode" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
+                      <SortableTh label="合約" colKey="contractNo" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
+                      <SortableTh label="期別" colKey="termName" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
+                      <SortableTh label="品項／說明" colKey="itemDesc" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
+                      <SortableTh label="數量" colKey="quantity" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="單位" colKey="unit" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
+                      <SortableTh label="單價" colKey="unitPrice" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="小計" colKey="subtotal" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="領用" colKey="usedQty" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="使用日" colKey="usedAt" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
+                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {materials.length === 0 ? (
                       <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">尚無材料記錄或請選擇工程案</td></tr>
-                    ) : materials.map(m => {
+                    ) : sortedMaterials.map(m => {
                       const sub = Number(m.quantity) * Number(m.unitPrice);
                       return (
                         <tr key={m.id} className="hover:bg-gray-50">

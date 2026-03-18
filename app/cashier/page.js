@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 // Determine the correct display order number based on source
 function getDisplayOrderNo(order) {
@@ -79,7 +80,7 @@ export default function CashierPage() {
 
   async function fetchSuppliers() {
     try {
-      const res = await fetch('/api/suppliers');
+      const res = await fetch('/api/suppliers?all=true');
       const data = await res.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch { setSuppliers([]); }
@@ -433,6 +434,22 @@ export default function CashierPage() {
   }
 
   const displayOrders = getDisplayOrders();
+  const { sortKey: cashSortKey, sortDir: cashSortDir, toggleSort: toggleCashSort } = useColumnSort('createdAt', 'desc');
+  const sortedCashierOrders = useMemo(
+    () =>
+      sortRows(displayOrders, cashSortKey, cashSortDir, {
+        orderNo: (o) => getDisplayOrderNo(o),
+        supplierName: (o) => o.supplierName || '',
+        warehouse: (o) => o.warehouse || '',
+        paymentMethod: (o) => o.paymentMethod || '',
+        netAmount: (o) => Number(o.netAmount || 0),
+        summary: (o) => o.summary || '',
+        note: (o) => o.note || '',
+        createdAt: (o) => o.createdAt || '',
+        status: (o) => o.status || (o.executions?.[0] ? '已執行' : ''),
+      }),
+    [displayOrders, cashSortKey, cashSortDir]
+  );
   const isPendingTab = activeTab === 'pending';
 
   // 來源選項（對應 PaymentOrder.sourceType）
@@ -589,20 +606,20 @@ export default function CashierPage() {
                       />
                     </th>
                   )}
-                  <th className="px-4 py-3 text-left">付款單號</th>
-                  <th className="px-4 py-3 text-left">廠商</th>
-                  <th className="px-4 py-3 text-left">館別</th>
-                  <th className="px-4 py-3 text-left">付款方式</th>
-                  <th className="px-4 py-3 text-right">金額</th>
-                  <th className="px-4 py-3 text-left">摘要</th>
-                  <th className="px-4 py-3 text-left">備註</th>
-                  <th className="px-4 py-3 text-left">建立日期</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap" style={{ minWidth: '80px' }}>狀態</th>
-                  <th className="px-4 py-3 text-center whitespace-nowrap" style={{ minWidth: '90px' }}>操作</th>
+                  <SortableTh label="付款單號" colKey="orderNo" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="廠商" colKey="supplierName" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="館別" colKey="warehouse" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="付款方式" colKey="paymentMethod" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="金額" colKey="netAmount" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" align="right" />
+                  <SortableTh label="摘要" colKey="summary" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="備註" colKey="note" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="建立日期" colKey="createdAt" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <SortableTh label="狀態" colKey="status" sortKey={cashSortKey} sortDir={cashSortDir} onSort={toggleCashSort} className="px-4 py-3" />
+                  <th className="px-4 py-3 text-center whitespace-nowrap text-sm font-medium text-gray-700" style={{ minWidth: '90px' }}>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {displayOrders.map(order => {
+                {sortedCashierOrders.map(order => {
                   const isExpanded = expandedOrderId === order.id;
                   const exec = order.executions?.[0];
                   const storedResult = executionResults[order.id];

@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 
 // 進銷存每月費用已移至 /purchasing 小分頁
 const MAIN_TABS = [
@@ -83,6 +84,20 @@ export default function ExpensesPage() {
     status: ''
   });
   const [expandedRecord, setExpandedRecord] = useState(null);
+  const { sortKey: expRecSortKey, sortDir: expRecSortDir, toggleSort: toggleExpRecSort } = useColumnSort('recordNo', 'desc');
+  const sortedExpenseRecords = useMemo(
+    () =>
+      sortRows(records, expRecSortKey, expRecSortDir, {
+        recordNo: (r) => r.recordNo || '',
+        templateName: (r) => r.template?.name || '',
+        expenseMonth: (r) => r.expenseMonth || '',
+        warehouse: (r) => r.warehouse || '',
+        totalDebit: (r) => Number(r.totalDebit || 0),
+        relatedNos: (r) => [r.purchaseNo, r.salesNo, r.paymentOrderNo].filter(Boolean).join('|'),
+        paymentStatus: (r) => r.paymentStatus || r.status || '',
+      }),
+    [records, expRecSortKey, expRecSortDir]
+  );
   const [voidReason, setVoidReason] = useState('');
   const [showVoidModal, setShowVoidModal] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);  // record object being edited
@@ -170,7 +185,7 @@ export default function ExpensesPage() {
       // 第二批：延遲載入（廠商、商品、會計科目、存簿）- 不阻塞頁面顯示
       const [suppliersRes, productsRes, accountingRes, cashflowRes] = await Promise.all([
         fetch('/api/suppliers?activeOnly=true'),
-        fetch('/api/products'),
+        fetch('/api/products?all=true'),
         fetch('/api/accounting-subjects'),
         fetch('/api/cashflow/accounts').catch(() => ({ json: () => [] }))
       ]);
@@ -1776,18 +1791,18 @@ export default function ExpensesPage() {
                 <table style={tableStyle}>
                   <thead>
                     <tr>
-                      <th style={thStyle}>記錄單號</th>
-                      <th style={thStyle}>範本</th>
-                      <th style={thStyle}>月份</th>
-                      <th style={thStyle}>館別</th>
-                      <th style={thStyle}>金額</th>
-                      <th style={thStyle}>關聯單號</th>
-                      <th style={thStyle}>狀態</th>
+                      <SortableThInline label="記錄單號" colKey="recordNo" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
+                      <SortableThInline label="範本" colKey="templateName" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
+                      <SortableThInline label="月份" colKey="expenseMonth" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
+                      <SortableThInline label="館別" colKey="warehouse" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
+                      <SortableThInline label="金額" colKey="totalDebit" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={{ ...thStyle, textAlign: 'right' }} align="right" />
+                      <SortableThInline label="關聯單號" colKey="relatedNos" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
+                      <SortableThInline label="狀態" colKey="paymentStatus" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
                       <th style={thStyle}>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {records.map(r => {
+                    {sortedExpenseRecords.map(r => {
                       const ps = r.paymentStatus;
                       return (
                       <tr key={r.id} style={{ background: '#fff' }}>
@@ -1836,7 +1851,7 @@ export default function ExpensesPage() {
                       </tr>
                       );
                     })}
-                    {records.map(r => expandedRecord === r.id && (
+                    {sortedExpenseRecords.map(r => expandedRecord === r.id && (
                       <tr key={`detail-${r.id}`}>
                         <td colSpan={8} style={{ padding: 16, background: '#fafbfc' }}>
                           <div style={{ fontSize: 13 }}>

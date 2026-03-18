@@ -56,7 +56,7 @@ export default function PaymentVoucherListPage() {
 
   async function fetchSuppliers() {
     try {
-      const response = await fetch('/api/suppliers');
+      const response = await fetch('/api/suppliers?all=true');
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {

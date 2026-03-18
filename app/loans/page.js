@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
   { key: 'overview', label: '貸款總覽' },
@@ -610,6 +611,86 @@ export default function LoansPage() {
     return true;
   });
 
+  const { sortKey: loanOvKey, sortDir: loanOvDir, toggleSort: toggleLoanOv } = useColumnSort('loanCode', 'asc');
+  const sortedFilteredLoans = useMemo(
+    () =>
+      sortRows(filteredLoans, loanOvKey, loanOvDir, {
+        loanCode: (l) => l.loanCode || '',
+        loanName: (l) => l.loanName || '',
+        bankName: (l) => l.bankName || '',
+        warehouse: (l) => l.warehouse || '',
+        originalAmount: (l) => Number(l.originalAmount || 0),
+        currentBalance: (l) => Number(l.currentBalance ?? l.loanAmount ?? 0),
+        annualRate: (l) => {
+          const r = l.annualRate;
+          if (typeof r === 'number' && !Number.isNaN(r)) return r;
+          return parseFloat(String(r).replace(/%/g, '')) || 0;
+        },
+        endDate: (l) => l.endDate || '',
+        deductAccount: (l) => l.deductAccount?.name || '',
+        status: (l) => l.status || '',
+      }),
+    [filteredLoans, loanOvKey, loanOvDir]
+  );
+
+  const monthlyMatrixRows = useMemo(() => {
+    const active = loans.filter((l) => l.status === '使用中');
+    const rm = {};
+    monthlyRecords.forEach((r) => {
+      rm[r.loanId] = r;
+    });
+    return active.map((loan) => ({ loan, rec: rm[loan.id] }));
+  }, [loans, monthlyRecords]);
+
+  const { sortKey: loanMonKey, sortDir: loanMonDir, toggleSort: toggleLoanMon } = useColumnSort('loanName', 'asc');
+  const sortedMonthlyMatrixRows = useMemo(
+    () =>
+      sortRows(monthlyMatrixRows, loanMonKey, loanMonDir, {
+        loanName: (row) => row.loan.loanName || '',
+        deductAccount: (row) => row.loan.deductAccount?.name || '',
+        daysLeft: (row) => {
+          const rec = row.rec;
+          if (!rec?.dueDate) return 999999;
+          const due = new Date(rec.dueDate + 'T00:00:00');
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          return Math.ceil((due - today) / 86400000);
+        },
+        monthStatus: (row) => row.rec?.status || '未建立',
+        estimatedTotal: (row) => Number(row.rec?.estimatedTotal ?? -1),
+        actualTotal: (row) => Number(row.rec?.actualTotal ?? -1),
+        diffCol: (row) => {
+          const rec = row.rec;
+          if (!rec || (rec.status !== '已核實' && rec.status !== '已預付') || rec.actualTotal == null) return -1e15;
+          return rec.estimatedTotal - rec.actualTotal;
+        },
+        cashFlowCol: (row) => {
+          const rec = row.rec;
+          if (!rec) return '';
+          return [rec.preDeposit ? '1' : '0', rec.cashierTxns?.length || 0, rec.paymentTxns?.length || 0].join('-');
+        },
+      }),
+    [monthlyMatrixRows, loanMonKey, loanMonDir]
+  );
+
+  const { sortKey: loanRecKey, sortDir: loanRecDir, toggleSort: toggleLoanRec } = useColumnSort('dueDate', 'desc');
+  const sortedLoanRecords = useMemo(
+    () =>
+      sortRows(records, loanRecKey, loanRecDir, {
+        ym: (r) => (r.recordYear || 0) * 100 + (r.recordMonth || 0),
+        loanCode: (r) => r.loan?.loanCode || '',
+        loanName: (r) => r.loan?.loanName || '',
+        dueDate: (r) => r.dueDate || '',
+        status: (r) => r.status || '',
+        estimatedTotal: (r) => Number(r.estimatedTotal || 0),
+        actualPrincipal: (r) => (r.actualPrincipal != null ? Number(r.actualPrincipal) : -1),
+        actualInterest: (r) => (r.actualInterest != null ? Number(r.actualInterest) : -1),
+        actualTotal: (r) => (r.actualTotal != null ? Number(r.actualTotal) : -1),
+        confirmedAt: (r) => r.confirmedAt || '',
+      }),
+    [records, loanRecKey, loanRecDir]
+  );
+
   const activeLoans = loans.filter(l => l.status === '使用中');
   const totalBalance = activeLoans.reduce((sum, l) => sum + l.currentBalance, 0);
   const thisMonthDue = monthlyRecords.filter(r => r.status === '暫估' || r.status === '待出納').length;
@@ -920,17 +1001,17 @@ export default function LoansPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">貸款編號</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">貸款名稱</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">銀行</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">館別</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">原始金額</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">目前餘額</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">年利率</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">到期日</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">扣款帳戶</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">狀態</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">操作</th>
+                  <SortableTh label="貸款編號" colKey="loanCode" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" />
+                  <SortableTh label="貸款名稱" colKey="loanName" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" />
+                  <SortableTh label="銀行" colKey="bankName" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" />
+                  <SortableTh label="館別" colKey="warehouse" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" />
+                  <SortableTh label="原始金額" colKey="originalAmount" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" align="right" />
+                  <SortableTh label="目前餘額" colKey="currentBalance" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" align="right" />
+                  <SortableTh label="年利率" colKey="annualRate" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" align="center" />
+                  <SortableTh label="到期日" colKey="endDate" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" align="center" />
+                  <SortableTh label="扣款帳戶" colKey="deductAccount" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" align="center" />
+                  <SortableTh label="狀態" colKey="status" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" align="center" />
+                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -938,7 +1019,7 @@ export default function LoansPage() {
                   <tr>
                     <td colSpan={11} className="text-center py-8 text-gray-400">暫無貸款資料</td>
                   </tr>
-                ) : filteredLoans.map(loan => {
+                ) : sortedFilteredLoans.map(loan => {
                   const warning = getDueDateWarning(loan.endDate);
                   return (
                     <tr key={loan.id} className="hover:bg-gray-50">
@@ -1158,15 +1239,15 @@ export default function LoansPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-3 py-3 font-medium text-gray-600">貸款名稱</th>
-                  <th className="text-left px-3 py-3 font-medium text-gray-600">扣款帳戶</th>
-                  <th className="text-center px-3 py-3 font-medium text-gray-600">繳款倒數</th>
-                  <th className="text-center px-3 py-3 font-medium text-gray-600">狀態</th>
-                  <th className="text-right px-3 py-3 font-medium text-gray-600">暫估合計</th>
-                  <th className="text-right px-3 py-3 font-medium text-gray-600">實際合計</th>
-                  <th className="text-right px-3 py-3 font-medium text-gray-600">差異</th>
-                  <th className="text-center px-3 py-3 font-medium text-gray-600">現金流狀態</th>
-                  <th className="text-center px-3 py-3 font-medium text-gray-600">操作</th>
+                  <SortableTh label="貸款名稱" colKey="loanName" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" />
+                  <SortableTh label="扣款帳戶" colKey="deductAccount" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" />
+                  <SortableTh label="繳款倒數" colKey="daysLeft" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" align="center" />
+                  <SortableTh label="狀態" colKey="monthStatus" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" align="center" />
+                  <SortableTh label="暫估合計" colKey="estimatedTotal" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" align="right" />
+                  <SortableTh label="實際合計" colKey="actualTotal" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" align="right" />
+                  <SortableTh label="差異" colKey="diffCol" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" align="right" />
+                  <SortableTh label="現金流狀態" colKey="cashFlowCol" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" align="center" />
+                  <th className="text-center px-3 py-3 text-sm font-medium text-gray-600">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1176,8 +1257,7 @@ export default function LoansPage() {
                       暫無使用中的貸款，請先在「貸款總覽」新增貸款
                     </td>
                   </tr>
-                ) : activeLoansForMonth.map(loan => {
-                  const rec = recordMap[loan.id];
+                ) : sortedMonthlyMatrixRows.map(({ loan, rec }) => {
                   const diff = rec && (rec.status === '已核實' || rec.status === '已預付') && rec.actualTotal != null
                     ? rec.estimatedTotal - rec.actualTotal : null;
                   const daysLeft = rec ? getDaysUntilDue(rec.dueDate) : null;
@@ -1398,17 +1478,17 @@ export default function LoansPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">年/月</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">貸款編號</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">貸款名稱</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">還款日</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">狀態</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">暫估合計</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">實際本金</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">實際利息</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">實際合計</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">核實日期</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">操作</th>
+                  <SortableTh label="年/月" colKey="ym" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" />
+                  <SortableTh label="貸款編號" colKey="loanCode" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" />
+                  <SortableTh label="貸款名稱" colKey="loanName" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" />
+                  <SortableTh label="還款日" colKey="dueDate" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="center" />
+                  <SortableTh label="狀態" colKey="status" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="center" />
+                  <SortableTh label="暫估合計" colKey="estimatedTotal" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="right" />
+                  <SortableTh label="實際本金" colKey="actualPrincipal" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="right" />
+                  <SortableTh label="實際利息" colKey="actualInterest" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="right" />
+                  <SortableTh label="實際合計" colKey="actualTotal" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="right" />
+                  <SortableTh label="核實日期" colKey="confirmedAt" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" align="center" />
+                  <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1416,7 +1496,7 @@ export default function LoansPage() {
                   <tr>
                     <td colSpan={11} className="text-center py-8 text-gray-400">暫無還款記錄</td>
                   </tr>
-                ) : records.map(rec => (
+                ) : sortedLoanRecords.map(rec => (
                   <tr key={rec.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">{rec.recordYear}/{String(rec.recordMonth).padStart(2, '0')}</td>
                     <td className="px-4 py-3 font-mono text-xs text-indigo-600">{rec.loan?.loanCode}</td>
