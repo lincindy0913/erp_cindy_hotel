@@ -143,7 +143,8 @@ export async function GET(request) {
     }
 
     // ====== Generate PDF ======
-    const { default: jsPDF } = await import('jspdf');
+    const jspdfModule = await import('jspdf');
+    const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
     await import('jspdf-autotable');
     const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
 

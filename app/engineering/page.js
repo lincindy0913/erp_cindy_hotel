@@ -59,10 +59,43 @@ export default function EngineeringPage() {
   const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
   const [paymentOrders, setPaymentOrders] = useState([]);
 
+  // 搜尋篩選
+  const [searchDateFrom, setSearchDateFrom] = useState('');
+  const [searchDateTo, setSearchDateTo] = useState('');
+  const [searchSupplierId, setSearchSupplierId] = useState('');
+  const [searchWarehouse, setSearchWarehouse] = useState('');
+
   const { sortKey: engProjKey, sortDir: engProjDir, toggleSort: engProjToggle } = useColumnSort('code', 'asc');
+
+  // 搜尋篩選後的工程案
+  const filteredProjects = useMemo(() => {
+    return projects.filter(p => {
+      // 日期區間：工程案的起迄日與搜尋區間有交集
+      if (searchDateFrom) {
+        const pEnd = p.endDate || '9999-12-31';
+        if (pEnd < searchDateFrom) return false;
+      }
+      if (searchDateTo) {
+        const pStart = p.startDate || '0000-01-01';
+        if (pStart > searchDateTo) return false;
+      }
+      // 館別
+      if (searchWarehouse) {
+        const whName = p.warehouseRef?.name || p.warehouse || '';
+        if (whName !== searchWarehouse) return false;
+      }
+      // 廠商：檢查該工程案是否有合約與此廠商相關
+      if (searchSupplierId) {
+        const hasSupplier = contracts.some(c => c.projectId === p.id && String(c.supplierId) === searchSupplierId);
+        if (!hasSupplier) return false;
+      }
+      return true;
+    });
+  }, [projects, contracts, searchDateFrom, searchDateTo, searchWarehouse, searchSupplierId]);
+
   const sortedProjects = useMemo(
     () =>
-      sortRows(projects, engProjKey, engProjDir, {
+      sortRows(filteredProjects, engProjKey, engProjDir, {
         code: (p) => p.code || '',
         name: (p) => p.name || '',
         clientName: (p) => p.clientName || '',
@@ -73,7 +106,7 @@ export default function EngineeringPage() {
         budget: (p) => Number(p.budget || 0),
         status: (p) => p.status || '',
       }),
-    [projects, engProjKey, engProjDir]
+    [filteredProjects, engProjKey, engProjDir]
   );
 
   const { sortKey: engConKey, sortDir: engConDir, toggleSort: engConToggle } = useColumnSort('signDate', 'desc');
@@ -141,6 +174,7 @@ export default function EngineeringPage() {
     fetchSuppliers();
     fetchProducts();
     fetchWarehouseDepartments();
+    fetchContracts();
   }, []);
 
   useEffect(() => {
@@ -467,6 +501,78 @@ export default function EngineeringPage() {
     return c?.terms || [];
   }
 
+  // 列印篩選後的工程案
+  function handlePrintProjects() {
+    if (sortedProjects.length === 0) {
+      alert('沒有可列印的資料');
+      return;
+    }
+    const filterDesc = [
+      searchDateFrom || searchDateTo ? `日期：${searchDateFrom || '?'} ~ ${searchDateTo || '?'}` : '',
+      searchSupplierId ? `廠商：${suppliers.find(s => String(s.id) === searchSupplierId)?.name || ''}` : '',
+      searchWarehouse ? `館別：${searchWarehouse}` : '',
+    ].filter(Boolean).join('　');
+
+    // 取得每個工程案的相關合約資訊
+    const projectRows = sortedProjects.map(p => {
+      const projContracts = contracts.filter(c => c.projectId === p.id && (!searchSupplierId || String(c.supplierId) === searchSupplierId));
+      const totalContractAmt = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
+      const supplierNames = [...new Set(projContracts.map(c => c.supplier?.name).filter(Boolean))].join('、');
+      return { ...p, projContracts, totalContractAmt, supplierNames };
+    });
+
+    const grandTotal = projectRows.reduce((s, p) => s + Number(p.budget || 0), 0);
+    const grandContractTotal = projectRows.reduce((s, p) => s + p.totalContractAmt, 0);
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>工程案列表</title>
+<style>
+  body { font-family: "Microsoft JhengHei","PingFang TC",sans-serif; margin: 20px; font-size: 12px; }
+  h2 { text-align: center; margin-bottom: 4px; }
+  .filter-desc { text-align: center; color: #666; margin-bottom: 12px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  .right { text-align: right; }
+  .center { text-align: center; }
+  .total-row { font-weight: bold; background: #fef3c7; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+<h2>工程案列表</h2>
+${filterDesc ? `<div class="filter-desc">${filterDesc}</div>` : ''}
+<div style="text-align:right;margin-bottom:4px;font-size:10px;color:#999">列印時間：${new Date().toLocaleString('zh-TW')}</div>
+<table>
+<thead><tr>
+  <th>代碼</th><th>名稱</th><th>業主</th><th>館別</th><th>廠商</th>
+  <th>起日</th><th>迄日</th><th class="right">預算</th><th class="right">合約總額</th><th class="center">狀態</th>
+</tr></thead>
+<tbody>
+${projectRows.map(p => `<tr>
+  <td>${p.code || ''}</td>
+  <td>${p.name || ''}</td>
+  <td>${p.clientName || ''}</td>
+  <td>${p.warehouseRef?.name || p.warehouse || ''}</td>
+  <td>${p.supplierNames || ''}</td>
+  <td>${p.startDate || ''}</td>
+  <td>${p.endDate || ''}</td>
+  <td class="right">${formatNum(p.budget)}</td>
+  <td class="right">${formatNum(p.totalContractAmt)}</td>
+  <td class="center">${p.status || ''}</td>
+</tr>`).join('')}
+<tr class="total-row">
+  <td colspan="7">合計（${projectRows.length} 筆）</td>
+  <td class="right">${formatNum(grandTotal)}</td>
+  <td class="right">${formatNum(grandContractTotal)}</td>
+  <td></td>
+</tr>
+</tbody></table>
+<script>window.onload=function(){window.print();}</script>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-amber-600" />
@@ -492,6 +598,40 @@ export default function EngineeringPage() {
 
         {/* ===== 工程案 TAB ===== */}
         {activeTab === 'projects' && !loading && (
+          <>
+          {/* 搜尋列 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                <input type="date" value={searchDateFrom} onChange={e => setSearchDateFrom(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                <input type="date" value={searchDateTo} onChange={e => setSearchDateTo(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">廠商</label>
+                <select value={searchSupplierId} onChange={e => setSearchSupplierId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[140px]">
+                  <option value="">全部</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select value={searchWarehouse} onChange={e => setSearchWarehouse(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                  <option value="">全部</option>
+                  {(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
+                </select>
+              </div>
+              <button onClick={() => { setSearchDateFrom(''); setSearchDateTo(''); setSearchSupplierId(''); setSearchWarehouse(''); }} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-100">清除</button>
+              <button onClick={handlePrintProjects} className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">列印</button>
+              {(searchDateFrom || searchDateTo || searchSupplierId || searchWarehouse) && (
+                <span className="text-xs text-amber-600">篩選中：{filteredProjects.length} / {projects.length} 筆</span>
+              )}
+            </div>
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="px-4 py-3 border-b flex justify-between items-center">
               <h3 className="font-semibold text-gray-800">工程案列表</h3>
@@ -514,8 +654,8 @@ export default function EngineeringPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {projects.length === 0 ? (
-                    <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">尚無工程案，請新增</td></tr>
+                  {sortedProjects.length === 0 ? (
+                    <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{(searchDateFrom || searchDateTo || searchSupplierId || searchWarehouse) ? '無符合條件的工程案' : '尚無工程案，請新增'}</td></tr>
                   ) : sortedProjects.map(p => (
                     <tr key={p.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2 font-mono">{p.code}</td>
@@ -537,6 +677,7 @@ export default function EngineeringPage() {
               </table>
             </div>
           </div>
+          </>
         )}
 
         {/* ===== 合約與期數 TAB ===== */}

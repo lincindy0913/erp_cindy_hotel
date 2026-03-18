@@ -36,6 +36,11 @@ function InvoicePageInner() {
   const [searchSupplier, setSearchSupplier] = useState('');
   const [searchDateFrom, setSearchDateFrom] = useState('');
   const [searchDateTo, setSearchDateTo] = useState('');
+  const [searchInvoiceTitle, setSearchInvoiceTitle] = useState('');
+  const [searchWarehouse, setSearchWarehouse] = useState('');
+
+  // 勾選發票（列印用）
+  const [checkedInvoiceIds, setCheckedInvoiceIds] = useState(new Set());
 
   // 篩選條件
   const [filterData, setFilterData] = useState({
@@ -206,9 +211,11 @@ function InvoicePageInner() {
         const invDate = inv.invoiceDate || inv.salesDate || '';
         if (searchDateFrom && invDate < searchDateFrom) return false;
         if (searchDateTo && invDate > searchDateTo) return false;
+        if (searchInvoiceTitle && (inv.invoiceTitle || '') !== searchInvoiceTitle) return false;
+        if (searchWarehouse && (inv.warehouse || '') !== searchWarehouse) return false;
         return true;
       }),
-    [invoices, searchSupplier, searchDateFrom, searchDateTo]
+    [invoices, searchSupplier, searchDateFrom, searchDateTo, searchInvoiceTitle, searchWarehouse]
   );
   const { sortKey: saleInvKey, sortDir: saleInvDir, toggleSort: toggleSaleInv } = useColumnSort('invoiceDate', 'desc');
   const sortedInvoicesForList = useMemo(
@@ -457,6 +464,92 @@ function InvoicePageInner() {
   }
 
   const totals = selectedItems.length > 0 ? calculateTotal() : { subtotal: '0' };
+
+  // 列印選取的發票
+  function handlePrintInvoices() {
+    const selected = sortedInvoicesForList.filter(inv => checkedInvoiceIds.has(inv.id));
+    if (selected.length === 0) return;
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      showToast('無法開啟列印視窗，請允許彈出視窗', 'error');
+      return;
+    }
+
+    const rows = selected.map((inv, i) => {
+      const itemRows = (inv.items || []).map((item, idx) => {
+        const product = products.find(p => p.id === item.productId);
+        const subtotal = (item.quantity || 0) * (item.unitPrice || 0);
+        return `<tr>
+          <td>${idx + 1}</td>
+          <td>${item.purchaseNo || '-'}</td>
+          <td>${item.purchaseDate || '-'}</td>
+          <td>${product ? product.name : '未知商品'}</td>
+          <td style="text-align:right">${item.quantity || 0}</td>
+          <td style="text-align:right">${parseFloat(item.unitPrice || 0).toFixed(2)}</td>
+          <td style="text-align:right">${subtotal.toFixed(2)}</td>
+        </tr>`;
+      }).join('');
+
+      return `
+        <div class="invoice-block" style="${i > 0 ? 'page-break-before:always;' : ''}">
+          <h2 style="text-align:center;margin-bottom:10px;">發票明細</h2>
+          <table class="info-table">
+            <tr>
+              <td><strong>發票號碼：</strong>${inv.invoiceNo || inv.salesNo || '-'}</td>
+              <td><strong>發票日期：</strong>${inv.invoiceDate || inv.salesDate || '-'}</td>
+              <td><strong>館別：</strong>${inv.warehouse || '-'}</td>
+            </tr>
+            <tr>
+              <td><strong>發票抬頭：</strong>${inv.invoiceTitle || '-'}</td>
+              <td><strong>廠商：</strong>${inv.supplierName || '-'}</td>
+              <td><strong>付款狀態：</strong>${inv.paymentStatus || '未付款'}</td>
+            </tr>
+          </table>
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th>序號</th><th>進貨單號</th><th>進貨日期</th><th>產品</th>
+                <th style="text-align:right">數量</th><th style="text-align:right">單價</th><th style="text-align:right">小計</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows || '<tr><td colspan="7" style="text-align:center">無品項</td></tr>'}</tbody>
+          </table>
+          <table class="summary-table">
+            <tr>
+              <td>發票金額：NT$ ${parseFloat(inv.invoiceAmount || inv.amount || 0).toFixed(2)}</td>
+              <td>稅額：NT$ ${parseFloat(inv.tax || 0).toFixed(2)}</td>
+              <td>折讓：NT$ ${parseFloat(inv.supplierDiscount || 0).toFixed(2)}</td>
+              <td><strong>總金額：NT$ ${parseFloat(inv.totalAmount || 0).toFixed(2)}</strong></td>
+            </tr>
+          </table>
+        </div>`;
+    }).join('');
+
+    const grandTotal = selected.reduce((sum, inv) => sum + parseFloat(inv.totalAmount || 0), 0);
+
+    printWin.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>發票列印</title>
+      <style>
+        body { font-family: "Microsoft JhengHei","PingFang TC",sans-serif; margin:20px; font-size:12px; }
+        h2 { font-size:16px; }
+        .info-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+        .info-table td { padding:4px 8px; }
+        .detail-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+        .detail-table th, .detail-table td { border:1px solid #333; padding:4px 6px; font-size:11px; }
+        .detail-table th { background:#eee; }
+        .summary-table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+        .summary-table td { padding:4px 8px; font-size:12px; }
+        .grand-total { text-align:right; font-size:14px; font-weight:bold; margin-top:16px; padding-top:8px; border-top:2px solid #333; }
+        @media print { .no-print { display:none; } }
+      </style></head><body>
+      ${rows}
+      <div class="grand-total">共 ${selected.length} 筆發票，總金額合計：NT$ ${grandTotal.toFixed(2)}</div>
+      <div class="no-print" style="text-align:center;margin-top:20px;">
+        <button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">列印</button>
+      </div>
+    </body></html>`);
+    printWin.document.close();
+  }
 
   return (
     <div className="min-h-screen page-bg-sales">
@@ -948,41 +1041,93 @@ function InvoicePageInner() {
           </div>
         )}
 
-        {/* 搜尋列：廠商 + 日期區間 */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <input
-            type="text"
-            value={searchSupplier}
-            onChange={(e) => setSearchSupplier(e.target.value)}
-            placeholder="搜尋廠商名稱..."
-            className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          />
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">起始日期</label>
+        {/* 搜尋列 */}
+        <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
+          <div className="flex flex-wrap items-center gap-3">
             <input
-              type="date"
-              value={searchDateFrom}
-              onChange={(e) => setSearchDateFrom(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              type="text"
+              value={searchSupplier}
+              onChange={(e) => setSearchSupplier(e.target.value)}
+              placeholder="搜尋廠商名稱..."
+              className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">結束日期</label>
-            <input
-              type="date"
-              value={searchDateTo}
-              onChange={(e) => setSearchDateTo(e.target.value)}
+            <select
+              value={searchInvoiceTitle}
+              onChange={(e) => setSearchInvoiceTitle(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            />
-          </div>
-          {(searchSupplier || searchDateFrom || searchDateTo) && (
-            <button
-              onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); }}
-              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
             >
-              清除篩選
+              <option value="">全部抬頭</option>
+              {invoiceTitles.map(t => (
+                <option key={t.id} value={t.title}>{t.title}</option>
+              ))}
+            </select>
+            <select
+              value={searchWarehouse}
+              onChange={(e) => setSearchWarehouse(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">全部館別</option>
+              <option value="麗格">麗格</option>
+              <option value="麗軒">麗軒</option>
+              <option value="民宿">民宿</option>
+            </select>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">起始日期</label>
+              <input
+                type="date"
+                value={searchDateFrom}
+                onChange={(e) => setSearchDateFrom(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">結束日期</label>
+              <input
+                type="date"
+                value={searchDateTo}
+                onChange={(e) => setSearchDateTo(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+            {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse) && (
+              <button
+                onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); setSearchInvoiceTitle(''); setSearchWarehouse(''); }}
+                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                清除篩選
+              </button>
+            )}
+          </div>
+          {/* 列印按鈕列 */}
+          <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-200">
+            <button
+              onClick={() => {
+                // 全選/取消全選
+                if (checkedInvoiceIds.size === sortedInvoicesForList.length) {
+                  setCheckedInvoiceIds(new Set());
+                } else {
+                  setCheckedInvoiceIds(new Set(sortedInvoicesForList.map(inv => inv.id)));
+                }
+              }}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              {checkedInvoiceIds.size === sortedInvoicesForList.length && sortedInvoicesForList.length > 0 ? '取消全選' : '全選'}
             </button>
-          )}
+            <span className="text-sm text-gray-500">
+              已選 {checkedInvoiceIds.size} 筆
+            </span>
+            <button
+              onClick={() => handlePrintInvoices()}
+              disabled={checkedInvoiceIds.size === 0}
+              className={`px-4 py-1.5 text-sm rounded-lg ${
+                checkedInvoiceIds.size === 0
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              列印選取的發票
+            </button>
+          </div>
         </div>
 
         {/* 列表 */}
@@ -990,6 +1135,20 @@ function InvoicePageInner() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-3 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={checkedInvoiceIds.size === sortedInvoicesForList.length && sortedInvoicesForList.length > 0}
+                    onChange={() => {
+                      if (checkedInvoiceIds.size === sortedInvoicesForList.length) {
+                        setCheckedInvoiceIds(new Set());
+                      } else {
+                        setCheckedInvoiceIds(new Set(sortedInvoicesForList.map(inv => inv.id)));
+                      }
+                    }}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </th>
                 <SortableTh label="館別" colKey="warehouse" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
                 <SortableTh label="發票抬頭" colKey="invoiceTitle" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
                 <SortableTh label="廠商" colKey="supplierName" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
@@ -1004,19 +1163,19 @@ function InvoicePageInner() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
                     載入中...
                   </td>
                 </tr>
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
                     尚無發票資料
                   </td>
                 </tr>
               ) : filteredInvoicesForList.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
                     無符合篩選的發票
                   </td>
                 </tr>
@@ -1026,6 +1185,19 @@ function InvoicePageInner() {
                   return (
                     <Fragment key={invoice.id}>
                       <tr className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={checkedInvoiceIds.has(invoice.id)}
+                            onChange={() => {
+                              const next = new Set(checkedInvoiceIds);
+                              if (next.has(invoice.id)) next.delete(invoice.id);
+                              else next.add(invoice.id);
+                              setCheckedInvoiceIds(next);
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
                         <td className="px-4 py-3 text-sm">{invoice.warehouse || '-'}</td>
                         <td className="px-4 py-3 text-sm">{invoice.invoiceTitle || '-'}</td>
                         <td className="px-4 py-3 text-sm">{invoice.supplierName || '-'}</td>
@@ -1079,7 +1251,7 @@ function InvoicePageInner() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan="9" className="px-4 py-4">
+                          <td colSpan="10" className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 發票基本資訊 */}
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4 border-b border-gray-300">

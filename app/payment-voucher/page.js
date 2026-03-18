@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, Fragment } from 'react';
-import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 
@@ -149,7 +148,23 @@ export default function PaymentVoucherListPage() {
     setPreviewLoading(false);
   }
 
-  function printMonthlyVoucher(showPriceNote = true) {
+  async function printPaymentVoucher(orderId) {
+    try {
+      const res = await fetch(`/api/export/payment-voucher/${orderId}`, { credentials: 'include' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
+        alert('列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (e) {
+      alert('列印失敗：' + (e.message || '網路錯誤'));
+    }
+  }
+
+  async function printMonthlyVoucher(showPriceNote = true) {
     if (!voucherFilter.supplierId || !voucherFilter.month) return;
     const params = new URLSearchParams({
       supplierId: voucherFilter.supplierId,
@@ -157,7 +172,20 @@ export default function PaymentVoucherListPage() {
       warehouse: voucherFilter.warehouse,
       showPriceNote: showPriceNote ? 'true' : 'false',
     });
-    window.open(`/api/export/voucher-monthly?${params}`, '_blank');
+    const url = `/api/export/voucher-monthly?${params}`;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
+        alert('列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (e) {
+      alert('列印失敗：' + (e.message || '網路錯誤'));
+    }
   }
 
   const filteredOrders = getFilteredOrders();
@@ -462,13 +490,12 @@ export default function PaymentVoucherListPage() {
                               <button onClick={() => toggleExpand(order.id)} className="text-indigo-600 hover:underline text-xs">
                                 {isExpanded ? '收起' : '詳情'}
                               </button>
-                              <Link
-                                href={`/api/export/payment-voucher/${order.id}`}
-                                target="_blank"
+                              <button
+                                onClick={() => printPaymentVoucher(order.id)}
                                 className="text-green-600 hover:underline text-xs font-medium"
                               >
                                 列印PDF
-                              </Link>
+                              </button>
                             </div>
                           </td>
                         </tr>

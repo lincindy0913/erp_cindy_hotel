@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * Returns a PDF document as a downloadable response
  */
 export async function GET(request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.EXPORT_PDF);
+  const auth = await requireAnyPermission([PERMISSIONS.EXPORT_PDF, PERMISSIONS.FINANCE_VIEW, PERMISSIONS.PURCHASING_VIEW]);
   if (!auth.ok) return auth.response;
   
   try {
@@ -90,7 +90,8 @@ export async function GET(request, { params }) {
     }
 
     // Generate the PDF using jsPDF (中文字體避免亂碼)
-    const { default: jsPDF } = await import('jspdf');
+    const jspdfModule = await import('jspdf');
+    const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
     await import('jspdf-autotable');
     const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
 
@@ -367,7 +368,7 @@ export async function GET(request, { params }) {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="payment-voucher-${order.orderNo || orderId}.pdf"`,
+        'Content-Disposition': `inline; filename="payment-voucher-${order.orderNo || orderId}.pdf"`,
         'Cache-Control': 'no-store',
       },
     });
@@ -408,12 +409,13 @@ async function generateLegacyPdf(payment, paymentId) {
     }
   }
 
-  const { default: jsPDF } = await import('jspdf');
+  const jspdfModule2 = await import('jspdf');
+  const jsPDF2 = jspdfModule2.jsPDF || jspdfModule2.default?.jsPDF || jspdfModule2.default;
   await import('jspdf-autotable');
-  const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
+  const { addCJKFontToDoc: addCJKFont2 } = require('@/lib/pdf-fonts');
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  addCJKFontToDoc(doc);
+  const doc = new jsPDF2({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  addCJKFont2(doc);
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
 
@@ -537,7 +539,7 @@ async function generateLegacyPdf(payment, paymentId) {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="payment-voucher-${payment.paymentNo || paymentId}.pdf"`,
+      'Content-Disposition': `inline; filename="payment-voucher-${payment.paymentNo || paymentId}.pdf"`,
       'Cache-Control': 'no-store',
     },
   });
