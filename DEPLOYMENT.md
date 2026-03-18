@@ -83,11 +83,7 @@
    - `NEXTAUTH_URL`（例如 `https://your-app.railway.app`）
    - `NEXTAUTH_SECRET`
 
-3. **資料庫同步**：部署後容器啟動時會自動執行 `prisma db push`（無 `--accept-data-loss`），既有資料會保留。若你使用 **migrations**，請在 Railway 的 Run Command 或 one-off 任務中執行：
-   ```bash
-   npx prisma migrate deploy
-   ```
-   或於本地對應到 Railway DB 後執行一次 `prisma migrate deploy`。
+3. **資料庫同步（保留資料）**：`Dockerfile` 啟動時依序嘗試 `prisma migrate deploy`，失敗時再 `prisma db push --skip-generate`，**皆不使用** `--accept-data-loss`，既有資料會保留。推送 `main` 後 Railway 會用同一 Dockerfile 重建並部署最新版。
 
 4. **確認健康狀態**：
    ```bash

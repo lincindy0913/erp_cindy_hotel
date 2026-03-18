@@ -38,6 +38,10 @@ next-env.d.ts
 # prisma
 prisma/migrations/
 
+# database dumps (do not commit)
+*.dump
+backup.dump
+
 # misc
 *.xlsx
 .cursor/
