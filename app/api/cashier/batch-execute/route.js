@@ -69,12 +69,18 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '不可重複選擇相同帳戶', 400);
     }
 
+    // Check duplicate order IDs
+    const uniqueOrderIds = [...new Set(orderIds.map(id => parseInt(id)))];
+    if (uniqueOrderIds.length !== orderIds.length) {
+      return createErrorResponse('VALIDATION_FAILED', '不可重複選擇相同付款單', 400);
+    }
+
     // Fetch orders
     const orders = await prisma.paymentOrder.findMany({
-      where: { id: { in: orderIds.map(id => parseInt(id)) } },
+      where: { id: { in: uniqueOrderIds } },
     });
 
-    if (orders.length !== orderIds.length) {
+    if (orders.length !== uniqueOrderIds.length) {
       return createErrorResponse('NOT_FOUND', '部分付款單不存在', 404);
     }
 

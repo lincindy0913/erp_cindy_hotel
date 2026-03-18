@@ -1730,7 +1730,7 @@ function RentalsPage() {
                   <label className="text-sm">單元：</label>
                   <select value={reportPropertyId} onChange={e => setReportPropertyId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
                     <option value="">全部</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {properties.map(p => { const st = PROPERTY_STATUSES.find(s => s.value === p.status); return <option key={p.id} value={p.id}>{p.name}{st ? ` (${st.label})` : ''}</option>; })}
                   </select>
                   <button onClick={fetchIncomeReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
                   <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
@@ -1789,7 +1789,7 @@ function RentalsPage() {
                   <label className="text-sm">單元：</label>
                   <select value={reportPropertyId} onChange={e => setReportPropertyId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
                     <option value="">全部</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {properties.map(p => { const st = PROPERTY_STATUSES.find(s => s.value === p.status); return <option key={p.id} value={p.id}>{p.name}{st ? ` (${st.label})` : ''}</option>; })}
                   </select>
                   <button onClick={fetchOperatingReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
                   <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>

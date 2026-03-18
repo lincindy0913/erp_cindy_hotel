@@ -23,6 +23,14 @@ function formatNum(n) {
   return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+// 取得付款單實際已付金額：已執行的用 executions.actualAmount 合計，否則用 po.amount
+function getActualPaid(po) {
+  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
+    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
+  }
+  return Number(po.amount || 0);
+}
+
 export default function EngineeringPage() {
   const [activeTab, setActiveTab] = useState('projects');
   const [projects, setProjects] = useState([]);
@@ -508,7 +516,7 @@ export default function EngineeringPage() {
                                 const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
                                 const paidPOs = termPOs.filter(po => po.status === '已執行');
                                 const pendingPOs = termPOs.filter(po => po.status === '待出納');
-                                const paidAmount = paidPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
+                                const paidAmount = paidPOs.reduce((s, po) => s + getActualPaid(po), 0);
                                 const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
                                 const termAmt = Number(t.amount);
                                 const unpaidAmount = termAmt - paidAmount;
@@ -537,7 +545,7 @@ export default function EngineeringPage() {
                                         <div key={pi} className="text-xs text-gray-500 flex gap-2">
                                           <span className="font-mono">{po.paymentNo}</span>
                                           <span>{po.dueDate || po.createdAt?.slice(0,10) || ''}</span>
-                                          <span className="text-green-600">{formatNum(Number(po.amount))}</span>
+                                          <span className="text-green-600">{formatNum(getActualPaid(po))}</span>
                                           <span className="text-gray-400">{po.paymentMethod || ''}</span>
                                         </div>
                                       ))}
@@ -593,7 +601,7 @@ export default function EngineeringPage() {
                 const totalContractAmount = projContracts.reduce((s, c) => s + Number(c.totalAmount), 0);
                 const totalPaid = projContracts.reduce((s, c) => s + (c.terms || []).reduce((ts, t) => {
                   const tPOs = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行');
-                  return ts + tPOs.reduce((ps, po) => ps + Number(po.amount || 0), 0);
+                  return ts + tPOs.reduce((ps, po) => ps + getActualPaid(po), 0);
                 }, 0), 0);
                 const budget = Number(proj.budget) || 0;
                 const overBudget = budget > 0 && totalContractAmount > budget;
@@ -630,7 +638,7 @@ export default function EngineeringPage() {
                             let paidByPO = 0;
                             let fullyPaidCount = 0;
                             for (const t of terms) {
-                              const tPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + Number(po.amount || 0), 0);
+                              const tPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0);
                               paidByPO += tPaid;
                               if (tPaid >= Number(t.amount) && Number(t.amount) > 0) fullyPaidCount++;
                             }
@@ -913,7 +921,7 @@ export default function EngineeringPage() {
                     const proj = projects.find(p => p.id === contract.projectId);
                     const whName = proj?.warehouseRef?.name || proj?.warehouse || '';
                     const deptName = proj?.departmentRef?.name || '';
-                    const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === tid && (po.status === '已執行' || po.status === '待出納')).reduce((s, po) => s + Number(po.amount || 0), 0);
+                    const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === tid && (po.status === '已執行' || po.status === '待出納')).reduce((s, po) => s + (po.status === '已執行' ? getActualPaid(po) : Number(po.amount || 0)), 0);
                     const remaining = Math.max(0, Number(term.amount) - termPaidAmt);
                     const fillAmount = remaining > 0 ? String(remaining) : String(term.amount);
                     setPaymentForm(f => ({ ...f, termId: tid, contractId: cid, supplierId: String(contract.supplierId),
@@ -925,10 +933,10 @@ export default function EngineeringPage() {
                   <option value="">一般工程付款（不連結期數）</option>
                   {contracts.map(c =>
                     (c.terms || []).filter(t => {
-                      const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
                       return paid < Number(t.amount); // show terms not fully paid by actual amount
                     }).map(t => {
-                      const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + Number(po.amount || 0), 0);
+                      const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
                       const pendingAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
                       const remaining = Number(t.amount) - paidAmt;
                       return (
@@ -948,7 +956,7 @@ export default function EngineeringPage() {
                 const selTerm = selContract?.terms?.find(t => t.id === Number(paymentForm.termId));
                 if (!selTerm) return null;
                 const selPaidPOs = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '已執行');
-                const selPaidAmt = selPaidPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
+                const selPaidAmt = selPaidPOs.reduce((s, po) => s + getActualPaid(po), 0);
                 const selPendingAmt = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
                 const selRemaining = Number(selTerm.amount) - selPaidAmt;
                 return (
@@ -960,7 +968,7 @@ export default function EngineeringPage() {
                     {selPaidAmt > 0 && <div className="text-green-700">已付款合計：{formatNum(selPaidAmt)}（{selPaidPOs.length} 筆）</div>}
                     {selPendingAmt > 0 && <div className="text-orange-600">待出納合計：{formatNum(selPendingAmt)}</div>}
                     {selPaidPOs.map((po, i) => (
-                      <div key={i} className="text-gray-500 pl-2">• {po.paymentNo} {po.dueDate || ''} {formatNum(Number(po.amount))} {po.paymentMethod || ''}</div>
+                      <div key={i} className="text-gray-500 pl-2">• {po.paymentNo} {po.dueDate || ''} {formatNum(getActualPaid(po))} {po.paymentMethod || ''}</div>
                     ))}
                   </div>
                 );
