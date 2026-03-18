@@ -43,6 +43,9 @@ const MAINTENANCE_CATEGORIES = ['水電', '管線', '油漆', '設備', '清潔'
 
 const PAYMENT_METHODS = ['現金', 'transfer', '支票', '匯款'];
 
+/** 報表「未填類別」篩選值，需與 API category 參數一致 */
+const REPORT_CAT_EMPTY = '__RENTAL_CAT_EMPTY__';
+
 function StatusBadge({ value, list }) {
   const item = list.find(s => s.value === value);
   if (!item) return <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{value}</span>;
@@ -89,6 +92,22 @@ function RentalsPage() {
       }),
     [incomes, rentIncKey, rentIncDir]
   );
+  const reportCategoryOptions = useMemo(() => {
+    const map = new Map();
+    properties.forEach((p) => {
+      const raw = p.unitNo;
+      const isEmpty = raw == null || String(raw).trim() === '';
+      const value = isEmpty ? REPORT_CAT_EMPTY : String(raw).trim();
+      if (!map.has(value)) map.set(value, isEmpty ? '未填類別' : String(raw).trim());
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => {
+        if (a[0] === REPORT_CAT_EMPTY) return 1;
+        if (b[0] === REPORT_CAT_EMPTY) return -1;
+        return (a[1] || '').localeCompare(b[1] || '', 'zh-Hant');
+      })
+      .map(([value, label]) => ({ value, label }));
+  }, [properties]);
   const [taxes, setTaxes] = useState([]);
   const [maintenances, setMaintenances] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -144,7 +163,7 @@ function RentalsPage() {
   const [reportYear, setReportYear] = useState(new Date().getFullYear());
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
-  const [reportPropertyId, setReportPropertyId] = useState('');
+  const [reportCategoryFilter, setReportCategoryFilter] = useState('');
   const [incomeReportData, setIncomeReportData] = useState({ year: null, rows: [] });
   const [operatingReportData, setOperatingReportData] = useState({ year: null, rows: [] });
   const [reportLoading, setReportLoading] = useState(false);
@@ -215,7 +234,7 @@ function RentalsPage() {
     } else {
       params.set('year', reportYear);
     }
-    if (reportPropertyId) params.set('propertyId', reportPropertyId);
+    if (reportCategoryFilter) params.set('category', reportCategoryFilter);
     return params.toString();
   }
 
@@ -1248,7 +1267,7 @@ function RentalsPage() {
                             <tr>
                               <th className="text-left px-3 py-2">名稱{sortArrow('name')}</th>
                               <th className="text-left px-3 py-2">地址{sortArrow('address')}</th>
-                              <th className="text-left px-3 py-2">單元{sortArrow('unitNo')}</th>
+                              <th className="text-left px-3 py-2">類別{sortArrow('unitNo')}</th>
                               <th className="text-center px-3 py-2">狀態{sortArrow('status')}</th>
                               <th className="text-left px-3 py-2">目前租客{sortArrow('tenant')}</th>
                               <th className="text-left px-3 py-2">收租帳戶{sortArrow('account')}</th>
@@ -1743,10 +1762,12 @@ function RentalsPage() {
                   <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
                   <span className="text-sm">～</span>
                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
-                  <label className="text-sm">單元：</label>
-                  <select value={reportPropertyId} onChange={e => setReportPropertyId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+                  <label className="text-sm">類別：</label>
+                  <select value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
                     <option value="">全部</option>
-                    {properties.map(p => { const st = PROPERTY_STATUSES.find(s => s.value === p.status); return <option key={p.id} value={p.id}>{p.name}{st ? ` (${st.label})` : ''}</option>; })}
+                    {reportCategoryOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                   <button onClick={fetchIncomeReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
                   <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
@@ -1802,10 +1823,12 @@ function RentalsPage() {
                   <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
                   <span className="text-sm">～</span>
                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
-                  <label className="text-sm">單元：</label>
-                  <select value={reportPropertyId} onChange={e => setReportPropertyId(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+                  <label className="text-sm">類別：</label>
+                  <select value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
                     <option value="">全部</option>
-                    {properties.map(p => { const st = PROPERTY_STATUSES.find(s => s.value === p.status); return <option key={p.id} value={p.id}>{p.name}{st ? ` (${st.label})` : ''}</option>; })}
+                    {reportCategoryOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                   <button onClick={fetchOperatingReport} disabled={reportLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
                   <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
@@ -1946,7 +1969,7 @@ function RentalsPage() {
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">單元編號</label>
+                  <label className="text-sm text-gray-600">類別</label>
                   <input type="text" value={propertyForm.unitNo} onChange={e => setPropertyForm(f => ({ ...f, unitNo: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>

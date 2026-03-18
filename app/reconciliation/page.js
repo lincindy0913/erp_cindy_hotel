@@ -407,16 +407,20 @@ export default function ReconciliationPage() {
     if (!file) return;
     setImportFileName(file.name);
     const fmt = formats.find(f => String(f.id) === String(selectedFormatId));
+    const isExcel = /\.(xls|xlsx)$/i.test(file.name || '');
     let encoding = fmt?.fileEncoding || 'UTF-8';
     // 土地銀行、陽信銀行 CSV 多為 Big5 編碼，若為 UTF-8 則改為 Big5 避免亂碼
     if (!isExcel && (fmt?.bankName === '土地銀行' || fmt?.bankName === '土銀' || fmt?.bankName === '陽信銀行')) {
       if (encoding === 'UTF-8') encoding = 'Big5';
     }
-    const isExcel = /\.(xls|xlsx)$/i.test(file.name || '');
 
     const processResult = (parsed) => {
       setImportLines(parsed);
-      if (parsed.length > 0) showMessage(`已解析 ${parsed.length} 筆明細`);
+      if (parsed.length > 0) {
+        showMessage(`已解析 ${parsed.length} 筆明細`);
+      } else {
+        showMessage('無法解析資料，請確認檔案格式與編碼是否正確', 'error');
+      }
     };
 
     const reader = new FileReader();
@@ -521,35 +525,42 @@ export default function ReconciliationPage() {
             runningBalance: parseAmountCiti(cols[5])
           });
         }
+        processResult(parsed);
+        return;
       } else if (fmt && (fmt.bankName === '陽信銀行')) {
         const allRows = parseCSVWithQuotes(text);
-        const skipTop = fmt.skipTopRows ?? 0;
-        if (allRows.length <= skipTop) {
+        if (allRows.length < 1) {
           showMessage('CSV 檔案格式不符或無資料', 'error');
           return;
         }
-        for (let i = skipTop; i < allRows.length; i++) {
+        for (let i = 0; i < allRows.length; i++) {
           const cols = allRows[i];
           if (cols.length < 4) continue;
-          const txDate = (cols[0] || '').replace(/\//g, '-').trim();
+          // 陽信 CSV 欄位內含 tab，trim 後再處理日期
+          const txDate = (cols[0] || '').replace(/\t/g, '').replace(/\//g, '-').trim();
           if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
           const debitAmount = parseAmountCiti(cols[1]);
           const creditAmount = parseAmountCiti(cols[2]);
-          const desc = [cols[4], cols[6]].filter(Boolean).join(' ').trim();
+          const desc = [cols[4], cols[5], cols[6]].filter(Boolean).join(' ').trim();
           parsed.push({
             txDate,
             description: desc || cols[4] || '',
             debitAmount,
             creditAmount,
-            referenceNo: cols[7] || '',
+            referenceNo: (cols[7] || '').replace(/\t/g, '').trim(),
             runningBalance: parseAmountCiti(cols[3])
           });
         }
+        processResult(parsed);
+        return;
       } else if (fmt && (fmt.bankName === '土地銀行' || fmt.bankName === '土銀')) {
         const allRows = parseCSVWithQuotes(text);
-        const skipTop = fmt.skipTopRows ?? 5;
-        const headerRowIndex = fmt.headerRowIndex ?? 5;
-        const dataStart = Math.max(skipTop, headerRowIndex) + 1;
+        // 動態找到表頭列（含「交易日」），blank lines 被 parseCSVWithQuotes 過濾，不能靠固定行數
+        let dataStart = 0;
+        for (let r = 0; r < allRows.length; r++) {
+          const first = (allRows[r][0] || '').trim();
+          if (first === '交易日' || first === '交易日期') { dataStart = r + 1; break; }
+        }
         if (allRows.length <= dataStart) {
           showMessage('CSV 檔案格式不符或無資料', 'error');
           return;

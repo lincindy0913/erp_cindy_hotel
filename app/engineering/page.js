@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
@@ -584,7 +584,19 @@ export default function EngineeringPage() {
                           </td>
                           <td className="px-4 py-2">{c.signDate || '－'}</td>
                           <td className="px-4 py-2">
-                            <div className="space-y-1.5">
+                            {(c.terms || []).length > 0 && (
+                            <table className="w-full text-xs border-collapse">
+                              <thead>
+                                <tr className="text-gray-400 border-b border-gray-200">
+                                  <th className="text-left py-1 pr-2 font-normal whitespace-nowrap">期別</th>
+                                  <th className="text-right py-1 px-2 font-normal whitespace-nowrap">期款</th>
+                                  <th className="text-right py-1 px-2 font-normal whitespace-nowrap">已付</th>
+                                  <th className="text-right py-1 px-2 font-normal whitespace-nowrap">未付</th>
+                                  <th className="text-center py-1 px-2 font-normal whitespace-nowrap">狀態</th>
+                                  <th className="text-center py-1 pl-2 font-normal whitespace-nowrap">操作</th>
+                                </tr>
+                              </thead>
+                              <tbody>
                               {(c.terms || []).map(t => {
                                 const termMaterials = (c.materials || []).filter(m => m.termId === t.id);
                                 const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
@@ -593,56 +605,73 @@ export default function EngineeringPage() {
                                 const paidAmount = paidPOs.reduce((s, po) => s + getActualPaid(po), 0);
                                 const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
                                 const termAmt = Number(t.amount);
-                                const unpaidAmount = termAmt - paidAmount;
+                                const unpaidAmount = Math.max(0, termAmt - paidAmount);
                                 const isFullyPaid = paidAmount >= termAmt && termAmt > 0;
                                 const isPartial = paidAmount > 0 && !isFullyPaid;
+                                const hasDetails = paidPOs.length > 0 || pendingPOs.length > 0 || t.content || t.note || termMaterials.length > 0;
                                 return (
-                                <div key={t.id} className="border-b border-gray-100 pb-1.5 last:border-0">
-                                  <div className="flex items-center gap-2 text-xs flex-wrap">
-                                    <span className="font-medium">{t.termName || `第${t.termNo}期`}</span>
-                                    <span className="text-gray-500">期款 {formatNum(termAmt)}</span>
-                                    <span className={isFullyPaid ? 'text-green-600 font-medium' : isPartial ? 'text-blue-600 font-medium' : 'text-amber-600'}>
-                                      {isFullyPaid ? '已付清' : isPartial ? '部分付款' : '待付款'}
-                                    </span>
-                                    {!isFullyPaid && <button onClick={() => openMarkTermPaid(t)} className="text-amber-600 hover:underline">標記已付</button>}
-                                    {isFullyPaid && <button onClick={() => openUnmarkTermPaid(t)} className="text-gray-400 hover:text-red-600 hover:underline text-xs">取消</button>}
-                                  </div>
-                                  {/* 付款明細 */}
+                                <Fragment key={t.id}>
+                                  <tr className="border-b border-gray-50 hover:bg-gray-50/50">
+                                    <td className="py-1.5 pr-2 font-medium whitespace-nowrap">{t.termName || `第${t.termNo}期`}</td>
+                                    <td className="py-1.5 px-2 text-right whitespace-nowrap">{formatNum(termAmt)}</td>
+                                    <td className={`py-1.5 px-2 text-right whitespace-nowrap ${paidAmount > 0 ? 'text-green-600 font-medium' : 'text-gray-300'}`}>{paidAmount > 0 ? formatNum(paidAmount) : '—'}</td>
+                                    <td className={`py-1.5 px-2 text-right whitespace-nowrap ${isFullyPaid ? 'text-gray-300' : unpaidAmount > 0 ? 'text-amber-600 font-medium' : 'text-gray-300'}`}>{isFullyPaid ? '—' : formatNum(unpaidAmount)}</td>
+                                    <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] leading-tight ${isFullyPaid ? 'bg-green-100 text-green-700' : isPartial ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                                        {isFullyPaid ? '已付清' : isPartial ? '部分' : '待付'}
+                                      </span>
+                                      {pendingAmount > 0 && <span className="inline-block ml-1 px-1.5 py-0.5 rounded text-[10px] leading-tight bg-orange-50 text-orange-500">待出納 {formatNum(pendingAmount)}</span>}
+                                    </td>
+                                    <td className="py-1.5 pl-2 text-center whitespace-nowrap">
+                                      {!isFullyPaid && <button onClick={() => openMarkTermPaid(t)} className="text-amber-600 hover:underline">付款</button>}
+                                      {isFullyPaid && <button onClick={() => openUnmarkTermPaid(t)} className="text-gray-400 hover:text-red-600 hover:underline">取消</button>}
+                                    </td>
+                                  </tr>
+                                  {/* 付款進度條 */}
                                   {(isPartial || isFullyPaid) && (
-                                    <div className="pl-3 mt-0.5 space-y-0.5">
-                                      <div className="grid grid-cols-3 gap-1 text-xs">
-                                        <span className="text-green-700 font-medium">已付：{formatNum(paidAmount)}</span>
-                                        <span className={`font-medium ${unpaidAmount > 0 ? 'text-amber-600' : 'text-green-600'}`}>未付：{formatNum(Math.max(0, unpaidAmount))}</span>
-                                        {pendingAmount > 0 && <span className="text-orange-500">待出納：{formatNum(pendingAmount)}</span>}
+                                    <tr><td colSpan="6" className="pb-1 pt-0">
+                                      <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full ${isFullyPaid ? 'bg-green-400' : 'bg-blue-400'}`} style={{ width: `${Math.min((paidAmount / (termAmt || 1)) * 100, 100)}%` }} />
                                       </div>
-                                      {paidPOs.map((po, pi) => (
-                                        <div key={pi} className="text-xs text-gray-500 flex gap-2">
-                                          <span className="font-mono">{po.paymentNo}</span>
-                                          <span>{po.dueDate || po.createdAt?.slice(0,10) || ''}</span>
-                                          <span className="text-green-600">{formatNum(getActualPaid(po))}</span>
-                                          <span className="text-gray-400">{po.paymentMethod || ''}</span>
-                                        </div>
-                                      ))}
-                                      {pendingPOs.map((po, pi) => (
-                                        <div key={`p${pi}`} className="text-xs text-orange-500 flex gap-2">
-                                          <span className="font-mono">{po.paymentNo}</span>
-                                          <span>{po.dueDate || ''}</span>
-                                          <span>{formatNum(Number(po.amount))}</span>
-                                          <span className="text-orange-400">待出納</span>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    </td></tr>
                                   )}
-                                  {t.content && <div className="text-xs text-gray-500 pl-2 mt-0.5">內容：{t.content}</div>}
-                                  {t.note && <div className="text-xs text-gray-400 pl-2">備註：{t.note}</div>}
-                                  {termMaterials.length > 0 && (
-                                    <div className="text-xs text-blue-600 pl-2 mt-0.5">
-                                      領用：{termMaterials.map(m => `${m.description || (m.product ? `${m.product.code} ${m.product.name}` : '—')} ×${Number(m.quantity)}`).join('、')}
-                                    </div>
+                                  {/* 付款紀錄展開 */}
+                                  {hasDetails && (
+                                    <tr><td colSpan="6" className="pb-2 pt-0">
+                                      <div className="pl-3 space-y-0.5">
+                                        {paidPOs.map((po, pi) => (
+                                          <div key={pi} className="flex items-center gap-2 text-[11px] text-gray-500">
+                                            <span className="text-green-600">✓</span>
+                                            <span>{po.dueDate || po.createdAt?.slice(0,10) || ''}</span>
+                                            <span className="text-green-600 font-medium">{formatNum(getActualPaid(po))}</span>
+                                            <span className="text-gray-400">{po.paymentMethod || ''}</span>
+                                            {po.paymentNo && <span className="font-mono text-gray-300">{po.paymentNo}</span>}
+                                          </div>
+                                        ))}
+                                        {pendingPOs.map((po, pi) => (
+                                          <div key={`p${pi}`} className="flex items-center gap-2 text-[11px] text-orange-500">
+                                            <span>⏳</span>
+                                            <span>{po.dueDate || ''}</span>
+                                            <span className="font-medium">{formatNum(Number(po.amount))}</span>
+                                            <span className="text-orange-400">待出納</span>
+                                            {po.paymentNo && <span className="font-mono text-orange-300">{po.paymentNo}</span>}
+                                          </div>
+                                        ))}
+                                        {t.content && <div className="text-[11px] text-gray-500">📋 {t.content}</div>}
+                                        {t.note && <div className="text-[11px] text-gray-400">💬 {t.note}</div>}
+                                        {termMaterials.length > 0 && (
+                                          <div className="text-[11px] text-blue-600">
+                                            📦 {termMaterials.map(m => `${m.description || (m.product ? `${m.product.code} ${m.product.name}` : '—')} ×${Number(m.quantity)}`).join('、')}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td></tr>
                                   )}
-                                </div>
+                                </Fragment>
                               )})}
-                            </div>
+                              </tbody>
+                            </table>
+                            )}
                           </td>
                           <td className="px-4 py-2 text-center">
                             <button onClick={() => openUploadContract(c)} className="text-blue-600 hover:underline mr-2">上傳</button>

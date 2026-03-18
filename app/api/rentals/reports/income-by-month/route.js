@@ -7,7 +7,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET ?year=2025&propertyId=&startDate=&endDate=
+ * GET ?year=2025&propertyId=&category=&startDate=&endDate=
+ * category: 類別 (unitNo)；__RENTAL_CAT_EMPTY__ = 未填類別
  * Returns pivot: 房號(property label) x 1..12 months, total.
  */
 export async function GET(request) {
@@ -21,6 +22,7 @@ export async function GET(request) {
     const endDate = searchParams.get('endDate');
     const propertyIdParam = searchParams.get('propertyId');
     const propertyIdFilter = propertyIdParam ? parseInt(propertyIdParam, 10) : null;
+    const categoryParam = searchParams.get('category');
 
     // Determine year(s) to query
     let yearFilter;
@@ -52,9 +54,33 @@ export async function GET(request) {
       displayYear = y;
     }
 
+    let propertyIdsInCategory = null;
+    if (categoryParam) {
+      if (categoryParam === '__RENTAL_CAT_EMPTY__') {
+        const rows = await prisma.rentalProperty.findMany({
+          where: { OR: [{ unitNo: null }, { unitNo: '' }] },
+          select: { id: true }
+        });
+        propertyIdsInCategory = rows.map((r) => r.id);
+      } else {
+        const rows = await prisma.rentalProperty.findMany({
+          where: { unitNo: categoryParam.trim() },
+          select: { id: true }
+        });
+        propertyIdsInCategory = rows.map((r) => r.id);
+      }
+      if (propertyIdsInCategory.length === 0) {
+        return NextResponse.json({ year: displayYear, rows: [] });
+      }
+    }
+
     const incomeWhere = {
       ...(yearFilter.equals != null ? { incomeYear: yearFilter.equals } : { incomeYear: { gte: yearFilter.gte, lte: yearFilter.lte } }),
-      ...(propertyIdFilter ? { propertyId: propertyIdFilter } : {})
+      ...(propertyIdsInCategory
+        ? { propertyId: { in: propertyIdsInCategory } }
+        : propertyIdFilter
+          ? { propertyId: propertyIdFilter }
+          : {})
     };
     const utilityWhere = { ...incomeWhere };
 

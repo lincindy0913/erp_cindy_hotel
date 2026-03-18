@@ -109,6 +109,15 @@ export default function ChecksPage() {
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPrintSheetModal, setShowPrintSheetModal] = useState(false);
+  const [printWarehouse, setPrintWarehouse] = useState('');
+  // 按付款單/進貨單館別列印
+  const [showPrintByPOModal, setShowPrintByPOModal] = useState(false);
+  const [showPrintByPurchaseModal, setShowPrintByPurchaseModal] = useState(false);
+  const [printSearchWarehouse, setPrintSearchWarehouse] = useState('');
+  const [printSearchDateFrom, setPrintSearchDateFrom] = useState('');
+  const [printSearchDateTo, setPrintSearchDateTo] = useState('');
+  const [printSearchResults, setPrintSearchResults] = useState([]);
+  const [printSearchLoading, setPrintSearchLoading] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
 
   // Batch clear：未兌現 TAB 批次兌現時需填寫兌現日
@@ -1204,9 +1213,38 @@ export default function ChecksPage() {
     );
   };
 
-  // 列印表用：應付且待兌現/到期的支票，依到期日、支票號排序
+  // 按付款單/進貨單館別搜尋
+  const handlePrintSearch = async (source) => {
+    if (!printSearchWarehouse) {
+      showToast('請選擇館別', 'error');
+      return;
+    }
+    setPrintSearchLoading(true);
+    try {
+      const q = new URLSearchParams({ source, warehouse: printSearchWarehouse });
+      if (printSearchDateFrom) q.set('dateFrom', printSearchDateFrom);
+      if (printSearchDateTo) q.set('dateTo', printSearchDateTo);
+      const res = await fetch(`/api/checks/print-search?${q}`);
+      const data = await res.json();
+      setPrintSearchResults(Array.isArray(data) ? data : []);
+      if (Array.isArray(data) && data.length === 0) showToast('查無符合條件的支票', 'info');
+    } catch (e) {
+      showToast('查詢失敗: ' + e.message, 'error');
+    }
+    setPrintSearchLoading(false);
+  };
+
+  const resetPrintSearch = () => {
+    setPrintSearchWarehouse('');
+    setPrintSearchDateFrom('');
+    setPrintSearchDateTo('');
+    setPrintSearchResults([]);
+  };
+
+  // 列印表用：應付且待兌現/到期的支票，依館別篩選，依到期日、支票號排序
   const checksForPrintSheet = checks
     .filter(c => c.checkType === 'payable' && (c.status === 'pending' || c.status === 'due'))
+    .filter(c => !printWarehouse || c.warehouse === printWarehouse)
     .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '') || (a.checkNumber || '').localeCompare(b.checkNumber || ''));
   const getPayeeName = (c) => c.payeeName || (c.supplierId && suppliers.find(s => s.id === c.supplierId)?.name) || '－';
 
@@ -1231,13 +1269,27 @@ export default function ChecksPage() {
             <h2 className="text-2xl font-bold text-gray-800">支票管理</h2>
             <p className="text-sm text-gray-500 mt-1">管理應付及應收支票，追蹤兌現狀態與到期日程</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               type="button"
               onClick={() => setShowPrintSheetModal(true)}
               className="px-4 py-2 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100"
             >
               支票列印表（領取簽名）
+            </button>
+            <button
+              type="button"
+              onClick={() => { resetPrintSearch(); setShowPrintByPOModal(true); }}
+              className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+            >
+              按付款單的館別列印
+            </button>
+            <button
+              type="button"
+              onClick={() => { resetPrintSearch(); setShowPrintByPurchaseModal(true); }}
+              className="px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100"
+            >
+              按進貨單的館別列印
             </button>
             <ExportButtons
               data={checks}
@@ -1412,10 +1464,22 @@ export default function ChecksPage() {
       </Modal>
 
       {/* 支票列印表（領取簽名）Modal */}
-      <Modal isOpen={showPrintSheetModal} onClose={() => setShowPrintSheetModal(false)} title="支票領取簽名表" width="max-w-4xl">
+      <Modal isOpen={showPrintSheetModal} onClose={() => { setShowPrintSheetModal(false); setPrintWarehouse(''); }} title="支票領取簽名表" width="max-w-4xl">
         <div className="space-y-4 no-print">
-          <p className="text-sm text-gray-500">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-          <p className="text-sm text-gray-600">以下為應付且待兌現／到期之支票，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <p className="text-sm text-gray-500">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">館別：</label>
+              <select value={printWarehouse} onChange={e => setPrintWarehouse(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                <option value="">全部</option>
+                <option value="麗格">麗格</option>
+                <option value="麗軒">麗軒</option>
+                <option value="民宿">民宿</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
           <div className="overflow-x-auto border border-gray-200 rounded-lg">
             <table className="w-full text-sm">
               <thead>
@@ -1426,12 +1490,13 @@ export default function ChecksPage() {
                   <th className="px-3 py-2 text-right border-b border-gray-200">金額</th>
                   <th className="px-3 py-2 text-left border-b border-gray-200">開票日</th>
                   <th className="px-3 py-2 text-left border-b border-gray-200">到期日</th>
+                  {!printWarehouse && <th className="px-3 py-2 text-left border-b border-gray-200">館別</th>}
                   <th className="px-3 py-2 text-left border-b border-gray-200 min-w-[120px]">簽收欄（簽名）</th>
                 </tr>
               </thead>
               <tbody>
                 {checksForPrintSheet.length === 0 ? (
-                  <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">目前無待領取之應付支票</td></tr>
+                  <tr><td colSpan={printWarehouse ? 7 : 8} className="px-3 py-6 text-center text-gray-400">目前無待領取之應付支票</td></tr>
                 ) : checksForPrintSheet.map((c, idx) => (
                   <tr key={c.id} className="border-b border-gray-100">
                     <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
@@ -1440,6 +1505,7 @@ export default function ChecksPage() {
                     <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
                     <td className="px-3 py-2">{c.issueDate || '－'}</td>
                     <td className="px-3 py-2">{c.dueDate || '－'}</td>
+                    {!printWarehouse && <td className="px-3 py-2">{c.warehouse || '－'}</td>}
                     <td className="px-3 py-2 align-top" style={{ minHeight: 32 }}>&nbsp;</td>
                   </tr>
                 ))}
@@ -1456,9 +1522,122 @@ export default function ChecksPage() {
       {/* 列印時只顯示此區塊 */}
       {showPrintSheetModal && (
         <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
-          <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表</h1>
+          <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表{printWarehouse ? `（${printWarehouse}）` : ''}</h1>
           <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-          <p className="text-sm text-gray-600 mb-4">以下為應付且待兌現／到期之支票，廠商領取時請於簽收欄簽名。</p>
+          <p className="text-sm text-gray-600 mb-4">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
+          <table className="w-full text-sm border border-gray-300">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="px-3 py-2 text-left border border-gray-300 w-12">序號</th>
+                <th className="px-3 py-2 text-left border border-gray-300">支票號碼</th>
+                <th className="px-3 py-2 text-left border border-gray-300">受款人／廠商</th>
+                <th className="px-3 py-2 text-right border border-gray-300">金額</th>
+                <th className="px-3 py-2 text-left border border-gray-300">開票日</th>
+                <th className="px-3 py-2 text-left border border-gray-300">到期日</th>
+                {!printWarehouse && <th className="px-3 py-2 text-left border border-gray-300">館別</th>}
+                <th className="px-3 py-2 text-left border border-gray-300 min-w-[120px]">簽收欄（簽名）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {checksForPrintSheet.length === 0 ? (
+                <tr><td colSpan={printWarehouse ? 7 : 8} className="px-3 py-6 text-center text-gray-400 border border-gray-300">目前無待領取之應付支票</td></tr>
+              ) : checksForPrintSheet.map((c, idx) => (
+                <tr key={c.id}>
+                  <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
+                  <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>
+                  <td className="px-3 py-2 border border-gray-300">{getPayeeName(c)}</td>
+                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatAmount(c.amount)}</td>
+                  <td className="px-3 py-2 border border-gray-300">{c.issueDate || '－'}</td>
+                  <td className="px-3 py-2 border border-gray-300">{c.dueDate || '－'}</td>
+                  {!printWarehouse && <td className="px-3 py-2 border border-gray-300">{c.warehouse || '－'}</td>}
+                  <td className="px-3 py-2 border border-gray-300" style={{ minHeight: 36 }}>&nbsp;</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ===== 按付款單的館別列印 Modal ===== */}
+      <Modal isOpen={showPrintByPOModal} onClose={() => { setShowPrintByPOModal(false); resetPrintSearch(); }} title="按付款單的館別列印" width="max-w-4xl">
+        <div className="space-y-4 no-print">
+          <div className="flex flex-wrap items-end gap-3 bg-gray-50 p-4 rounded-lg">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">館別 <span className="text-red-500">*</span></label>
+              <select value={printSearchWarehouse} onChange={e => setPrintSearchWarehouse(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                <option value="">請選擇</option>
+                <option value="麗格">麗格</option>
+                <option value="麗軒">麗軒</option>
+                <option value="民宿">民宿</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期起</label>
+              <input type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期迄</label>
+              <input type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+            <button onClick={() => handlePrintSearch('payment')} disabled={printSearchLoading}
+              className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {printSearchLoading ? '查詢中...' : '查詢'}
+            </button>
+          </div>
+          {printSearchResults.length > 0 && (
+            <>
+              <p className="text-sm text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（付款單館別：{printSearchWarehouse}）</p>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">支票號碼</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">受款人／廠商</th>
+                      <th className="px-3 py-2 text-right border-b border-gray-200">金額</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">開票日</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">到期日</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200 min-w-[120px]">簽收欄（簽名）</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printSearchResults.map((c, idx) => (
+                      <tr key={c.id} className="border-b border-gray-100">
+                        <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono">{c.checkNumber}</td>
+                        <td className="px-3 py-2">{getPayeeName(c)}</td>
+                        <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                        <td className="px-3 py-2">{c.issueDate || '－'}</td>
+                        <td className="px-3 py-2">{c.dueDate || '－'}</td>
+                        <td className="px-3 py-2 align-top" style={{ minHeight: 32 }}>&nbsp;</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowPrintByPOModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">列印</button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* 按付款單列印區 */}
+      {showPrintByPOModal && printSearchResults.length > 0 && (
+        <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
+          <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表（付款單館別：{printSearchWarehouse}）</h1>
+          <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-sm text-gray-600 mb-4">
+            付款單館別：{printSearchWarehouse}
+            {printSearchDateFrom && `　日期起：${printSearchDateFrom}`}
+            {printSearchDateTo && `　日期迄：${printSearchDateTo}`}
+            ，共 {printSearchResults.length} 張。廠商領取時請於簽收欄簽名。
+          </p>
           <table className="w-full text-sm border border-gray-300">
             <thead>
               <tr className="bg-gray-100">
@@ -1472,9 +1651,116 @@ export default function ChecksPage() {
               </tr>
             </thead>
             <tbody>
-              {checksForPrintSheet.length === 0 ? (
-                <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400 border border-gray-300">目前無待領取之應付支票</td></tr>
-              ) : checksForPrintSheet.map((c, idx) => (
+              {printSearchResults.map((c, idx) => (
+                <tr key={c.id}>
+                  <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
+                  <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>
+                  <td className="px-3 py-2 border border-gray-300">{getPayeeName(c)}</td>
+                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatAmount(c.amount)}</td>
+                  <td className="px-3 py-2 border border-gray-300">{c.issueDate || '－'}</td>
+                  <td className="px-3 py-2 border border-gray-300">{c.dueDate || '－'}</td>
+                  <td className="px-3 py-2 border border-gray-300" style={{ minHeight: 36 }}>&nbsp;</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ===== 按進貨單的館別列印 Modal ===== */}
+      <Modal isOpen={showPrintByPurchaseModal} onClose={() => { setShowPrintByPurchaseModal(false); resetPrintSearch(); }} title="按進貨單的館別列印" width="max-w-4xl">
+        <div className="space-y-4 no-print">
+          <div className="flex flex-wrap items-end gap-3 bg-gray-50 p-4 rounded-lg">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">館別 <span className="text-red-500">*</span></label>
+              <select value={printSearchWarehouse} onChange={e => setPrintSearchWarehouse(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                <option value="">請選擇</option>
+                <option value="麗格">麗格</option>
+                <option value="麗軒">麗軒</option>
+                <option value="民宿">民宿</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期起</label>
+              <input type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期迄</label>
+              <input type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+            <button onClick={() => handlePrintSearch('purchase')} disabled={printSearchLoading}
+              className="px-4 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50">
+              {printSearchLoading ? '查詢中...' : '查詢'}
+            </button>
+          </div>
+          {printSearchResults.length > 0 && (
+            <>
+              <p className="text-sm text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（進貨單館別：{printSearchWarehouse}）</p>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">支票號碼</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">受款人／廠商</th>
+                      <th className="px-3 py-2 text-right border-b border-gray-200">金額</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">開票日</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200">到期日</th>
+                      <th className="px-3 py-2 text-left border-b border-gray-200 min-w-[120px]">簽收欄（簽名）</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {printSearchResults.map((c, idx) => (
+                      <tr key={c.id} className="border-b border-gray-100">
+                        <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
+                        <td className="px-3 py-2 font-mono">{c.checkNumber}</td>
+                        <td className="px-3 py-2">{getPayeeName(c)}</td>
+                        <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                        <td className="px-3 py-2">{c.issueDate || '－'}</td>
+                        <td className="px-3 py-2">{c.dueDate || '－'}</td>
+                        <td className="px-3 py-2 align-top" style={{ minHeight: 32 }}>&nbsp;</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowPrintByPurchaseModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">列印</button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* 按進貨單列印區 */}
+      {showPrintByPurchaseModal && printSearchResults.length > 0 && (
+        <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
+          <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表（進貨單館別：{printSearchWarehouse}）</h1>
+          <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-sm text-gray-600 mb-4">
+            進貨單館別：{printSearchWarehouse}
+            {printSearchDateFrom && `　日期起：${printSearchDateFrom}`}
+            {printSearchDateTo && `　日期迄：${printSearchDateTo}`}
+            ，共 {printSearchResults.length} 張。廠商領取時請於簽收欄簽名。
+          </p>
+          <table className="w-full text-sm border border-gray-300">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="px-3 py-2 text-left border border-gray-300 w-12">序號</th>
+                <th className="px-3 py-2 text-left border border-gray-300">支票號碼</th>
+                <th className="px-3 py-2 text-left border border-gray-300">受款人／廠商</th>
+                <th className="px-3 py-2 text-right border border-gray-300">金額</th>
+                <th className="px-3 py-2 text-left border border-gray-300">開票日</th>
+                <th className="px-3 py-2 text-left border border-gray-300">到期日</th>
+                <th className="px-3 py-2 text-left border border-gray-300 min-w-[120px]">簽收欄（簽名）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printSearchResults.map((c, idx) => (
                 <tr key={c.id}>
                   <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
                   <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>

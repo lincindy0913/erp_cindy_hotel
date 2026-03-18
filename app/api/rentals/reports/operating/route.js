@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 /**
- * GET ?year=2025&propertyId=&startDate=&endDate=
+ * GET ?year=2025&propertyId=&category=&startDate=&endDate=
  * Per property: 收租金額, 維修金額, 房務稅/地價稅, 淨利, 淨利率.
  */
 export async function GET(request) {
@@ -21,6 +21,7 @@ export async function GET(request) {
     const endDate = searchParams.get('endDate');
     const propertyIdParam = searchParams.get('propertyId');
     const propertyIdFilter = propertyIdParam ? parseInt(propertyIdParam, 10) : null;
+    const categoryParam = searchParams.get('category');
 
     let displayYear;
     let incomeYearFilter;
@@ -50,7 +51,39 @@ export async function GET(request) {
       taxYearFilter = { taxYear: y };
     }
 
-    const propFilter = propertyIdFilter ? { propertyId: propertyIdFilter } : {};
+    let propertyIdsInCategory = null;
+    if (categoryParam) {
+      if (categoryParam === '__RENTAL_CAT_EMPTY__') {
+        const rows = await prisma.rentalProperty.findMany({
+          where: { OR: [{ unitNo: null }, { unitNo: '' }] },
+          select: { id: true }
+        });
+        propertyIdsInCategory = rows.map((r) => r.id);
+      } else {
+        const rows = await prisma.rentalProperty.findMany({
+          where: { unitNo: categoryParam.trim() },
+          select: { id: true }
+        });
+        propertyIdsInCategory = rows.map((r) => r.id);
+      }
+      if (propertyIdsInCategory.length === 0) {
+        return NextResponse.json({ year: displayYear, rows: [] });
+      }
+    }
+
+    const propFilter =
+      propertyIdsInCategory && propertyIdsInCategory.length
+        ? { propertyId: { in: propertyIdsInCategory } }
+        : propertyIdFilter
+          ? { propertyId: propertyIdFilter }
+          : {};
+
+    const propertiesWhere =
+      propertyIdsInCategory && propertyIdsInCategory.length
+        ? { id: { in: propertyIdsInCategory } }
+        : propertyIdFilter
+          ? { id: propertyIdFilter }
+          : {};
 
     const [incomes, utilityIncomes, maintenances, taxes, properties] = await Promise.all([
       prisma.rentalIncome.findMany({
@@ -70,7 +103,7 @@ export async function GET(request) {
         select: { propertyId: true, amount: true }
       }),
       prisma.rentalProperty.findMany({
-        where: propertyIdFilter ? { id: propertyIdFilter } : {},
+        where: propertiesWhere,
         select: { id: true, name: true, buildingName: true, unitNo: true, address: true }
       })
     ]);
@@ -81,7 +114,8 @@ export async function GET(request) {
       ...maintenances.map(m => m.propertyId),
       ...taxes.map(t => t.propertyId)
     ]);
-    const allProperties = propertyIdFilter
+    const scopedById = propertyIdFilter || (propertyIdsInCategory && propertyIdsInCategory.length);
+    const allProperties = scopedById
       ? properties
       : await prisma.rentalProperty.findMany({
           where: { id: { in: Array.from(propertyIds) } },
