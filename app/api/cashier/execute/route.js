@@ -208,7 +208,7 @@ export async function POST(request) {
               },
             });
             // Auto-update contract status if all terms are now paid
-            if (linkedTerm.contract) {
+            if (linkedTerm.contract && Array.isArray(linkedTerm.contract.terms)) {
               const allTerms = linkedTerm.contract.terms;
               const allPaidAfter = allTerms.every(t => t.id === linkedTerm.id ? true : t.status === 'paid');
               if (allPaidAfter) {

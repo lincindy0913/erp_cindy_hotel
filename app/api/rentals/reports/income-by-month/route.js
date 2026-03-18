@@ -29,6 +29,9 @@ export async function GET(request) {
     let displayYear;
 
     if (startDate && endDate) {
+      if (startDate > endDate) {
+        return NextResponse.json({ error: '結束日期不可早於開始日期' }, { status: 400 });
+      }
       // Date range mode: extract year/month from dates
       const sDate = new Date(startDate);
       const eDate = new Date(endDate);

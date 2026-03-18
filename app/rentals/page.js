@@ -190,6 +190,10 @@ function RentalsPage() {
   function buildReportParams() {
     const params = new URLSearchParams();
     if (reportStartDate && reportEndDate) {
+      if (reportStartDate > reportEndDate) {
+        showToast('結束日期不可早於開始日期', 'error');
+        return null;
+      }
       params.set('startDate', reportStartDate);
       params.set('endDate', reportEndDate);
     } else {
@@ -200,9 +204,11 @@ function RentalsPage() {
   }
 
   async function fetchIncomeReport() {
+    const qs = buildReportParams();
+    if (qs === null) return;
     setReportLoading(true);
     try {
-      const res = await fetch(`/api/rentals/reports/income-by-month?${buildReportParams()}`);
+      const res = await fetch(`/api/rentals/reports/income-by-month?${qs}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setIncomeReportData({ year: data.year, rows: data.rows || [] });
@@ -214,9 +220,11 @@ function RentalsPage() {
   }
 
   async function fetchOperatingReport() {
+    const qs = buildReportParams();
+    if (qs === null) return;
     setReportLoading(true);
     try {
-      const res = await fetch(`/api/rentals/reports/operating?${buildReportParams()}`);
+      const res = await fetch(`/api/rentals/reports/operating?${qs}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setOperatingReportData({ year: data.year, rows: data.rows || [] });

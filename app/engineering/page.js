@@ -687,7 +687,7 @@ export default function EngineeringPage() {
                           <td className="px-4 py-2 text-right font-medium">{formatNum(o.netAmount)}</td>
                           <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs ${isExecuted ? 'bg-green-100 text-green-700' : o.status === '待出納' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100'}`}>{o.status}</span></td>
                           <td className="px-4 py-2 text-center">
-                            {isExecuted ? <span className="text-xs text-gray-400">已付款 (不可修改)</span> : (
+                            {isExecuted ? <span className="text-xs text-gray-400">已執行 (不可修改)</span> : (
                               <div className="flex items-center justify-center gap-2">
                                 <button onClick={() => {
                                   setEditingPaymentOrder(o);

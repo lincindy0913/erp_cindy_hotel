@@ -28,6 +28,9 @@ export async function GET(request) {
     let taxYearFilter;
 
     if (startDate && endDate) {
+      if (startDate > endDate) {
+        return NextResponse.json({ error: '結束日期不可早於開始日期' }, { status: 400 });
+      }
       const sDate = new Date(startDate);
       const eDate = new Date(endDate);
       const sYear = sDate.getFullYear();
