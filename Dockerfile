@@ -11,7 +11,7 @@ RUN apk add --no-cache openssl
 # Install dependencies (copy prisma schema first for postinstall generate)
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
-RUN npm ci
+RUN npm install --prefer-offline || npm install
 
 # App source and build
 COPY . .
