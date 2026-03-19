@@ -485,12 +485,96 @@ export default function CashierPage() {
       const summary = order.summary || '';
       if (no.startsWith('LN-') || summary.includes('貸款')) return '貸款';
       if (no.startsWith('RENT-') || no.startsWith('TC-') || summary.includes('租賃') || summary.includes('房屋稅') || summary.includes('地價稅') || summary.includes('維護費')) return '租屋';
-      if (summary.includes('工程')) return '工程';
-      if (summary.includes('水電費') || summary.includes('支出') || summary.includes('固定費用')) return '固定費用';
+      if (summary.includes('工程') || no.startsWith('ENG-')) return '工程';
       if (no.startsWith('PAY-') && (summary.includes('進貨') || summary.includes('採購'))) return '進銷存';
+      // 固定費用：含常見關鍵字，或 PAY- 開頭含 「—」（範本名 — 館別 月份）
+      if (summary.includes('水電費') || summary.includes('支出') || summary.includes('固定費用') || summary.includes('薪資') || summary.includes('勞保') || summary.includes('健保') || summary.includes('電話費') || summary.includes('網路費') || summary.includes('保險') || summary.includes('租金')) return '固定費用';
+      if (no.startsWith('PAY-') && summary.includes('—')) return '固定費用';
     }
     if (sourceType) return sourceType;
-    return '-';
+    // 預設為固定費用（PAY- 開頭無法判斷時）
+    return '固定費用';
+  }
+
+  // 列印功能
+  function handlePrint() {
+    const rows = sortedCashierOrders;
+    if (rows.length === 0) { showToast('無資料可列印', 'error'); return; }
+    const tabLabel = TABS.find(t => t.key === activeTab)?.label || activeTab;
+    const filterInfo = [];
+    if (searchFilter.dateFrom || searchFilter.dateTo) filterInfo.push(`日期: ${searchFilter.dateFrom || '~'} ~ ${searchFilter.dateTo || '~'}`);
+    if (searchFilter.warehouse) filterInfo.push(`館別: ${searchFilter.warehouse}`);
+    if (searchFilter.sourceType) filterInfo.push(`類別: ${searchFilter.sourceType}`);
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>出納 - ${tabLabel}</title>
+      <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+      th{background:#f5f5f5;font-weight:600}
+      .right{text-align:right} .center{text-align:center}
+      h2{margin:0 0 4px} .info{color:#666;font-size:12px;margin-bottom:12px}
+      @media print{button{display:none}}</style></head><body>
+      <h2>出納作業 — ${tabLabel}</h2>
+      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}列印時間: ${new Date().toLocaleString('zh-TW')}</div>
+      <table><thead><tr>
+        <th>單號</th><th>類別</th><th>廠商</th><th>館別</th><th>付款方式</th>
+        <th class="right">金額</th><th>摘要</th><th>狀態</th>
+      </tr></thead><tbody>`);
+    let total = 0;
+    rows.forEach(o => {
+      const amt = Number(o.netAmount || 0);
+      total += amt;
+      w.document.write(`<tr>
+        <td>${getDisplayOrderNo(o)}</td>
+        <td>${getSourceCategory(o.sourceType, o)}</td>
+        <td>${o.supplierName || '—'}</td>
+        <td>${o.warehouse || '—'}</td>
+        <td>${o.paymentMethod || '—'}</td>
+        <td class="right">${amt.toLocaleString()}</td>
+        <td>${o.summary || '—'}</td>
+        <td>${o.status || '—'}</td>
+      </tr>`);
+    });
+    w.document.write(`</tbody><tfoot><tr>
+      <td colspan="5" class="right"><strong>合計 (${rows.length} 筆)</strong></td>
+      <td class="right"><strong>${total.toLocaleString()}</strong></td>
+      <td colspan="2"></td>
+    </tr></tfoot></table>
+    <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  // 匯出Excel功能
+  function handleExportExcel() {
+    const rows = sortedCashierOrders;
+    if (rows.length === 0) { showToast('無資料可匯出', 'error'); return; }
+    const header = ['單號', '類別', '廠商', '館別', '付款方式', '金額', '摘要', '備註', '狀態', '建立日期'];
+    const csvRows = [header.join(',')];
+    rows.forEach(o => {
+      const cols = [
+        getDisplayOrderNo(o),
+        getSourceCategory(o.sourceType, o),
+        (o.supplierName || '').replace(/,/g, '，'),
+        o.warehouse || '',
+        o.paymentMethod || '',
+        Number(o.netAmount || 0),
+        (o.summary || '').replace(/,/g, '，'),
+        (o.note || '').replace(/,/g, '，').replace(/\n/g, ' '),
+        o.status || '',
+        o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : ''
+      ];
+      csvRows.push(cols.map(c => `"${c}"`).join(','));
+    });
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const tabLabel = TABS.find(t => t.key === activeTab)?.label?.replace(/\s*\(.*\)/, '') || activeTab;
+    a.href = url;
+    a.download = `出納_${tabLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -598,7 +682,7 @@ export default function CashierPage() {
         </div>}
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 items-center">
           {TABS.map(tab => (
             <button key={tab.key}
               onClick={() => { setActiveTab(tab.key); setExpandedOrderId(null); setSelectedOrderIds(new Set()); }}
@@ -609,6 +693,16 @@ export default function CashierPage() {
               }`}
             >{tab.label}</button>
           ))}
+          <div className="ml-auto flex gap-2">
+            <button onClick={handlePrint}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300 flex items-center gap-1">
+              🖨 列印
+            </button>
+            <button onClick={handleExportExcel}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300 flex items-center gap-1">
+              📥 匯出Excel
+            </button>
+          </div>
         </div>
 
         {/* Orders Table */}
