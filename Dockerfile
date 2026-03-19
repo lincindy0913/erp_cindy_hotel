@@ -50,6 +50,15 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # Copy bcryptjs for seed script
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
+# Copy jsPDF and dependencies for PDF generation (voucher print)
+COPY --from=builder /app/node_modules/jspdf ./node_modules/jspdf
+COPY --from=builder /app/node_modules/jspdf-autotable ./node_modules/jspdf-autotable
+COPY --from=builder /app/node_modules/fflate ./node_modules/fflate
+COPY --from=builder /app/node_modules/fast-png ./node_modules/fast-png
+COPY --from=builder /app/node_modules/iobuffer ./node_modules/iobuffer
+COPY --from=builder /app/node_modules/pako ./node_modules/pako
+COPY --from=builder /app/node_modules/@babel/runtime ./node_modules/@babel/runtime
+
 # Copy font files if they exist
 COPY --from=builder /app/lib/fonts ./lib/fonts
 

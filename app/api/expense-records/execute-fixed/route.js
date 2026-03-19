@@ -88,11 +88,14 @@ export async function POST(request) {
     }
 
     const isBatch = Array.isArray(data.warehouseAmounts) && data.warehouseAmounts.length > 0;
-    const isLinesMode = Array.isArray(data.entryLines) && data.entryLines.length > 0 && data.entryLines.some(l => (l.warehouse || '').trim());
+    const isLinesMode = Array.isArray(data.entryLines) && data.entryLines.length > 0 && (
+      data.entryLines.some(l => (l.warehouse || '').trim()) || data.creditCardAdvanceMode
+    );
 
     if (isLinesMode) {
       // 每筆分錄含館別/付款方式/存簿：依館別分組，每館別一筆記錄
-      const warehouses = [...new Set(data.entryLines.map(l => (l.warehouse || '').trim()).filter(Boolean))];
+      // 未指定館別的分錄歸入空字串群組
+      const warehouses = [...new Set(data.entryLines.map(l => (l.warehouse || '').trim()))];
       const anyCheck = data.entryLines.some(l => (l.paymentMethod || data.paymentMethod) === '支票') || data.paymentMethod === '支票';
       if (anyCheck && (!data.checkNo?.trim() || !data.checkIssueDate || !data.checkDate || !data.checkAccountId)) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '付款方式為支票時請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 400);
@@ -133,13 +136,15 @@ export async function POST(request) {
 
         const r = await prisma.$transaction(async (tx) => {
           const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
+          const isCreditCardAdvance = data.creditCardAdvanceMode || ((pm === '信用卡' || pm === '員工代付') && whLines[0].advancedBy);
+          const whLabel = wh || '未指定館別';
           const po = await tx.paymentOrder.create({
-            data: { orderNo, invoiceIds: [], supplierId: lineSupplierId, supplierName: lineSupplierName, warehouse: wh, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, summary: `${template.name} — ${wh} ${data.expenseMonth}`, note: data.note || null, status: '待出納', createdBy: data.createdBy.trim(), sourceType: 'fixed_expense' }
+            data: { orderNo, invoiceIds: [], supplierId: lineSupplierId, supplierName: lineSupplierName, warehouse: wh || null, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, summary: `${template.name} — ${whLabel} ${data.expenseMonth}`, note: data.note || null, status: isCreditCardAdvance ? '已代墊' : '待出納', createdBy: data.createdBy.trim(), sourceType: 'fixed_expense' }
           });
           const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
           const rec = await tx.commonExpenseRecord.create({
             data: {
-              recordNo, templateId: parseInt(data.templateId), executionType: 'fixed', warehouse: wh, expenseMonth: data.expenseMonth.trim(),
+              recordNo, templateId: parseInt(data.templateId), executionType: 'fixed', warehouse: wh || null, expenseMonth: data.expenseMonth.trim(),
               supplierId: lineSupplierId, supplierName: lineSupplierName, paymentMethod: pm, totalDebit: debitTotal, totalCredit: creditTotal,
               paymentOrderId: po.id, paymentOrderNo: orderNo, status: '已確認', confirmedBy: data.createdBy.trim(), confirmedAt: new Date(),
               note: data.note || null, createdBy: data.createdBy.trim(),
@@ -188,12 +193,13 @@ export async function POST(request) {
 
           const [y, m] = data.expenseMonth.split('-');
           const cat = template?.category?.name || '固定費用';
-          const exDept = await tx.departmentExpense.findFirst({ where: { year: parseInt(y), month: parseInt(m), department: wh, category: cat } });
+          const deptWh = wh || '未指定';
+          const exDept = await tx.departmentExpense.findFirst({ where: { year: parseInt(y), month: parseInt(m), department: deptWh, category: cat } });
           if (exDept) await tx.departmentExpense.update({ where: { id: exDept.id }, data: { totalAmount: Number(exDept.totalAmount) + debitTotal } });
-          else await tx.departmentExpense.create({ data: { year: parseInt(y), month: parseInt(m), department: wh, category: cat, tax: 0, totalAmount: debitTotal } });
-          const exAgg = await tx.monthlyAggregation.findFirst({ where: { aggregationType: 'expense', year: parseInt(y), month: parseInt(m), warehouse: wh } });
+          else await tx.departmentExpense.create({ data: { year: parseInt(y), month: parseInt(m), department: deptWh, category: cat, tax: 0, totalAmount: debitTotal } });
+          const exAgg = await tx.monthlyAggregation.findFirst({ where: { aggregationType: 'expense', year: parseInt(y), month: parseInt(m), warehouse: deptWh } });
           if (exAgg) await tx.monthlyAggregation.update({ where: { id: exAgg.id }, data: { totalAmount: { increment: debitTotal }, recordCount: { increment: 1 } } });
-          else await tx.monthlyAggregation.create({ data: { aggregationType: 'expense', year: parseInt(y), month: parseInt(m), warehouse: wh, totalAmount: debitTotal, recordCount: 1 } });
+          else await tx.monthlyAggregation.create({ data: { aggregationType: 'expense', year: parseInt(y), month: parseInt(m), warehouse: deptWh, totalAmount: debitTotal, recordCount: 1 } });
 
           // 借方轉帳/匯款：自動入出納、存簿、現金流（建立 CashTransaction + CashierExecution，付款單改為已執行）
           if (accId && (pm === '轉帳' || pm === '匯款')) {
@@ -266,25 +272,32 @@ export async function POST(request) {
             });
           }
 
-          // 員工代墊款：付款方式為信用卡或員工代付時，自動建立 EmployeeAdvance
-          if ((pm === '信用卡' || pm === '員工代付') && whLines[0].advancedBy) {
-            const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
-            await tx.employeeAdvance.create({
-              data: {
-                advanceNo,
-                employeeName: whLines[0].advancedBy,
-                paymentMethod: pm === '信用卡' ? '信用卡' : '現金',
-                sourceType: 'expense',
-                sourceRecordId: po.id,
-                sourceDescription: `${template.name} — ${wh} ${data.expenseMonth}`,
-                paymentOrderId: po.id,
-                paymentOrderNo: orderNo,
-                amount: debitTotal,
-                status: '待結算',
-                warehouse: wh,
-                createdBy: data.createdBy?.trim() || null,
-              },
-            });
+          // 員工代墊款：付款方式為信用卡或員工代付時，每筆借方分錄各建立一筆 EmployeeAdvance
+          const debitLines = whLines.filter(l => l.entryType === 'debit' && l.amount > 0);
+          for (const line of debitLines) {
+            const lineAdvancedBy = line.advancedBy || whLines[0].advancedBy;
+            const linePm = line.paymentMethod || pm;
+            if ((linePm === '信用卡' || linePm === '員工代付') && lineAdvancedBy) {
+              const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+              await tx.employeeAdvance.create({
+                data: {
+                  advanceNo,
+                  employeeName: lineAdvancedBy,
+                  paymentMethod: linePm === '信用卡' ? '信用卡' : '現金',
+                  sourceType: 'expense',
+                  sourceRecordId: po.id,
+                  sourceDescription: `${template.name} — ${whLabel} ${data.expenseMonth}`,
+                  expenseName: line.accountingName || template.name || null,
+                  summary: line.summary || null,
+                  paymentOrderId: po.id,
+                  paymentOrderNo: orderNo,
+                  amount: line.amount,
+                  status: '待結算',
+                  warehouse: wh || null,
+                  createdBy: data.createdBy?.trim() || null,
+                },
+              });
+            }
           }
 
           return { recordNo, warehouse: wh, amount: debitTotal };
@@ -317,6 +330,8 @@ export async function POST(request) {
         if (!entryLines) continue;
 
         const result = await prisma.$transaction(async (tx) => {
+          const batchPm = data.paymentMethod || '月結';
+          const isCreditCardAdvanceBatch = data.creditCardAdvanceMode || ((batchPm === '信用卡' || batchPm === '員工代付') && data.advancedBy);
           const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
           const paymentOrder = await tx.paymentOrder.create({
             data: {
@@ -325,14 +340,14 @@ export async function POST(request) {
               supplierId: data.supplierId ? parseInt(data.supplierId) : null,
               supplierName: data.supplierName || null,
               warehouse: wh,
-              paymentMethod: data.paymentMethod || '月結',
+              paymentMethod: batchPm,
               amount,
               discount: 0,
               netAmount: amount,
               dueDate: data.dueDate || null,
               summary: `${template.name} — ${wh} ${data.expenseMonth}`,
               note: data.note || null,
-              status: '待出納',
+              status: isCreditCardAdvanceBatch ? '已代墊' : '待出納',
               createdBy: data.createdBy.trim(),
               sourceType: 'fixed_expense'
             }
@@ -405,7 +420,6 @@ export async function POST(request) {
           }
 
           // 員工代墊款
-          const batchPm = data.paymentMethod || '月結';
           if ((batchPm === '信用卡' || batchPm === '員工代付') && data.advancedBy) {
             const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
             await tx.employeeAdvance.create({
@@ -416,6 +430,7 @@ export async function POST(request) {
                 sourceType: 'expense',
                 sourceRecordId: paymentOrder.id,
                 sourceDescription: `${template.name} — ${wh} ${data.expenseMonth}`,
+                expenseName: template.name || null,
                 paymentOrderId: paymentOrder.id,
                 paymentOrderNo: orderNo,
                 amount,
@@ -491,6 +506,8 @@ export async function POST(request) {
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create PaymentOrder
+      const singlePm = data.paymentMethod || '月結';
+      const isCreditCardAdvanceSingle = data.creditCardAdvanceMode || ((singlePm === '信用卡' || singlePm === '員工代付') && data.advancedBy);
       const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
       const paymentOrder = await tx.paymentOrder.create({
         data: {
@@ -499,14 +516,14 @@ export async function POST(request) {
           supplierId: data.supplierId ? parseInt(data.supplierId) : null,
           supplierName: data.supplierName || null,
           warehouse: data.warehouse.trim(),
-          paymentMethod: data.paymentMethod || '月結',
+          paymentMethod: singlePm,
           amount: debitTotal,
           discount: 0,
           netAmount: debitTotal,
           dueDate: data.dueDate || null,
           summary: `${template.name} — ${data.warehouse.trim()} ${data.expenseMonth}`,
           note: data.note || null,
-          status: '待出納',
+          status: isCreditCardAdvanceSingle ? '已代墊' : '待出納',
           createdBy: data.createdBy.trim(),
           sourceType: 'fixed_expense'
         }
@@ -602,7 +619,6 @@ export async function POST(request) {
       }
 
       // 員工代墊款：付款方式為信用卡或員工代付
-      const singlePm = data.paymentMethod || '月結';
       if ((singlePm === '信用卡' || singlePm === '員工代付') && data.advancedBy) {
         const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
         await tx.employeeAdvance.create({
@@ -613,6 +629,7 @@ export async function POST(request) {
             sourceType: 'expense',
             sourceRecordId: paymentOrder.id,
             sourceDescription: `${template?.name || '費用'} — ${data.warehouse.trim()} ${data.expenseMonth}`,
+            expenseName: template?.name || null,
             paymentOrderId: paymentOrder.id,
             paymentOrderNo: orderNo,
             amount: debitTotal,

@@ -12,7 +12,7 @@ export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
     const body = await request.json();
-    const { advanceIds, accountId, settleDate, paymentMethod, note } = body;
+    const { advanceIds, accountId, settleDate, paymentMethod, note, billTotal, privateAmount, privateAccountId } = body;
 
     if (!advanceIds || !Array.isArray(advanceIds) || advanceIds.length === 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇要結算的代墊款', 400);
@@ -117,16 +117,70 @@ export async function POST(request) {
         });
       }
 
+      // Handle boss's private amount (股東往來)
+      let privateTxNo = null;
+      if (privateAmount && privateAmount > 0) {
+        const privateTxSeq = maxTxSeq + 2; // next sequence after the main tx
+        privateTxNo = `${txPrefix}${String(privateTxSeq).padStart(4, '0')}`;
+
+        const privateCategoryId = await getCategoryId(tx, 'shareholder_loan');
+
+        await tx.cashTransaction.create({
+          data: {
+            transactionNo: privateTxNo,
+            transactionDate: settleDate,
+            type: '支出',
+            warehouse: advances[0].warehouse,
+            accountId: parseInt(accountId),
+            categoryId: privateCategoryId,
+            amount: parseFloat(privateAmount),
+            description: `股東往來/老闆借支 — 信用卡帳單私帳部分 (帳單總額 ${billTotal?.toLocaleString()})`,
+            sourceType: 'shareholder_loan',
+            sourceRecordId: cashTx.id,
+            paymentNo: txNo,
+            status: '已確認',
+            isAutoCreated: false,
+            createdBy: session?.user?.id ? parseInt(session.user.id) : null,
+          },
+        });
+
+        // Recalculate balance again with the new private tx
+        const allTx2 = await tx.cashTransaction.findMany({
+          where: { accountId: parseInt(accountId) },
+        });
+        const account2 = await tx.cashAccount.findUnique({ where: { id: parseInt(accountId) } });
+        let balance2 = Number(account2.openingBalance);
+        for (const t of allTx2) {
+          const amt = Number(t.amount);
+          const fee = Number(t.fee);
+          if (t.type === '收入' || t.type === '移轉入') {
+            balance2 += amt;
+          } else {
+            balance2 -= amt;
+          }
+          if (fee > 0) balance2 -= fee;
+        }
+        await tx.cashAccount.update({
+          where: { id: parseInt(accountId) },
+          data: { currentBalance: balance2 },
+        });
+      }
+
       return {
         settledCount: advances.length,
         totalAmount,
         cashTransactionNo: txNo,
+        privateTxNo,
+        privateAmount: privateAmount || 0,
         employeeNames,
       };
     });
 
+    const privateMsg = result.privateAmount > 0
+      ? `\n老闆私帳 NT$ ${result.privateAmount.toLocaleString()} 已記入股東往來 (${result.privateTxNo})`
+      : '';
     return NextResponse.json({
-      message: `成功結算 ${result.settledCount} 筆代墊款，總金額 NT$ ${result.totalAmount.toLocaleString()}`,
+      message: `成功結算 ${result.settledCount} 筆代墊款，公費 NT$ ${result.totalAmount.toLocaleString()}${privateMsg}`,
       ...result,
     }, { status: 200 });
   } catch (error) {

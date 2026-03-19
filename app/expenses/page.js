@@ -905,6 +905,7 @@ export default function ExpensesPage() {
           })),
           paymentMethod: executeForm.paymentMethod || '月結',
           advancedBy: executeForm.advancedBy || null,
+          creditCardAdvanceMode: !!executeForm.creditCardAdvanceMode,
           createdBy: session?.user?.name || session?.user?.email || '系統',
           note: executeForm.note || null,
           allowDuplicate
@@ -926,7 +927,8 @@ export default function ExpensesPage() {
         if (res.ok) {
           const result = await res.json();
           let msg = result.message || `執行成功！已建立 ${result.created?.length || 0} 筆記錄`;
-          if (executeForm.paymentMethod === '支票') msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
+          if (executeForm.creditCardAdvanceMode) msg += `\n\n已建立「老闆信用卡代墊」記錄，可至「員工預支」頁面結算。\n（付款單狀態為「已代墊」，不會出現在出納待付清單）`;
+          else if (executeForm.paymentMethod === '支票') msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
           showToast(msg, 'error');
           setSelectedTemplateId('');
           setExecuteForm(prev => ({
@@ -1570,8 +1572,53 @@ export default function ExpensesPage() {
                           </select>
                         </div>
                       </div>
+                      {/* 老闆信用卡代墊模式 */}
+                      <div style={{ background: executeForm.creditCardAdvanceMode ? '#f3e8ff' : '#f8f9fa', border: `1px solid ${executeForm.creditCardAdvanceMode ? '#8b5cf6' : '#dee2e6'}`, borderRadius: 8, padding: 12, marginBottom: 12, transition: 'all 0.2s' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: executeForm.creditCardAdvanceMode ? '#6d28d9' : '#495057' }}>
+                          <input type="checkbox" checked={!!executeForm.creditCardAdvanceMode}
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              setExecuteForm(prev => {
+                                const updated = { ...prev, creditCardAdvanceMode: checked };
+                                if (checked) {
+                                  updated.creditCardAdvanceName = prev.creditCardAdvanceName || '老闆';
+                                  // 自動將所有分錄的付款方式改為信用卡、代墊員工填入
+                                  updated.entryLines = prev.entryLines.map(l => l.entryType === 'debit' ? { ...l, paymentMethod: '信用卡', advancedBy: prev.creditCardAdvanceName || '老闆' } : l);
+                                } else {
+                                  // 取消時恢復分錄的付款方式
+                                  updated.entryLines = prev.entryLines.map(l => l.entryType === 'debit' ? { ...l, paymentMethod: '', advancedBy: '' } : l);
+                                }
+                                return updated;
+                              });
+                            }}
+                            style={{ width: 18, height: 18, accentColor: '#6d28d9' }} />
+                          老闆信用卡代墊模式
+                        </label>
+                        {executeForm.creditCardAdvanceMode && (
+                          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #c4b5fd' }}>
+                            <div style={{ fontSize: 12, color: '#6d28d9', marginBottom: 8, lineHeight: 1.6 }}>
+                              開啟後，所有費用項目將自動建立<strong>員工代墊記錄</strong>（不會進入出納待付清單）。<br/>
+                              出納繳信用卡帳單時，到「員工預支」頁面勾選結算即可。
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <label style={{ fontSize: 12, color: '#6d28d9', fontWeight: 500, whiteSpace: 'nowrap' }}>代墊人</label>
+                              <input value={executeForm.creditCardAdvanceName || ''}
+                                onChange={e => {
+                                  const name = e.target.value;
+                                  setExecuteForm(prev => ({
+                                    ...prev,
+                                    creditCardAdvanceName: name,
+                                    entryLines: prev.entryLines.map(l => l.entryType === 'debit' ? { ...l, advancedBy: name } : l)
+                                  }));
+                                }}
+                                placeholder="老闆" style={{ ...inputStyle, marginBottom: 0, borderColor: '#c4b5fd', background: '#fff', width: 150 }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       {/* 當無逐筆分錄且付款方式為信用卡/員工代付時，顯示整批代墊員工欄位 */}
-                      {(!executeForm.entryLines || executeForm.entryLines.length === 0) &&
+                      {!executeForm.creditCardAdvanceMode && (!executeForm.entryLines || executeForm.entryLines.length === 0) &&
                         (executeForm.paymentMethod === '信用卡' || executeForm.paymentMethod === '員工代付') && (
                         <div style={{ background: '#f3e8ff', border: '1px solid #c4b5fd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: '#6d28d9', marginBottom: 8 }}>員工代墊資訊（存檔後自動連動代墊款管理）</div>
@@ -1746,9 +1793,9 @@ export default function ExpensesPage() {
                                 supplierId: '',
                                 supplierName: '',
                                 warehouse: executeForm.warehouse || '',
-                                paymentMethod: executeForm.paymentMethod || '',
+                                paymentMethod: prev.creditCardAdvanceMode ? '信用卡' : (executeForm.paymentMethod || ''),
                                 accountId: '',
-                                advancedBy: '',
+                                advancedBy: prev.creditCardAdvanceMode ? (prev.creditCardAdvanceName || '老闆') : '',
                                 sortOrder: prev.entryLines.length
                               }]
                             }));
@@ -1853,6 +1900,7 @@ export default function ExpensesPage() {
                     style={{ ...inputStyle, width: 120 }}>
                     <option value="">全部</option>
                     <option value="待出納">待出納</option>
+                    <option value="已代墊">已代墊</option>
                     <option value="已付款">已付款</option>
                   </select>
                 </div>
@@ -1903,8 +1951,8 @@ export default function ExpensesPage() {
                         <td style={tdStyle}>
                           <span style={{
                             padding: '2px 8px', borderRadius: 4, fontSize: 12,
-                            background: ps === '已付款' ? '#d4edda' : ps === '待出納' ? '#fff3cd' : '#e2e3e5',
-                            color: ps === '已付款' ? '#155724' : ps === '待出納' ? '#856404' : '#383d41'
+                            background: ps === '已付款' ? '#d4edda' : ps === '待出納' ? '#fff3cd' : ps === '已代墊' ? '#f3e8ff' : '#e2e3e5',
+                            color: ps === '已付款' ? '#155724' : ps === '待出納' ? '#856404' : ps === '已代墊' ? '#6d28d9' : '#383d41'
                           }}>
                             {ps || r.status}
                           </span>
@@ -1915,7 +1963,7 @@ export default function ExpensesPage() {
                               style={smallBtnStyle}>
                               {expandedRecord === r.id ? '收起' : '明細'}
                             </button>
-                            {ps === '待出納' && (
+                            {(ps === '待出納' || ps === '已代墊') && (
                               <>
                                 <button onClick={() => openEditRecord(r)}
                                   style={{ ...smallBtnStyle, color: '#1a73e8' }}>編輯</button>

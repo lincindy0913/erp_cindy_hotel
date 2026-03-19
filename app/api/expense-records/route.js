@@ -65,6 +65,7 @@ export async function GET(request) {
       let paymentStatus = null;
       if (poStatus === '待出納') paymentStatus = '待出納';
       else if (poStatus === '已執行') paymentStatus = '已付款';
+      else if (poStatus === '已代墊') paymentStatus = '已代墊';
       else if (poStatus) paymentStatus = poStatus;
 
       return {

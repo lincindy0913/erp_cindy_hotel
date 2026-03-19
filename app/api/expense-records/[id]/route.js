@@ -347,7 +347,7 @@ export async function PUT(request, { params }) {
       // Only allow edit when linked payment order is 待出納
       if (existing.paymentOrderId) {
         const po = await prisma.paymentOrder.findUnique({ where: { id: existing.paymentOrderId } });
-        if (po && po.status !== '待出納') {
+        if (po && po.status !== '待出納' && po.status !== '已代墊') {
           return createErrorResponse('VALIDATION_FAILED', '付款單已執行，無法編輯', 400);
         }
       }
@@ -470,8 +470,8 @@ export async function DELETE(request, { params }) {
     // Check linked payment order status
     if (existing.paymentOrderId) {
       const po = await prisma.paymentOrder.findUnique({ where: { id: existing.paymentOrderId } });
-      if (po && po.status !== '待出納') {
-        return createErrorResponse('VALIDATION_FAILED', `無法刪除：付款單狀態為「${po.status}」，僅「待出納」狀態可刪除`, 400);
+      if (po && po.status !== '待出納' && po.status !== '已代墊') {
+        return createErrorResponse('VALIDATION_FAILED', `無法刪除：付款單狀態為「${po.status}」，僅「待出納」或「已代墊」狀態可刪除`, 400);
       }
     } else if (existing.status !== '待確認') {
       // No linked PO — fallback to old behavior
