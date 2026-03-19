@@ -4,8 +4,6 @@ import { useState, useEffect, Fragment, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
-import ExportButtons from '@/components/ExportButtons';
-import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
@@ -46,13 +44,20 @@ export default function PaymentPage() {
   // 付款帳戶（CashAccount）
   const [cashAccounts, setCashAccounts] = useState([]);
 
-  // 篩選條件
+  // 篩選條件（新增付款單用）
   const [filterData, setFilterData] = useState({
     yearMonth: '',
     supplierId: '',
     warehouse: '',
     paymentTerms: ''
   });
+
+  // 搜尋篩選（付款單列表用）
+  const [finSearchDateFrom, setFinSearchDateFrom] = useState('');
+  const [finSearchDateTo, setFinSearchDateTo] = useState('');
+  const [finSearchWarehouse, setFinSearchWarehouse] = useState('');
+  const [finSearchSupplierId, setFinSearchSupplierId] = useState('');
+  const [finSearchPaymentMethod, setFinSearchPaymentMethod] = useState('');
 
   // 按付款單的館別列印草稿報表
   const [showWarehouseReportModal, setShowWarehouseReportModal] = useState(false);
@@ -626,7 +631,25 @@ export default function PaymentPage() {
     }
   }
 
-  const displayOrders = getDisplayOrders();
+  const rawDisplayOrders = getDisplayOrders();
+  // 搜尋篩選
+  const displayOrders = useMemo(() => {
+    return rawDisplayOrders.filter(o => {
+      if (finSearchDateFrom) {
+        const d = (o.createdAt || '').slice(0, 10);
+        if (d < finSearchDateFrom) return false;
+      }
+      if (finSearchDateTo) {
+        const d = (o.createdAt || '').slice(0, 10);
+        if (d > finSearchDateTo) return false;
+      }
+      if (finSearchWarehouse && (o.warehouse || '') !== finSearchWarehouse) return false;
+      if (finSearchSupplierId && String(o.supplierId || '') !== finSearchSupplierId) return false;
+      if (finSearchPaymentMethod && (o.paymentMethod || '') !== finSearchPaymentMethod) return false;
+      return true;
+    });
+  }, [rawDisplayOrders, finSearchDateFrom, finSearchDateTo, finSearchWarehouse, finSearchSupplierId, finSearchPaymentMethod]);
+
   const { sortKey: finSortKey, sortDir: finSortDir, toggleSort: toggleFinSort } = useColumnSort('createdAt', 'desc');
   const sortedDisplayOrders = useMemo(
     () =>
@@ -691,6 +714,78 @@ export default function PaymentPage() {
     setPurchaseReportLoading(false);
   }
 
+  // 按搜尋結果列印付款單（依館別分頁）
+  function handlePrintFilteredByWarehouse() {
+    const rows = sortedDisplayOrders;
+    if (rows.length === 0) { showToast('無資料可列印', 'error'); return; }
+    const groups = {};
+    rows.forEach(o => { const k = o.warehouse || '未指定館別'; if (!groups[k]) groups[k] = []; groups[k].push(o); });
+    const filterInfo = [];
+    if (finSearchDateFrom || finSearchDateTo) filterInfo.push(`日期: ${finSearchDateFrom || '~'} ~ ${finSearchDateTo || '~'}`);
+    if (finSearchWarehouse) filterInfo.push(`館別: ${finSearchWarehouse}`);
+    if (finSearchSupplierId) { const s = suppliers.find(s => String(s.id) === finSearchSupplierId); filterInfo.push(`廠商: ${s?.name || ''}`); }
+    if (finSearchPaymentMethod) filterInfo.push(`付款方式: ${finSearchPaymentMethod}`);
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<html><head><title>付款單 — 按館別列印</title>
+      <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+      th{background:#f5f5f5;font-weight:600} .right{text-align:right}
+      h2{margin:0 0 4px} h3{margin:16px 0 8px} .info{color:#666;font-size:12px;margin-bottom:12px}
+      .page-break{page-break-before:always}
+      @media print{button{display:none}}</style></head><body>
+      <h2>付款管理 — ${activeTab === 'draft' ? '草稿' : activeTab === 'pending' ? '待出納' : activeTab === 'executed' ? '已執行' : '已拒絕'}</h2>
+      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}列印時間: ${new Date().toLocaleString('zh-TW')}</div>`);
+    let first = true;
+    Object.entries(groups).sort().forEach(([wh, list]) => {
+      if (!first) w.document.write('<div class="page-break"></div>');
+      first = false;
+      const total = list.reduce((s, o) => s + Number(o.netAmount || 0), 0);
+      w.document.write(`<h3>館別: ${wh} (${list.length} 筆)</h3>
+      <table><thead><tr><th>付款單號</th><th>廠商</th><th>付款方式</th><th class="right">淨額</th><th>狀態</th><th>建立日期</th></tr></thead><tbody>`);
+      list.forEach(o => {
+        w.document.write(`<tr><td>${o.orderNo}</td><td>${o.supplierName || '－'}</td><td>${o.paymentMethod || '－'}</td>
+          <td class="right">${Number(o.netAmount || 0).toLocaleString()}</td><td>${o.status}</td>
+          <td>${o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '－'}</td></tr>`);
+      });
+      w.document.write(`</tbody><tfoot><tr><td colspan="3" class="right"><strong>小計</strong></td>
+        <td class="right"><strong>${total.toLocaleString()}</strong></td><td colspan="2"></td></tr></tfoot></table>`);
+    });
+    const grandTotal = rows.reduce((s, o) => s + Number(o.netAmount || 0), 0);
+    w.document.write(`<div style="font-size:14px;font-weight:700;margin-top:8px">總計: ${rows.length} 筆, NT$ ${grandTotal.toLocaleString()}</div>
+    <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button></body></html>`);
+    w.document.close();
+  }
+
+  // 匯出Excel
+  function handleFinExportExcel() {
+    const rows = sortedDisplayOrders;
+    if (rows.length === 0) { showToast('無資料可匯出', 'error'); return; }
+    const header = ['付款單號', '廠商', '館別', '付款方式', '發票數', '折讓', '淨額', '狀態', '建立日期'];
+    const csvRows = [header.join(',')];
+    rows.forEach(o => {
+      csvRows.push([
+        o.orderNo || '',
+        (o.supplierName || '').replace(/,/g, '，'),
+        o.warehouse || '',
+        o.paymentMethod || '',
+        (o.invoices?.length || 0),
+        Number(o.discount || 0),
+        Number(o.netAmount || 0),
+        o.status || '',
+        o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : ''
+      ].map(c => `"${c}"`).join(','));
+    });
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `付款單_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function getStatusBadge(status) {
     const map = {
       '草稿': 'bg-gray-100 text-gray-800',
@@ -749,28 +844,31 @@ export default function PaymentPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setShowWarehouseReportModal(true)}
+              onClick={handlePrintFilteredByWarehouse}
               className="bg-white border border-indigo-300 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-50 text-sm"
             >
               按付款單的館別列印
             </button>
             <button
               type="button"
-              onClick={() => setShowPurchaseReportModal(true)}
+              onClick={() => {
+                // 預填搜尋條件到進貨報表
+                if (finSearchDateFrom) {
+                  setPurchaseReportMonth(finSearchDateFrom.slice(0, 7));
+                }
+                if (finSearchWarehouse) {
+                  setPurchaseReportWarehouse(finSearchWarehouse);
+                }
+                setShowPurchaseReportModal(true);
+              }}
               className="bg-white border border-green-300 text-green-700 px-4 py-2 rounded-lg hover:bg-green-50 text-sm"
             >
               按進貨單的館別列印
             </button>
-            <ExportButtons
-              data={displayOrders.map(o => ({
-                ...o,
-                invoiceCount: o.invoices?.length || 0,
-              }))}
-              columns={EXPORT_CONFIGS.finance.columns}
-              exportName={EXPORT_CONFIGS.finance.filename}
-              title="付款管理"
-              sheetName="付款單"
-            />
+            <button onClick={handleFinExportExcel}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300">
+              📥 匯出Excel
+            </button>
             {isLoggedIn && (
               <button
                 onClick={() => {
@@ -1391,6 +1489,54 @@ export default function PaymentPage() {
             </form>
           </div>
         )}
+
+        {/* 搜尋篩選 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">查詢條件</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">建立日期起</label>
+              <input type="date" value={finSearchDateFrom} onChange={e => setFinSearchDateFrom(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">建立日期迄</label>
+              <input type="date" value={finSearchDateTo} onChange={e => setFinSearchDateTo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">館別</label>
+              <select value={finSearchWarehouse} onChange={e => setFinSearchWarehouse(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="">全部館別</option>
+                {[...new Set(orders.map(o => o.warehouse).filter(Boolean))].sort().map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">廠商</label>
+              <select value={finSearchSupplierId} onChange={e => setFinSearchSupplierId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="">全部廠商</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">付款方式</label>
+              <select value={finSearchPaymentMethod} onChange={e => setFinSearchPaymentMethod(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="">全部方式</option>
+                {paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 mt-3">
+            {(finSearchDateFrom || finSearchDateTo || finSearchWarehouse || finSearchSupplierId || finSearchPaymentMethod) && (
+              <button onClick={() => { setFinSearchDateFrom(''); setFinSearchDateTo(''); setFinSearchWarehouse(''); setFinSearchSupplierId(''); setFinSearchPaymentMethod(''); }}
+                className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">清除篩選</button>
+            )}
+            <span className="text-xs text-gray-400">共 {displayOrders.length} 筆 / 總計 {rawDisplayOrders.length} 筆</span>
+          </div>
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4">
