@@ -73,6 +73,9 @@ export default function PaymentPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [purchaseReportWarehouse, setPurchaseReportWarehouse] = useState('');
+  const [purchaseReportDateFrom, setPurchaseReportDateFrom] = useState('');
+  const [purchaseReportDateTo, setPurchaseReportDateTo] = useState('');
+  const [purchaseReportSupplierId, setPurchaseReportSupplierId] = useState('');
   const [purchaseReportData, setPurchaseReportData] = useState(null);
   const [purchaseReportLoading, setPurchaseReportLoading] = useState(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
@@ -693,14 +696,19 @@ export default function PaymentPage() {
 
   // 按進貨單的館別列印：查詢進貨單館別對應的付款單
   async function fetchPurchaseReport() {
-    if (!purchaseReportMonth) return;
+    if (!purchaseReportMonth && !purchaseReportDateFrom && !purchaseReportDateTo) { showToast('請選擇月份或日期區間', 'error'); return; }
     setPurchaseReportLoading(true);
     setPurchaseReportData(null);
     try {
-      const params = new URLSearchParams({
-        month: purchaseReportMonth,
-        warehouse: purchaseReportWarehouse,
-      });
+      const params = new URLSearchParams();
+      if (purchaseReportDateFrom || purchaseReportDateTo) {
+        if (purchaseReportDateFrom) params.set('dateFrom', purchaseReportDateFrom);
+        if (purchaseReportDateTo) params.set('dateTo', purchaseReportDateTo);
+      } else {
+        params.set('month', purchaseReportMonth);
+      }
+      if (purchaseReportWarehouse) params.set('warehouse', purchaseReportWarehouse);
+      if (purchaseReportSupplierId) params.set('supplierId', purchaseReportSupplierId);
       const res = await fetch(`/api/finance/purchase-warehouse-report?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -854,10 +862,18 @@ export default function PaymentPage() {
               onClick={() => {
                 // 預填搜尋條件到進貨報表
                 if (finSearchDateFrom) {
-                  setPurchaseReportMonth(finSearchDateFrom.slice(0, 7));
+                  setPurchaseReportDateFrom(finSearchDateFrom);
+                  setPurchaseReportMonth('');
+                }
+                if (finSearchDateTo) {
+                  setPurchaseReportDateTo(finSearchDateTo);
+                  setPurchaseReportMonth('');
                 }
                 if (finSearchWarehouse) {
                   setPurchaseReportWarehouse(finSearchWarehouse);
+                }
+                if (finSearchSupplierId) {
+                  setPurchaseReportSupplierId(finSearchSupplierId);
                 }
                 setShowPurchaseReportModal(true);
               }}
@@ -2157,15 +2173,23 @@ export default function PaymentPage() {
               <button type="button" onClick={() => setShowPurchaseReportModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
             </div>
             <div className="px-6 py-4 space-y-4">
-              <p className="text-sm text-gray-600">依進貨單的館別查詢對應的付款單，可篩選月份及館別後列印。</p>
-              <div className="flex flex-wrap items-end gap-4">
+              <p className="text-sm text-gray-600">依進貨單的館別查詢對應的付款單，可用日期區間、館別、廠商篩選後列印。</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">進貨月份</label>
-                  <input type="month" value={purchaseReportMonth} onChange={e => setPurchaseReportMonth(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                  <label className="block text-xs text-gray-500 mb-1">進貨日期起</label>
+                  <input type="date" value={purchaseReportDateFrom} onChange={e => { setPurchaseReportDateFrom(e.target.value); if (e.target.value) setPurchaseReportMonth(''); }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">進貨日期迄</label>
+                  <input type="date" value={purchaseReportDateTo} onChange={e => { setPurchaseReportDateTo(e.target.value); if (e.target.value) setPurchaseReportMonth(''); }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">或選擇月份</label>
+                  <input type="month" value={purchaseReportMonth} onChange={e => { setPurchaseReportMonth(e.target.value); if (e.target.value) { setPurchaseReportDateFrom(''); setPurchaseReportDateTo(''); } }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">進貨館別</label>
-                  <select value={purchaseReportWarehouse} onChange={e => setPurchaseReportWarehouse(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[180px]">
+                  <select value={purchaseReportWarehouse} onChange={e => setPurchaseReportWarehouse(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
                     <option value="">全部館別</option>
                     <option value="麗格">麗格</option>
                     <option value="麗軒">麗軒</option>
@@ -2174,14 +2198,23 @@ export default function PaymentPage() {
                     <option value="自在海">自在海</option>
                   </select>
                 </div>
-                <button
-                  type="button"
-                  onClick={fetchPurchaseReport}
-                  disabled={purchaseReportLoading}
-                  className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
-                  {purchaseReportLoading ? '查詢中...' : '查詢'}
-                </button>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">廠商</label>
+                  <select value={purchaseReportSupplierId} onChange={e => setPurchaseReportSupplierId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+                    <option value="">全部廠商</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={fetchPurchaseReport}
+                    disabled={purchaseReportLoading}
+                    className="px-4 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 w-full"
+                  >
+                    {purchaseReportLoading ? '查詢中...' : '查詢'}
+                  </button>
+                </div>
               </div>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 {!purchaseReportData ? (

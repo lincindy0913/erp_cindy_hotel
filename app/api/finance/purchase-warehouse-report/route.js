@@ -17,22 +17,33 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
     const warehouse = searchParams.get('warehouse') || '';
+    const supplierId = searchParams.get('supplierId');
 
-    if (!month) {
+    // 需要至少有月份或日期區間
+    if (!month && !dateFrom && !dateTo) {
       return NextResponse.json({ groups: {} });
     }
 
-    const monthStart = `${month}-01`;
-    const [year, mon] = month.split('-');
-    const nextMonth = parseInt(mon) === 12
-      ? `${parseInt(year) + 1}-01-01`
-      : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
-
-    const purchaseWhere = {
-      purchaseDate: { gte: monthStart, lt: nextMonth },
-    };
+    const purchaseWhere = {};
+    if (dateFrom || dateTo) {
+      // 使用日期區間
+      purchaseWhere.purchaseDate = {};
+      if (dateFrom) purchaseWhere.purchaseDate.gte = dateFrom;
+      if (dateTo) purchaseWhere.purchaseDate.lte = dateTo;
+    } else if (month) {
+      // 使用月份
+      const monthStart = `${month}-01`;
+      const [year, mon] = month.split('-');
+      const nextMonth = parseInt(mon) === 12
+        ? `${parseInt(year) + 1}-01-01`
+        : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
+      purchaseWhere.purchaseDate = { gte: monthStart, lt: nextMonth };
+    }
     if (warehouse) purchaseWhere.warehouse = warehouse;
+    if (supplierId) purchaseWhere.supplierId = parseInt(supplierId);
 
     const purchases = await prisma.purchaseMaster.findMany({
       where: purchaseWhere,
