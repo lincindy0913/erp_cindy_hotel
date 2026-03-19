@@ -123,18 +123,107 @@ export default function EngineeringPage() {
     [contracts, engConKey, engConDir]
   );
 
+  // 付款單搜尋篩選
+  const [paySearchDateFrom, setPaySearchDateFrom] = useState('');
+  const [paySearchDateTo, setPaySearchDateTo] = useState('');
+  const [paySearchSupplierId, setPaySearchSupplierId] = useState('');
+  const [paySearchWarehouse, setPaySearchWarehouse] = useState('');
+
+  const filteredPaymentOrders = useMemo(() => {
+    return paymentOrders.filter(o => {
+      if (paySearchDateFrom) {
+        const d = (o.createdAt || '').slice(0, 10);
+        if (d < paySearchDateFrom) return false;
+      }
+      if (paySearchDateTo) {
+        const d = (o.createdAt || '').slice(0, 10);
+        if (d > paySearchDateTo) return false;
+      }
+      if (paySearchSupplierId && String(o.supplierId) !== paySearchSupplierId) return false;
+      if (paySearchWarehouse && (o.warehouse || '') !== paySearchWarehouse) return false;
+      return true;
+    });
+  }, [paymentOrders, paySearchDateFrom, paySearchDateTo, paySearchSupplierId, paySearchWarehouse]);
+
   const { sortKey: engPayKey, sortDir: engPayDir, toggleSort: engPayToggle } = useColumnSort('orderNo', 'asc');
   const sortedPaymentOrders = useMemo(
     () =>
-      sortRows(paymentOrders, engPayKey, engPayDir, {
+      sortRows(filteredPaymentOrders, engPayKey, engPayDir, {
         orderNo: (o) => o.orderNo || '',
         summary: (o) => o.summary || '',
         supplierName: (o) => o.supplierName || '',
+        warehouse: (o) => o.warehouse || '',
         netAmount: (o) => Number(o.netAmount || 0),
         poStatus: (o) => o.status || '',
+        createdAt: (o) => o.createdAt || '',
       }),
-    [paymentOrders, engPayKey, engPayDir]
+    [filteredPaymentOrders, engPayKey, engPayDir]
   );
+
+  function handlePayPrint() {
+    const rows = sortedPaymentOrders;
+    if (rows.length === 0) return;
+    const filterInfo = [];
+    if (paySearchDateFrom || paySearchDateTo) filterInfo.push(`日期: ${paySearchDateFrom || '~'} ~ ${paySearchDateTo || '~'}`);
+    if (paySearchWarehouse) filterInfo.push(`館別: ${paySearchWarehouse}`);
+    if (paySearchSupplierId) { const s = suppliers.find(s => String(s.id) === paySearchSupplierId); filterInfo.push(`廠商: ${s?.name || paySearchSupplierId}`); }
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>工程付款單</title>
+      <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+      th{background:#f5f5f5;font-weight:600}
+      .right{text-align:right}
+      h2{margin:0 0 4px} .info{color:#666;font-size:12px;margin-bottom:12px}
+      @media print{button{display:none}}</style></head><body>
+      <h2>工程付款單</h2>
+      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}列印時間: ${new Date().toLocaleString('zh-TW')}</div>
+      <table><thead><tr>
+        <th>付款單號</th><th>摘要</th><th>廠商</th><th>館別</th><th class="right">金額</th><th>狀態</th><th>建立日期</th>
+      </tr></thead><tbody>`);
+    let total = 0;
+    rows.forEach(o => {
+      const amt = Number(o.netAmount || 0);
+      total += amt;
+      w.document.write(`<tr>
+        <td>${o.orderNo || ''}</td><td>${o.summary || '－'}</td><td>${o.supplierName || '－'}</td>
+        <td>${o.warehouse || '－'}</td><td class="right">${amt.toLocaleString()}</td><td>${o.status || ''}</td>
+        <td>${o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '－'}</td>
+      </tr>`);
+    });
+    w.document.write(`</tbody><tfoot><tr>
+      <td colspan="4" class="right"><strong>合計 (${rows.length} 筆)</strong></td>
+      <td class="right"><strong>${total.toLocaleString()}</strong></td><td colspan="2"></td>
+    </tr></tfoot></table>
+    <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  function handlePayExportExcel() {
+    const rows = sortedPaymentOrders;
+    if (rows.length === 0) return;
+    const header = ['付款單號', '摘要', '廠商', '館別', '金額', '狀態', '建立日期'];
+    const csvRows = [header.join(',')];
+    rows.forEach(o => {
+      csvRows.push([
+        o.orderNo || '',
+        (o.summary || '').replace(/,/g, '，'),
+        (o.supplierName || '').replace(/,/g, '，'),
+        o.warehouse || '',
+        Number(o.netAmount || 0),
+        o.status || '',
+        o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : ''
+      ].map(c => `"${c}"`).join(','));
+    });
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `工程付款單_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const { sortKey: engMatKey, sortDir: engMatDir, toggleSort: engMatToggle } = useColumnSort('usedAt', 'desc');
   // 計算每個材料的已領用數量（依 projectId + contractId + description/productId 分組）
@@ -934,9 +1023,49 @@ ${projectRows.map(p => `<tr>
         {/* ===== 付款單 TAB ===== */}
         {activeTab === 'payments' && (
           <>
-            <div className="flex gap-3 mb-4 items-center">
+            <div className="flex gap-3 mb-4 items-center flex-wrap">
               <button onClick={() => { setEditingPaymentOrder(null); setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: new Date().toISOString().slice(0, 10), summary: '', note: '', materials: [] }); setShowPaymentModal(true);}} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 建立付款單</button>
               <Link href="/cashier" className="text-sm text-amber-600 hover:underline">→ 至出納執行付款</Link>
+              <div className="ml-auto flex gap-2">
+                <button onClick={handlePayPrint} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300">🖨 列印</button>
+                <button onClick={handlePayExportExcel} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300">📥 匯出Excel</button>
+              </div>
+            </div>
+            {/* 搜尋篩選 */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">建立日期起</label>
+                  <input type="date" value={paySearchDateFrom} onChange={e => setPaySearchDateFrom(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">建立日期迄</label>
+                  <input type="date" value={paySearchDateTo} onChange={e => setPaySearchDateTo(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={paySearchWarehouse} onChange={e => setPaySearchWarehouse(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                    <option value="">全部館別</option>
+                    {(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">廠商</label>
+                  <select value={paySearchSupplierId} onChange={e => setPaySearchSupplierId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                    <option value="">全部廠商</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <button onClick={() => { setPaySearchDateFrom(''); setPaySearchDateTo(''); setPaySearchSupplierId(''); setPaySearchWarehouse(''); }}
+                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">清除</button>
+                </div>
+              </div>
+              <div className="text-xs text-gray-400 mt-2">共 {filteredPaymentOrders.length} 筆 / 總計 {paymentOrders.length} 筆</div>
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-4 py-3 border-b">
@@ -949,13 +1078,15 @@ ${projectRows.map(p => `<tr>
                     <SortableTh label="付款單號" colKey="orderNo" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
                     <SortableTh label="摘要" colKey="summary" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
                     <SortableTh label="廠商" colKey="supplierName" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
+                    <SortableTh label="館別" colKey="warehouse" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
                     <SortableTh label="金額" colKey="netAmount" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" align="right" />
                     <SortableTh label="狀態" colKey="poStatus" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
+                    <SortableTh label="建立日期" colKey="createdAt" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
                     <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
                   </tr></thead>
                   <tbody className="divide-y">
-                    {paymentOrders.length === 0 ? (
-                      <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">尚無工程付款單</td></tr>
+                    {sortedPaymentOrders.length === 0 ? (
+                      <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無工程付款單</td></tr>
                     ) : sortedPaymentOrders.map(o => {
                       const isExecuted = o.status === '已執行';
                       return (
@@ -963,8 +1094,10 @@ ${projectRows.map(p => `<tr>
                           <td className="px-4 py-2 font-mono">{o.orderNo}</td>
                           <td className="px-4 py-2">{o.summary || '－'}</td>
                           <td className="px-4 py-2">{o.supplierName || '－'}</td>
+                          <td className="px-4 py-2">{o.warehouse || '－'}</td>
                           <td className="px-4 py-2 text-right font-medium">{formatNum(o.netAmount)}</td>
                           <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs ${isExecuted ? 'bg-green-100 text-green-700' : o.status === '待出納' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100'}`}>{o.status}</span></td>
+                          <td className="px-4 py-2 text-sm text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '－'}</td>
                           <td className="px-4 py-2 text-center">
                             {isExecuted ? <span className="text-xs text-gray-400">已執行 (不可修改)</span> : (
                               <div className="flex items-center justify-center gap-2">
