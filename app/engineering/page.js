@@ -137,6 +137,25 @@ export default function EngineeringPage() {
   );
 
   const { sortKey: engMatKey, sortDir: engMatDir, toggleSort: engMatToggle } = useColumnSort('usedAt', 'desc');
+  // 計算每個材料的已領用數量（依 projectId + contractId + description/productId 分組）
+  const materialUsedMap = useMemo(() => {
+    const map = {};
+    // 用於辨識同一材料的 key
+    const getMatKey = (m) => `${m.projectId}_${m.contractId || ''}_${m.productId || ''}_${m.description || ''}`;
+    // 先算每個 key 的已領用總量（有 usedAt 的行 = 領用記錄）
+    materials.forEach(m => {
+      if (!m.usedAt) return;
+      const key = getMatKey(m);
+      map[key] = (map[key] || 0) + Number(m.quantity || 0);
+    });
+    return map;
+  }, [materials]);
+
+  function getMaterialUsed(m) {
+    const key = `${m.projectId}_${m.contractId || ''}_${m.productId || ''}_${m.description || ''}`;
+    return materialUsedMap[key] || 0;
+  }
+
   const sortedMaterials = useMemo(
     () =>
       sortRows(materials, engMatKey, engMatDir, {
@@ -149,10 +168,11 @@ export default function EngineeringPage() {
         unit: (m) => m.unit || '',
         unitPrice: (m) => Number(m.unitPrice || 0),
         subtotal: (m) => Number(m.quantity || 0) * Number(m.unitPrice || 0),
-        usedQty: (m) => (m.usedAt ? Number(m.quantity || 0) : 0),
+        usedQty: (m) => m.usedAt ? Number(m.quantity || 0) : getMaterialUsed(m),
+        remaining: (m) => m.usedAt ? 0 : Math.max(0, Number(m.quantity || 0) - getMaterialUsed(m)),
         usedAt: (m) => m.usedAt || '',
       }),
-    [materials, engMatKey, engMatDir]
+    [materials, engMatKey, engMatDir, materialUsedMap]
   );
   const [accounts, setAccounts] = useState([]);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡']);
@@ -998,14 +1018,15 @@ ${projectRows.map(p => `<tr>
                       <SortableTh label="單位" colKey="unit" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
                       <SortableTh label="單價" colKey="unitPrice" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
                       <SortableTh label="小計" colKey="subtotal" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="領用" colKey="usedQty" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="已領用" colKey="usedQty" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
+                      <SortableTh label="剩餘" colKey="remaining" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
                       <SortableTh label="使用日" colKey="usedAt" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
                       <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {materials.length === 0 ? (
-                      <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">尚無材料記錄或請選擇工程案</td></tr>
+                      <tr><td colSpan={12} className="px-4 py-8 text-center text-gray-400">尚無材料記錄或請選擇工程案</td></tr>
                     ) : sortedMaterials.map(m => {
                       const sub = Number(m.quantity) * Number(m.unitPrice);
                       return (
@@ -1018,7 +1039,21 @@ ${projectRows.map(p => `<tr>
                           <td className="px-4 py-2">{m.unit || '－'}</td>
                           <td className="px-4 py-2 text-right">{formatNum(m.unitPrice)}</td>
                           <td className="px-4 py-2 text-right font-medium">{formatNum(sub)}</td>
-                          <td className="px-4 py-2 text-right">{m.usedAt ? <span className="text-green-600 font-medium">{formatNum(m.quantity)}</span> : <span className="text-gray-400">0</span>}</td>
+                          <td className="px-4 py-2 text-right">{(() => {
+                            if (m.usedAt) return <span className="text-green-600 font-medium">{formatNum(m.quantity)}</span>;
+                            const used = getMaterialUsed(m);
+                            return used > 0 ? <span className="text-green-600 font-medium">{formatNum(used)}</span> : <span className="text-gray-400">0</span>;
+                          })()}</td>
+                          <td className="px-4 py-2 text-right">{(() => {
+                            if (m.usedAt) return <span className="text-gray-400">—</span>;
+                            const remaining = Math.max(0, Number(m.quantity || 0) - getMaterialUsed(m));
+                            const qty = Number(m.quantity || 0);
+                            return remaining <= 0
+                              ? <span className="text-red-500 font-medium">0</span>
+                              : remaining < qty
+                                ? <span className="text-amber-600 font-medium">{formatNum(remaining)}</span>
+                                : <span className="text-gray-600">{formatNum(remaining)}</span>;
+                          })()}</td>
                           <td className="px-4 py-2">{m.usedAt || '－'}</td>
                           <td className="px-4 py-2 text-center">
                             <button onClick={() => openEditMaterial(m)} className="text-amber-600 hover:underline mr-2">編輯</button>
