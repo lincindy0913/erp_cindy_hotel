@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
-import ExportButtons from '@/components/ExportButtons';
-import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
@@ -551,6 +549,80 @@ function InvoicePageInner() {
     printWin.document.close();
   }
 
+  // 列印篩選後的發票清單
+  function handlePrintFilteredList() {
+    const rows = sortedInvoicesForList;
+    if (rows.length === 0) { showToast('無資料可列印', 'error'); return; }
+    const filterInfo = [];
+    if (searchDateFrom || searchDateTo) filterInfo.push(`日期: ${searchDateFrom || '~'} ~ ${searchDateTo || '~'}`);
+    if (searchSupplier) filterInfo.push(`廠商: ${searchSupplier}`);
+    if (searchInvoiceTitle) filterInfo.push(`抬頭: ${searchInvoiceTitle}`);
+    if (searchWarehouse) filterInfo.push(`館別: ${searchWarehouse}`);
+    const w = window.open('', '_blank');
+    if (!w) { showToast('無法開啟列印視窗', 'error'); return; }
+    w.document.write(`<html><head><title>發票清單</title>
+      <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+      th{background:#f5f5f5;font-weight:600}
+      .right{text-align:right}
+      h2{margin:0 0 4px} .info{color:#666;font-size:12px;margin-bottom:12px}
+      @media print{button{display:none}}</style></head><body>
+      <h2>發票登錄/核銷</h2>
+      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}共 ${rows.length} 筆　列印時間: ${new Date().toLocaleString('zh-TW')}</div>
+      <table><thead><tr>
+        <th>館別</th><th>抬頭</th><th>廠商</th><th>發票號碼</th><th>日期</th>
+        <th class="right">品項數</th><th class="right">金額</th><th>付款狀態</th>
+      </tr></thead><tbody>`);
+    let total = 0;
+    rows.forEach(inv => {
+      const amt = Number(inv.totalAmount || (Number(inv.amount || 0) + Number(inv.tax || 0)) || 0);
+      total += amt;
+      w.document.write(`<tr>
+        <td>${inv.warehouse || '－'}</td><td>${inv.invoiceTitle || '－'}</td>
+        <td>${inv.supplierName || '－'}</td><td>${inv.invoiceNo || inv.salesNo || '－'}</td>
+        <td>${inv.invoiceDate || inv.salesDate || '－'}</td>
+        <td class="right">${inv.items?.length || 0}</td>
+        <td class="right">${amt.toLocaleString()}</td>
+        <td>${inv.paymentStatus || '－'}</td>
+      </tr>`);
+    });
+    w.document.write(`</tbody><tfoot><tr>
+      <td colspan="6" class="right"><strong>合計 (${rows.length} 筆)</strong></td>
+      <td class="right"><strong>${total.toLocaleString()}</strong></td><td></td>
+    </tr></tfoot></table>
+    <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  // 匯出篩選後的發票為Excel (CSV)
+  function handleExportFilteredExcel() {
+    const rows = sortedInvoicesForList;
+    if (rows.length === 0) { showToast('無資料可匯出', 'error'); return; }
+    const header = ['館別', '抬頭', '廠商', '發票號碼', '日期', '品項數', '金額', '付款狀態'];
+    const csvRows = [header.join(',')];
+    rows.forEach(inv => {
+      csvRows.push([
+        inv.warehouse || '',
+        (inv.invoiceTitle || '').replace(/,/g, '，'),
+        (inv.supplierName || '').replace(/,/g, '，'),
+        inv.invoiceNo || inv.salesNo || '',
+        inv.invoiceDate || inv.salesDate || '',
+        inv.items?.length || 0,
+        Number(inv.totalAmount || (Number(inv.amount || 0) + Number(inv.tax || 0)) || 0),
+        inv.paymentStatus || ''
+      ].map(c => `"${c}"`).join(','));
+    });
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `發票清單_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="min-h-screen page-bg-sales">
       <Navigation borderColor="border-green-500" />
@@ -560,17 +632,14 @@ function InvoicePageInner() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
           <div className="flex items-center gap-3">
-            <ExportButtons
-              data={invoices.map(inv => ({
-                ...inv,
-                itemCount: inv.items?.length || 0,
-                totalWithTax: (parseFloat(inv.amount) || 0) + (parseFloat(inv.taxAmount) || 0),
-              }))}
-              columns={EXPORT_CONFIGS.sales.columns}
-              exportName={EXPORT_CONFIGS.sales.filename}
-              title="發票登錄/核銷"
-              sheetName="發票紀錄"
-            />
+            <button onClick={handlePrintFilteredList}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300">
+              🖨 列印
+            </button>
+            <button onClick={handleExportFilteredExcel}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300">
+              📥 匯出Excel
+            </button>
             {isLoggedIn && (
               <button
                 onClick={() => {
