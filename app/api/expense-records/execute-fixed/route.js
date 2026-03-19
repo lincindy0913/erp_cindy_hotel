@@ -122,6 +122,10 @@ export async function POST(request) {
         if (Math.abs(debitTotal - creditTotal) > 0.01) continue;
         const pm = whLines[0].paymentMethod || data.paymentMethod || '月結';
         const accId = whLines[0].accountId ? parseInt(whLines[0].accountId) : null;
+        // 從分錄中取得廠商（取第一筆有廠商的分錄）
+        const lineWithSupplier = whLines.find(l => l.supplierId);
+        const lineSupplierId = lineWithSupplier?.supplierId ? parseInt(lineWithSupplier.supplierId) : null;
+        const lineSupplierName = lineWithSupplier?.supplierName || null;
         const duplicate = await prisma.commonExpenseRecord.findFirst({
           where: { templateId: parseInt(data.templateId), warehouse: wh, expenseMonth: data.expenseMonth.trim(), executionType: 'fixed', status: { not: '已作廢' } }
         });
@@ -130,13 +134,13 @@ export async function POST(request) {
         const r = await prisma.$transaction(async (tx) => {
           const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
           const po = await tx.paymentOrder.create({
-            data: { orderNo, invoiceIds: [], supplierId: null, supplierName: null, warehouse: wh, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, summary: `${template.name} — ${wh} ${data.expenseMonth}`, note: data.note || null, status: '待出納', createdBy: data.createdBy.trim(), sourceType: 'fixed_expense' }
+            data: { orderNo, invoiceIds: [], supplierId: lineSupplierId, supplierName: lineSupplierName, warehouse: wh, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, summary: `${template.name} — ${wh} ${data.expenseMonth}`, note: data.note || null, status: '待出納', createdBy: data.createdBy.trim(), sourceType: 'fixed_expense' }
           });
           const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
           const rec = await tx.commonExpenseRecord.create({
             data: {
               recordNo, templateId: parseInt(data.templateId), executionType: 'fixed', warehouse: wh, expenseMonth: data.expenseMonth.trim(),
-              supplierId: null, supplierName: null, paymentMethod: pm, totalDebit: debitTotal, totalCredit: creditTotal,
+              supplierId: lineSupplierId, supplierName: lineSupplierName, paymentMethod: pm, totalDebit: debitTotal, totalCredit: creditTotal,
               paymentOrderId: po.id, paymentOrderNo: orderNo, status: '已確認', confirmedBy: data.createdBy.trim(), confirmedAt: new Date(),
               note: data.note || null, createdBy: data.createdBy.trim(),
               entryLines: { create: whLines.map((line, idx) => ({ entryType: line.entryType, accountingCode: line.accountingCode || '', accountingName: line.accountingName || '', summary: line.summary || '', amount: line.amount, sortOrder: idx })) }

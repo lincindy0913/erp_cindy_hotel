@@ -899,6 +899,8 @@ export default function ExpensesPage() {
             paymentMethod: l.paymentMethod || '月結',
             accountId: l.accountId ? parseInt(l.accountId) : null,
             advancedBy: l.advancedBy || null,
+            supplierId: l.supplierId ? parseInt(l.supplierId) : null,
+            supplierName: l.supplierName || null,
             sortOrder: l.sortOrder
           })),
           paymentMethod: executeForm.paymentMethod || '月結',
@@ -1633,6 +1635,7 @@ export default function ExpensesPage() {
                             <thead>
                               <tr>
                                 <th style={{ ...thStyle, width: 120 }}>費用名稱</th>
+                                <th style={{ ...thStyle, width: 120 }}>廠商</th>
                                 <th style={{ ...thStyle, width: 100 }}>館別</th>
                                 <th style={{ ...thStyle, width: 90 }}>付款方式</th>
                                 <th style={{ ...thStyle, width: 140 }}>存簿 / 代墊員工</th>
@@ -1650,6 +1653,18 @@ export default function ExpensesPage() {
                                       <input value={line.accountingName || ''}
                                         onChange={e => updateExecuteLine(realIdx, 'accountingName', e.target.value)}
                                         style={{ ...inputStyle, marginBottom: 0, fontWeight: 500 }} placeholder="費用名稱" />
+                                    </td>
+                                    <td style={tdStyle}>
+                                      <select value={line.supplierId || ''}
+                                        onChange={e => {
+                                          const s = suppliers.find(s => s.id === parseInt(e.target.value));
+                                          updateExecuteLine(realIdx, 'supplierId', e.target.value);
+                                          updateExecuteLine(realIdx, 'supplierName', s?.name || '');
+                                        }}
+                                        style={{ ...inputStyle, marginBottom: 0 }}>
+                                        <option value="">不指定</option>
+                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                      </select>
                                     </td>
                                     <td style={tdStyle}>
                                       <select value={line.warehouse || ''}
@@ -1708,7 +1723,7 @@ export default function ExpensesPage() {
                             </tbody>
                             <tfoot>
                               <tr>
-                                <td colSpan={5} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
+                                <td colSpan={6} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
                                 <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
                                   {executeForm.entryLines
                                     .filter(l => l.entryType === 'debit')
