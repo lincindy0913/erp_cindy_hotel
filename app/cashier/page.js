@@ -93,7 +93,7 @@ export default function CashierPage() {
       if (searchFilter.dateTo) params.append('dateTo', searchFilter.dateTo);
       if (searchFilter.warehouse) params.append('warehouse', searchFilter.warehouse);
       if (searchFilter.supplierId) params.append('supplierId', searchFilter.supplierId);
-      if (searchFilter.sourceType) params.append('sourceType', searchFilter.sourceType);
+      // sourceType 不傳 API（許多舊單 sourceType=null），改用前端 getSourceCategory 做篩選
       const url = `/api/payment-orders?${params.toString()}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -425,12 +425,18 @@ export default function CashierPage() {
   ];
 
   function getDisplayOrders() {
+    let list;
     switch (activeTab) {
-      case 'pending': return pendingOrders;
-      case 'executed': return executedOrders;
-      case 'rejected': return rejectedOrders;
-      default: return pendingOrders;
+      case 'pending': list = pendingOrders; break;
+      case 'executed': list = executedOrders; break;
+      case 'rejected': list = rejectedOrders; break;
+      default: list = pendingOrders;
     }
+    // 前端類別篩選（用 getSourceCategory 的 fallback 邏輯，支援舊單無 sourceType）
+    if (searchFilter.sourceType) {
+      list = list.filter(o => getSourceCategory(o.sourceType, o) === searchFilter.sourceType);
+    }
+    return list;
   }
 
   const displayOrders = getDisplayOrders();
