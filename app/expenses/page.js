@@ -1626,18 +1626,19 @@ export default function ExpensesPage() {
                         </div>
                       )}
 
-                      {/* 固定費用：依範本列出費用項目，只需填入金額 */}
-                      {executeForm.entryLines && executeForm.entryLines.length > 0 && (
-                        <div style={{ marginBottom: 20 }}>
+                      {/* 固定費用：依範本列出費用項目，可新增/刪除/編輯 */}
+                      <div style={{ marginBottom: 20 }}>
                           <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>費用項目（請填入本月金額）</h4>
                           <table style={tableStyle}>
                             <thead>
                               <tr>
                                 <th style={{ ...thStyle, width: 120 }}>費用名稱</th>
-                                <th style={{ ...thStyle, width: 90 }}>館別</th>
+                                <th style={{ ...thStyle, width: 100 }}>館別</th>
                                 <th style={{ ...thStyle, width: 90 }}>付款方式</th>
                                 <th style={{ ...thStyle, width: 140 }}>存簿 / 代墊員工</th>
+                                <th style={{ ...thStyle, width: 150 }}>摘要</th>
                                 <th style={{ ...thStyle, width: 120 }}>金額 *</th>
+                                <th style={{ ...thStyle, width: 40 }}></th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1645,22 +1646,61 @@ export default function ExpensesPage() {
                                 const realIdx = executeForm.entryLines.indexOf(line);
                                 return (
                                   <tr key={realIdx}>
-                                    <td style={{ ...tdStyle, fontWeight: 500 }}>{line.accountingName}</td>
-                                    <td style={tdStyle}>{line.warehouse || '—'}</td>
-                                    <td style={tdStyle}>{line.paymentMethod || '—'}</td>
+                                    <td style={{ ...tdStyle, fontWeight: 500 }}>
+                                      <input value={line.accountingName || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'accountingName', e.target.value)}
+                                        style={{ ...inputStyle, marginBottom: 0, fontWeight: 500 }} placeholder="費用名稱" />
+                                    </td>
+                                    <td style={tdStyle}>
+                                      <select value={line.warehouse || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'warehouse', e.target.value)}
+                                        style={{ ...inputStyle, marginBottom: 0 }}>
+                                        <option value="">不指定</option>
+                                        {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                                      </select>
+                                    </td>
+                                    <td style={tdStyle}>
+                                      <select value={line.paymentMethod || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'paymentMethod', e.target.value)}
+                                        style={{ ...inputStyle, marginBottom: 0 }}>
+                                        <option value="">不指定</option>
+                                        {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                                      </select>
+                                    </td>
                                     <td style={tdStyle}>
                                       {(line.paymentMethod === '信用卡' || line.paymentMethod === '員工代付') ? (
                                         <input value={line.advancedBy || ''}
                                           onChange={e => updateExecuteLine(realIdx, 'advancedBy', e.target.value)}
                                           style={{ ...inputStyle, marginBottom: 0 }} placeholder="代墊員工姓名" />
-                                      ) : line.accountId ? (
-                                        <span style={{ fontSize: 13 }}>{cashAccounts.find(a => a.id === parseInt(line.accountId))?.name || '—'}</span>
+                                      ) : (line.paymentMethod === '轉帳' || line.paymentMethod === '匯款') ? (
+                                        <select value={line.accountId || ''}
+                                          onChange={e => updateExecuteLine(realIdx, 'accountId', e.target.value)}
+                                          style={{ ...inputStyle, marginBottom: 0 }}>
+                                          <option value="">不指定</option>
+                                          {cashAccounts.map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
+                                          ))}
+                                        </select>
                                       ) : <span style={{ fontSize: 12, color: '#999' }}>—</span>}
+                                    </td>
+                                    <td style={tdStyle}>
+                                      <input value={line.summary || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'summary', e.target.value)}
+                                        style={{ ...inputStyle, marginBottom: 0 }} placeholder="摘要" />
                                     </td>
                                     <td style={tdStyle}>
                                       <input type="number" value={line.amount}
                                         onChange={e => updateExecuteLine(realIdx, 'amount', e.target.value)}
                                         style={{ ...inputStyle, marginBottom: 0, textAlign: 'right' }} step="0.01" placeholder="0" />
+                                    </td>
+                                    <td style={tdStyle}>
+                                      <button onClick={() => {
+                                        setExecuteForm(prev => ({
+                                          ...prev,
+                                          entryLines: prev.entryLines.filter((_, i) => i !== realIdx)
+                                        }));
+                                      }}
+                                        style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
                                     </td>
                                   </tr>
                                 );
@@ -1668,18 +1708,40 @@ export default function ExpensesPage() {
                             </tbody>
                             <tfoot>
                               <tr>
-                                <td colSpan={4} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
+                                <td colSpan={5} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
                                 <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
                                   {executeForm.entryLines
                                     .filter(l => l.entryType === 'debit')
                                     .reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
                                     .toLocaleString()}
                                 </td>
+                                <td style={tdStyle}></td>
                               </tr>
                             </tfoot>
                           </table>
+                          <button onClick={() => {
+                            setExecuteForm(prev => ({
+                              ...prev,
+                              entryLines: [...prev.entryLines, {
+                                entryType: 'debit',
+                                accountingCode: '',
+                                accountingName: '',
+                                summary: '',
+                                amount: '',
+                                supplierId: '',
+                                supplierName: '',
+                                warehouse: executeForm.warehouse || '',
+                                paymentMethod: executeForm.paymentMethod || '',
+                                accountId: '',
+                                advancedBy: '',
+                                sortOrder: prev.entryLines.length
+                              }]
+                            }));
+                          }}
+                            style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                            + 新增費用項目
+                          </button>
                         </div>
-                      )}
 
                   {/* Note */}
                   <div style={{ marginTop: 16 }}>
