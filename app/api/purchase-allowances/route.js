@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,11 @@ export async function POST(request) {
 
     if (!data.allowanceDate) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇折讓日期', 400);
     if (!data.totalAmount || parseFloat(data.totalAmount) <= 0) return createErrorResponse('VALIDATION_FAILED', '折讓金額必須大於 0', 400);
+
+    const whErr = await validateWarehouse(data.warehouse);
+    if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
+    const supErr = await validateSupplier(data.supplierName);
+    if (supErr) return createErrorResponse('VALIDATION_FAILED', supErr, 400);
 
     // Generate allowanceNo: PA-YYYYMMDD-XXXX
     const dateStr = data.allowanceDate.replace(/-/g, '');

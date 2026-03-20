@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { validateWarehouse } from '@/lib/master-data-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,8 @@ export async function POST(request) {
     if (!employeeName || !amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫代墊員工和金額', 400);
     }
+    const whErr = await validateWarehouse(warehouse);
+    if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
 
     // Generate advanceNo: ADV-YYYYMMDD-XXXX
     const now = new Date();

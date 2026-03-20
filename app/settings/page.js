@@ -16,6 +16,7 @@ const SECTIONS = [
   { key: 'backup', label: '資料備份', icon: '💾' },
   { key: 'data-import', label: '期初資料匯入', icon: '📥' },
   { key: 'users', label: '使用者管理', icon: '👥' },
+  { key: 'master-governance', label: '主檔治理', icon: '🔍', href: '/settings/master-data-governance' },
   { key: 'system-info', label: '系統資訊', icon: '⚙️' },
 ];
 
@@ -2333,18 +2334,30 @@ export default function SettingsPage() {
               </div>
               <nav className="p-2 space-y-1">
                 {SECTIONS.map((section) => (
-                  <button
-                    key={section.key}
-                    onClick={() => handleSectionChange(section.key)}
-                    className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-3 ${
-                      activeSection === section.key
-                        ? 'bg-gray-700 text-white shadow-sm'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                    }`}
-                  >
-                    <span className="text-base">{section.icon}</span>
-                    <span>{section.label}</span>
-                  </button>
+                  section.href ? (
+                    <a
+                      key={section.key}
+                      href={section.href}
+                      className="w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-3 text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+                    >
+                      <span className="text-base">{section.icon}</span>
+                      <span>{section.label}</span>
+                      <span className="ml-auto text-xs text-gray-400">&rarr;</span>
+                    </a>
+                  ) : (
+                    <button
+                      key={section.key}
+                      onClick={() => handleSectionChange(section.key)}
+                      className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-3 ${
+                        activeSection === section.key
+                          ? 'bg-gray-700 text-white shadow-sm'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                      }`}
+                    >
+                      <span className="text-base">{section.icon}</span>
+                      <span>{section.label}</span>
+                    </button>
+                  )
                 ))}
               </nav>
             </div>

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { validateWarehouse } from '@/lib/master-data-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,6 +101,10 @@ export async function POST(request) {
     if (!data.supplierId || !data.items || data.items.length === 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
+
+    // Validate warehouse against master data
+    const whErr = await validateWarehouse(data.warehouse);
+    if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
 
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const todayPrefix = `PUR-${today}-`;

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { validateWarehouse } from '@/lib/master-data-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +116,8 @@ export async function POST(request) {
     if (!data.warehouse?.trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇館別', 400);
     }
+    const whErr = await validateWarehouse(data.warehouse);
+    if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
     if (!data.expenseMonth?.trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇費用月份', 400);
     }

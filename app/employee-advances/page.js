@@ -27,16 +27,23 @@ export default function EmployeeAdvancesPage() {
     employeeName: '', paymentMethod: '現金', amount: '', sourceDescription: '', expenseName: '', summary: '', warehouse: '', note: '',
   });
 
+  const [warehousesList, setWarehousesList] = useState([]);
+  const [expenseCategories, setExpenseCategories] = useState([]);
+
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
     setLoading(true);
-    const [advRes, accRes] = await Promise.all([
+    const [advRes, accRes, whRes, catRes] = await Promise.all([
       fetch('/api/employee-advances').then(r => r.json()).catch(() => []),
       fetch('/api/cashflow/accounts').then(r => r.json()).catch(() => []),
+      fetch('/api/warehouse-departments').then(r => r.json()).catch(() => ({ list: [] })),
+      fetch('/api/settings/expense-categories').then(r => r.json()).catch(() => []),
     ]);
     setAdvances(Array.isArray(advRes) ? advRes : []);
     setAccounts(Array.isArray(accRes) ? accRes : []);
+    setWarehousesList(Array.isArray(whRes?.list) ? whRes.list.filter(w => w.type === 'building') : []);
+    setExpenseCategories(Array.isArray(catRes) ? catRes : []);
     setLoading(false);
   }
 
@@ -390,7 +397,10 @@ export default function EmployeeAdvancesPage() {
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280' }}>費用名稱</label>
-                <input value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <select value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}>
+                  <option value="">選填</option>
+                  {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280' }}>摘要</label>
@@ -402,7 +412,10 @@ export default function EmployeeAdvancesPage() {
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280' }}>館別</label>
-                <input value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <select value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}>
+                  <option value="">選填</option>
+                  {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
+                </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280' }}>備註</label>
@@ -736,8 +749,12 @@ export default function EmployeeAdvancesPage() {
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>費用名稱</label>
-                <input value={editForm.expenseName} onChange={e => setEditForm(f => ({ ...f, expenseName: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+                <select value={editForm.expenseName} onChange={e => setEditForm(f => ({ ...f, expenseName: e.target.value }))}
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }}>
+                  <option value="">選填</option>
+                  {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  {editForm.expenseName && !expenseCategories.some(c => c.name === editForm.expenseName) && <option value={editForm.expenseName}>{editForm.expenseName} (舊值)</option>}
+                </select>
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>摘要</label>
@@ -751,8 +768,12 @@ export default function EmployeeAdvancesPage() {
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>館別</label>
-                <input value={editForm.warehouse} onChange={e => setEditForm(f => ({ ...f, warehouse: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+                <select value={editForm.warehouse} onChange={e => setEditForm(f => ({ ...f, warehouse: e.target.value }))}
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }}>
+                  <option value="">選填</option>
+                  {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
+                  {editForm.warehouse && !warehousesList.some(w => w.name === editForm.warehouse) && <option value={editForm.warehouse}>{editForm.warehouse} (舊值)</option>}
+                </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>備註</label>

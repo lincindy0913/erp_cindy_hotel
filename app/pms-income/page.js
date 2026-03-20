@@ -7,7 +7,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
-const WAREHOUSES = ['麗格', '麗軒', '民宿'];
+const WAREHOUSES_FALLBACK = ['麗格', '麗軒', '民宿'];
 const TABS = [
   { key: 'overview', label: '每日匯入總覽' },
   { key: 'records', label: '收入記錄明細' },
@@ -60,6 +60,7 @@ function PmsIncomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [WAREHOUSES, setWAREHOUSES] = useState(WAREHOUSES_FALLBACK);
 
   // Overview tab state
   const [overviewYear, setOverviewYear] = useState(new Date().getFullYear());
@@ -200,25 +201,24 @@ function PmsIncomePage() {
     if (activeTab === 'overview') fetchOverviewData();
   }, [activeTab, fetchOverviewData]);
 
-  // 每日匯入總覽：取得館別列表，並同步「上傳前選擇館別」
+  // 初始化：取得館別列表（從主檔），並同步所有館別相關狀態
   useEffect(() => {
-    if (activeTab !== 'overview') return;
     fetch('/api/warehouse-departments')
       .then(r => r.json())
       .then(data => {
         const list = Array.isArray(data?.list) ? data.list : [];
         const buildings = list.filter(x => x.type === 'building').map(x => x.name);
-        const listToUse = buildings.length > 0 ? buildings : WAREHOUSES;
+        const listToUse = buildings.length > 0 ? buildings : WAREHOUSES_FALLBACK;
+        setWAREHOUSES(listToUse);
         setOverviewBuildings(listToUse);
         if (!overviewUploadWarehouse || !listToUse.includes(overviewUploadWarehouse)) {
-          setOverviewUploadWarehouse(listToUse[0] || '麗格');
+          setOverviewUploadWarehouse(listToUse[0] || '');
         }
       })
       .catch(() => {
-        setOverviewBuildings(WAREHOUSES);
-        if (!overviewUploadWarehouse) setOverviewUploadWarehouse(WAREHOUSES[0] || '麗格');
+        setOverviewBuildings(WAREHOUSES_FALLBACK);
       });
-  }, [activeTab]);
+  }, []);
 
   // ========================
   // Records tab data fetching

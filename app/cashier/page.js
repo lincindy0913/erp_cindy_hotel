@@ -55,6 +55,7 @@ export default function CashierPage() {
     sourceType: '',
   });
   const [suppliers, setSuppliers] = useState([]);
+  const [warehousesList, setWarehousesList] = useState([]);
 
   // Batch selection
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
@@ -74,7 +75,7 @@ export default function CashierPage() {
 
   async function fetchAll() {
     setLoading(true);
-    await Promise.all([fetchOrders(), fetchAccounts(), fetchSuppliers()]);
+    await Promise.all([fetchOrders(), fetchAccounts(), fetchSuppliers(), fetchWarehouses()]);
     setLoading(false);
   }
 
@@ -84,6 +85,14 @@ export default function CashierPage() {
       const data = await res.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch { setSuppliers([]); }
+  }
+
+  async function fetchWarehouses() {
+    try {
+      const res = await fetch('/api/warehouse-departments');
+      const data = await res.json();
+      setWarehousesList(Array.isArray(data?.list) ? data.list.filter(w => w.type === 'building') : []);
+    } catch { setWarehousesList([]); }
   }
 
   async function fetchOrders() {
@@ -614,9 +623,7 @@ export default function CashierPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
               >
                 <option value="">全部館別</option>
-                <option value="麗格">麗格</option>
-                <option value="麗軒">麗軒</option>
-                <option value="民宿">民宿</option>
+                {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
               </select>
             </div>
             <div>

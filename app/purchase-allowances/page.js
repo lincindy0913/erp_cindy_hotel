@@ -12,6 +12,7 @@ export default function PurchaseAllowancesPage() {
   const [records, setRecords] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Invoice search
@@ -45,14 +46,16 @@ export default function PurchaseAllowancesPage() {
 
   async function fetchAll() {
     setLoading(true);
-    const [aRes, accRes, whRes] = await Promise.all([
+    const [aRes, accRes, whRes, supRes] = await Promise.all([
       fetch('/api/purchase-allowances').then(r => r.json()).catch(() => []),
       fetch('/api/cashflow/accounts').then(r => r.json()).catch(() => []),
       fetch('/api/warehouse-departments').then(r => r.json()).catch(() => []),
+      fetch('/api/suppliers?all=true').then(r => r.json()).catch(() => []),
     ]);
     setRecords(Array.isArray(aRes) ? aRes : []);
     setAccounts(Array.isArray(accRes) ? accRes : []);
-    setWarehouses(Array.isArray(whRes) ? whRes.filter(w => w.type === 'warehouse') : []);
+    setWarehouses(Array.isArray(whRes?.list) ? whRes.list.filter(w => w.type === 'building') : Array.isArray(whRes) ? whRes.filter(w => w.type === 'warehouse') : []);
+    setSuppliers(Array.isArray(supRes) ? supRes : []);
     setLoading(false);
   }
 
@@ -501,7 +504,11 @@ export default function PurchaseAllowancesPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>供應商名稱</label>
-                  <input value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} style={inputStyle} />
+                  <select value={form.supplierName} onChange={e => { const s = suppliers.find(s => s.name === e.target.value); setForm(f => ({ ...f, supplierName: e.target.value, supplierId: s?.id || null })); }} style={inputStyle}>
+                    <option value="">選擇供應商</option>
+                    {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    {form.supplierName && !suppliers.some(s => s.name === form.supplierName) && <option value={form.supplierName}>{form.supplierName}</option>}
+                  </select>
                 </div>
                 <div>
                   <label style={labelStyle}>館別</label>

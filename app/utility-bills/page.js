@@ -11,23 +11,18 @@ const TABS = [
   { key: 'list', label: '各館別月份一覽' },
 ];
 
-const WAREHOUSE_OPTIONS = [
+// Fallback — will be replaced by API data on mount
+const WAREHOUSE_OPTIONS_FALLBACK = [
   { value: '', label: '請選擇館別' },
   { value: '麗格', label: '麗格' },
   { value: '麗軒', label: '麗軒' },
   { value: '民宿', label: '民宿' },
   { value: '國股段', label: '國股段' },
 ];
-// 檔名或地址關鍵字 → 館別（用於自動判讀）
-const WAREHOUSE_KEYWORDS = [
-  { keyword: '麗軒', warehouse: '麗軒' },
-  { keyword: '麗格', warehouse: '麗格' },
-  { keyword: '民宿', warehouse: '民宿' },
-  { keyword: '國股段', warehouse: '國股段' },
-];
 
 export default function UtilityBillsPage() {
   const { data: session } = useSession();
+  const [WAREHOUSE_OPTIONS, setWarehouseOptions] = useState(WAREHOUSE_OPTIONS_FALLBACK);
   const [activeTab, setActiveTab] = useState('parse');
   const [message, setMessage] = useState({ text: '', type: '' });
   const [pdfFile, setPdfFile] = useState(null);
@@ -48,6 +43,23 @@ export default function UtilityBillsPage() {
   const [editRecord, setEditRecord] = useState(null);
   const [editSummary, setEditSummary] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // 載入主檔館別
+  useEffect(() => {
+    fetch('/api/warehouse-departments')
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data?.list) ? data.list : [];
+        const all = list.filter(w => w.type === 'building' || w.type === 'warehouse').map(w => w.name);
+        if (all.length > 0) {
+          setWarehouseOptions([{ value: '', label: '請選擇館別' }, ...all.map(n => ({ value: n, label: n }))]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 檔名或地址關鍵字 → 館別（用於自動判讀）
+  const WAREHOUSE_KEYWORDS = WAREHOUSE_OPTIONS.filter(o => o.value).map(o => ({ keyword: o.value, warehouse: o.value }));
 
   useEffect(() => {
     if (activeTab === 'water') setStartPage(2);

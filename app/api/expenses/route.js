@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,12 @@ export async function POST(request) {
     if (!data.invoiceId || !data.invoiceNo || !data.amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：發票ID、發票號碼和金額', 400);
     }
+
+    // Validate against master data
+    const whErr = await validateWarehouse(data.warehouse);
+    if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
+    const supErr = await validateSupplier(data.supplierName);
+    if (supErr) return createErrorResponse('VALIDATION_FAILED', supErr, 400);
 
     const newExpense = await prisma.expense.create({
       data: {
