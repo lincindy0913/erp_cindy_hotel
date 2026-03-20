@@ -297,6 +297,72 @@ export default function PurchaseAllowancesPage() {
     } catch (err) { showToast('確認失敗: ' + err.message, 'error'); }
   }
 
+  function handlePrint() {
+    const rows = activeTab === 'draft' ? filteredDraft : filteredConfirmed;
+    if (rows.length === 0) return showToast('沒有資料可列印', 'error');
+    const title = activeTab === 'draft' ? '進貨折讓 — 草稿' : '進貨折讓 — 已確認';
+    const isDraft = activeTab === 'draft';
+    const headers = isDraft
+      ? ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','金額']
+      : ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','退款金額','退款交易','確認者'];
+    const bodyRows = rows.map(r => {
+      const base = [
+        r.allowanceNo || '', r.allowanceType || '折讓', r.allowanceDate || '',
+        r.supplierName || '-', r.warehouse || '-', r.invoiceNo || '-',
+        r.paymentOrderNo || '-', (r.reason || '-').substring(0, 30),
+        `NT$ ${Number(r.totalAmount).toLocaleString()}`,
+      ];
+      if (!isDraft) {
+        base.push(r.cashTransactionNo || '-', r.confirmedBy || '-');
+      }
+      return base;
+    });
+    const totalAmt = rows.reduce((s, r) => s + Number(r.totalAmount), 0);
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>${title}</title><style>
+      body{font-family:sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin-top:10px}
+      th,td{border:1px solid #ccc;padding:6px 10px;font-size:13px;text-align:left}th{background:#f3f4f6}
+      @media print{button{display:none}}
+    </style></head><body>
+    <h2>${title}</h2><p>列印日期：${new Date().toLocaleDateString('zh-TW')}</p>
+    <table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>${bodyRows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
+    <tr style="font-weight:bold"><td colspan="${isDraft ? 8 : 9}">合計 ${rows.length} 筆</td><td>${isDraft ? '' : ''}NT$ ${totalAmt.toLocaleString()}</td>${!isDraft ? '<td colspan="2"></td>' : ''}</tr>
+    </tbody></table>
+    <button onclick="window.print()" style="margin-top:16px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button>
+    </body></html>`);
+    w.document.close();
+  }
+
+  function handleExportExcel() {
+    const rows = activeTab === 'draft' ? filteredDraft : filteredConfirmed;
+    if (rows.length === 0) return showToast('沒有資料可匯出', 'error');
+    const isDraft = activeTab === 'draft';
+    const headers = isDraft
+      ? ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','金額']
+      : ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','退款金額','退款交易','確認者'];
+    const csvRows = rows.map(r => {
+      const base = [
+        r.allowanceNo || '', r.allowanceType || '折讓', r.allowanceDate || '',
+        r.supplierName || '', r.warehouse || '', r.invoiceNo || '',
+        r.paymentOrderNo || '', r.reason || '', Number(r.totalAmount),
+      ];
+      if (!isDraft) {
+        base.push(r.cashTransactionNo || '', r.confirmedBy || '');
+      }
+      return base;
+    });
+    const q = v => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = '\uFEFF' + [headers.map(q).join(','), ...csvRows.map(r => r.map(q).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `進貨折讓_${activeTab === 'draft' ? '草稿' : '已確認'}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const thStyle = { padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: 15, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
   const tdStyle = { padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 15 };
   const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, boxSizing: 'border-box' };
@@ -587,12 +653,16 @@ export default function PurchaseAllowancesPage() {
               </button>
             ))}
           </div>
-          <input
-            value={filterKeyword}
-            onChange={e => setFilterKeyword(e.target.value)}
-            placeholder="篩選折讓單..."
-            style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, width: 200 }}
-          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>列印</button>
+            <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>匯出 Excel</button>
+            <input
+              value={filterKeyword}
+              onChange={e => setFilterKeyword(e.target.value)}
+              placeholder="篩選折讓單..."
+              style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, width: 200 }}
+            />
+          </div>
         </div>
 
         {/* Draft Tab */}

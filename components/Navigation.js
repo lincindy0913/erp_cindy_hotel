@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/purchasing', label: '進貨', linkClass: 'link-purchasing', requiredPermission: 'purchasing.view' },
   { href: '/sales', label: '發票登錄', linkClass: 'link-sales', requiredPermission: 'sales.view' },
   { href: '/finance', label: '付款', linkClass: 'link-finance', requiredPermission: 'finance.view' },
+  { href: '/purchase-allowances', label: '折讓', linkClass: 'link-finance', requiredPermission: 'finance.view' },
   { href: '/checks', label: '支票', linkClass: 'link-checks', requiredPermission: 'check.view' },
   { href: '/expenses', label: '費用', linkClass: 'link-finance', requiredPermission: 'expense.view' },
   { href: '/loans', label: '貸款', linkClass: 'link-loans', requiredPermission: 'loan.view' },

@@ -261,6 +261,72 @@ export default function EmployeeAdvancesPage() {
   const thStyle = { padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: 15, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
   const tdStyle = { padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 15 };
 
+  // Print current tab
+  function handlePrint() {
+    const rows = activeTab === 'pending' ? filteredPending :
+      activeTab === 'settled' ? settledAdvances : [];
+    if (rows.length === 0) { showToast('目前無資料可列印', 'error'); return; }
+    const tabLabel = activeTab === 'pending' ? '待結算' : '已結算';
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>代墊款 — ${tabLabel}</title>
+      <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+      th{background:#f5f5f5;font-weight:600}
+      .right{text-align:right} .center{text-align:center}
+      @media print{button{display:none}}</style></head><body>
+      <h2>員工代墊款 — ${tabLabel}</h2>
+      <p>列印日期：${new Date().toLocaleDateString('zh-TW')}　共 ${rows.length} 筆</p>
+      <table><thead><tr>
+        <th>代墊單號</th><th>代墊人</th><th>方式</th><th>費用名稱</th><th>摘要</th>
+        <th>館別</th><th class="right">金額</th><th>狀態</th>
+        ${activeTab === 'settled' ? '<th>結算交易</th>' : ''}
+      </tr></thead><tbody>
+      ${rows.map(a => `<tr>
+        <td>${a.advanceNo || ''}</td><td>${a.employeeName || ''}</td><td>${a.paymentMethod || ''}</td>
+        <td>${a.expenseName || ''}</td><td>${a.summary || a.sourceDescription || ''}</td>
+        <td>${a.warehouse || ''}</td><td class="right">NT$ ${Number(a.amount).toLocaleString()}</td>
+        <td>${a.status}</td>
+        ${activeTab === 'settled' ? `<td>${a.settlementTxNo || ''}</td>` : ''}
+      </tr>`).join('')}
+      </tbody><tfoot><tr>
+        <td colspan="${activeTab === 'settled' ? 6 : 6}" style="font-weight:600">合計 ${rows.length} 筆</td>
+        <td class="right" style="font-weight:700">NT$ ${rows.reduce((s, a) => s + Number(a.amount), 0).toLocaleString()}</td>
+        <td colspan="${activeTab === 'settled' ? 2 : 1}"></td>
+      </tr></tfoot></table>
+      <button onclick="window.print()" style="margin-top:16px;padding:8px 24px;font-size:14px;cursor:pointer">列印</button>
+      </body></html>`);
+    w.document.close();
+  }
+
+  // Export current tab as CSV/Excel
+  function handleExportExcel() {
+    const rows = activeTab === 'pending' ? filteredPending :
+      activeTab === 'settled' ? settledAdvances : [];
+    if (rows.length === 0) { showToast('目前無資料可匯出', 'error'); return; }
+    const tabLabel = activeTab === 'pending' ? '待結算' : '已結算';
+    const header = ['代墊單號', '代墊人', '方式', '費用名稱', '摘要', '館別', '金額', '狀態',
+      ...(activeTab === 'settled' ? ['結算交易號'] : [])];
+    const csvRows = [header.join(',')];
+    rows.forEach(a => {
+      const cols = [
+        a.advanceNo || '', a.employeeName || '', a.paymentMethod || '',
+        a.expenseName || '', a.summary || a.sourceDescription || '', a.warehouse || '',
+        Number(a.amount), a.status,
+        ...(activeTab === 'settled' ? [a.settlementTxNo || ''] : []),
+      ];
+      csvRows.push(cols.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','));
+    });
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `代墊款_${tabLabel}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) return (
     <>
       <Navigation borderColor="border-green-500" />
@@ -350,17 +416,23 @@ export default function EmployeeAdvancesPage() {
           </div>
         )}
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e5e7eb', marginBottom: 20 }}>
-          {TABS.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
-              padding: '10px 20px', border: 'none', borderBottom: activeTab === tab.key ? '3px solid #2563eb' : '3px solid transparent',
-              background: 'none', fontSize: 14, fontWeight: activeTab === tab.key ? 600 : 400,
-              color: activeTab === tab.key ? '#2563eb' : '#6b7280', cursor: 'pointer',
-            }}>
-              {tab.label}
-            </button>
-          ))}
+        {/* Tabs + Print/Export */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #e5e7eb' }}>
+            {TABS.map(tab => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+                padding: '10px 20px', border: 'none', borderBottom: activeTab === tab.key ? '3px solid #2563eb' : '3px solid transparent',
+                background: 'none', fontSize: 14, fontWeight: activeTab === tab.key ? 600 : 400,
+                color: activeTab === tab.key ? '#2563eb' : '#6b7280', cursor: 'pointer',
+              }}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>列印</button>
+            <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>匯出 Excel</button>
+          </div>
         </div>
 
         {/* Pending Tab */}
