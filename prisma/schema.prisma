@@ -2706,3 +2706,63 @@ model EngineeringMaterial {
   @@index([productId])
   @@map("engineering_materials")
 }
+
+// ============================================
+// 進貨折讓管理
+// ============================================
+
+model PurchaseAllowance {
+  id                  Int       @id @default(autoincrement())
+  allowanceNo         String    @unique @map("allowance_no") @db.VarChar(50)
+  allowanceType       String    @default("折讓") @map("allowance_type") @db.VarChar(20)
+  allowanceDate       String    @map("allowance_date") @db.VarChar(20)
+  supplierId          Int?      @map("supplier_id")
+  supplierName        String?   @map("supplier_name") @db.VarChar(255)
+  warehouse           String?   @db.VarChar(100)
+  purchaseId          Int?      @map("purchase_id")
+  purchaseNo          String?   @map("purchase_no") @db.VarChar(50)
+  invoiceId           Int?      @map("invoice_id")
+  invoiceNo           String?   @map("invoice_no") @db.VarChar(50)
+  paymentOrderId      Int?      @map("payment_order_id")
+  paymentOrderNo      String?   @map("payment_order_no") @db.VarChar(50)
+  amount              Decimal   @default(0) @db.Decimal(12, 2)
+  tax                 Decimal   @default(0) @db.Decimal(12, 2)
+  totalAmount         Decimal   @default(0) @map("total_amount") @db.Decimal(12, 2)
+  refundAccountId     Int?      @map("refund_account_id")
+  cashTransactionId   Int?      @map("cash_transaction_id")
+  cashTransactionNo   String?   @map("cash_transaction_no") @db.VarChar(50)
+  status              String    @default("草稿") @db.VarChar(20)
+  reason              String?   @db.Text
+  note                String?   @db.Text
+  confirmedBy         String?   @map("confirmed_by") @db.VarChar(255)
+  confirmedAt         DateTime? @map("confirmed_at")
+  createdBy           String?   @map("created_by") @db.VarChar(255)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  details             AllowanceDetail[]
+
+  @@index([supplierId])
+  @@index([warehouse])
+  @@index([status])
+  @@index([allowanceDate])
+  @@index([purchaseId])
+  @@index([invoiceId])
+  @@index([paymentOrderId])
+  @@map("purchase_allowances")
+}
+
+model AllowanceDetail {
+  id              Int      @id @default(autoincrement())
+  allowanceId     Int      @map("allowance_id")
+  productName     String?  @map("product_name") @db.VarChar(255)
+  quantity        Decimal  @default(0) @db.Decimal(12, 4)
+  unitPrice       Decimal  @default(0) @map("unit_price") @db.Decimal(10, 2)
+  subtotal        Decimal  @default(0) @db.Decimal(12, 2)
+  reason          String?  @db.Text
+
+  allowance       PurchaseAllowance @relation(fields: [allowanceId], references: [id], onDelete: Cascade)
+
+  @@index([allowanceId])
+  @@map("allowance_details")
+}

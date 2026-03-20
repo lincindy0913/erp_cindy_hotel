@@ -8,7 +8,22 @@ import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
-// POST: 確認折讓 → 建立退款交易
+// Helper: generate next CF transaction number
+async function generateTxNo(tx, dateStr) {
+  const txPrefix = `CF-${dateStr.replace(/-/g, '')}-`;
+  const existingTx = await tx.cashTransaction.findMany({
+    where: { transactionNo: { startsWith: txPrefix } },
+    select: { transactionNo: true },
+  });
+  let maxSeq = 0;
+  for (const item of existingTx) {
+    const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
+    if (seq > maxSeq) maxSeq = seq;
+  }
+  return `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+}
+
+// POST: 確認折讓/全額退貨 → 建立退款交易 + 回沖相關資料
 export async function POST(request, { params }) {
   try {
     const session = await getServerSession(authOptions);
@@ -29,27 +44,20 @@ export async function POST(request, { params }) {
       const totalAmount = Number(allowance.totalAmount);
       if (totalAmount <= 0) throw new Error('折讓金額必須大於 0');
 
+      const isFullReturn = allowance.allowanceType === '全額退貨';
+
       // Validate account exists
       const account = await tx.cashAccount.findUnique({ where: { id: parseInt(accountId) } });
       if (!account) throw new Error('找不到退款帳戶');
 
       // Generate CashTransaction number
       const txDate = refundDate || allowance.allowanceDate;
-      const dateStr = txDate.replace(/-/g, '');
-      const txPrefix = `CF-${dateStr}-`;
-      const existingTx = await tx.cashTransaction.findMany({
-        where: { transactionNo: { startsWith: txPrefix } },
-        select: { transactionNo: true },
-      });
-      let maxSeq = 0;
-      for (const item of existingTx) {
-        const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
-        if (seq > maxSeq) maxSeq = seq;
-      }
-      const txNo = `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+      const txNo = await generateTxNo(tx, txDate);
 
       // Get category
       const categoryId = await getCategoryId(tx, 'purchase_allowance');
+
+      const descPrefix = isFullReturn ? '全額退貨退款' : '進貨折讓退款';
 
       // Create CashTransaction (收入 = refund from supplier)
       const cashTx = await tx.cashTransaction.create({
@@ -62,7 +70,7 @@ export async function POST(request, { params }) {
           categoryId,
           supplierId: allowance.supplierId,
           amount: totalAmount,
-          description: `進貨折讓退款 — ${allowance.allowanceNo} ${allowance.supplierName || ''} ${allowance.reason || ''}`.trim(),
+          description: `${descPrefix} — ${allowance.allowanceNo} ${allowance.supplierName || ''} ${allowance.reason || ''}`.trim(),
           sourceType: 'purchase_allowance',
           sourceRecordId: allowance.id,
           paymentNo: allowance.allowanceNo,
@@ -76,7 +84,6 @@ export async function POST(request, { params }) {
       await recalcBalance(tx, parseInt(accountId));
 
       // --- 回沖損益表相關數據 ---
-      // Parse allowanceDate to get year/month for rollback
       const allowanceDateStr = allowance.allowanceDate || txDate;
       let rollbackYear, rollbackMonth;
       if (allowanceDateStr) {
@@ -85,14 +92,11 @@ export async function POST(request, { params }) {
         rollbackMonth = parseInt(parts[1]);
       }
 
-      // If linked to a PaymentOrder, try to get the original expense month
       let originalWarehouse = allowance.warehouse;
-      let originalCategory = allowance.reason || '進貨折讓';
       if (allowance.paymentOrderId) {
         const po = await tx.paymentOrder.findUnique({ where: { id: allowance.paymentOrderId } });
         if (po) {
           originalWarehouse = originalWarehouse || po.warehouse;
-          // Try to get expense month from linked CommonExpenseRecord
           if (po.sourceRecordId && (po.sourceType === 'common_expense' || po.sourceType === 'fixed_expense')) {
             const cer = await tx.commonExpenseRecord.findUnique({ where: { id: po.sourceRecordId } });
             if (cer?.expenseMonth) {
@@ -104,16 +108,11 @@ export async function POST(request, { params }) {
         }
       }
 
-      // Roll back DepartmentExpense (deduct the allowance amount)
+      // Roll back DepartmentExpense
       if (rollbackYear && rollbackMonth && originalWarehouse) {
         const deptExpenses = await tx.departmentExpense.findMany({
-          where: {
-            year: rollbackYear,
-            month: rollbackMonth,
-            department: originalWarehouse,
-          },
+          where: { year: rollbackYear, month: rollbackMonth, department: originalWarehouse },
         });
-        // Find matching category or use the first one
         const matchDE = deptExpenses.find(de => de.category.includes('進貨') || de.category.includes('採購'))
           || deptExpenses[0];
         if (matchDE) {
@@ -126,7 +125,7 @@ export async function POST(request, { params }) {
         }
       }
 
-      // Roll back MonthlyAggregation (purchase type)
+      // Roll back MonthlyAggregation
       if (rollbackYear && rollbackMonth) {
         const agg = await tx.monthlyAggregation.findFirst({
           where: {
@@ -148,6 +147,102 @@ export async function POST(request, { params }) {
         }
       }
 
+      // ====== 全額退貨 額外處理 ======
+      const extraActions = [];
+
+      if (isFullReturn) {
+        // 1. 標記原付款單為「已退貨」
+        if (allowance.paymentOrderId) {
+          await tx.paymentOrder.update({
+            where: { id: allowance.paymentOrderId },
+            data: { status: '已退貨' },
+          });
+          extraActions.push(`付款單 ${allowance.paymentOrderNo} 已標記退貨`);
+        }
+
+        // 2. 標記原發票為「已退貨」
+        if (allowance.invoiceId) {
+          await tx.salesMaster.update({
+            where: { id: allowance.invoiceId },
+            data: { status: '已退貨' },
+          });
+          extraActions.push(`發票 ${allowance.invoiceNo} 已標記退貨`);
+        }
+
+        // 3. 標記原進貨單為「已退貨」
+        if (allowance.purchaseId) {
+          await tx.purchaseMaster.update({
+            where: { id: allowance.purchaseId },
+            data: { status: '已退貨' },
+          });
+          extraActions.push(`進貨單 ${allowance.purchaseNo} 已標記退貨`);
+        } else if (allowance.purchaseNo) {
+          // Try to find by purchaseNo
+          const pm = await tx.purchaseMaster.findUnique({
+            where: { purchaseNo: allowance.purchaseNo },
+          });
+          if (pm) {
+            await tx.purchaseMaster.update({
+              where: { id: pm.id },
+              data: { status: '已退貨' },
+            });
+            extraActions.push(`進貨單 ${allowance.purchaseNo} 已標記退貨`);
+          }
+        }
+
+        // 4. 沖銷原出納交易 — 建立反向交易 (reversal)
+        if (allowance.paymentOrderId) {
+          const originalCashTx = await tx.cashTransaction.findFirst({
+            where: {
+              sourceType: 'cashier_payment',
+              sourceRecordId: allowance.paymentOrderId,
+              status: '已確認',
+            },
+          });
+          if (originalCashTx) {
+            const reversalNo = await generateTxNo(tx, txDate);
+            const reversalTx = await tx.cashTransaction.create({
+              data: {
+                transactionNo: reversalNo,
+                transactionDate: txDate,
+                type: '收入',
+                warehouse: originalCashTx.warehouse,
+                accountId: originalCashTx.accountId,
+                categoryId: originalCashTx.categoryId,
+                supplierId: originalCashTx.supplierId,
+                amount: Number(originalCashTx.amount),
+                description: `沖銷退貨 — 原交易 ${originalCashTx.transactionNo} ${allowance.supplierName || ''}`,
+                sourceType: 'reversal',
+                sourceRecordId: originalCashTx.id,
+                paymentNo: allowance.allowanceNo,
+                status: '已確認',
+                isReversal: true,
+                reversalOfId: originalCashTx.id,
+                isAutoCreated: true,
+                autoCreationReason: `全額退貨 ${allowance.allowanceNo}`,
+                createdBy: session?.user?.id ? parseInt(session.user.id) : null,
+              },
+            });
+
+            // Mark original as reversed
+            await tx.cashTransaction.update({
+              where: { id: originalCashTx.id },
+              data: {
+                status: '已沖銷',
+                reversedById: reversalTx.id,
+              },
+            });
+
+            // Recalculate the original account balance too
+            if (originalCashTx.accountId !== parseInt(accountId)) {
+              await recalcBalance(tx, originalCashTx.accountId);
+            }
+
+            extraActions.push(`原出納交易 ${originalCashTx.transactionNo} 已沖銷`);
+          }
+        }
+      }
+
       // Update allowance status
       await tx.purchaseAllowance.update({
         where: { id },
@@ -161,13 +256,22 @@ export async function POST(request, { params }) {
         },
       });
 
-      return { allowanceNo: allowance.allowanceNo, txNo, totalAmount };
+      return {
+        allowanceNo: allowance.allowanceNo,
+        allowanceType: allowance.allowanceType,
+        txNo,
+        totalAmount,
+        extraActions,
+      };
     });
 
-    return NextResponse.json({
-      message: `折讓單 ${result.allowanceNo} 已確認，退款 NT$ ${result.totalAmount.toLocaleString()} 已入帳 (${result.txNo})`,
-      ...result,
-    });
+    const typeLabel = result.allowanceType === '全額退貨' ? '全額退貨' : '折讓';
+    let message = `${typeLabel}單 ${result.allowanceNo} 已確認，退款 NT$ ${result.totalAmount.toLocaleString()} 已入帳 (${result.txNo})`;
+    if (result.extraActions?.length > 0) {
+      message += '\n' + result.extraActions.join('\n');
+    }
+
+    return NextResponse.json({ message, ...result });
   } catch (error) {
     console.error('POST /api/purchase-allowances/[id]/confirm error:', error);
     return handleApiError(error);
