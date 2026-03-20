@@ -1,0 +1,175 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { getCategoryId } from '@/lib/cash-category-helper';
+import { recalcBalance } from '@/lib/recalc-balance';
+
+export const dynamic = 'force-dynamic';
+
+// POST: 確認折讓 → 建立退款交易
+export async function POST(request, { params }) {
+  try {
+    const session = await getServerSession(authOptions);
+    const id = parseInt(params.id);
+    const body = await request.json();
+    const { accountId, refundDate } = body;
+
+    if (!accountId) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇退款帳戶', 400);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const allowance = await tx.purchaseAllowance.findUnique({
+        where: { id },
+        include: { details: true },
+      });
+      if (!allowance) throw new Error('找不到折讓單');
+      if (allowance.status !== '草稿') throw new Error(`無法確認：目前狀態為「${allowance.status}」`);
+
+      const totalAmount = Number(allowance.totalAmount);
+      if (totalAmount <= 0) throw new Error('折讓金額必須大於 0');
+
+      // Validate account exists
+      const account = await tx.cashAccount.findUnique({ where: { id: parseInt(accountId) } });
+      if (!account) throw new Error('找不到退款帳戶');
+
+      // Generate CashTransaction number
+      const txDate = refundDate || allowance.allowanceDate;
+      const dateStr = txDate.replace(/-/g, '');
+      const txPrefix = `CF-${dateStr}-`;
+      const existingTx = await tx.cashTransaction.findMany({
+        where: { transactionNo: { startsWith: txPrefix } },
+        select: { transactionNo: true },
+      });
+      let maxSeq = 0;
+      for (const item of existingTx) {
+        const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
+        if (seq > maxSeq) maxSeq = seq;
+      }
+      const txNo = `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+
+      // Get category
+      const categoryId = await getCategoryId(tx, 'purchase_allowance');
+
+      // Create CashTransaction (收入 = refund from supplier)
+      const cashTx = await tx.cashTransaction.create({
+        data: {
+          transactionNo: txNo,
+          transactionDate: txDate,
+          type: '收入',
+          warehouse: allowance.warehouse,
+          accountId: parseInt(accountId),
+          categoryId,
+          supplierId: allowance.supplierId,
+          amount: totalAmount,
+          description: `進貨折讓退款 — ${allowance.allowanceNo} ${allowance.supplierName || ''} ${allowance.reason || ''}`.trim(),
+          sourceType: 'purchase_allowance',
+          sourceRecordId: allowance.id,
+          paymentNo: allowance.allowanceNo,
+          status: '已確認',
+          isAutoCreated: false,
+          createdBy: session?.user?.id ? parseInt(session.user.id) : null,
+        },
+      });
+
+      // Recalculate account balance
+      await recalcBalance(tx, parseInt(accountId));
+
+      // --- 回沖損益表相關數據 ---
+      // Parse allowanceDate to get year/month for rollback
+      const allowanceDateStr = allowance.allowanceDate || txDate;
+      let rollbackYear, rollbackMonth;
+      if (allowanceDateStr) {
+        const parts = allowanceDateStr.split('-');
+        rollbackYear = parseInt(parts[0]);
+        rollbackMonth = parseInt(parts[1]);
+      }
+
+      // If linked to a PaymentOrder, try to get the original expense month
+      let originalWarehouse = allowance.warehouse;
+      let originalCategory = allowance.reason || '進貨折讓';
+      if (allowance.paymentOrderId) {
+        const po = await tx.paymentOrder.findUnique({ where: { id: allowance.paymentOrderId } });
+        if (po) {
+          originalWarehouse = originalWarehouse || po.warehouse;
+          // Try to get expense month from linked CommonExpenseRecord
+          if (po.sourceRecordId && (po.sourceType === 'common_expense' || po.sourceType === 'fixed_expense')) {
+            const cer = await tx.commonExpenseRecord.findUnique({ where: { id: po.sourceRecordId } });
+            if (cer?.expenseMonth) {
+              const eParts = cer.expenseMonth.split('-');
+              rollbackYear = parseInt(eParts[0]);
+              rollbackMonth = parseInt(eParts[1]);
+            }
+          }
+        }
+      }
+
+      // Roll back DepartmentExpense (deduct the allowance amount)
+      if (rollbackYear && rollbackMonth && originalWarehouse) {
+        const deptExpenses = await tx.departmentExpense.findMany({
+          where: {
+            year: rollbackYear,
+            month: rollbackMonth,
+            department: originalWarehouse,
+          },
+        });
+        // Find matching category or use the first one
+        const matchDE = deptExpenses.find(de => de.category.includes('進貨') || de.category.includes('採購'))
+          || deptExpenses[0];
+        if (matchDE) {
+          const newTotal = Math.max(0, Number(matchDE.totalAmount) - totalAmount);
+          const newTax = Math.max(0, Number(matchDE.tax) - Number(allowance.tax || 0));
+          await tx.departmentExpense.update({
+            where: { id: matchDE.id },
+            data: { totalAmount: newTotal, tax: newTax },
+          });
+        }
+      }
+
+      // Roll back MonthlyAggregation (purchase type)
+      if (rollbackYear && rollbackMonth) {
+        const agg = await tx.monthlyAggregation.findFirst({
+          where: {
+            aggregationType: 'purchase',
+            year: rollbackYear,
+            month: rollbackMonth,
+            warehouse: originalWarehouse || null,
+          },
+        });
+        if (agg) {
+          const newTotal = Math.max(0, Number(agg.totalAmount) - totalAmount);
+          await tx.monthlyAggregation.update({
+            where: { id: agg.id },
+            data: {
+              totalAmount: newTotal,
+              recordCount: Math.max(0, agg.recordCount - 1),
+            },
+          });
+        }
+      }
+
+      // Update allowance status
+      await tx.purchaseAllowance.update({
+        where: { id },
+        data: {
+          status: '已確認',
+          refundAccountId: parseInt(accountId),
+          cashTransactionId: cashTx.id,
+          cashTransactionNo: txNo,
+          confirmedBy: session?.user?.email || body.confirmedBy || null,
+          confirmedAt: new Date(),
+        },
+      });
+
+      return { allowanceNo: allowance.allowanceNo, txNo, totalAmount };
+    });
+
+    return NextResponse.json({
+      message: `折讓單 ${result.allowanceNo} 已確認，退款 NT$ ${result.totalAmount.toLocaleString()} 已入帳 (${result.txNo})`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('POST /api/purchase-allowances/[id]/confirm error:', error);
+    return handleApiError(error);
+  }
+}
