@@ -1281,6 +1281,8 @@ function InvoicePageInner() {
                             invoice.paymentStatus === '已付款' ? 'bg-green-100 text-green-800' :
                             invoice.paymentStatus === '待出納' ? 'bg-yellow-100 text-yellow-800' :
                             invoice.paymentStatus === '草稿' ? 'bg-gray-100 text-gray-800' :
+                            invoice.paymentStatus === '已代墊' ? 'bg-purple-100 text-purple-800' :
+                            invoice.paymentStatus === '已退貨' ? 'bg-orange-100 text-orange-800' :
                             'bg-red-100 text-red-800'
                           }`}>
                             {invoice.paymentStatus || '未付款'}
@@ -1338,6 +1340,7 @@ function InvoicePageInner() {
                                     <span className={`px-2 py-1 rounded text-xs ${
                                       invoice.status === '已核銷' ? 'bg-green-100 text-green-800' :
                                       invoice.status === '待核銷' ? 'bg-yellow-100 text-yellow-800' :
+                                      invoice.status === '已退貨' ? 'bg-orange-100 text-orange-800' :
                                       'bg-red-100 text-red-800'
                                     }`}>
                                       {invoice.status || '待核銷'}

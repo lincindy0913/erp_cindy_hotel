@@ -1695,6 +1695,7 @@ export default function PurchasingPage() {
                                   <span key={status} className={`px-2 py-0.5 rounded text-xs ${
                                     status === '已入庫' ? 'bg-green-100 text-green-800' :
                                     status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                                    status === '已退貨' ? 'bg-orange-100 text-orange-800' :
                                     'bg-gray-100 text-gray-800'
                                   }`}>
                                     {status}{count > 1 ? ` x${count}` : ''}
@@ -1706,6 +1707,7 @@ export default function PurchasingPage() {
                             <span className={`px-2 py-1 rounded text-xs ${
                               purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
                               purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
+                              purchase.status === '已退貨' ? 'bg-orange-100 text-orange-800' :
                               'bg-red-100 text-red-800'
                             }`}>
                               {purchase.status}

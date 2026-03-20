@@ -34,7 +34,7 @@ export async function GET(request) {
     const revenue = pmsRecords.reduce((sum, r) => sum + Number(r.amount), 0);
 
     // === COGS: sum PurchaseMaster.totalAmount (exclude voided) ===
-    const purchaseWhere = { status: { not: '已作廢' } };
+    const purchaseWhere = { status: { notIn: ['已作廢', '已退貨'] } };
     if (startDate || endDate) {
       purchaseWhere.purchaseDate = {};
       if (startDate) purchaseWhere.purchaseDate.gte = startDate;
@@ -47,7 +47,24 @@ export async function GET(request) {
       select: { purchaseDate: true, totalAmount: true }
     });
 
-    const cogs = purchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
+    const rawCogs = purchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
+
+    // === Purchase Allowances: deduct confirmed allowances from COGS ===
+    const allowanceWhere = { status: '已確認' };
+    if (startDate || endDate) {
+      allowanceWhere.allowanceDate = {};
+      if (startDate) allowanceWhere.allowanceDate.gte = startDate;
+      if (endDate) allowanceWhere.allowanceDate.lte = endDate;
+    }
+    if (warehouse) allowanceWhere.warehouse = warehouse;
+
+    const allowances = await prisma.purchaseAllowance.findMany({
+      where: allowanceWhere,
+      select: { allowanceDate: true, totalAmount: true }
+    });
+
+    const totalAllowances = allowances.reduce((sum, a) => sum + Number(a.totalAmount), 0);
+    const cogs = rawCogs - totalAllowances;
 
     // === Expenses: sum Expense.amount ===
     const expenseWhere = {};
@@ -81,39 +98,51 @@ export async function GET(request) {
     for (const r of pmsRecords) {
       const m = getMonth(r.businessDate);
       if (!m) continue;
-      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, expenses: 0 };
+      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, allowances: 0, expenses: 0 };
       monthlyMap[m].revenue += Number(r.amount);
     }
 
     for (const p of purchases) {
       const m = getMonth(p.purchaseDate);
       if (!m) continue;
-      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, expenses: 0 };
+      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, allowances: 0, expenses: 0 };
       monthlyMap[m].cogs += Number(p.totalAmount);
+    }
+
+    for (const a of allowances) {
+      const m = getMonth(a.allowanceDate);
+      if (!m) continue;
+      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, allowances: 0, expenses: 0 };
+      monthlyMap[m].allowances += Number(a.totalAmount);
     }
 
     for (const e of expenses) {
       const m = getMonth(e.invoiceDate);
       if (!m) continue;
-      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, expenses: 0 };
+      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, cogs: 0, allowances: 0, expenses: 0 };
       monthlyMap[m].expenses += Number(e.amount);
     }
 
     const monthly = Object.values(monthlyMap)
       .sort((a, b) => a.month.localeCompare(b.month))
-      .map(m => ({
-        ...m,
-        revenue: Math.round(m.revenue),
-        cogs: Math.round(m.cogs),
-        expenses: Math.round(m.expenses),
-        grossProfit: Math.round(m.revenue - m.cogs),
-        netProfit: Math.round(m.revenue - m.cogs - m.expenses)
-      }));
+      .map(m => {
+        const netCogs = m.cogs - (m.allowances || 0);
+        return {
+          ...m,
+          revenue: Math.round(m.revenue),
+          cogs: Math.round(netCogs),
+          allowances: Math.round(m.allowances || 0),
+          expenses: Math.round(m.expenses),
+          grossProfit: Math.round(m.revenue - netCogs),
+          netProfit: Math.round(m.revenue - netCogs - m.expenses),
+        };
+      });
 
     return NextResponse.json({
       summary: {
         revenue: Math.round(revenue),
         cogs: Math.round(cogs),
+        allowances: Math.round(totalAllowances),
         expenses: Math.round(totalExpenses),
         grossProfit: Math.round(grossProfit),
         netProfit: Math.round(netProfit)

@@ -616,12 +616,16 @@ export default function PaymentPage() {
   const pendingOrders = orders.filter(o => o.status === '待出納');
   const executedOrders = orders.filter(o => o.status === '已執行');
   const rejectedOrders = orders.filter(o => o.status === '已拒絕');
+  const advancedOrders = orders.filter(o => o.status === '已代墊');
+  const returnedOrders = orders.filter(o => o.status === '已退貨');
 
   const TABS = [
     { key: 'draft', label: '草稿', count: draftOrders.length, color: 'bg-gray-100 text-gray-800' },
     { key: 'pending', label: '待出納', count: pendingOrders.length, color: 'bg-yellow-100 text-yellow-800' },
     { key: 'executed', label: '已執行', count: executedOrders.length, color: 'bg-green-100 text-green-800' },
     { key: 'rejected', label: '已拒絕', count: rejectedOrders.length, color: 'bg-red-100 text-red-800' },
+    ...(advancedOrders.length > 0 ? [{ key: 'advanced', label: '已代墊', count: advancedOrders.length, color: 'bg-purple-100 text-purple-800' }] : []),
+    ...(returnedOrders.length > 0 ? [{ key: 'returned', label: '已退貨', count: returnedOrders.length, color: 'bg-orange-100 text-orange-800' }] : []),
   ];
 
   function getDisplayOrders() {
@@ -630,6 +634,8 @@ export default function PaymentPage() {
       case 'pending': return pendingOrders;
       case 'executed': return executedOrders;
       case 'rejected': return rejectedOrders;
+      case 'advanced': return advancedOrders;
+      case 'returned': return returnedOrders;
       default: return orders;
     }
   }
@@ -801,6 +807,8 @@ export default function PaymentPage() {
       '已執行': 'bg-green-100 text-green-800',
       '已拒絕': 'bg-red-100 text-red-800',
       '已作廢': 'bg-gray-200 text-gray-500',
+      '已代墊': 'bg-purple-100 text-purple-800',
+      '已退貨': 'bg-orange-100 text-orange-800',
     };
     return map[status] || 'bg-gray-100 text-gray-800';
   }

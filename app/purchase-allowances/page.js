@@ -505,17 +505,34 @@ export default function PurchaseAllowancesPage() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
+                {formMode === '全額退貨' && selectedInvoice && (
+                  <div style={{ gridColumn: '1 / -1', background: '#fee2e2', padding: '6px 12px', borderRadius: 6, fontSize: 13, color: '#991b1b', marginBottom: 4 }}>
+                    全額退貨模式：金額已鎖定為原發票全額，不可修改
+                  </div>
+                )}
                 <div>
-                  <label style={labelStyle}>折讓金額（未稅）*</label>
-                  <input type="number" value={form.amount} onChange={e => updateAmountField('amount', e.target.value)} style={{ ...inputStyle, textAlign: 'right' }} />
+                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨金額（未稅）' : '折讓金額（未稅）*'}</label>
+                  <input type="number" value={form.amount}
+                    onChange={e => updateAmountField('amount', e.target.value)}
+                    readOnly={formMode === '全額退貨' && !!selectedInvoice}
+                    style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedInvoice ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
                   <label style={labelStyle}>稅額</label>
-                  <input type="number" value={form.tax} onChange={e => updateAmountField('tax', e.target.value)} style={{ ...inputStyle, textAlign: 'right' }} />
+                  <input type="number" value={form.tax}
+                    onChange={e => updateAmountField('tax', e.target.value)}
+                    readOnly={formMode === '全額退貨' && !!selectedInvoice}
+                    style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedInvoice ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>折讓總額（含稅）*</label>
-                  <input type="number" value={form.totalAmount} onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))} style={{ ...inputStyle, border: '2px solid #f59e0b', fontSize: 15, fontWeight: 700, textAlign: 'right', background: '#fffbeb' }} />
+                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨總額（含稅）' : '折讓總額（含稅）*'}</label>
+                  <input type="number" value={form.totalAmount}
+                    onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))}
+                    readOnly={formMode === '全額退貨' && !!selectedInvoice}
+                    style={{ ...inputStyle, border: `2px solid ${formMode === '全額退貨' ? '#dc2626' : '#f59e0b'}`, fontSize: 15, fontWeight: 700, textAlign: 'right',
+                      background: formMode === '全額退貨' && selectedInvoice ? '#fee2e2' : '#fffbeb',
+                      ...(formMode === '全額退貨' && selectedInvoice ? { cursor: 'not-allowed' } : {}),
+                    }} />
                 </div>
               </div>
 
