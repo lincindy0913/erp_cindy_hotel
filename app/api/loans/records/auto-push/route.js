@@ -7,10 +7,10 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 // Generate payment order number: LN-YYYYMMDD-XXXX (loan source)
-async function generateOrderNo(date) {
+async function generateOrderNo(tx, date) {
   const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
   const prefix = `LN-${dateStr}-`;
-  const existing = await prisma.paymentOrder.findMany({
+  const existing = await tx.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
     select: { orderNo: true }
   });
@@ -86,7 +86,13 @@ export async function POST(request) {
 
       try {
         const result = await prisma.$transaction(async (tx) => {
-          const orderNo = await generateOrderNo(todayStr);
+          // Re-verify record status inside transaction to prevent double-push
+          const freshRec = await tx.loanMonthlyRecord.findUnique({ where: { id: rec.id } });
+          if (!freshRec || freshRec.status !== '暫估') {
+            throw new Error('IDEMPOTENT:此記錄已被推送');
+          }
+
+          const orderNo = await generateOrderNo(tx, todayStr);
           const paymentOrder = await tx.paymentOrder.create({
             data: {
               orderNo,
@@ -125,6 +131,10 @@ export async function POST(request) {
           orderNo: result.orderNo
         });
       } catch (e) {
+        if (e.message?.startsWith('IDEMPOTENT:')) {
+          // Already pushed — skip silently
+          continue;
+        }
         failed.push({ recordId: rec.id, reason: e.message });
       }
     }

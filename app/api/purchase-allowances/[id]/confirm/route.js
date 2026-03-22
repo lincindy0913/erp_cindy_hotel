@@ -38,8 +38,8 @@ export async function POST(request, { params }) {
         where: { id },
         include: { details: true },
       });
-      if (!allowance) throw new Error('找不到折讓單');
-      if (allowance.status !== '草稿') throw new Error(`無法確認：目前狀態為「${allowance.status}」`);
+      if (!allowance) throw new Error('NOT_FOUND:找不到折讓單');
+      if (allowance.status !== '草稿') throw new Error(`IDEMPOTENT:無法確認：目前狀態為「${allowance.status}」`);
 
       const totalAmount = Number(allowance.totalAmount);
       if (totalAmount <= 0) throw new Error('折讓金額必須大於 0');
@@ -273,6 +273,12 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({ message, ...result });
   } catch (error) {
+    if (error.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (error.message?.startsWith('NOT_FOUND:')) {
+      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
     console.error('POST /api/purchase-allowances/[id]/confirm error:', error);
     return handleApiError(error);
   }

@@ -25,50 +25,43 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供退票支票 ID (bouncedCheckId)', 400);
     }
 
-    const bounced = await prisma.check.findUnique({
-      where: { id: bouncedCheckId },
-      include: { sourceAccount: { select: { id: true, name: true } } },
-    });
-
-    if (!bounced) {
-      return createErrorResponse('NOT_FOUND', '找不到該支票', 404);
-    }
-    if (bounced.status !== 'bounced') {
-      return createErrorResponse('VALIDATION_FAILED', '僅能對已退票的支票重新開票', 400);
-    }
-    if (bounced.checkType !== 'payable') {
-      return createErrorResponse('VALIDATION_FAILED', '僅支援應付支票重新開票', 400);
-    }
-
-    // 是否已重新開票過
-    const existingReissue = await prisma.check.findFirst({
-      where: { reissueOfCheckId: bouncedCheckId },
-    });
-    if (existingReissue) {
-      return createErrorResponse('VALIDATION_FAILED', '此退票已重新開票過，請至出納或支票管理查看新支票', 409);
-    }
-
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
     const todayStr = now.toISOString().split('T')[0];
 
-    const orderPrefix = `PAY-${dateStr}-`;
-    const existingOrders = await prisma.paymentOrder.findMany({
-      where: { orderNo: { startsWith: orderPrefix } },
-    });
-    let maxSeq = 0;
-    for (const o of existingOrders) {
-      const seq = parseInt(o.orderNo.substring(orderPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-    const orderNo = `${orderPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
-
-    const netAmount = Number(bounced.amount);
-    const supplierName = bounced.payeeName || (bounced.supplierId
-      ? (await prisma.supplier.findUnique({ where: { id: bounced.supplierId }, select: { name: true } }))?.name
-      : null) || '';
-
     const result = await prisma.$transaction(async (tx) => {
+      // Re-fetch and verify INSIDE transaction to prevent race conditions
+      const bounced = await tx.check.findUnique({
+        where: { id: bouncedCheckId },
+        include: { sourceAccount: { select: { id: true, name: true } } },
+      });
+
+      if (!bounced) throw new Error('NOT_FOUND:找不到該支票');
+      if (bounced.status !== 'bounced') throw new Error('IDEMPOTENT:僅能對已退票的支票重新開票');
+      if (bounced.checkType !== 'payable') throw new Error('VALIDATION:僅支援應付支票重新開票');
+
+      // 是否已重新開票過
+      const existingReissue = await tx.check.findFirst({
+        where: { reissueOfCheckId: bouncedCheckId },
+      });
+      if (existingReissue) throw new Error('IDEMPOTENT:此退票已重新開票過，請至出納或支票管理查看新支票');
+
+      const orderPrefix = `PAY-${dateStr}-`;
+      const existingOrders = await tx.paymentOrder.findMany({
+        where: { orderNo: { startsWith: orderPrefix } },
+      });
+      let maxSeq = 0;
+      for (const o of existingOrders) {
+        const seq = parseInt(o.orderNo.substring(orderPrefix.length)) || 0;
+        if (seq > maxSeq) maxSeq = seq;
+      }
+      const orderNo = `${orderPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+
+      const netAmount = Number(bounced.amount);
+      const supplierName = bounced.payeeName || (bounced.supplierId
+        ? (await tx.supplier.findUnique({ where: { id: bounced.supplierId }, select: { name: true } }))?.name
+        : null) || '';
+
       const order = await tx.paymentOrder.create({
         data: {
           orderNo,
@@ -146,6 +139,15 @@ export async function POST(request) {
       message: '已建立重新開票之付款單，請至出納執行付款後，新支票將顯示於支票管理並可標記為已兌現。',
     }, { status: 201 });
   } catch (e) {
+    if (e.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('VALIDATION_FAILED', e.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (e.message?.startsWith('NOT_FOUND:')) {
+      return createErrorResponse('NOT_FOUND', e.message.replace('NOT_FOUND:', ''), 404);
+    }
+    if (e.message?.startsWith('VALIDATION:')) {
+      return createErrorResponse('VALIDATION_FAILED', e.message.replace('VALIDATION:', ''), 400);
+    }
     return handleApiError(e);
   }
 }

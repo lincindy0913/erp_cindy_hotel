@@ -9,11 +9,11 @@ import { recalcBalance } from '@/lib/recalc-balance';
 export const dynamic = 'force-dynamic';
 
 // Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
+async function generateTransactionNo(tx, date) {
   const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
   const prefix = `CF-${dateStr}-`;
 
-  const existing = await prisma.cashTransaction.findMany({
+  const existing = await tx.cashTransaction.findMany({
     where: { transactionNo: { startsWith: prefix } },
     select: { transactionNo: true }
   });
@@ -38,42 +38,32 @@ export async function POST(request, { params }) {
     const body = await request.json();
     const { reason } = body;
 
-    // Find original transaction
-    const original = await prisma.cashTransaction.findUnique({
-      where: { id },
-      include: {
-        account: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true } }
-      }
-    });
-
-    if (!original) {
-      return createErrorResponse('NOT_FOUND', '交易不存在', 404);
-    }
-
-    // Cannot reverse an already reversed transaction
-    if (original.reversedById) {
-      return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', '此交易已被沖銷', 400);
-    }
-
-    // Cannot reverse a transaction that is itself a reversal
-    if (original.isReversal) {
-      return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', '沖銷交易不可再次沖銷', 400);
-    }
-
-    // Determine opposite type
-    let reversalType;
-    if (original.type === '收入') {
-      reversalType = '支出';
-    } else if (original.type === '支出') {
-      reversalType = '收入';
-    } else {
-      return createErrorResponse('VALIDATION_FAILED', '移轉交易不支援沖銷，請刪除後重新建立', 400);
-    }
-
     const result = await prisma.$transaction(async (tx) => {
+      // Find and verify original transaction INSIDE transaction to prevent double-reversal
+      const original = await tx.cashTransaction.findUnique({
+        where: { id },
+        include: {
+          account: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } }
+        }
+      });
+
+      if (!original) throw new Error('NOT_FOUND:交易不存在');
+      if (original.reversedById) throw new Error('IDEMPOTENT:此交易已被沖銷');
+      if (original.isReversal) throw new Error('VALIDATION:沖銷交易不可再次沖銷');
+
+      // Determine opposite type
+      let reversalType;
+      if (original.type === '收入') {
+        reversalType = '支出';
+      } else if (original.type === '支出') {
+        reversalType = '收入';
+      } else {
+        throw new Error('VALIDATION:移轉交易不支援沖銷，請刪除後重新建立');
+      }
+
       // Generate new transaction number
-      const txNo = await generateTransactionNo(original.transactionDate);
+      const txNo = await generateTransactionNo(tx, original.transactionDate);
 
       // Create reversal transaction with opposite type
       const reversalTx = await tx.cashTransaction.create({
@@ -141,6 +131,15 @@ export async function POST(request, { params }) {
       updatedAt: result.updatedAt.toISOString(),
     });
   } catch (error) {
+    if (error.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (error.message?.startsWith('NOT_FOUND:')) {
+      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
+    if (error.message?.startsWith('VALIDATION:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('VALIDATION:', ''), 400);
+    }
     return handleApiError(error);
   }
 }

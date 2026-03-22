@@ -262,11 +262,13 @@ export async function PUT(request, { params }) {
 
     // Action: confirm
     if (data.action === 'confirm') {
-      if (existing.status !== '待確認') {
-        return createErrorResponse('VALIDATION_FAILED', `無法確認：目前狀態為「${existing.status}」`, 400);
-      }
-
       const updated = await prisma.$transaction(async (tx) => {
+        // Re-check status INSIDE transaction to prevent double-confirm
+        const fresh = await tx.commonExpenseRecord.findUnique({ where: { id } });
+        if (!fresh || fresh.status !== '待確認') {
+          throw new Error(`IDEMPOTENT:無法確認：目前狀態為「${fresh?.status || '不存在'}」`);
+        }
+
         // 1. Update record status
         const record = await tx.commonExpenseRecord.update({
           where: { id },
@@ -298,17 +300,18 @@ export async function PUT(request, { params }) {
 
     // Action: void
     if (data.action === 'void') {
-      if (existing.status === '已作廢') {
-        return createErrorResponse('VALIDATION_FAILED', '此記錄已作廢', 400);
-      }
-
       if (!data.voidReason?.trim()) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '請輸入作廢原因', 400);
       }
 
-      const wasConfirmed = existing.status === '已確認';
-
       const updated = await prisma.$transaction(async (tx) => {
+        // Re-check status INSIDE transaction to prevent double-void
+        const fresh = await tx.commonExpenseRecord.findUnique({ where: { id } });
+        if (!fresh) throw new Error('NOT_FOUND:找不到費用記錄');
+        if (fresh.status === '已作廢') throw new Error('IDEMPOTENT:此記錄已作廢');
+
+        const wasConfirmed = fresh.status === '已確認';
+
         // 1. Update record status
         const record = await tx.commonExpenseRecord.update({
           where: { id },
@@ -442,6 +445,12 @@ export async function PUT(request, { params }) {
 
     return createErrorResponse('VALIDATION_FAILED', '無效的操作，請指定 action: confirm、void 或 edit', 400);
   } catch (error) {
+    if (error.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (error.message?.startsWith('NOT_FOUND:')) {
+      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
     return handleApiError(error);
   }
 }

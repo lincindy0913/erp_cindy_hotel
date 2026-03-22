@@ -150,6 +150,15 @@ export async function POST(request) {
     const dateStr = executionDate.replace(/-/g, '');
 
     const result = await prisma.$transaction(async (tx) => {
+      // Re-verify all orders are still '待出納' INSIDE transaction (prevent double-execution)
+      const freshOrders = await tx.paymentOrder.findMany({
+        where: { id: { in: uniqueOrderIds } },
+      });
+      const alreadyExecuted = freshOrders.filter(o => o.status !== '待出納');
+      if (alreadyExecuted.length > 0) {
+        throw new Error(`IDEMPOTENT:以下付款單已被執行：${alreadyExecuted.map(o => o.orderNo).join(', ')}`);
+      }
+
       // Pre-generate number sequences
       const getExecNo = await generateNo(tx, 'cashierExecution', 'CSH', dateStr);
       const getTxNo = await generateNo(tx, 'cashTransaction', 'CF', dateStr);
@@ -439,6 +448,9 @@ export async function POST(request) {
       message: `批次執行成功！共 ${orders.length} 筆付款單，${accounts.length} 個帳戶`,
     }, { status: 201 });
   } catch (error) {
+    if (error.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
     console.error('Batch execute error:', error?.message, error?.stack);
     return handleApiError(error);
   }

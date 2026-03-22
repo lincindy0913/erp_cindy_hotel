@@ -6,10 +6,10 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// Generate payment order number: LN-YYYYMMDD-XXXX (loan source)
-async function generateOrderNo(dateStr) {
+// Generate payment order number sequence: LN-YYYYMMDD-XXXX (loan source)
+async function getOrderSeq(tx, dateStr) {
   const prefix = `LN-${dateStr}-`;
-  const existing = await prisma.paymentOrder.findMany({
+  const existing = await tx.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
     select: { orderNo: true }
   });
@@ -66,7 +66,6 @@ export async function POST(request) {
     const skipped = [];
 
     const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    let orderSeq = autoPush ? await generateOrderNo(todayStr) : 0;
     const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
 
     for (const loan of loans) {
@@ -95,6 +94,12 @@ export async function POST(request) {
       // Create record + optional auto-push in a single transaction
       try {
         const result = await prisma.$transaction(async (tx) => {
+          // Re-check inside transaction to prevent duplicate creation
+          const existingInTx = await tx.loanMonthlyRecord.findFirst({
+            where: { loanId: loan.id, recordYear: year, recordMonth: month }
+          });
+          if (existingInTx) throw new Error('IDEMPOTENT:記錄已存在');
+
           const record = await tx.loanMonthlyRecord.create({
             data: {
               loanId: loan.id,
@@ -114,8 +119,8 @@ export async function POST(request) {
 
           // Auto-push to cashier: create PaymentOrder and update status
           if (autoPush && estimatedTotal > 0 && loan.deductAccountId) {
-            orderSeq++;
-            const orderNo = `LN-${todayStr}-${String(orderSeq).padStart(4, '0')}`;
+            const currentSeq = await getOrderSeq(tx, todayStr);
+            const orderNo = `LN-${todayStr}-${String(currentSeq + 1).padStart(4, '0')}`;
 
             const paymentOrder = await tx.paymentOrder.create({
               data: {
@@ -167,7 +172,11 @@ export async function POST(request) {
           updatedAt: result.record.updatedAt.toISOString()
         });
       } catch (err) {
-        skipped.push({ loanId: loan.id, loanName: loan.loanName, reason: `建立失敗: ${err.message}` });
+        if (err.message?.startsWith('IDEMPOTENT:')) {
+          skipped.push({ loanId: loan.id, loanName: loan.loanName, reason: '記錄已存在' });
+        } else {
+          skipped.push({ loanId: loan.id, loanName: loan.loanName, reason: `建立失敗: ${err.message}` });
+        }
       }
     }
 

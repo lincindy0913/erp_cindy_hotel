@@ -36,19 +36,6 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請指定館別和月份', 400);
     }
 
-    // Check monthly settlement exists and is verified
-    const settlement = await prisma.pmsMonthlySettlement.findUnique({
-      where: { warehouse_settlementMonth: { warehouse, settlementMonth: yearMonth } }
-    });
-
-    if (!settlement || settlement.status !== '已核對') {
-      return createErrorResponse('VALIDATION_FAILED', '此月份尚未核對完成，請先由會計核對後再結算', 400);
-    }
-
-    if (settlement.status === '已結算') {
-      return createErrorResponse('VALIDATION_FAILED', '此月份已結算完成', 400);
-    }
-
     // Get payment method configs（依館別，無則用預設 warehouse=''）
     const paymentConfigs = await prisma.pmsPaymentMethodConfig.findMany({
       where: { isActive: true, OR: [{ warehouse }, { warehouse: '' }] }
@@ -100,6 +87,17 @@ export async function POST(request) {
 
     // Create cashflow transactions
     const result = await prisma.$transaction(async (tx) => {
+      // Re-check settlement status INSIDE transaction to prevent double-settlement
+      const settlement = await tx.pmsMonthlySettlement.findUnique({
+        where: { warehouse_settlementMonth: { warehouse, settlementMonth: yearMonth } }
+      });
+      if (!settlement || settlement.status !== '已核對') {
+        if (settlement?.status === '已結算') {
+          throw new Error('IDEMPOTENT:此月份已結算完成');
+        }
+        throw new Error('VALIDATION:此月份尚未核對完成，請先由會計核對後再結算');
+      }
+
       const created = [];
       const skipped = [];
       const affectedAccountIds = new Set();
@@ -228,6 +226,12 @@ export async function POST(request) {
       skipped: result.skipped
     });
   } catch (error) {
+    if (error.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (error.message?.startsWith('VALIDATION:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('VALIDATION:', ''), 400);
+    }
     return handleApiError(error);
   }
 }

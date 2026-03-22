@@ -129,12 +129,12 @@ export async function POST(request) {
         const lineWithSupplier = whLines.find(l => l.supplierId);
         const lineSupplierId = lineWithSupplier?.supplierId ? parseInt(lineWithSupplier.supplierId) : null;
         const lineSupplierName = lineWithSupplier?.supplierName || null;
-        const duplicate = await prisma.commonExpenseRecord.findFirst({
-          where: { templateId: parseInt(data.templateId), warehouse: wh, expenseMonth: data.expenseMonth.trim(), executionType: 'fixed', status: { not: '已作廢' } }
-        });
-        if (duplicate && !data.allowDuplicate) continue;
-
         const r = await prisma.$transaction(async (tx) => {
+          // Duplicate check INSIDE transaction
+          const duplicate = await tx.commonExpenseRecord.findFirst({
+            where: { templateId: parseInt(data.templateId), warehouse: wh, expenseMonth: data.expenseMonth.trim(), executionType: 'fixed', status: { not: '已作廢' } }
+          });
+          if (duplicate && !data.allowDuplicate) return null;
           const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
           const isCreditCardAdvance = data.creditCardAdvanceMode || ((pm === '信用卡' || pm === '員工代付') && whLines[0].advancedBy);
           const whLabel = wh || '未指定館別';
@@ -302,7 +302,7 @@ export async function POST(request) {
 
           return { recordNo, warehouse: wh, amount: debitTotal };
         });
-        created.push(r);
+        if (r) created.push(r);
       }
       return NextResponse.json({ message: `已建立 ${created.length} 筆固定費用記錄`, created, recordNos: created.map(c => c.recordNo) }, { status: 201 });
     }
@@ -315,21 +315,21 @@ export async function POST(request) {
         const amount = parseFloat(row.amount) || 0;
         if (!wh || amount <= 0) continue;
 
-        const duplicate = await prisma.commonExpenseRecord.findFirst({
-          where: {
-            templateId: parseInt(data.templateId),
-            warehouse: wh,
-            expenseMonth: data.expenseMonth.trim(),
-            executionType: 'fixed',
-            status: { not: '已作廢' }
-          }
-        });
-        if (duplicate && !data.allowDuplicate) continue;
-
         const entryLines = buildEntryLinesForAmount(template, amount);
         if (!entryLines) continue;
 
         const result = await prisma.$transaction(async (tx) => {
+          // Duplicate check INSIDE transaction
+          const duplicate = await tx.commonExpenseRecord.findFirst({
+            where: {
+              templateId: parseInt(data.templateId),
+              warehouse: wh,
+              expenseMonth: data.expenseMonth.trim(),
+              executionType: 'fixed',
+              status: { not: '已作廢' }
+            }
+          });
+          if (duplicate && !data.allowDuplicate) return null;
           const batchPm = data.paymentMethod || '月結';
           const isCreditCardAdvanceBatch = data.creditCardAdvanceMode || ((batchPm === '信用卡' || batchPm === '員工代付') && data.advancedBy);
           const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
@@ -443,7 +443,7 @@ export async function POST(request) {
 
           return { recordNo, warehouse: wh, amount };
         });
-        created.push(result);
+        if (result) created.push(result);
       }
 
       return NextResponse.json({
@@ -488,23 +488,20 @@ export async function POST(request) {
         `借貸不平衡：借方 ${debitTotal.toFixed(2)} ≠ 貸方 ${creditTotal.toFixed(2)}`, 400);
     }
 
-    const duplicate = await prisma.commonExpenseRecord.findFirst({
-      where: {
-        templateId: parseInt(data.templateId),
-        warehouse: data.warehouse.trim(),
-        expenseMonth: data.expenseMonth.trim(),
-        executionType: 'fixed',
-        status: { not: '已作廢' }
-      }
-    });
-
-    if (duplicate && !data.allowDuplicate) {
-      return createErrorResponse('CONFLICT_UNIQUE',
-        `此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`,
-        409, { duplicate: true });
-    }
-
     const result = await prisma.$transaction(async (tx) => {
+      // Duplicate check INSIDE transaction
+      const duplicate = await tx.commonExpenseRecord.findFirst({
+        where: {
+          templateId: parseInt(data.templateId),
+          warehouse: data.warehouse.trim(),
+          expenseMonth: data.expenseMonth.trim(),
+          executionType: 'fixed',
+          status: { not: '已作廢' }
+        }
+      });
+      if (duplicate && !data.allowDuplicate) {
+        throw new Error(`DUPLICATE:此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`);
+      }
       // 1. Create PaymentOrder
       const singlePm = data.paymentMethod || '月結';
       const isCreditCardAdvanceSingle = data.creditCardAdvanceMode || ((singlePm === '信用卡' || singlePm === '員工代付') && data.advancedBy);
@@ -659,6 +656,9 @@ export async function POST(request) {
       totalAmount: result.totalAmount
     }, { status: 201 });
   } catch (error) {
+    if (error.message?.startsWith('DUPLICATE:')) {
+      return createErrorResponse('CONFLICT_UNIQUE', error.message.replace('DUPLICATE:', ''), 409, { duplicate: true });
+    }
     return handleApiError(error);
   }
 }

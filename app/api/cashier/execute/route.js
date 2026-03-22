@@ -20,40 +20,40 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
     }
 
-    const order = await prisma.paymentOrder.findUnique({ where: { id: parseInt(paymentOrderId) } });
-    if (!order) {
-      return createErrorResponse('NOT_FOUND', '付款單不存在', 404);
-    }
-    if (order.status !== '待出納') {
-      return createErrorResponse('VALIDATION_FAILED', '付款單狀態不正確，無法執行', 409);
-    }
-
-    // Auto-generate executionNo: CSH-YYYYMMDD-XXXX
     const dateStr = executionDate.replace(/-/g, '');
-    const prefix = `CSH-${dateStr}-`;
-    const existingExec = await prisma.cashierExecution.findMany({
-      where: { executionNo: { startsWith: prefix } },
-    });
-    let maxSeq = 0;
-    for (const item of existingExec) {
-      const seq = parseInt(item.executionNo.substring(prefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-    const executionNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-
-    // Auto-generate transaction number
-    const txPrefix = `CF-${dateStr}-`;
-    const existingTx = await prisma.cashTransaction.findMany({
-      where: { transactionNo: { startsWith: txPrefix } },
-    });
-    let maxTxSeq = 0;
-    for (const item of existingTx) {
-      const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
-      if (seq > maxTxSeq) maxTxSeq = seq;
-    }
-    const txNo = `${txPrefix}${String(maxTxSeq + 1).padStart(4, '0')}`;
 
     const result = await prisma.$transaction(async (tx) => {
+      // 0. Re-fetch and verify status INSIDE transaction to prevent double-execution
+      const order = await tx.paymentOrder.findUnique({ where: { id: parseInt(paymentOrderId) } });
+      if (!order) throw new Error('NOT_FOUND:付款單不存在');
+      if (order.status !== '待出納') throw new Error('IDEMPOTENT:付款單已執行或狀態不正確');
+
+      // Auto-generate executionNo: CSH-YYYYMMDD-XXXX
+      const prefix = `CSH-${dateStr}-`;
+      const existingExec = await tx.cashierExecution.findMany({
+        where: { executionNo: { startsWith: prefix } },
+        select: { executionNo: true },
+      });
+      let maxSeq = 0;
+      for (const item of existingExec) {
+        const seq = parseInt(item.executionNo.substring(prefix.length)) || 0;
+        if (seq > maxSeq) maxSeq = seq;
+      }
+      const executionNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+
+      // Auto-generate transaction number
+      const txPrefix = `CF-${dateStr}-`;
+      const existingTx = await tx.cashTransaction.findMany({
+        where: { transactionNo: { startsWith: txPrefix } },
+        select: { transactionNo: true },
+      });
+      let maxTxSeq = 0;
+      for (const item of existingTx) {
+        const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
+        if (seq > maxTxSeq) maxTxSeq = seq;
+      }
+      const txNo = `${txPrefix}${String(maxTxSeq + 1).padStart(4, '0')}`;
+
       // 1. 建立現金流扣款（包含支票支付：出納執行時即建立，支票分頁兌現時不再重複建立）
       const categoryId = await getCategoryId(tx, 'cashier_payment');
       const cashTx = await tx.cashTransaction.create({
@@ -283,7 +283,7 @@ export async function POST(request) {
         });
       }
 
-      return { execution, cashTx };
+      return { execution, cashTx, order, executionNo, txNo };
     });
 
     if (session) {
@@ -292,9 +292,9 @@ export async function POST(request) {
         level: 'finance',
         targetModule: 'cashier',
         targetRecordId: result.execution.id,
-        targetRecordNo: executionNo,
+        targetRecordNo: result.executionNo,
         afterState: {
-          paymentOrderNo: order.orderNo,
+          paymentOrderNo: result.order.orderNo,
           amount: actualAmount,
           accountId,
           cashTransactionNo: result.cashTx.transactionNo,
@@ -303,11 +303,18 @@ export async function POST(request) {
     }
 
     return NextResponse.json({
-      executionNo,
+      executionNo: result.executionNo,
       cashTransactionNo: result.cashTx.transactionNo,
       message: '出納確認執行成功',
     }, { status: 201 });
   } catch (error) {
+    // Handle idempotency errors gracefully (return 409 instead of 500)
+    if (error.message?.startsWith('IDEMPOTENT:')) {
+      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (error.message?.startsWith('NOT_FOUND:')) {
+      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
     return handleApiError(error);
   }
 }

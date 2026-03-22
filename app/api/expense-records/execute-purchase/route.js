@@ -101,24 +101,20 @@ export async function POST(request) {
       }
     }
 
-    // Check for duplicate
-    const duplicate = await prisma.commonExpenseRecord.findFirst({
-      where: {
-        templateId: parseInt(data.templateId),
-        warehouse: data.warehouse.trim(),
-        expenseMonth: data.expenseMonth.trim(),
-        executionType: 'purchase',
-        status: { not: '已作廢' }
-      }
-    });
-
-    if (duplicate && !data.allowDuplicate) {
-      return createErrorResponse('CONFLICT_UNIQUE',
-        `此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`,
-        409, { duplicate: true });
-    }
-
     const result = await prisma.$transaction(async (tx) => {
+      // Duplicate check INSIDE transaction
+      const duplicate = await tx.commonExpenseRecord.findFirst({
+        where: {
+          templateId: parseInt(data.templateId),
+          warehouse: data.warehouse.trim(),
+          expenseMonth: data.expenseMonth.trim(),
+          executionType: 'purchase',
+          status: { not: '已作廢' }
+        }
+      });
+      if (duplicate && !data.allowDuplicate) {
+        throw new Error(`DUPLICATE:此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`);
+      }
       const purchaseDate = data.purchaseDate || `${data.expenseMonth}-01`;
       const supplierId = parseInt(data.supplierId);
 
@@ -283,6 +279,9 @@ export async function POST(request) {
       message: `執行成功！進貨單: ${result.purchaseNo}${result.salesNo ? `, 發票: ${result.salesNo}` : ''}`
     }, { status: 201 });
   } catch (error) {
+    if (error.message?.startsWith('DUPLICATE:')) {
+      return createErrorResponse('CONFLICT_UNIQUE', error.message.replace('DUPLICATE:', ''), 409, { duplicate: true });
+    }
     return handleApiError(error);
   }
 }
