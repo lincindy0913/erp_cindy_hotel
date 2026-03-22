@@ -5,6 +5,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +28,9 @@ export async function POST(request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Enforce period lock
+      await assertPeriodOpen(tx, settleDate);
+
       // Fetch all advance records
       const advances = await tx.employeeAdvance.findMany({
         where: { id: { in: advanceIds.map(id => parseInt(id)) } },
@@ -138,6 +143,17 @@ export async function POST(request) {
       };
     });
 
+    // Audit log
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CASH_TRANSACTION_CREATE,
+        targetModule: 'employee_advance',
+        targetRecordNo: result.cashTransactionNo,
+        afterState: { settledCount: result.settledCount, totalAmount: result.totalAmount, employeeNames: result.employeeNames },
+        note: `員工代墊款結算 ${result.settledCount} 筆`,
+      });
+    }
+
     const privateMsg = result.privateAmount > 0
       ? `\n老闆私帳 NT$ ${result.privateAmount.toLocaleString()} 已記入股東往來 (${result.privateTxNo})`
       : '';
@@ -146,6 +162,9 @@ export async function POST(request) {
       ...result,
     }, { status: 200 });
   } catch (error) {
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
+    }
     console.error('POST /api/employee-advances/settle error:', error);
     return handleApiError(error);
   }

@@ -5,6 +5,10 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +57,9 @@ export async function POST(request) {
           const check = await tx.check.findUnique({ where: { id: parseInt(checkId) } });
 
           if (!check) throw new Error('找不到支票');
+
+          // Enforce period lock
+          await assertPeriodOpen(tx, effectiveClearDate, check.warehouse);
           if (check.status === 'cleared') throw new Error('支票已兌現');
           if (check.status !== 'pending' && check.status !== 'due') throw new Error(`支票狀態 ${check.status} 無法兌現`);
 
@@ -116,11 +123,27 @@ export async function POST(request) {
       }
     }
 
+    // Audit log
+    if (results.success > 0) {
+      const session = await getServerSession(authOptions);
+      if (session) {
+        await auditFromSession(prisma, session, {
+          action: AUDIT_ACTIONS.CHECK_CLEAR,
+          targetModule: 'check',
+          afterState: { success: results.success, failed: results.failed, clearDate: effectiveClearDate },
+          note: `批次兌現 ${results.success} 筆支票`,
+        });
+      }
+    }
+
     return NextResponse.json({
       message: `批次兌現完成：成功 ${results.success} 筆，失敗 ${results.failed} 筆`,
       ...results
     });
   } catch (error) {
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
+    }
     return handleApiError(error);
   }
 }

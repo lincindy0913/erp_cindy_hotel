@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 // Helper: generate transaction number CF-YYYYMMDD-XXXX
 async function generateTxNo(tx, dateStr) {
@@ -269,6 +270,9 @@ export async function PUT(request, { params }) {
           throw new Error(`IDEMPOTENT:無法確認：目前狀態為「${fresh?.status || '不存在'}」`);
         }
 
+        // Enforce period lock
+        await assertPeriodOpen(tx, `${existing.expenseMonth}-01`, existing.warehouse);
+
         // 1. Update record status
         const record = await tx.commonExpenseRecord.update({
           where: { id },
@@ -309,6 +313,9 @@ export async function PUT(request, { params }) {
         const fresh = await tx.commonExpenseRecord.findUnique({ where: { id } });
         if (!fresh) throw new Error('NOT_FOUND:找不到費用記錄');
         if (fresh.status === '已作廢') throw new Error('IDEMPOTENT:此記錄已作廢');
+
+        // Enforce period lock
+        await assertPeriodOpen(tx, `${existing.expenseMonth}-01`, existing.warehouse);
 
         const wasConfirmed = fresh.status === '已確認';
 
@@ -450,6 +457,9 @@ export async function PUT(request, { params }) {
     }
     if (error.message?.startsWith('NOT_FOUND:')) {
       return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     return handleApiError(error);
   }

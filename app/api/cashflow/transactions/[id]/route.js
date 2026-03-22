@@ -4,6 +4,10 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,6 +91,9 @@ export async function PUT(request, { params }) {
       }
 
       const result = await prisma.$transaction(async (tx) => {
+        // Enforce period lock
+        await assertPeriodOpen(tx, existing.transactionDate, existing.warehouse);
+
         const transferUpdateData = {};
         if (data.amount !== undefined) transferUpdateData.amount = parseFloat(data.amount);
         if (data.fee !== undefined) transferUpdateData.fee = parseFloat(data.fee);
@@ -162,6 +169,9 @@ export async function PUT(request, { params }) {
     if (data.paymentNo !== undefined) updateData.paymentNo = data.paymentNo || null;
 
     const result = await prisma.$transaction(async (tx) => {
+      // Enforce period lock
+      await assertPeriodOpen(tx, existing.transactionDate, existing.warehouse);
+
       const updated = await tx.cashTransaction.update({
         where: { id },
         data: updateData
@@ -171,6 +181,19 @@ export async function PUT(request, { params }) {
 
       return updated;
     });
+
+    // Audit log
+    const session = await getServerSession(authOptions);
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CASH_TRANSACTION_UPDATE,
+        targetModule: 'cashflow',
+        targetRecordId: id,
+        targetRecordNo: existing.transactionNo,
+        beforeState: { amount: Number(existing.amount), fee: Number(existing.fee) },
+        afterState: updateData,
+      });
+    }
 
     return NextResponse.json({
       ...result,
@@ -183,6 +206,9 @@ export async function PUT(request, { params }) {
       reversalOfId: result.reversalOfId,
     });
   } catch (error) {
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
+    }
     return handleApiError(error);
   }
 }
@@ -200,6 +226,9 @@ export async function DELETE(request, { params }) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Enforce period lock
+      await assertPeriodOpen(tx, existing.transactionDate, existing.warehouse);
+
       const accountIds = new Set([existing.accountId]);
 
       // If transfer, delete both linked transactions
@@ -223,8 +252,24 @@ export async function DELETE(request, { params }) {
       return { success: true };
     });
 
+    // Audit log
+    const session = await getServerSession(authOptions);
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CASH_TRANSACTION_REVERSE,
+        targetModule: 'cashflow',
+        targetRecordId: id,
+        targetRecordNo: existing.transactionNo,
+        note: `刪除交易 ${existing.transactionNo}`,
+        beforeState: { type: existing.type, amount: Number(existing.amount), accountId: existing.accountId },
+      });
+    }
+
     return NextResponse.json(result);
   } catch (error) {
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
+    }
     return handleApiError(error);
   }
 }

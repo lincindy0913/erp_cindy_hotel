@@ -6,6 +6,7 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -158,6 +159,9 @@ export async function POST(request) {
       if (alreadyExecuted.length > 0) {
         throw new Error(`IDEMPOTENT:以下付款單已被執行：${alreadyExecuted.map(o => o.orderNo).join(', ')}`);
       }
+
+      // Enforce period lock
+      await assertPeriodOpen(tx, executionDate, freshOrders[0]?.warehouse);
 
       // Pre-generate number sequences
       const getExecNo = await generateNo(tx, 'cashierExecution', 'CSH', dateStr);
@@ -450,6 +454,9 @@ export async function POST(request) {
   } catch (error) {
     if (error.message?.startsWith('IDEMPOTENT:')) {
       return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
+    }
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     console.error('Batch execute error:', error?.message, error?.stack);
     return handleApiError(error);

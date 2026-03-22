@@ -5,6 +5,10 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +101,9 @@ export async function POST(request) {
         }
         throw new Error('VALIDATION:此月份尚未核對完成，請先由會計核對後再結算');
       }
+
+      // Enforce period lock — use endDate as representative transaction date
+      await assertPeriodOpen(tx, endDate, warehouse);
 
       const created = [];
       const skipped = [];
@@ -219,6 +226,17 @@ export async function POST(request) {
       return { created, skipped };
     });
 
+    // Audit log
+    const session = await getServerSession(authOptions);
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CASH_TRANSACTION_CREATE,
+        targetModule: 'pms_income',
+        afterState: { warehouse, yearMonth, createdCount: result.created.length },
+        note: `PMS月度結算 ${warehouse} ${yearMonth}`,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: `${warehouse} ${yearMonth} 結算完成`,
@@ -231,6 +249,9 @@ export async function POST(request) {
     }
     if (error.message?.startsWith('VALIDATION:')) {
       return createErrorResponse('VALIDATION_FAILED', error.message.replace('VALIDATION:', ''), 400);
+    }
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     return handleApiError(error);
   }

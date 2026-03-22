@@ -5,6 +5,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +54,9 @@ export async function POST(request, { params }) {
 
       // Generate CashTransaction number
       const txDate = refundDate || allowance.allowanceDate;
+
+      // Enforce period lock
+      await assertPeriodOpen(tx, txDate, allowance.warehouse);
       const txNo = await generateTxNo(tx, txDate);
 
       // Get category
@@ -265,6 +270,17 @@ export async function POST(request, { params }) {
       };
     });
 
+    // Audit log
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CASH_TRANSACTION_CREATE,
+        targetModule: 'purchase_allowance',
+        targetRecordNo: result.allowanceNo,
+        afterState: { allowanceType: result.allowanceType, totalAmount: result.totalAmount, txNo: result.txNo },
+        note: `折讓/退貨確認 ${result.allowanceNo}`,
+      });
+    }
+
     const typeLabel = result.allowanceType === '全額退貨' ? '全額退貨' : '折讓';
     let message = `${typeLabel}單 ${result.allowanceNo} 已確認，退款 NT$ ${result.totalAmount.toLocaleString()} 已入帳 (${result.txNo})`;
     if (result.extraActions?.length > 0) {
@@ -278,6 +294,9 @@ export async function POST(request, { params }) {
     }
     if (error.message?.startsWith('NOT_FOUND:')) {
       return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     console.error('POST /api/purchase-allowances/[id]/confirm error:', error);
     return handleApiError(error);

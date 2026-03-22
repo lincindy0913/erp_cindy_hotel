@@ -6,6 +6,7 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ export async function POST(request) {
       const order = await tx.paymentOrder.findUnique({ where: { id: parseInt(paymentOrderId) } });
       if (!order) throw new Error('NOT_FOUND:付款單不存在');
       if (order.status !== '待出納') throw new Error('IDEMPOTENT:付款單已執行或狀態不正確');
+
+      // Enforce period lock
+      await assertPeriodOpen(tx, executionDate, order.warehouse);
 
       // Auto-generate executionNo: CSH-YYYYMMDD-XXXX
       const prefix = `CSH-${dateStr}-`;
@@ -314,6 +318,9 @@ export async function POST(request) {
     }
     if (error.message?.startsWith('NOT_FOUND:')) {
       return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
+    }
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     return handleApiError(error);
   }

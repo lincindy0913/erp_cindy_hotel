@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../auth/[...nextauth]/route';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,9 @@ export async function POST(request, { params }) {
       if (!original) throw new Error('NOT_FOUND:交易不存在');
       if (original.reversedById) throw new Error('IDEMPOTENT:此交易已被沖銷');
       if (original.isReversal) throw new Error('VALIDATION:沖銷交易不可再次沖銷');
+
+      // Enforce period lock
+      await assertPeriodOpen(tx, original.transactionDate, original.warehouse);
 
       // Determine opposite type
       let reversalType;
@@ -139,6 +143,9 @@ export async function POST(request, { params }) {
     }
     if (error.message?.startsWith('VALIDATION:')) {
       return createErrorResponse('VALIDATION_FAILED', error.message.replace('VALIDATION:', ''), 400);
+    }
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     return handleApiError(error);
   }

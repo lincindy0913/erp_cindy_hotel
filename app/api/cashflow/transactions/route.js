@@ -4,6 +4,10 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,7 +140,12 @@ export async function POST(request) {
       }
     }
 
+    const session = await getServerSession(authOptions);
+
     const result = await prisma.$transaction(async (tx) => {
+      // Enforce period lock
+      await assertPeriodOpen(tx, data.transactionDate, data.warehouse);
+
       if (data.type === '移轉') {
         // Create 2 linked transactions for transfer
         const outNo = await generateTransactionNo(data.transactionDate);
@@ -235,8 +244,23 @@ export async function POST(request) {
       }
     });
 
+    // Audit log
+    if (session) {
+      const txInfo = result.outTx || result;
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CASH_TRANSACTION_CREATE,
+        targetModule: 'cashflow',
+        targetRecordId: txInfo.id,
+        targetRecordNo: txInfo.transactionNo,
+        afterState: { type: data.type, amount, accountId: data.accountId, warehouse: data.warehouse },
+      });
+    }
+
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    if (error.message?.startsWith('PERIOD_LOCKED:')) {
+      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
+    }
     return handleApiError(error);
   }
 }
