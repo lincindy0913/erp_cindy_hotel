@@ -30,6 +30,7 @@ export default function UtilityBillsPage() {
   const [extractedText, setExtractedText] = useState('');
   const [pageTexts, setPageTexts] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [formRecords, setFormRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [meta, setMeta] = useState({ warehouse: '', year: '', month: '', billType: '電費' });
   const fileInputRef = useRef(null);
@@ -206,6 +207,7 @@ export default function UtilityBillsPage() {
     setExtractedText('');
     setPageTexts([]);
     setSummary(null);
+    setFormRecords([]);
     setOcrRecords([]);
     setOcrValidation(null);
     try {
@@ -241,7 +243,6 @@ export default function UtilityBillsPage() {
         if (isWater) {
           setSummary({
             館別: warehouse, 類型: '水費',
-            計費期間: p.計費期間 || `${year}年${month}月`,
             用水地址: p.用水地址 || '（未辨識，請手動填入）',
             水號: p.水號 || '（未辨識，請手動填入）',
             用水量: p.用水量 || '（未辨識，請手動填入）',
@@ -250,15 +251,25 @@ export default function UtilityBillsPage() {
             總金額: fmt(p.總金額),
           });
         } else {
-          setSummary({
-            館別: warehouse, 類型: '電費',
-            計費期間: p.計費期間 || `${year}年${month}月`,
-            地址: p.地址 || '（未辨識，請手動填入）',
-            電號: p.電號 || '（未辨識，請手動填入）',
-            使用度數: p.使用度數 || '（未辨識，請手動填入）',
-            電費金額: fmt(p.電費金額), 應繳稅額: fmt(p.應繳稅額),
-            應繳總金額: fmt(p.應繳總金額),
+          // Build one editable form per page (館別 comes from user selection, not OCR)
+          const forms = allRecords.map(r => {
+            const fee = parseInt(r.電費金額) || 0;
+            const tax = parseInt(r.應繳稅額) || 0;
+            return {
+              類型: '電費',
+              繳費期限: r.繳費期限 || '未辨識',
+              地址: r.地址 || '（未辨識，請手動填入）',
+              電號: r.電號 || '（未辨識，請手動填入）',
+              尖峰度數: r.尖峰度數 || '0',
+              半尖峰度數: r.半尖峰度數 || '0',
+              離峰度數: r.離峰度數 || '0',
+              使用度數: r.使用度數 || '0',
+              電費金額: r.電費金額 || '0',
+              應繳稅額: r.應繳稅額 || '0',
+              應繳總金額: String(fee + tax),
+            };
           });
+          setFormRecords(forms);
         }
       }
 
@@ -409,8 +420,10 @@ export default function UtilityBillsPage() {
   };
 
   const saveCurrentRecord = async () => {
-    if (!summary || !meta.warehouse) {
-      showMessage('請先選擇館別並產出第一頁格式', 'error');
+    const isElectricity = !isWater && formRecords.length > 0;
+    const isWaterReady = isWater && summary;
+    if (!meta.warehouse || (!isElectricity && !isWaterReady)) {
+      showMessage('請先選擇館別並完成 OCR 辨識', 'error');
       return;
     }
     const year = meta.year || new Date().getFullYear();
@@ -424,8 +437,8 @@ export default function UtilityBillsPage() {
           warehouse: meta.warehouse,
           billYear: parseInt(year, 10),
           billMonth: parseInt(month, 10),
-          billType: summary.類型 || (isWater ? '水費' : '電費'),
-          summaryJson: summary,
+          billType: isWater ? '水費' : '電費',
+          summaryJson: isElectricity ? formRecords : summary,
           fileName: pdfFile?.name || null,
         }),
       });
@@ -588,9 +601,22 @@ export default function UtilityBillsPage() {
                   <table className="min-w-full text-xs">
                     <thead className="bg-teal-50">
                       <tr>
-                        {['#', '電號', '地址', '計費期間', '使用度數', '電費金額', '應繳稅額', '應繳總金額'].map(h => (
-                          <th key={h} className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">{h}</th>
-                        ))}
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">#</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">電號</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">地址</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">計費期間</th>
+                        <th className="px-3 py-2 text-center font-semibold text-teal-700 whitespace-nowrap bg-teal-100" colSpan={4}>使用度數（kWh）</th>
+                        <th className="px-3 py-2 text-center font-semibold text-emerald-700 whitespace-nowrap bg-emerald-50" colSpan={3}>應繳總金額（元）</th>
+                      </tr>
+                      <tr className="border-b border-gray-200">
+                        <th colSpan={4} />
+                        <th className="px-3 py-1 text-right text-teal-700 bg-teal-50 whitespace-nowrap">尖峰</th>
+                        <th className="px-3 py-1 text-right text-teal-700 bg-teal-50 whitespace-nowrap">半尖峰</th>
+                        <th className="px-3 py-1 text-right text-teal-700 bg-teal-50 whitespace-nowrap">離峰</th>
+                        <th className="px-3 py-1 text-right text-teal-700 bg-teal-100 font-bold whitespace-nowrap">合計度數</th>
+                        <th className="px-3 py-1 text-right text-emerald-700 bg-emerald-50 whitespace-nowrap">電費金額</th>
+                        <th className="px-3 py-1 text-right text-emerald-700 bg-emerald-50 whitespace-nowrap">應繳稅額</th>
+                        <th className="px-3 py-1 text-right text-emerald-700 bg-emerald-100 font-bold whitespace-nowrap">應繳總金額</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -600,20 +626,26 @@ export default function UtilityBillsPage() {
                           <td className="px-3 py-1.5 whitespace-nowrap">{r.電號}</td>
                           <td className="px-3 py-1.5 max-w-[160px] truncate" title={r.地址}>{r.地址}</td>
                           <td className="px-3 py-1.5 whitespace-nowrap">{r.計費期間}</td>
-                          <td className="px-3 py-1.5 text-right">{r.使用度數}</td>
-                          <td className="px-3 py-1.5 text-right">{r.電費金額}</td>
-                          <td className="px-3 py-1.5 text-right">{r.應繳稅額}</td>
-                          <td className="px-3 py-1.5 text-right font-medium">{r.應繳總金額}</td>
+                          <td className="px-3 py-1.5 text-right bg-teal-50/40">{r.尖峰度數}</td>
+                          <td className="px-3 py-1.5 text-right bg-teal-50/40">{r.半尖峰度數}</td>
+                          <td className="px-3 py-1.5 text-right bg-teal-50/40">{r.離峰度數}</td>
+                          <td className="px-3 py-1.5 text-right font-semibold bg-teal-100/60">{r.使用度數}</td>
+                          <td className="px-3 py-1.5 text-right bg-emerald-50/40">{r.電費金額}</td>
+                          <td className="px-3 py-1.5 text-right bg-emerald-50/40">{r.應繳稅額}</td>
+                          <td className="px-3 py-1.5 text-right font-medium bg-emerald-100/60">{r.應繳總金額}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="bg-gray-100 font-semibold">
                       <tr>
                         <td colSpan={4} className="px-3 py-2 text-right text-gray-700">合計</td>
-                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.使用度數) || 0), 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.電費金額) || 0), 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.應繳稅額) || 0), 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right">{ocrRecords.reduce((s, r) => s + (parseInt(r.應繳總金額) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.尖峰度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.半尖峰度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.離峰度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-800">{ocrRecords.reduce((s, r) => s + (parseInt(r.使用度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-emerald-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.電費金額) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-emerald-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.應繳稅額) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-emerald-800">{ocrRecords.reduce((s, r) => s + (parseInt(r.應繳總金額) || 0), 0).toLocaleString()}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -634,10 +666,11 @@ export default function UtilityBillsPage() {
               </div>
             )}
 
-            {summary && (
+            {/* Water bill: single summary form */}
+            {summary && isWater && (
               <div className="border-t pt-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">第一頁格式（可手動修改欄位後再儲存）</h4>
-                <div className={isWater ? 'bg-sky-50 border border-sky-200 rounded-lg p-4' : 'bg-teal-50 border border-teal-200 rounded-lg p-4'}>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">水費單格式（可手動修改後儲存）</h4>
+                <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
                   <div className="space-y-3 text-sm">
                     {Object.keys(summary).map(k => (
                       <div key={k} className="flex flex-wrap items-center gap-2">
@@ -652,23 +685,103 @@ export default function UtilityBillsPage() {
                     ))}
                   </div>
                   <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={copySummary}
-                      className={`px-3 py-1.5 rounded text-xs ${isWater ? 'bg-sky-600 hover:bg-sky-700' : 'bg-teal-600 hover:bg-teal-700'} text-white`}
-                    >
-                      複製摘要
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveCurrentRecord}
-                      disabled={saving || !meta.warehouse}
-                      className="px-3 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white"
-                    >
+                    <button type="button" onClick={copySummary} className="px-3 py-1.5 rounded text-xs bg-sky-600 hover:bg-sky-700 text-white">複製摘要</button>
+                    <button type="button" onClick={saveCurrentRecord} disabled={saving || !meta.warehouse} className="px-3 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white">
                       {saving ? '儲存中…' : '儲存此筆'}
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Electricity bill: one form per page */}
+            {formRecords.length > 0 && !isWater && (
+              <div className="border-t pt-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-sm font-semibold text-gray-700">電費單明細 — 共 {formRecords.length} 筆（每筆可手動修改）</h4>
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-teal-100 border border-teal-300 text-teal-800 text-xs font-semibold">
+                      館別：{meta.warehouse || '（請先選擇館別）'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveCurrentRecord}
+                    disabled={saving || !meta.warehouse}
+                    className="px-4 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium"
+                  >
+                    {saving ? '儲存中…' : `儲存全部 ${formRecords.length} 筆`}
+                  </button>
+                </div>
+                {formRecords.map((rec, idx) => {
+                  const basicFields = ['類型', '繳費期限', '地址', '電號'];
+                  const degreeFields = ['尖峰度數', '半尖峰度數', '離峰度數', '使用度數'];
+                  const amountFields = ['電費金額', '應繳稅額', '應繳總金額'];
+                  const renderField = (k) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <label className="font-medium text-gray-600 w-24 shrink-0 text-xs">{k}</label>
+                      <input
+                        type="text"
+                        value={rec[k] ?? ''}
+                        readOnly={k === '應繳總金額' || k === '使用度數'}
+                        onChange={e => {
+                          const updated = formRecords.map((r, i) => {
+                            if (i !== idx) return r;
+                            const next = { ...r, [k]: e.target.value };
+                            if (k === '電費金額' || k === '應繳稅額') {
+                              const fee = parseInt(k === '電費金額' ? e.target.value : r.電費金額) || 0;
+                              const tax = parseInt(k === '應繳稅額' ? e.target.value : r.應繳稅額) || 0;
+                              next.應繳總金額 = String(fee + tax);
+                            }
+                            if (k === '尖峰度數' || k === '半尖峰度數' || k === '離峰度數') {
+                              const peak = parseInt(k === '尖峰度數' ? e.target.value : r.尖峰度數) || 0;
+                              const halfPeak = parseInt(k === '半尖峰度數' ? e.target.value : r.半尖峰度數) || 0;
+                              const offPeak = parseInt(k === '離峰度數' ? e.target.value : r.離峰度數) || 0;
+                              next.使用度數 = String(peak + halfPeak + offPeak);
+                            }
+                            return next;
+                          });
+                          setFormRecords(updated);
+                        }}
+                        className={`flex-1 border rounded px-2 py-1 text-xs ${
+                          k === '應繳總金額' ? 'bg-emerald-100 border-emerald-300 font-semibold text-emerald-800' :
+                          k === '使用度數' ? 'bg-teal-100 border-teal-300 font-semibold text-teal-800' :
+                          'border-gray-300 bg-white'
+                        }`}
+                      />
+                    </div>
+                  );
+                  return (
+                    <div key={idx} className="bg-teal-50 border border-teal-200 rounded-lg p-4 space-y-4">
+                      <h5 className="text-xs font-semibold text-teal-700">第 {idx + 1} 筆 — 電號：{rec.電號}</h5>
+
+                      {/* Basic info */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        {basicFields.filter(k => k in rec).map(renderField)}
+                      </div>
+
+                      {/* 使用度數 section */}
+                      <div className="border border-teal-300 rounded-lg overflow-hidden">
+                        <div className="bg-teal-200 px-3 py-1.5">
+                          <span className="text-xs font-bold text-teal-900">使用度數（kWh）</span>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white">
+                          {degreeFields.filter(k => k in rec).map(renderField)}
+                        </div>
+                      </div>
+
+                      {/* 應繳總金額 section */}
+                      <div className="border border-emerald-300 rounded-lg overflow-hidden">
+                        <div className="bg-emerald-100 px-3 py-1.5">
+                          <span className="text-xs font-bold text-emerald-900">應繳總金額（元）</span>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white">
+                          {amountFields.filter(k => k in rec).map(renderField)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
