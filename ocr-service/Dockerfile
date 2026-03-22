@@ -14,4 +14,5 @@ COPY main.py .
 
 EXPOSE 5001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5001"]
+# Railway injects $PORT dynamically; fall back to 5001 for local Docker Compose
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-5001}"]
