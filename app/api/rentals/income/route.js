@@ -72,45 +72,51 @@ export async function POST(request) {
       }
     });
 
-    let created = 0;
-    let skipped = 0;
+    const result = await prisma.$transaction(async (tx) => {
+      let created = 0;
+      let skipped = 0;
 
-    for (const contract of activeContracts) {
-      // Check if already exists
-      const existing = await prisma.rentalIncome.findUnique({
-        where: {
-          contractId_incomeYear_incomeMonth: {
-            contractId: contract.id,
-            incomeYear: y,
-            incomeMonth: m
+      for (const contract of activeContracts) {
+        // Check if already exists
+        const existing = await tx.rentalIncome.findUnique({
+          where: {
+            contractId_incomeYear_incomeMonth: {
+              contractId: contract.id,
+              incomeYear: y,
+              incomeMonth: m
+            }
           }
-        }
-      });
+        });
 
-      if (existing) {
-        skipped++;
-        continue;
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        // Calculate due date
+        const dueDay = Math.min(contract.paymentDueDay, 28);
+        const dueDate = `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
+
+        await tx.rentalIncome.create({
+          data: {
+            contractId: contract.id,
+            propertyId: contract.propertyId,
+            tenantId: contract.tenantId,
+            incomeYear: y,
+            incomeMonth: m,
+            dueDate,
+            expectedAmount: contract.monthlyRent,
+            status: 'pending'
+          }
+        });
+
+        created++;
       }
 
-      // Calculate due date
-      const dueDay = Math.min(contract.paymentDueDay, 28);
-      const dueDate = `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
+      return { created, skipped };
+    });
 
-      await prisma.rentalIncome.create({
-        data: {
-          contractId: contract.id,
-          propertyId: contract.propertyId,
-          tenantId: contract.tenantId,
-          incomeYear: y,
-          incomeMonth: m,
-          dueDate,
-          expectedAmount: contract.monthlyRent,
-          status: 'pending'
-        }
-      });
-
-      created++;
-    }
+    const { created, skipped } = result;
 
     return NextResponse.json({
       success: true,

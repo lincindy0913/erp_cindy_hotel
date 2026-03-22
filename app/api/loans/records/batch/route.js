@@ -92,74 +92,83 @@ export async function POST(request) {
       const dueDate = `${year}-${String(month).padStart(2, '0')}-${String(repDay).padStart(2, '0')}`;
       const estimatedTotal = estimatedPrincipal + monthlyInterest;
 
-      // Create record
-      const record = await prisma.loanMonthlyRecord.create({
-        data: {
-          loanId: loan.id,
-          recordYear: year,
-          recordMonth: month,
-          dueDate,
-          status: '暫估',
-          estimatedPrincipal,
-          estimatedInterest: monthlyInterest,
-          estimatedTotal,
-          estimatedAt: new Date(),
-          deductAccountId: loan.deductAccountId
-        }
-      });
-
-      // Auto-push to cashier: create PaymentOrder and update status
-      if (autoPush && estimatedTotal > 0 && loan.deductAccountId) {
-        try {
-          orderSeq++;
-          const orderNo = `LN-${todayStr}-${String(orderSeq).padStart(4, '0')}`;
-
-          const paymentOrder = await prisma.paymentOrder.create({
+      // Create record + optional auto-push in a single transaction
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          const record = await tx.loanMonthlyRecord.create({
             data: {
-              orderNo,
-              invoiceIds: JSON.stringify([]),
-              supplierName: `${loan.bankName} — ${loan.loanName}`,
-              warehouse: loan.warehouse || null,
-              paymentMethod: '匯款',
-              amount: estimatedTotal,
-              discount: 0,
-              netAmount: estimatedTotal,
+              loanId: loan.id,
+              recordYear: year,
+              recordMonth: month,
               dueDate,
-              accountId: loan.deductAccountId,
-              summary: `貸款還款 — ${loan.loanCode} ${loan.loanName} ${year}/${String(month).padStart(2, '0')}`,
-              note: `暫估 ${estimatedTotal.toLocaleString()} [批次建立自動推送]`,
-              status: '待出納',
-              createdBy: userName
+              status: '暫估',
+              estimatedPrincipal,
+              estimatedInterest: monthlyInterest,
+              estimatedTotal,
+              estimatedAt: new Date(),
+              deductAccountId: loan.deductAccountId
             }
           });
 
-          await prisma.loanMonthlyRecord.update({
-            where: { id: record.id },
-            data: {
-              status: '待出納',
-              paymentOrderId: paymentOrder.id
-            }
-          });
+          let pushedOrder = null;
 
+          // Auto-push to cashier: create PaymentOrder and update status
+          if (autoPush && estimatedTotal > 0 && loan.deductAccountId) {
+            orderSeq++;
+            const orderNo = `LN-${todayStr}-${String(orderSeq).padStart(4, '0')}`;
+
+            const paymentOrder = await tx.paymentOrder.create({
+              data: {
+                orderNo,
+                invoiceIds: JSON.stringify([]),
+                supplierName: `${loan.bankName} — ${loan.loanName}`,
+                warehouse: loan.warehouse || null,
+                paymentMethod: '匯款',
+                amount: estimatedTotal,
+                discount: 0,
+                netAmount: estimatedTotal,
+                dueDate,
+                accountId: loan.deductAccountId,
+                summary: `貸款還款 — ${loan.loanCode} ${loan.loanName} ${year}/${String(month).padStart(2, '0')}`,
+                note: `暫估 ${estimatedTotal.toLocaleString()} [批次建立自動推送]`,
+                status: '待出納',
+                createdBy: userName
+              }
+            });
+
+            await tx.loanMonthlyRecord.update({
+              where: { id: record.id },
+              data: {
+                status: '待出納',
+                paymentOrderId: paymentOrder.id
+              }
+            });
+
+            pushedOrder = paymentOrder;
+          }
+
+          return { record, pushedOrder };
+        });
+
+        if (result.pushedOrder) {
           pushed.push({
             loanName: loan.loanName,
-            orderNo: paymentOrder.orderNo,
+            orderNo: result.pushedOrder.orderNo,
             amount: estimatedTotal
           });
-        } catch (pushErr) {
-          console.error(`Auto-push failed for loan ${loan.loanCode}:`, pushErr.message);
-          // Record was created as 暫估, push failed — continue
         }
-      }
 
-      created.push({
-        ...record,
-        estimatedPrincipal: Number(record.estimatedPrincipal),
-        estimatedInterest: Number(record.estimatedInterest),
-        estimatedTotal: Number(record.estimatedTotal),
-        createdAt: record.createdAt.toISOString(),
-        updatedAt: record.updatedAt.toISOString()
-      });
+        created.push({
+          ...result.record,
+          estimatedPrincipal: Number(result.record.estimatedPrincipal),
+          estimatedInterest: Number(result.record.estimatedInterest),
+          estimatedTotal: Number(result.record.estimatedTotal),
+          createdAt: result.record.createdAt.toISOString(),
+          updatedAt: result.record.updatedAt.toISOString()
+        });
+      } catch (err) {
+        skipped.push({ loanId: loan.id, loanName: loan.loanName, reason: `建立失敗: ${err.message}` });
+      }
     }
 
     const pushedMsg = pushed.length > 0

@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { getCategoryId } from '@/lib/cash-category-helper';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,27 +82,6 @@ export async function POST(request) {
         },
       });
 
-      // Recalculate account balance
-      const allTx = await tx.cashTransaction.findMany({
-        where: { accountId: parseInt(accountId) },
-      });
-      const account = await tx.cashAccount.findUnique({ where: { id: parseInt(accountId) } });
-      let balance = Number(account.openingBalance);
-      for (const t of allTx) {
-        const amt = Number(t.amount);
-        const fee = Number(t.fee);
-        if (t.type === '收入' || t.type === '移轉入') {
-          balance += amt;
-        } else {
-          balance -= amt;
-        }
-        if (fee > 0) balance -= fee;
-      }
-      await tx.cashAccount.update({
-        where: { id: parseInt(accountId) },
-        data: { currentBalance: balance },
-      });
-
       // Update all advance records to settled
       for (const adv of advances) {
         await tx.employeeAdvance.update({
@@ -143,28 +123,10 @@ export async function POST(request) {
             createdBy: session?.user?.id ? parseInt(session.user.id) : null,
           },
         });
-
-        // Recalculate balance again with the new private tx
-        const allTx2 = await tx.cashTransaction.findMany({
-          where: { accountId: parseInt(accountId) },
-        });
-        const account2 = await tx.cashAccount.findUnique({ where: { id: parseInt(accountId) } });
-        let balance2 = Number(account2.openingBalance);
-        for (const t of allTx2) {
-          const amt = Number(t.amount);
-          const fee = Number(t.fee);
-          if (t.type === '收入' || t.type === '移轉入') {
-            balance2 += amt;
-          } else {
-            balance2 -= amt;
-          }
-          if (fee > 0) balance2 -= fee;
-        }
-        await tx.cashAccount.update({
-          where: { id: parseInt(accountId) },
-          data: { currentBalance: balance2 },
-        });
       }
+
+      // Recalculate account balance once at end (after all transactions created)
+      await recalcBalance(tx, parseInt(accountId));
 
       return {
         settledCount: advances.length,

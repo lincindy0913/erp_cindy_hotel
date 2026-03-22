@@ -49,89 +49,71 @@ export async function POST(request) {
 
     for (const checkId of checkIds) {
       try {
-        const check = await prisma.check.findUnique({ where: { id: parseInt(checkId) } });
+        await prisma.$transaction(async (tx) => {
+          const check = await tx.check.findUnique({ where: { id: parseInt(checkId) } });
 
-        if (!check) {
-          results.failed++;
-          results.errors.push({ checkId, error: '找不到支票' });
-          continue;
-        }
+          if (!check) throw new Error('找不到支票');
+          if (check.status === 'cleared') throw new Error('支票已兌現');
+          if (check.status !== 'pending' && check.status !== 'due') throw new Error(`支票狀態 ${check.status} 無法兌現`);
 
-        if (check.status === 'cleared') {
-          results.failed++;
-          results.errors.push({ checkId, error: '支票已兌現' });
-          continue;
-        }
+          // 規則：有 paymentId 的支票 = 來自付款單，現金流已在出納執行時建立，此處不重複建立 CashTransaction（避免重複扣款）
+          const fromPaymentOrder = !!check.paymentId;
+          let cashTransactionId = null;
 
-        if (check.status !== 'pending' && check.status !== 'due') {
-          results.failed++;
-          results.errors.push({ checkId, error: `支票狀態 ${check.status} 無法兌現` });
-          continue;
-        }
+          if (!fromPaymentOrder) {
+            let accountId, txType, sourceType;
+            if (check.checkType === 'payable') {
+              accountId = check.sourceAccountId;
+              txType = '支出';
+              sourceType = 'check_payment';
+            } else {
+              accountId = check.destinationAccountId;
+              txType = '收入';
+              sourceType = 'check_receipt';
+            }
 
-        // 規則：有 paymentId 的支票 = 來自付款單，現金流已在出納執行時建立，此處不重複建立 CashTransaction（避免重複扣款）
-        const fromPaymentOrder = !!check.paymentId;
-        let cashTransactionId = null;
+            if (!accountId) throw new Error('支票未關聯帳戶');
 
-        if (!fromPaymentOrder) {
-          let accountId, txType, sourceType;
-          if (check.checkType === 'payable') {
-            accountId = check.sourceAccountId;
-            txType = '支出';
-            sourceType = 'check_payment';
-          } else {
-            accountId = check.destinationAccountId;
-            txType = '收入';
-            sourceType = 'check_receipt';
+            const transactionNo = await generateTransactionNo(effectiveClearDate);
+            const categoryId = await getCategoryId(tx, sourceType);
+            const transaction = await tx.cashTransaction.create({
+              data: {
+                transactionNo,
+                transactionDate: effectiveClearDate,
+                type: txType,
+                warehouse: check.warehouse,
+                accountId,
+                categoryId,
+                amount: Number(check.amount),
+                description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
+                sourceType,
+                sourceRecordId: check.id,
+                status: '已確認'
+              }
+            });
+            cashTransactionId = transaction.id;
+
+            // Recalc balance inside transaction
+            await recalcBalance(tx, accountId);
           }
 
-          if (!accountId) {
-            results.failed++;
-            results.errors.push({ checkId, error: '支票未關聯帳戶' });
-            continue;
-          }
-
-          const transactionNo = await generateTransactionNo(effectiveClearDate);
-          const categoryId = await getCategoryId(prisma, sourceType);
-          const transaction = await prisma.cashTransaction.create({
+          await tx.check.update({
+            where: { id: parseInt(checkId) },
             data: {
-              transactionNo,
-              transactionDate: effectiveClearDate,
-              type: txType,
-              warehouse: check.warehouse,
-              accountId,
-              categoryId,
-              amount: Number(check.amount),
-              description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
-              sourceType,
-              sourceRecordId: check.id,
-              status: '已確認'
+              status: 'cleared',
+              clearDate: effectiveClearDate,
+              actualAmount: Number(check.amount),
+              clearedBy: clearedBy || null,
+              ...(cashTransactionId ? { cashTransactionId } : {})
             }
           });
-          cashTransactionId = transaction.id;
-          affectedAccountIds.add(accountId);
-        }
-
-        await prisma.check.update({
-          where: { id: parseInt(checkId) },
-          data: {
-            status: 'cleared',
-            clearDate: effectiveClearDate,
-            actualAmount: Number(check.amount),
-            clearedBy: clearedBy || null,
-            ...(cashTransactionId ? { cashTransactionId } : {})
-          }
         });
+
         results.success++;
       } catch (err) {
         results.failed++;
         results.errors.push({ checkId, error: err.message });
       }
-    }
-
-    // Recalculate all affected account balances
-    for (const accountId of affectedAccountIds) {
-      await recalcBalance(prisma, accountId);
     }
 
     return NextResponse.json({

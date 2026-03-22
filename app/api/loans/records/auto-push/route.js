@@ -85,33 +85,36 @@ export async function POST(request) {
       }
 
       try {
-        const orderNo = await generateOrderNo(todayStr);
-        const paymentOrder = await prisma.paymentOrder.create({
-          data: {
-            orderNo,
-            invoiceIds: JSON.stringify([]),
-            supplierName: `${loan.bankName} — ${loan.loanName}`,
-            warehouse: loan.warehouse || null,
-            paymentMethod: '匯款',
-            amount,
-            discount: 0,
-            netAmount: amount,
-            dueDate: rec.dueDate,
-            accountId: acctId,
-            summary: `貸款還款 — ${loan.loanCode} ${loan.loanName} ${rec.recordYear}/${String(rec.recordMonth).padStart(2, '0')}`,
-            note: `暫估${amount.toLocaleString()} [自動推送]`,
-            status: '待出納',
-            createdBy: userName
-          }
-        });
+        const result = await prisma.$transaction(async (tx) => {
+          const orderNo = await generateOrderNo(todayStr);
+          const paymentOrder = await tx.paymentOrder.create({
+            data: {
+              orderNo,
+              invoiceIds: JSON.stringify([]),
+              supplierName: `${loan.bankName} — ${loan.loanName}`,
+              warehouse: loan.warehouse || null,
+              paymentMethod: '匯款',
+              amount,
+              discount: 0,
+              netAmount: amount,
+              dueDate: rec.dueDate,
+              accountId: acctId,
+              summary: `貸款還款 — ${loan.loanCode} ${loan.loanName} ${rec.recordYear}/${String(rec.recordMonth).padStart(2, '0')}`,
+              note: `暫估${amount.toLocaleString()} [自動推送]`,
+              status: '待出納',
+              createdBy: userName
+            }
+          });
 
-        // Update record status and link paymentOrderId
-        await prisma.loanMonthlyRecord.update({
-          where: { id: rec.id },
-          data: {
-            status: '待出納',
-            paymentOrderId: paymentOrder.id
-          }
+          await tx.loanMonthlyRecord.update({
+            where: { id: rec.id },
+            data: {
+              status: '待出納',
+              paymentOrderId: paymentOrder.id
+            }
+          });
+
+          return paymentOrder;
         });
 
         pushed.push({
@@ -119,7 +122,7 @@ export async function POST(request) {
           loanName: loan.loanName,
           amount,
           dueDate: rec.dueDate,
-          orderNo: paymentOrder.orderNo
+          orderNo: result.orderNo
         });
       } catch (e) {
         failed.push({ recordId: rec.id, reason: e.message });
