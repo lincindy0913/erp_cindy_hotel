@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,6 +146,15 @@ export async function PUT(request, { params }) {
 
     await recalcBalance(prisma, acctId);
 
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_INCOME_CONFIRM,
+      targetModule: 'rentals',
+      targetRecordId: incomeId,
+      beforeState: { status: income.status, actualAmount: Number(income.actualAmount || 0) },
+      afterState: { status: newStatus, actualAmount: newTotal, transactionId: tx.id, sequenceNo: nextSeq },
+      note: `租金收款確認 ${income.property?.name} 第${nextSeq}次`,
+    });
+
     return NextResponse.json({ success: true, status: newStatus, transactionId: tx.id, sequenceNo: nextSeq });
   } catch (error) {
     console.error('PUT /api/rentals/income/[id] error:', error);
@@ -221,6 +231,15 @@ export async function PATCH(request, { params }) {
 
     await recalcBalance(prisma, accountId);
     if (oldAccountId !== accountId) await recalcBalance(prisma, oldAccountId);
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_INCOME_UPDATE,
+      targetModule: 'rentals',
+      targetRecordId: incomeId,
+      beforeState: { actualAmount: Number(income.actualAmount), accountId: income.accountId, paymentMethod: income.paymentMethod },
+      afterState: { actualAmount, accountId, paymentMethod },
+      note: `租金收款編輯 ${income.property?.name}`,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -311,6 +330,16 @@ export async function DELETE(request, { params }) {
     for (const aid of accountIds) {
       await recalcBalance(prisma, aid);
     }
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_INCOME_DELETE,
+      targetModule: 'rentals',
+      targetRecordId: incomeId,
+      beforeState: { status: income.status, actualAmount: Number(income.actualAmount || 0), paymentsCount: payments.length },
+      afterState: { status: 'pending' },
+      note: `租金收款作廢 ${income.property?.name}`,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/rentals/income/[id] error:', error);

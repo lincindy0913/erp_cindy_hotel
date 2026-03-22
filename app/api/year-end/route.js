@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -557,6 +558,14 @@ export async function POST(request) {
       } catch (backupErr) {
         console.error('年度備份記錄建立失敗（非阻斷）:', backupErr.message);
       }
+
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.YEAR_END_CLOSE,
+        targetModule: 'year-end',
+        targetRecordId: updatedYearEnd.id,
+        afterState: { year, status: '已完成', retainedEarnings: netIncome, completedSections },
+        note: `年結關帳 ${year}`,
+      });
 
       return NextResponse.json({
         success: true,

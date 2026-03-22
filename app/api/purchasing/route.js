@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { validateWarehouse } from '@/lib/master-data-validator';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,6 +179,14 @@ export async function POST(request) {
       createdAt: newPurchase.createdAt.toISOString(),
       updatedAt: newPurchase.updatedAt.toISOString()
     };
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PURCHASE_CREATE,
+      targetModule: 'purchasing',
+      targetRecordNo: result.purchaseNo,
+      afterState: { purchaseNo: result.purchaseNo, warehouse: result.warehouse, supplierId: result.supplierId, amount: result.amount },
+      note: `建立進貨單 ${result.purchaseNo}`,
+    });
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

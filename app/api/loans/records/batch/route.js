@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,6 +184,15 @@ export async function POST(request) {
     const pushedMsg = pushed.length > 0
       ? `，${pushed.length} 筆已自動推送至出納`
       : '';
+
+    if (created.length > 0) {
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.LOAN_RECORD_CREATE,
+        targetModule: 'loans',
+        afterState: { created: created.length, skipped: skipped.length, pushed: pushed.length, year, month },
+        note: `批次建立 ${created.length} 筆還款記錄 (${year}/${month})`,
+      });
+    }
 
     return NextResponse.json({
       created: created.length,

@@ -5,6 +5,7 @@ import { getCategoryIdByCode } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +135,15 @@ export async function PUT(request, { params }) {
         return updated;
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.LOAN_RECORD_CONFIRM,
+        targetModule: 'loans',
+        targetRecordId: id,
+        beforeState: { status: existing.status, estimatedTotal: Number(existing.estimatedTotal) },
+        afterState: { status: '已核實', actualPrincipal, actualInterest, actualTotal },
+        note: `貸款核實 ${existing.loan.loanName} ${existing.recordYear}/${existing.recordMonth}`,
+      });
+
       return NextResponse.json({
         ...result,
         estimatedPrincipal: Number(result.estimatedPrincipal),
@@ -199,8 +209,14 @@ export async function DELETE(request, { params }) {
     }
 
     if (existing.status === '暫估') {
-      // Simple delete for estimated records
       await prisma.loanMonthlyRecord.delete({ where: { id } });
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.LOAN_RECORD_DELETE,
+        targetModule: 'loans',
+        targetRecordId: id,
+        beforeState: { status: '暫估', loanName: existing.loan.loanName, estimatedTotal: Number(existing.estimatedTotal) },
+        note: `刪除暫估還款記錄 ${existing.loan.loanName} ${existing.recordYear}/${existing.recordMonth}`,
+      });
       return NextResponse.json({ success: true });
     }
 
@@ -235,11 +251,26 @@ export async function DELETE(request, { params }) {
         });
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.LOAN_RECORD_DELETE,
+        targetModule: 'loans',
+        targetRecordId: id,
+        beforeState: { status: '已核實', loanName: existing.loan.loanName, actualTotal: Number(existing.actualTotal), actualPrincipal },
+        note: `刪除已核實還款記錄 ${existing.loan.loanName} ${existing.recordYear}/${existing.recordMonth}`,
+      });
+
       return NextResponse.json({ success: true });
     }
 
     // For other statuses (跳過, etc.), just delete
     await prisma.loanMonthlyRecord.delete({ where: { id } });
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.LOAN_RECORD_DELETE,
+      targetModule: 'loans',
+      targetRecordId: id,
+      beforeState: { status: existing.status, loanName: existing.loan.loanName },
+      note: `刪除還款記錄 ${existing.loan.loanName} ${existing.recordYear}/${existing.recordMonth}`,
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);

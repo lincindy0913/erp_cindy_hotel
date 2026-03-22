@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 // Helper: generate transaction number CF-YYYYMMDD-XXXX
 async function generateTxNo(tx, dateStr) {
@@ -299,6 +300,16 @@ export async function PUT(request, { params }) {
         return record;
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.EXPENSE_CONFIRM,
+        targetModule: 'expense-records',
+        targetRecordId: id,
+        targetRecordNo: existing.recordNo,
+        beforeState: { status: existing.status, totalDebit: Number(existing.totalDebit) },
+        afterState: { status: '已確認', confirmedBy: data.confirmedBy || '系統' },
+        note: `費用確認 ${existing.recordNo}`,
+      });
+
       return NextResponse.json(formatRecord(updated));
     }
 
@@ -347,6 +358,16 @@ export async function PUT(request, { params }) {
         }
 
         return record;
+      });
+
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.EXPENSE_VOID,
+        targetModule: 'expense-records',
+        targetRecordId: id,
+        targetRecordNo: existing.recordNo,
+        beforeState: { status: existing.status, totalDebit: Number(existing.totalDebit) },
+        afterState: { status: '已作廢', voidReason: data.voidReason.trim() },
+        note: `費用作廢 ${existing.recordNo}：${data.voidReason.trim()}`,
       });
 
       return NextResponse.json(formatRecord(updated));
@@ -447,6 +468,16 @@ export async function PUT(request, { params }) {
         return record;
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.EXPENSE_UPDATE,
+        targetModule: 'expense-records',
+        targetRecordId: id,
+        targetRecordNo: existing.recordNo,
+        beforeState: { totalDebit: oldDebitTotal, paymentMethod: existing.paymentMethod },
+        afterState: { totalDebit: newDebitTotal, paymentMethod: data.paymentMethod || existing.paymentMethod },
+        note: `費用編輯 ${existing.recordNo}`,
+      });
+
       return NextResponse.json(formatRecord(updated));
     }
 
@@ -528,6 +559,15 @@ export async function DELETE(request, { params }) {
       if (existing.paymentOrderId) {
         await tx.paymentOrder.delete({ where: { id: existing.paymentOrderId } });
       }
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.EXPENSE_DELETE,
+      targetModule: 'expense-records',
+      targetRecordId: id,
+      targetRecordNo: existing.recordNo,
+      beforeState: { recordNo: existing.recordNo, status: existing.status, totalDebit: Number(existing.totalDebit), paymentOrderId: existing.paymentOrderId },
+      note: `刪除費用記錄 ${existing.recordNo}`,
     });
 
     return NextResponse.json({ message: '費用記錄及關聯付款單已刪除' });

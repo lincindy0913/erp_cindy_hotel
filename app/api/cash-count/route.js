@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -329,6 +330,14 @@ export async function POST(request) {
       });
 
       return finalRecord;
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CASH_COUNT_CREATE,
+      targetModule: 'cash-count',
+      targetRecordNo: result.countNo,
+      afterState: { countNo: result.countNo, accountId, status: result.status, systemBalance: Number(result.systemBalance), actualBalance: Number(result.actualBalance), difference: Number(result.difference), isAbnormal: result.isAbnormal },
+      note: `建立現金盤點 ${result.countNo}`,
     });
 
     return NextResponse.json({

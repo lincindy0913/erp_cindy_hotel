@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +64,7 @@ export async function GET(request, { params }) {
 // PUT: Update month-end status (lock / unlock)
 export async function PUT(request, { params }) {
   try {
+    const session = await getServerSession(authOptions);
     const id = parseInt(params.id);
     if (!id) {
       return createErrorResponse('VALIDATION_FAILED', '無效的ID', 400);
@@ -91,6 +95,17 @@ export async function PUT(request, { params }) {
         }
       });
 
+      if (session) {
+        await auditFromSession(prisma, session, {
+          action: AUDIT_ACTIONS.MONTH_END_CLOSE,
+          targetModule: 'month-end',
+          targetRecordId: id,
+          beforeState: { status: monthEnd.status, year: monthEnd.year, month: monthEnd.month },
+          afterState: { status: '已鎖定' },
+          note: `月結鎖定 ${monthEnd.year}/${monthEnd.month}`,
+        });
+      }
+
       return NextResponse.json({
         success: true,
         id: updated.id,
@@ -118,6 +133,17 @@ export async function PUT(request, { params }) {
           unlockReason
         }
       });
+
+      if (session) {
+        await auditFromSession(prisma, session, {
+          action: AUDIT_ACTIONS.MONTH_END_UNLOCK,
+          targetModule: 'month-end',
+          targetRecordId: id,
+          beforeState: { status: monthEnd.status, year: monthEnd.year, month: monthEnd.month },
+          afterState: { status: '未結帳', unlockedBy: unlockedBy || null, unlockReason },
+          note: `月結解鎖 ${monthEnd.year}/${monthEnd.month}：${unlockReason}`,
+        });
+      }
 
       return NextResponse.json({
         success: true,

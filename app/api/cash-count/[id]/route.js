@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -333,6 +334,16 @@ export async function PUT(request, { params }) {
         return updated;
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CASH_COUNT_CONFIRM,
+        targetModule: 'cash-count',
+        targetRecordId: id,
+        targetRecordNo: existing.countNo,
+        beforeState: { status: existing.status, difference: Number(existing.difference) },
+        afterState: { status: 'confirmed' },
+        note: `確認現金盤點 ${existing.countNo}`,
+      });
+
       return NextResponse.json(serializeCashCount(result));
     }
 
@@ -440,6 +451,16 @@ export async function PUT(request, { params }) {
         return updated;
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CASH_COUNT_APPROVE,
+        targetModule: 'cash-count',
+        targetRecordId: id,
+        targetRecordNo: existing.countNo,
+        beforeState: { status: existing.status, difference: Number(existing.difference), isAbnormal: existing.isAbnormal },
+        afterState: { status: 'approved', reviewedByUserId: parseInt(data.reviewedByUserId), reviewNote: data.reviewNote },
+        note: `核准現金盤點 ${existing.countNo}`,
+      });
+
       return NextResponse.json(serializeCashCount(result));
     }
 
@@ -484,6 +505,16 @@ export async function PUT(request, { params }) {
             select: { id: true, name: true, type: true, warehouse: true, currentBalance: true }
           }
         }
+      });
+
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CASH_COUNT_REJECT,
+        targetModule: 'cash-count',
+        targetRecordId: id,
+        targetRecordNo: existing.countNo,
+        beforeState: { status: existing.status, difference: Number(existing.difference) },
+        afterState: { status: 'void', reviewedByUserId: parseInt(data.reviewedByUserId), reviewNote: data.reviewNote },
+        note: `退回現金盤點 ${existing.countNo}：${data.reviewNote}`,
       });
 
       return NextResponse.json(serializeCashCount(result));
@@ -534,6 +565,16 @@ export async function PUT(request, { params }) {
         });
 
         return updated;
+      });
+
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CASH_COUNT_UNLOCK,
+        targetModule: 'cash-count',
+        targetRecordId: id,
+        targetRecordNo: existing.countNo,
+        beforeState: { status: existing.status },
+        afterState: { status: 'pending', unlockReason: data.unlockReason },
+        note: `解鎖現金盤點 ${existing.countNo}：${data.unlockReason}`,
       });
 
       return NextResponse.json(serializeCashCount(result));

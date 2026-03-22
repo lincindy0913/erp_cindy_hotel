@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireSession } from '@/lib/api-auth';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -265,6 +266,14 @@ export async function POST(request) {
         supplierDiscount: hasInvoice ? supplierDiscount : null
       };
     }, { timeout: 30000 });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.EXPENSE_CREATE,
+      targetModule: 'expense-records',
+      targetRecordNo: result.record.recordNo,
+      afterState: { recordNo: result.record.recordNo, purchaseNo: result.purchaseNo, salesNo: result.salesNo, purchaseAmount: result.purchaseAmount, invoiceAmount: result.invoiceAmount },
+      note: `進貨費用執行 ${result.record.recordNo} → 進貨單 ${result.purchaseNo}`,
+    });
 
     return NextResponse.json({
       ...result.record,

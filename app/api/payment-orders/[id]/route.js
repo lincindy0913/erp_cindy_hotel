@@ -137,6 +137,9 @@ export async function PUT(request, { params }) {
           targetModule: 'payment-orders',
           targetRecordId: id,
           targetRecordNo: order.orderNo,
+          beforeState: { status: order.status, amount: Number(order.amount) },
+          afterState: { status: '已作廢' },
+          note: `付款單作廢 ${order.orderNo}`,
         });
       }
 
@@ -177,6 +180,18 @@ export async function PUT(request, { params }) {
 
     await prisma.paymentOrder.update({ where: { id }, data: updateData });
 
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.PAYMENT_ORDER_UPDATE,
+        targetModule: 'payment-orders',
+        targetRecordId: id,
+        targetRecordNo: order.orderNo,
+        beforeState: { status: order.status, amount: Number(order.amount), paymentMethod: order.paymentMethod },
+        afterState: updateData,
+        note: `修改付款單 ${order.orderNo}`,
+      });
+    }
+
     return NextResponse.json({ message: '付款單已更新' });
   } catch (error) {
     return handleApiError(error);
@@ -185,6 +200,7 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
+    const session = await getServerSession(authOptions);
     const id = parseInt(params.id);
     const order = await prisma.paymentOrder.findUnique({ where: { id } });
 
@@ -197,6 +213,18 @@ export async function DELETE(request, { params }) {
     }
 
     await prisma.paymentOrder.delete({ where: { id } });
+
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.PAYMENT_ORDER_DELETE,
+        targetModule: 'payment-orders',
+        targetRecordId: id,
+        targetRecordNo: order.orderNo,
+        beforeState: { orderNo: order.orderNo, status: order.status, amount: Number(order.amount), supplierName: order.supplierName },
+        note: `刪除付款單 ${order.orderNo}`,
+      });
+    }
+
     return NextResponse.json({ message: '付款單已刪除' });
   } catch (error) {
     return handleApiError(error);

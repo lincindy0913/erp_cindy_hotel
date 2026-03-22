@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
@@ -70,6 +71,16 @@ export async function PUT(request, { params }) {
       updatedAt: updated.updatedAt.toISOString()
     };
 
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PURCHASE_UPDATE,
+      targetModule: 'purchasing',
+      targetRecordId: id,
+      targetRecordNo: existing.purchaseNo,
+      beforeState: { warehouse: existing.warehouse, amount: Number(existing.amount), status: existing.status },
+      afterState: { warehouse: result.warehouse, amount: result.amount, status: result.status },
+      note: `修改進貨單 ${existing.purchaseNo}`,
+    });
+
     return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
@@ -89,6 +100,16 @@ export async function DELETE(request, { params }) {
     }
 
     await prisma.purchaseMaster.delete({ where: { id } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PURCHASE_DELETE,
+      targetModule: 'purchasing',
+      targetRecordId: id,
+      targetRecordNo: existing.purchaseNo,
+      beforeState: { purchaseNo: existing.purchaseNo, warehouse: existing.warehouse, amount: Number(existing.amount), status: existing.status },
+      note: `刪除進貨單 ${existing.purchaseNo}`,
+    });
+
     return NextResponse.json({ message: '進貨單已刪除' });
   } catch (error) {
     return handleApiError(error);

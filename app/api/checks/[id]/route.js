@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -145,6 +146,16 @@ export async function PUT(request, { params }) {
         }
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CHECK_CLEAR,
+        targetModule: 'checks',
+        targetRecordId: id,
+        targetRecordNo: check.checkNo,
+        beforeState: { status: check.status, amount: Number(check.amount) },
+        afterState: { status: 'cleared', actualAmount, clearDate, cashTransactionId },
+        note: `支票兌現 ${check.checkNo}`,
+      });
+
       return NextResponse.json(updatedCheck);
     }
 
@@ -206,6 +217,16 @@ export async function PUT(request, { params }) {
         }
       });
 
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CHECK_BOUNCE,
+        targetModule: 'checks',
+        targetRecordId: id,
+        targetRecordNo: check.checkNo,
+        beforeState: { status: check.status, amount: Number(check.amount) },
+        afterState: { status: 'bounced', bouncedReason: data.bouncedReason || null },
+        note: `支票退票 ${check.checkNo}`,
+      });
+
       return NextResponse.json(updatedCheck);
     }
 
@@ -224,6 +245,16 @@ export async function PUT(request, { params }) {
           sourceAccount: { select: { id: true, name: true, accountCode: true } },
           destinationAccount: { select: { id: true, name: true, accountCode: true } }
         }
+      });
+
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.CHECK_VOID,
+        targetModule: 'checks',
+        targetRecordId: id,
+        targetRecordNo: check.checkNo,
+        beforeState: { status: check.status },
+        afterState: { status: 'void', voidReason: data.voidReason || null },
+        note: `支票作廢 ${check.checkNo}`,
       });
 
       return NextResponse.json(updatedCheck);
@@ -282,6 +313,15 @@ export async function DELETE(request, { params }) {
     }
 
     await prisma.check.delete({ where: { id } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CHECK_DELETE,
+      targetModule: 'checks',
+      targetRecordId: id,
+      targetRecordNo: check.checkNo,
+      beforeState: { checkNo: check.checkNo, checkNumber: check.checkNumber, amount: Number(check.amount), status: check.status },
+      note: `刪除支票 ${check.checkNo}`,
+    });
 
     return NextResponse.json({ success: true, message: '支票已刪除' });
   } catch (error) {

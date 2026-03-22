@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +138,15 @@ export async function POST(request) {
         }
         failed.push({ recordId: rec.id, reason: e.message });
       }
+    }
+
+    if (pushed.length > 0) {
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.LOAN_AUTO_PUSH,
+        targetModule: 'loans',
+        afterState: { pushed: pushed.length, failed: failed.length, details: pushed },
+        note: `自動推送 ${pushed.length} 筆貸款還款至出納`,
+      });
     }
 
     return NextResponse.json({

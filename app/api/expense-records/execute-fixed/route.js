@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -309,6 +310,14 @@ export async function POST(request) {
         });
         if (r) created.push(r);
       }
+      if (created.length > 0) {
+        await auditFromSession(prisma, auth.session, {
+          action: AUDIT_ACTIONS.EXPENSE_CREATE,
+          targetModule: 'expense-records',
+          afterState: { mode: 'lines', count: created.length, recordNos: created.map(c => c.recordNo) },
+          note: `固定費用執行(分錄模式) ${created.length} 筆`,
+        });
+      }
       return NextResponse.json({ message: `已建立 ${created.length} 筆固定費用記錄`, created, recordNos: created.map(c => c.recordNo) }, { status: 201 });
     }
 
@@ -455,6 +464,14 @@ export async function POST(request) {
         if (result) created.push(result);
       }
 
+      if (created.length > 0) {
+        await auditFromSession(prisma, auth.session, {
+          action: AUDIT_ACTIONS.EXPENSE_CREATE,
+          targetModule: 'expense-records',
+          afterState: { mode: 'batch', count: created.length, recordNos: created.map(c => c.recordNo) },
+          note: `固定費用執行(批次模式) ${created.length} 筆`,
+        });
+      }
       return NextResponse.json({
         message: `已建立 ${created.length} 筆固定費用記錄`,
         created,
@@ -655,6 +672,14 @@ export async function POST(request) {
         paymentOrderNo: orderNo,
         totalAmount: debitTotal
       };
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.EXPENSE_CREATE,
+      targetModule: 'expense-records',
+      targetRecordNo: result.record.recordNo,
+      afterState: { mode: 'single', recordNo: result.record.recordNo, warehouse: data.warehouse, totalAmount: result.totalAmount, paymentOrderNo: result.paymentOrderNo },
+      note: `固定費用執行(單筆) ${result.record.recordNo}`,
     });
 
     return NextResponse.json({

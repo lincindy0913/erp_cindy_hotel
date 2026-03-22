@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -695,6 +696,14 @@ export async function POST(request) {
     } catch (reportErr) {
       console.error('月結業務報告生成失敗（非阻斷）:', reportErr.message);
     }
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.MONTH_END_CLOSE,
+      targetModule: 'month-end',
+      targetRecordId: result.monthEnd.id,
+      afterState: { year, month, warehouse: warehouse || null, status: '已結帳', reportsCount: result.createdReports.length },
+      note: `月結關帳 ${year}/${month}${warehouse ? ` (${warehouse})` : ''}`,
+    });
 
     return NextResponse.json({
       success: true,

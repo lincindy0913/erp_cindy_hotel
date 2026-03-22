@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +123,15 @@ export async function POST(request) {
         difference,
         adjustmentCount: { increment: 1 }
       }
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RECONCILIATION_ADJUST,
+      targetModule: 'reconciliation',
+      targetRecordId: parseInt(reconciliationId),
+      targetRecordNo: transaction.transactionNo,
+      afterState: { transactionNo: transaction.transactionNo, amount: Number(transaction.amount), type: transaction.type, accountId: parseInt(accountId), description },
+      note: `對帳調整 ${transaction.transactionNo}`,
     });
 
     return NextResponse.json({

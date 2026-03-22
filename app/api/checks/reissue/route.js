@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,6 +131,18 @@ export async function POST(request) {
 
       return { order, newCheck };
     });
+
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CHECK_REISSUE,
+        targetModule: 'checks',
+        targetRecordId: bouncedCheckId,
+        targetRecordNo: result.newCheck.checkNo,
+        beforeState: { bouncedCheckId, bouncedCheckNo: data.bouncedCheckId },
+        afterState: { orderNo: result.order.orderNo, newCheckNo: result.newCheck.checkNo, newCheckId: result.newCheck.id },
+        note: `退票重新開票 → ${result.newCheck.checkNo}`,
+      });
+    }
 
     return NextResponse.json({
       ok: true,

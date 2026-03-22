@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -209,6 +210,17 @@ export async function PUT(request, { params }) {
       }
     }
 
+    const actionLabel = body.action === 'depositReceive' ? '押金收取' : body.action === 'depositRefund' ? '押金退還' : '合約更新';
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_CONTRACT_UPDATE,
+      targetModule: 'rentals',
+      targetRecordId: contractId,
+      targetRecordNo: existing.contractNo,
+      beforeState: { status: existing.status },
+      afterState: { status: contract.status || existing.status, action: body.action || 'update' },
+      note: `${actionLabel} ${existing.contractNo}`,
+    });
+
     return NextResponse.json(contract);
   } catch (error) {
     console.error('PUT /api/rentals/contracts/[id] error:', error);
@@ -237,6 +249,16 @@ export async function DELETE(request, { params }) {
     }
 
     await prisma.rentalContract.delete({ where: { id: contractId } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_CONTRACT_DELETE,
+      targetModule: 'rentals',
+      targetRecordId: contractId,
+      targetRecordNo: contract.contractNo,
+      beforeState: { contractNo: contract.contractNo, status: contract.status },
+      note: `刪除租約 ${contract.contractNo}`,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/rentals/contracts/[id] error:', error);
