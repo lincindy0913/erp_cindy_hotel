@@ -48,8 +48,19 @@ npm install
 ### 執行測試
 
 ```bash
+npm test                 # Vitest：單元 + API 路由測試（與 CI 一致）
+npm run test:watch       # 開發時監聽模式
+npm run test:regression  # Lint + Vitest（發 PR 前建議）
+npm run test:e2e         # Playwright 煙霧（會 build 並起 production server，首次較久）
+
+# 既有腳本（若專案中仍存在）
 node src/tests/inventory-test.js
 ```
+
+### 營運、備份還原與 UAT
+
+- 備份／還原演練、災難復原、非同步任務重試與告警、UAT 清單、發布流程、報表追溯等：**[`docs/operational-excellence/README.md`](docs/operational-excellence/README.md)**
+- 備份檔快速檢查：`npm run verify-backup-file -- path/to/backup.sql.gz`
 
 ## 📊 核心功能
 

@@ -57,6 +57,7 @@ export const authOptions = {
             role: isAdmin ? 'admin' : (user.role || 'user'),
             roles: roleCodes,
             permissions: isAdmin ? ['*'] : Array.from(permSet),
+            warehouseRestriction: user.warehouseRestriction || null,
           };
         } catch (error) {
           // Only fall back to demo mode for DB connection errors
@@ -91,7 +92,8 @@ export const authOptions = {
             email: user.email,
             name: user.name,
             role: user.role,
-            permissions: user.role === 'admin' ? ['*'] : user.permissions
+            permissions: user.role === 'admin' ? ['*'] : user.permissions,
+            warehouseRestriction: user.warehouseRestriction || null,
           };
         }
       }
@@ -104,6 +106,7 @@ export const authOptions = {
         token.role = user.role;
         token.roles = user.roles || [];
         token.permissions = user.permissions;
+        token.warehouseRestriction = user.warehouseRestriction || null;
       }
       return token;
     },
@@ -113,6 +116,7 @@ export const authOptions = {
         session.user.role = token.role;
         session.user.roles = token.roles || [];
         session.user.permissions = token.permissions;
+        session.user.warehouseRestriction = token.warehouseRestriction || null;
       }
       return session;
     }

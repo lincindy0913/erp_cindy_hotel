@@ -10,9 +10,13 @@ sleep 3
 
 echo "✅ Database should be ready!"
 
-# Run database migrations and push schema
+# Sync schema without destructive flags (保留既有資料；若與 DB 不相容請手動處理 migration)
 echo "📊 Syncing database schema..."
-node_modules/.bin/prisma db push --accept-data-loss --skip-generate
+if node_modules/.bin/prisma migrate deploy --skip-generate 2>/dev/null; then
+  echo "✅ Migrations applied"
+else
+  node_modules/.bin/prisma db push --skip-generate || echo "⚠️  db push failed — check DATABASE_URL and schema"
+fi
 
 # Seed database with default admin user
 echo "🌱 Seeding database..."

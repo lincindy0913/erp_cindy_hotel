@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getPnlSubjectMeta, getPnlSubjectKey, buildPnlCashflowWhere } from '@/lib/pnl-by-warehouse-shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,12 +26,7 @@ export async function GET(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供 startDate 與 endDate', 400);
     }
 
-    const where = {
-      transactionDate: { gte: startDate, lte: endDate },
-      type: { in: ['收入', '支出'] },
-      isReversal: false,
-    };
-    if (warehouse) where.warehouse = warehouse;
+    const where = buildPnlCashflowWhere(startDate, endDate, warehouse);
 
     const transactions = await prisma.cashTransaction.findMany({
       where,
@@ -57,15 +53,6 @@ export async function GET(request) {
       orderBy: [{ transactionDate: 'asc' }],
     });
 
-    // 會計科目顯示：優先 category.accountingSubject，其次 category.name，其次 tx.accountingSubject，最後「未對應會計科目」
-    function getSubjectKey(tx) {
-      const sub = tx.category?.accountingSubject;
-      if (sub) return { code: sub.code, name: sub.name, category: sub.category, subcategory: sub.subcategory };
-      if (tx.category?.name) return { code: null, name: tx.category.name, category: null, subcategory: null };
-      if (tx.accountingSubject) return { code: null, name: tx.accountingSubject, category: null, subcategory: null };
-      return { code: null, name: '未對應會計科目', category: null, subcategory: null };
-    }
-
     const byWarehouse = {};
 
     for (const tx of transactions) {
@@ -81,8 +68,8 @@ export async function GET(request) {
         };
       }
       const row = byWarehouse[wh];
-      const subject = getSubjectKey(tx);
-      const subjectKey = subject.code ? subject.code : subject.name;
+      const subject = getPnlSubjectMeta(tx);
+      const subjectKey = getPnlSubjectKey(tx);
       const amt = Number(tx.amount);
       const fee = tx.hasFee ? Number(tx.fee) : 0;
 
@@ -99,14 +86,20 @@ export async function GET(request) {
     }
 
     const list = Object.values(byWarehouse).map((row) => {
-      const incomeList = Object.entries(row.incomeBySubject).map(([k, v]) => ({
-        ...v,
-        amount: Math.round(v.amount * 100) / 100,
-      })).sort((a, b) => b.amount - a.amount);
-      const expenseList = Object.entries(row.expenseBySubject).map(([k, v]) => ({
-        ...v,
-        amount: Math.round(v.amount * 100) / 100,
-      })).sort((a, b) => b.amount - a.amount);
+      const incomeList = Object.entries(row.incomeBySubject)
+        .map(([k, v]) => ({
+          ...v,
+          subjectKey: k,
+          amount: Math.round(v.amount * 100) / 100,
+        }))
+        .sort((a, b) => b.amount - a.amount);
+      const expenseList = Object.entries(row.expenseBySubject)
+        .map(([k, v]) => ({
+          ...v,
+          subjectKey: k,
+          amount: Math.round(v.amount * 100) / 100,
+        }))
+        .sort((a, b) => b.amount - a.amount);
       return {
         warehouse: row.warehouse,
         incomeBySubject: incomeList,

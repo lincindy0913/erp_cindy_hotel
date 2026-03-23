@@ -61,6 +61,13 @@ export default function AnalyticsPage() {
   const [pnlEndDate, setPnlEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [pnlWarehouseFilter, setPnlWarehouseFilter] = useState('');
 
+  /** 館別損益表：追溯現金流明細 */
+  const [pnlTraceOpen, setPnlTraceOpen] = useState(false);
+  const [pnlTraceCtx, setPnlTraceCtx] = useState(null);
+  const [pnlTraceLoading, setPnlTraceLoading] = useState(false);
+  const [pnlTraceData, setPnlTraceData] = useState(null);
+  const [pnlTraceError, setPnlTraceError] = useState('');
+
   // 早餐與採購比較（依早餐人數判斷品項叫貨是否過高，例：牛奶）
   const [breakfastYearMonth, setBreakfastYearMonth] = useState(() => {
     const now = new Date();
@@ -103,6 +110,36 @@ export default function AnalyticsPage() {
       console.error('取得館別損益表失敗:', e);
     }
     setPnlWarehouseLoading(false);
+  }
+
+  async function openPnlTrace({ warehouseLabel, flowType, subjectKey, subjectName }) {
+    setPnlTraceCtx({ warehouseLabel, flowType, subjectKey, subjectName });
+    setPnlTraceOpen(true);
+    setPnlTraceData(null);
+    setPnlTraceError('');
+    setPnlTraceLoading(true);
+    try {
+      const params = new URLSearchParams({
+        startDate: pnlStartDate,
+        endDate: pnlEndDate,
+        flowType,
+        subjectKey,
+      });
+      if (pnlWarehouseFilter.trim()) {
+        params.set('warehouse', pnlWarehouseFilter.trim());
+      } else if (warehouseLabel === '未指定館別') {
+        params.set('warehouse', '__NULL__');
+      } else {
+        params.set('warehouse', warehouseLabel);
+      }
+      const res = await fetch(`/api/analytics/pnl-by-warehouse/drilldown?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message || '載入失敗');
+      setPnlTraceData(data);
+    } catch (e) {
+      setPnlTraceError(e.message || '載入失敗');
+    }
+    setPnlTraceLoading(false);
   }
 
   async function fetchWarehouseOptions() {
@@ -435,6 +472,7 @@ export default function AnalyticsPage() {
             </div>
             <p className="text-sm text-gray-500">
               資料來源：<Link href="/cashflow" className="text-cyan-600 hover:underline">現金流</Link>（含租屋收入、PMS 收入、貸款支出、出納支出等），依館別與會計科目彙總。
+              <span className="block mt-1 text-cyan-700">點擊科目金額可<strong>追溯明細</strong>（對應現金流交易與來源單據提示）。</span>
             </p>
             {pnlWarehouseLoading ? (
               <div className="text-center py-12 text-gray-500">載入館別損益表中…</div>
@@ -464,7 +502,23 @@ export default function AnalyticsPage() {
                             {(row.incomeBySubject || []).map((item, i) => (
                               <tr key={i} className="border-b border-gray-100">
                                 <td className="py-1.5 pr-2">{item.subject?.name ?? item.name ?? '-'}</td>
-                                <td className="py-1.5 text-right text-green-700">NT$ {Number(item.amount || 0).toLocaleString()}</td>
+                                <td className="py-1.5 text-right text-green-700">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openPnlTrace({
+                                        warehouseLabel: row.warehouse,
+                                        flowType: 'income',
+                                        subjectKey: item.subjectKey ?? item.subject?.code ?? item.subject?.name,
+                                        subjectName: item.subject?.name ?? item.name,
+                                      })
+                                    }
+                                    className="underline decoration-dotted hover:bg-green-50 rounded px-1 -mx-1 text-right w-full"
+                                    title="追溯現金流明細"
+                                  >
+                                    NT$ {Number(item.amount || 0).toLocaleString()}
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                             {(!row.incomeBySubject || row.incomeBySubject.length === 0) && (
@@ -486,7 +540,23 @@ export default function AnalyticsPage() {
                             {(row.expenseBySubject || []).map((item, i) => (
                               <tr key={i} className="border-b border-gray-100">
                                 <td className="py-1.5 pr-2">{item.subject?.name ?? item.name ?? '-'}</td>
-                                <td className="py-1.5 text-right text-red-700">NT$ {Number(item.amount || 0).toLocaleString()}</td>
+                                <td className="py-1.5 text-right text-red-700">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openPnlTrace({
+                                        warehouseLabel: row.warehouse,
+                                        flowType: 'expense',
+                                        subjectKey: item.subjectKey ?? item.subject?.code ?? item.subject?.name,
+                                        subjectName: item.subject?.name ?? item.name,
+                                      })
+                                    }
+                                    className="underline decoration-dotted hover:bg-red-50 rounded px-1 -mx-1 text-right w-full"
+                                    title="追溯現金流明細"
+                                  >
+                                    NT$ {Number(item.amount || 0).toLocaleString()}
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                             {(!row.expenseBySubject || row.expenseBySubject.length === 0) && (
@@ -1156,6 +1226,113 @@ export default function AnalyticsPage() {
           </div>
         )}
       </main>
+
+      {/* 館別損益表：追溯明細 */}
+      {pnlTraceOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setPnlTraceOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="pnl-trace-title"
+          >
+            <div className="px-4 py-3 border-b flex justify-between items-center bg-gray-50">
+              <div>
+                <h3 id="pnl-trace-title" className="font-semibold text-gray-800">
+                  追溯明細 — {pnlTraceCtx?.subjectName || pnlTraceCtx?.subjectKey}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  館別：{pnlTraceCtx?.warehouseLabel} ／ {pnlTraceCtx?.flowType === 'income' ? '收入' : '支出'} ／{' '}
+                  {pnlStartDate}～{pnlEndDate}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPnlTraceOpen(false)}
+                className="text-gray-500 hover:text-gray-800 px-2 py-1 rounded"
+              >
+                關閉
+              </button>
+            </div>
+            <div className="p-3 text-xs text-gray-600 border-b bg-cyan-50/50">
+              {pnlTraceData?.traceNote ||
+                '載入後將顯示與報表儲存格相符的現金流交易；來源類型可連結至相關模組（若系統有對應頁面）。'}
+            </div>
+            <div className="overflow-auto flex-1 p-4">
+              {pnlTraceLoading && <p className="text-gray-500 text-center py-8">載入中…</p>}
+              {pnlTraceError && <p className="text-red-600 text-center py-8">{pnlTraceError}</p>}
+              {!pnlTraceLoading && pnlTraceData && (
+                <>
+                  <p className="text-sm text-gray-600 mb-2">
+                    共 <strong>{pnlTraceData.matchedCount}</strong> 筆，加總 NT${' '}
+                    <strong>{Number(pnlTraceData.totalAmount || 0).toLocaleString()}</strong>
+                    {pnlTraceData.hasMore ? '（僅顯示前若干筆，可之後加分頁）' : ''}
+                  </p>
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b text-left bg-gray-50">
+                        <th className="py-2 px-2">日期</th>
+                        <th className="py-2 px-2">交易編號</th>
+                        <th className="py-2 px-2">帳戶</th>
+                        <th className="py-2 px-2 text-right">金額</th>
+                        <th className="py-2 px-2">來源／說明</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(pnlTraceData.rows || []).map(r => (
+                        <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2 px-2 whitespace-nowrap">{r.transactionDate}</td>
+                          <td className="py-2 px-2 font-mono text-xs">{r.transactionNo}</td>
+                          <td className="py-2 px-2">{r.accountName || '—'}</td>
+                          <td className="py-2 px-2 text-right">NT$ {Number(r.amount || 0).toLocaleString()}</td>
+                          <td className="py-2 px-2">
+                            <div className="text-xs text-gray-700">{r.description || '—'}</div>
+                            <div className="text-xs mt-0.5">
+                              {r.source?.path ? (
+                                <Link href={r.source.path} className="text-cyan-600 hover:underline">
+                                  {r.source.label}
+                                </Link>
+                              ) : (
+                                <span className="text-gray-600">{r.source?.label}</span>
+                              )}
+                              {r.source?.hint && (
+                                <span className="text-gray-400 ml-1">（{r.source.hint}）</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(!pnlTraceData.rows || pnlTraceData.rows.length === 0) && (
+                    <p className="text-gray-500 text-center py-6">無符合交易</p>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="px-4 py-2 border-t bg-gray-50 text-right">
+              <Link
+                href="/cashflow"
+                className="text-sm text-cyan-600 hover:underline mr-4"
+                onClick={() => setPnlTraceOpen(false)}
+              >
+                開啟現金流
+              </Link>
+              <button
+                type="button"
+                onClick={() => setPnlTraceOpen(false)}
+                className="px-3 py-1.5 bg-gray-200 rounded text-sm hover:bg-gray-300"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

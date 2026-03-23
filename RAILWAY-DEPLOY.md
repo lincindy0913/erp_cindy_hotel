@@ -50,9 +50,11 @@ railway up      # 上傳並依 Dockerfile 建置部署
 | `NEXTAUTH_URL` | 正式環境網址，例如 `https://你的專案.up.railway.app` |
 | `NEXTAUTH_SECRET` | 至少 32 字元隨機字串 |
 
-### 部署後資料庫
+### 部署後資料庫（保留資料）
 
-容器啟動時會自動執行 `prisma migrate deploy`（若有 migration）或 `prisma db push`，以同步 schema。若專案有新增 Prisma 欄位（例如租賃合約/維護費會計科目、貸款會計科目），首次部署後資料庫會自動更新，無需手動執行。
+- **Dockerfile** 啟動指令：`prisma migrate deploy` 成功則用它；否則 **`prisma db push --skip-generate`（不含 `--accept-data-loss`）**，以**盡量保留現有資料**。
+- 若 schema 變更與現有資料衝突，`db push` 可能失敗，請在維護窗檢查 Prisma 訊息或改用手寫 migration。
+- 本機 `docker-entrypoint.sh`（若自訂 CMD 使用）已與上述原則一致：**不使用** `--accept-data-loss`。
 
 ---
 
