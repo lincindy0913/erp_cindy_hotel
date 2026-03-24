@@ -92,8 +92,10 @@ export async function GET(request, { params }) {
     // Generate the PDF using jsPDF (中文字體避免亂碼)
     const jspdfModule = await import('jspdf');
     const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
-    await import('jspdf-autotable');
-    const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
+    const { applyPlugin } = await import('jspdf-autotable');
+    applyPlugin(jsPDF);
+    const pdfFontsModule = await import('@/lib/pdf-fonts');
+    const addCJKFontToDoc = pdfFontsModule.addCJKFontToDoc || pdfFontsModule.default?.addCJKFontToDoc;
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     addCJKFontToDoc(doc);
@@ -411,8 +413,10 @@ async function generateLegacyPdf(payment, paymentId) {
 
   const jspdfModule2 = await import('jspdf');
   const jsPDF2 = jspdfModule2.jsPDF || jspdfModule2.default?.jsPDF || jspdfModule2.default;
-  await import('jspdf-autotable');
-  const { addCJKFontToDoc: addCJKFont2 } = require('@/lib/pdf-fonts');
+  const { applyPlugin: applyPlugin2 } = await import('jspdf-autotable');
+  applyPlugin2(jsPDF2);
+  const pdfFontsModule2 = await import('@/lib/pdf-fonts');
+  const addCJKFont2 = pdfFontsModule2.addCJKFontToDoc || pdfFontsModule2.default?.addCJKFontToDoc;
 
   const doc = new jsPDF2({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   addCJKFont2(doc);

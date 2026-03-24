@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, Fragment } from 'react';
+import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 

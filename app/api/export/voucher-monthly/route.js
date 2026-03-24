@@ -145,12 +145,16 @@ export async function GET(request) {
     // ====== Generate PDF ======
     const jspdfModule = await import('jspdf');
     const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
-    await import('jspdf-autotable');
-    const { addCJKFontToDoc } = require('@/lib/pdf-fonts');
+    const { applyPlugin } = await import('jspdf-autotable');
+    applyPlugin(jsPDF);
+    const pdfFontsModule = await import('@/lib/pdf-fonts');
+    const addCJKFontToDoc = pdfFontsModule.addCJKFontToDoc || pdfFontsModule.default?.addCJKFontToDoc;
+    const getCJKFontFamily = pdfFontsModule.getCJKFontFamily || pdfFontsModule.default?.getCJKFontFamily;
 
     const isLandscape = orientation === 'landscape';
     const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
     addCJKFontToDoc(doc);
+    const cjkFont = getCJKFontFamily?.() || undefined;
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -456,6 +460,7 @@ export async function GET(request) {
           lineColor: [160, 160, 160],
           lineWidth: 0.2,
           textColor: [0, 0, 0],
+          ...(cjkFont && { font: cjkFont }),
         },
         headStyles: {
           fillColor: [220, 210, 180],
@@ -463,6 +468,7 @@ export async function GET(request) {
           fontStyle: 'bold',
           halign: 'center',
           fontSize: tableFS,
+          ...(cjkFont && { font: cjkFont }),
         },
         alternateRowStyles: { fillColor: [252, 250, 245] },
         columnStyles,
