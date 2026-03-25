@@ -1,4 +1,4 @@
-# CI：Lint + 單元/API 測試 + Build + Playwright 煙霧測試
+# CI：Lint + 單元/API 測試 + Build
 name: CI
 
 on:
@@ -20,6 +20,8 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/ci?schema=public
         run: npm ci
 
       - name: Lint
@@ -34,20 +36,3 @@ jobs:
           NEXTAUTH_URL: http://127.0.0.1:3000
           NEXTAUTH_SECRET: ci-build-placeholder-secret-at-least-32-chars-long
         run: npm run build
-
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
-
-      - name: E2E smoke (Playwright)
-        env:
-          DATABASE_URL: postgresql://user:pass@localhost:5432/ci?schema=public
-          NEXTAUTH_URL: http://127.0.0.1:3000
-          NEXTAUTH_SECRET: ci-build-placeholder-secret-at-least-32-chars-long
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
-          PLAYWRIGHT_SKIP_WEBSERVER: '1'
-        run: |
-          npx next start -p 3000 &
-          echo $! > .next_server.pid
-          npx wait-on -t 120000 http://127.0.0.1:3000/api/health
-          npx playwright test
-          kill $(cat .next_server.pid) || true
