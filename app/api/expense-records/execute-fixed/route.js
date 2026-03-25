@@ -6,6 +6,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -246,17 +247,7 @@ export async function POST(request) {
               },
             });
 
-            const allTxForBalance = await tx.cashTransaction.findMany({ where: { accountId: accId } });
-            const account = await tx.cashAccount.findUnique({ where: { id: accId } });
-            let balance = Number(account.openingBalance);
-            for (const t of allTxForBalance) {
-              const amt = Number(t.amount);
-              const fee = Number(t.fee) || 0;
-              if (t.type === '收入' || t.type === '移轉入') balance += amt;
-              else balance -= amt;
-              if (fee > 0) balance -= fee;
-            }
-            await tx.cashAccount.update({ where: { id: accId }, data: { currentBalance: balance } });
+            await recalcBalance(tx, accId);
 
             await tx.cashierExecution.create({
               data: {

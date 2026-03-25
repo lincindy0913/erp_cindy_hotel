@@ -38,7 +38,7 @@ export const authOptions = {
 
         // Try database authentication first
         try {
-          const prisma = (await import('@/lib/db')).default;
+          const prisma = (await import('@/lib/prisma')).default;
           const user = await prisma.user.findUnique({
             where: { email: credentials.email },
             include: {

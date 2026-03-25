@@ -17,33 +17,40 @@ export async function GET() {
     const currentMonth = currentDate.getMonth() + 1;
     const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
-    // Core KPIs
-    const thisMonthPurchases = await prisma.purchaseMaster.findMany({
-      where: { purchaseDate: { startsWith: monthPrefix } },
-      select: { totalAmount: true },
-    });
+    // Core KPIs + cash — parallel batch
+    const sixMonthsLater = new Date();
+    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+    const todayStr = currentDate.toISOString().split('T')[0];
+
+    const [thisMonthPurchases, thisMonthSales, cashAccounts, overdueChecks, expiringLoans] = await Promise.all([
+      prisma.purchaseMaster.findMany({
+        where: { purchaseDate: { startsWith: monthPrefix } },
+        select: { totalAmount: true, supplierId: true },
+      }),
+      prisma.salesMaster.findMany({
+        where: { invoiceDate: { startsWith: monthPrefix } },
+        select: { totalAmount: true, id: true },
+      }),
+      prisma.cashAccount.findMany({
+        where: { isActive: true },
+        select: { currentBalance: true },
+      }),
+      prisma.check.count({
+        where: { status: 'due', dueDate: { lt: todayStr } },
+      }),
+      prisma.loanMaster.findMany({
+        where: { status: 'active', endDate: { lte: sixMonthsLater.toISOString().split('T')[0] } },
+        select: { loanName: true, endDate: true, currentBalance: true },
+      }),
+    ]);
+
     const purchaseTotal = thisMonthPurchases.reduce((sum, p) => sum + Number(p.totalAmount || 0), 0);
-
-    const thisMonthSales = await prisma.salesMaster.findMany({
-      where: { invoiceDate: { startsWith: monthPrefix } },
-      select: { totalAmount: true, id: true },
-    });
     const salesTotal = thisMonthSales.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0);
-
-    // Cash balance
-    const cashAccounts = await prisma.cashAccount.findMany({
-      where: { isActive: true },
-      select: { currentBalance: true },
-    });
     const totalCash = cashAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
 
-    // Supplier concentration analysis (spec16 v5)
-    const supplierPurchases = await prisma.purchaseMaster.findMany({
-      where: { purchaseDate: { startsWith: monthPrefix } },
-      select: { supplierId: true, totalAmount: true },
-    });
+    // Supplier concentration analysis (spec16 v5) — reuse thisMonthPurchases
     const supplierTotals = {};
-    supplierPurchases.forEach(p => {
+    thisMonthPurchases.forEach(p => {
       if (p.supplierId) {
         supplierTotals[p.supplierId] = (supplierTotals[p.supplierId] || 0) + Number(p.totalAmount || 0);
       }
@@ -57,11 +64,7 @@ export async function GET() {
     // Risk alerts
     const risks = [];
 
-    // Overdue checks
-    const todayStr = currentDate.toISOString().split('T')[0];
-    const overdueChecks = await prisma.check.count({
-      where: { status: 'due', dueDate: { lt: todayStr } },
-    });
+    // Overdue checks (already fetched in parallel batch above)
     if (overdueChecks > 0) {
       risks.push({
         type: 'check_overdue',
@@ -91,16 +94,7 @@ export async function GET() {
       });
     }
 
-    // Expiring loans
-    const sixMonthsLater = new Date();
-    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    const expiringLoans = await prisma.loanMaster.findMany({
-      where: {
-        status: 'active',
-        endDate: { lte: sixMonthsLater.toISOString().split('T')[0] },
-      },
-      select: { loanName: true, endDate: true, currentBalance: true },
-    });
+    // Expiring loans (already fetched in parallel batch above)
     if (expiringLoans.length > 0) {
       risks.push({
         type: 'loan_expiring',

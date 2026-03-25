@@ -252,6 +252,7 @@ model SalesDetail {
 
   @@index([salesId])
   @@index([purchaseItemId])
+  @@index([productId])                                         // year-end inventory groupBy
   @@map("sales_details")
 }
 
@@ -336,6 +337,7 @@ model PriceHistory {
   @@index([productId, supplierId])                           // spec24: 比價快取核心
   @@index([productId, warehouse, purchaseDate(sort: Desc)])  // spec24: 本館最近採購
   @@index([supplierId, purchaseDate])                        // spec24: 廠商採購分析
+  @@index([productId, supplierId, purchaseDate(sort: Desc)]) // voucher export batch price lookup
   @@map("price_history")
 }
 

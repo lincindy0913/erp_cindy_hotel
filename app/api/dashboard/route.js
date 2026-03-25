@@ -77,55 +77,58 @@ export async function GET(request) {
       grossProfitMargin = salesTotal > 0 ? ((grossProfit / salesTotal) * 100).toFixed(2) : 0;
     }
 
-    // Cash balance summary (spec7 v5)
-    const cashAccounts = await prisma.cashAccount.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, currentBalance: true, type: true, warehouse: true }
-    });
+    // Parallel batch: all independent dashboard queries
+    const sixMonthsLater = new Date();
+    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const [
+      cashAccounts,
+      lowInventoryCount,
+      thisMonthExpenses,
+      pendingExpenses,
+      pendingPayments,
+      recentSales,
+      recentPurchases,
+      recentExpenseRecords,
+      overdueChecks,
+      expiringLoans,
+    ] = await Promise.all([
+      prisma.cashAccount.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, currentBalance: true, type: true, warehouse: true }
+      }),
+      prisma.inventoryLowStockCache.count().catch(() =>
+        prisma.product.count({ where: { isInStock: true } })
+      ),
+      prisma.commonExpenseRecord.findMany({
+        where: { expenseMonth: monthPrefix, status: '已確認' },
+        select: { totalDebit: true }
+      }),
+      prisma.commonExpenseRecord.count({ where: { status: '待確認' } }),
+      prisma.paymentOrder.count({ where: { status: { in: ['pending', 'pending_cashier'] } } }),
+      prisma.salesMaster.findMany({
+        orderBy: { id: 'desc' }, take: 5,
+        select: { salesNo: true, invoiceDate: true, totalAmount: true, status: true }
+      }),
+      prisma.purchaseMaster.findMany({
+        orderBy: { id: 'desc' }, take: 5,
+        select: { purchaseNo: true, purchaseDate: true, totalAmount: true }
+      }),
+      prisma.commonExpenseRecord.findMany({
+        orderBy: { id: 'desc' }, take: 5,
+        select: { recordNo: true, expenseMonth: true, totalDebit: true, status: true, warehouse: true }
+      }),
+      prisma.check.count({
+        where: { status: 'due', dueDate: { lt: todayStr } }
+      }),
+      prisma.loanMaster.count({
+        where: { status: 'active', endDate: { lte: sixMonthsLater.toISOString().split('T')[0] } }
+      }),
+    ]);
+
     const totalCashBalance = cashAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
-
-    // Low inventory count (spec4 v3 - from cache if available)
-    let lowInventoryCount = 0;
-    try {
-      lowInventoryCount = await prisma.inventoryLowStockCache.count();
-    } catch {
-      lowInventoryCount = await prisma.product.count({ where: { isInStock: true } });
-    }
-
-    // Common expense total this month (confirmed only)
-    const thisMonthExpenses = await prisma.commonExpenseRecord.findMany({
-      where: { expenseMonth: monthPrefix, status: '已確認' },
-      select: { totalDebit: true }
-    });
     const expenseTotal = thisMonthExpenses.reduce((sum, e) => sum + Number(e.totalDebit || 0), 0);
-
-    // Pending expense records count
-    const pendingExpenses = await prisma.commonExpenseRecord.count({
-      where: { status: '待確認' }
-    });
-
-    // Pending payment orders count
-    const pendingPayments = await prisma.paymentOrder.count({
-      where: { status: { in: ['pending', 'pending_cashier'] } }
-    });
-
-    // Recent transactions
-    const recentSales = await prisma.salesMaster.findMany({
-      orderBy: { id: 'desc' },
-      take: 5,
-      select: { salesNo: true, invoiceDate: true, totalAmount: true, status: true }
-    });
-    const recentPurchases = await prisma.purchaseMaster.findMany({
-      orderBy: { id: 'desc' },
-      take: 5,
-      select: { purchaseNo: true, purchaseDate: true, totalAmount: true }
-    });
-
-    const recentExpenseRecords = await prisma.commonExpenseRecord.findMany({
-      orderBy: { id: 'desc' },
-      take: 5,
-      select: { recordNo: true, expenseMonth: true, totalDebit: true, status: true, warehouse: true }
-    });
 
     const recentTransactions = [
       ...recentSales.map(s => ({
@@ -141,21 +144,6 @@ export async function GET(request) {
         amount: Number(e.totalDebit || 0), status: e.status
       }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
-
-    // Risk alerts (spec7 v5 / spec16 v5)
-    const overdueChecks = await prisma.check.count({
-      where: { status: 'due', dueDate: { lt: new Date().toISOString().split('T')[0] } }
-    });
-
-    // Expiring loans (spec11)
-    const sixMonthsLater = new Date();
-    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    const expiringLoans = await prisma.loanMaster.count({
-      where: {
-        status: 'active',
-        endDate: { lte: sixMonthsLater.toISOString().split('T')[0] }
-      }
-    });
 
     const dashboardData = {
       kpis: {

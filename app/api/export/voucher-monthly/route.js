@@ -108,15 +108,31 @@ export async function GET(request) {
       }
     }
 
-    // Compute price notes
+    // Compute price notes — batch fetch all price histories in ONE query
     const priceNoteItems = [];
-    if (showPriceNote) {
+    if (showPriceNote && productMap.size > 0) {
+      const allProductIds = [...productMap.keys()];
+      const allHistory = await prisma.priceHistory.findMany({
+        where: {
+          productId: { in: allProductIds },
+          supplierId,
+          isSuperseded: false,
+          purchaseDate: { lt: monthStart }
+        },
+        orderBy: { purchaseDate: 'desc' },
+        select: { productId: true, unitPrice: true, purchaseDate: true }
+      });
+
+      // Group by productId and take top 3 per product
+      const historyByProduct = new Map();
+      for (const h of allHistory) {
+        if (!historyByProduct.has(h.productId)) historyByProduct.set(h.productId, []);
+        const arr = historyByProduct.get(h.productId);
+        if (arr.length < 3) arr.push(h);
+      }
+
       for (const [pid, entry] of productMap) {
-        const recentHistory = await prisma.priceHistory.findMany({
-          where: { productId: pid, supplierId, isSuperseded: false, purchaseDate: { lt: monthStart } },
-          orderBy: { purchaseDate: 'desc' },
-          take: 3
-        });
+        const recentHistory = historyByProduct.get(pid) || [];
         if (recentHistory.length === 0) continue;
         const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
         const currentPrice = entry.unitPrice;

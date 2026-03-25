@@ -119,20 +119,24 @@ export async function POST(request) {
         }
       });
 
+      // Batch fetch all sold quantities in ONE query instead of N+1
+      const productIds = inStockProducts.map(p => p.id);
+      const salesByProduct = productIds.length > 0
+        ? await prisma.salesDetail.groupBy({
+            by: ['productId'],
+            where: { productId: { in: productIds } },
+            _sum: { quantity: true }
+          })
+        : [];
+      const soldMap = new Map(salesByProduct.map(s => [s.productId, s._sum.quantity || 0]));
+
       const inventorySnapshots = [];
       for (const product of inStockProducts) {
-        // Calculate current quantity from purchase details
         const totalPurchased = product.purchaseDetails
           .filter(d => d.status === '已入庫')
           .reduce((sum, d) => sum + (d.quantity || 0), 0);
 
-        // Get sold quantity
-        const salesAgg = await prisma.salesDetail.aggregate({
-          where: { productId: product.id },
-          _sum: { quantity: true }
-        });
-        const totalSold = salesAgg._sum.quantity || 0;
-
+        const totalSold = soldMap.get(product.id) || 0;
         const currentQty = totalPurchased - totalSold;
         const costPrice = Number(product.costPrice);
         const isNegative = currentQty < 0;
@@ -191,15 +195,13 @@ export async function POST(request) {
         });
       }
 
-      // Update CashAccount opening balances to current balance (for next year)
-      for (const account of cashAccounts) {
-        await prisma.cashAccount.update({
+      // Update CashAccount opening balances to current balance (for next year) — parallel
+      await Promise.all(cashAccounts.map(account =>
+        prisma.cashAccount.update({
           where: { id: account.id },
-          data: {
-            openingBalance: account.currentBalance
-          }
-        });
-      }
+          data: { openingBalance: account.currentBalance }
+        })
+      ));
       completedSections.cashBalance = true;
 
       await prisma.yearEndRollover.update({
@@ -278,37 +280,49 @@ export async function POST(request) {
       // ======================================================
 
       // 6a. Income statement (損益表)
+      // Fetch all monthly data in 5 parallel queries instead of 60 sequential ones
+      const [salesRows, pmsRows, purchaseRows, expenseRows, deptRows] = await Promise.all([
+        prisma.salesMaster.findMany({
+          where: { invoiceDate: { gte: yearStart, lte: yearEndDate } },
+          select: { invoiceDate: true, totalAmount: true }
+        }),
+        prisma.pmsIncomeRecord.findMany({
+          where: { businessDate: { gte: yearStart, lte: yearEndDate }, entryType: '貸方' },
+          select: { businessDate: true, amount: true }
+        }),
+        prisma.purchaseMaster.findMany({
+          where: { purchaseDate: { gte: yearStart, lte: yearEndDate } },
+          select: { purchaseDate: true, totalAmount: true }
+        }),
+        prisma.expense.findMany({
+          where: { invoiceDate: { gte: yearStart, lte: yearEndDate } },
+          select: { invoiceDate: true, amount: true }
+        }),
+        prisma.departmentExpense.findMany({
+          where: { year },
+          select: { month: true, totalAmount: true }
+        }),
+      ]);
+
+      // Group by month in memory (much faster than 60 DB round trips)
+      const getMonth = (dateStr) => dateStr ? parseInt(dateStr.substring(5, 7)) : 0;
+      const monthlySales = Array(13).fill(0);
+      const monthlyPms = Array(13).fill(0);
+      const monthlyPurchase = Array(13).fill(0);
+      const monthlyExpense = Array(13).fill(0);
+      const monthlyDept = Array(13).fill(0);
+
+      for (const r of salesRows) monthlySales[getMonth(r.invoiceDate)] += Number(r.totalAmount || 0);
+      for (const r of pmsRows) monthlyPms[getMonth(r.businessDate)] += Number(r.amount || 0);
+      for (const r of purchaseRows) monthlyPurchase[getMonth(r.purchaseDate)] += Number(r.totalAmount || 0);
+      for (const r of expenseRows) monthlyExpense[getMonth(r.invoiceDate)] += Number(r.amount || 0);
+      for (const r of deptRows) monthlyDept[r.month || 0] += Number(r.totalAmount || 0);
+
       const salesByMonth = [];
       for (let m = 1; m <= 12; m++) {
-        const mStr = String(m).padStart(2, '0');
-        const mStart = `${year}-${mStr}-01`;
-        const mEnd = `${year}-${mStr}-31`;
-
-        const mSales = await prisma.salesMaster.aggregate({
-          where: { invoiceDate: { gte: mStart, lte: mEnd } },
-          _sum: { totalAmount: true }
-        });
-        const mPms = await prisma.pmsIncomeRecord.aggregate({
-          where: { businessDate: { gte: mStart, lte: mEnd }, entryType: '貸方' },
-          _sum: { amount: true }
-        });
-        const mPurchase = await prisma.purchaseMaster.aggregate({
-          where: { purchaseDate: { gte: mStart, lte: mEnd } },
-          _sum: { totalAmount: true }
-        });
-        const mExpense = await prisma.expense.aggregate({
-          where: { invoiceDate: { gte: mStart, lte: mEnd } },
-          _sum: { amount: true }
-        });
-        const mDept = await prisma.departmentExpense.aggregate({
-          where: { year, month: m },
-          _sum: { totalAmount: true }
-        });
-
-        const mRev = Number(mSales._sum.totalAmount || 0) + Number(mPms._sum.amount || 0);
-        const mCogs = Number(mPurchase._sum.totalAmount || 0);
-        const mExp = Number(mExpense._sum.amount || 0) + Number(mDept._sum.totalAmount || 0);
-
+        const mRev = monthlySales[m] + monthlyPms[m];
+        const mCogs = monthlyPurchase[m];
+        const mExp = monthlyExpense[m] + monthlyDept[m];
         salesByMonth.push({
           month: m,
           revenue: mRev,

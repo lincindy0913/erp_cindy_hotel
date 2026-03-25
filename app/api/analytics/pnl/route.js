@@ -22,23 +22,13 @@ export async function GET(request) {
     if (startDate) pmsDateFilter.gte = startDate;
     if (endDate) pmsDateFilter.lte = endDate;
 
-    // === Revenue: sum PmsIncomeRecord credits ===
+    // Build all where clauses first (with warehouse filter checks)
     const pmsWhere = { entryType: '貸方' };
     if (Object.keys(pmsDateFilter).length > 0) pmsWhere.businessDate = pmsDateFilter;
     if (warehouse) pmsWhere.warehouse = warehouse;
-
     const wf1 = applyWarehouseFilter(auth.session, pmsWhere);
     if (!wf1.ok) return wf1.response;
 
-    const pmsRecords = await prisma.pmsIncomeRecord.findMany({
-      where: pmsWhere,
-      take: 50000,
-      select: { businessDate: true, amount: true }
-    });
-
-    const revenue = pmsRecords.reduce((sum, r) => sum + Number(r.amount), 0);
-
-    // === COGS: sum PurchaseMaster.totalAmount (exclude voided) ===
     const purchaseWhere = { status: { notIn: ['已作廢', '已退貨'] } };
     if (startDate || endDate) {
       purchaseWhere.purchaseDate = {};
@@ -46,19 +36,9 @@ export async function GET(request) {
       if (endDate) purchaseWhere.purchaseDate.lte = endDate;
     }
     if (warehouse) purchaseWhere.warehouse = warehouse;
-
     const wf2 = applyWarehouseFilter(auth.session, purchaseWhere);
     if (!wf2.ok) return wf2.response;
 
-    const purchases = await prisma.purchaseMaster.findMany({
-      where: purchaseWhere,
-      take: 50000,
-      select: { purchaseDate: true, totalAmount: true }
-    });
-
-    const rawCogs = purchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
-
-    // === Purchase Allowances: deduct confirmed allowances from COGS ===
     const allowanceWhere = { status: '已確認' };
     if (startDate || endDate) {
       allowanceWhere.allowanceDate = {};
@@ -66,20 +46,9 @@ export async function GET(request) {
       if (endDate) allowanceWhere.allowanceDate.lte = endDate;
     }
     if (warehouse) allowanceWhere.warehouse = warehouse;
-
     const wf3 = applyWarehouseFilter(auth.session, allowanceWhere);
     if (!wf3.ok) return wf3.response;
 
-    const allowances = await prisma.purchaseAllowance.findMany({
-      where: allowanceWhere,
-      take: 10000,
-      select: { allowanceDate: true, totalAmount: true }
-    });
-
-    const totalAllowances = allowances.reduce((sum, a) => sum + Number(a.totalAmount), 0);
-    const cogs = rawCogs - totalAllowances;
-
-    // === Expenses: sum Expense.amount ===
     const expenseWhere = {};
     if (startDate || endDate) {
       expenseWhere.invoiceDate = {};
@@ -87,16 +56,33 @@ export async function GET(request) {
       if (endDate) expenseWhere.invoiceDate.lte = endDate;
     }
     if (warehouse) expenseWhere.warehouse = warehouse;
-
     const wf4 = applyWarehouseFilter(auth.session, expenseWhere);
     if (!wf4.ok) return wf4.response;
 
-    const expenses = await prisma.expense.findMany({
-      where: expenseWhere,
-      take: 50000,
-      select: { invoiceDate: true, amount: true }
-    });
+    // Execute all 4 queries in parallel
+    const [pmsRecords, purchases, allowances, expenses] = await Promise.all([
+      prisma.pmsIncomeRecord.findMany({
+        where: pmsWhere, take: 50000,
+        select: { businessDate: true, amount: true }
+      }),
+      prisma.purchaseMaster.findMany({
+        where: purchaseWhere, take: 50000,
+        select: { purchaseDate: true, totalAmount: true }
+      }),
+      prisma.purchaseAllowance.findMany({
+        where: allowanceWhere, take: 10000,
+        select: { allowanceDate: true, totalAmount: true }
+      }),
+      prisma.expense.findMany({
+        where: expenseWhere, take: 50000,
+        select: { invoiceDate: true, amount: true }
+      }),
+    ]);
 
+    const revenue = pmsRecords.reduce((sum, r) => sum + Number(r.amount), 0);
+    const rawCogs = purchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
+    const totalAllowances = allowances.reduce((sum, a) => sum + Number(a.totalAmount), 0);
+    const cogs = rawCogs - totalAllowances;
     const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
     // === Calculate summary ===
