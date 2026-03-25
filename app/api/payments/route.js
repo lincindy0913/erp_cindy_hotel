@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,62 +43,71 @@ export async function POST(request) {
     }
 
     const invoiceIds = data.invoiceIds.map(id => parseInt(id));
-
-    // 驗證已付款的發票
-    const allPayments = await prisma.payment.findMany({ select: { invoiceIds: true } });
-    const paidInvoiceIds = new Set();
-    allPayments.forEach(payment => {
-      const ids = payment.invoiceIds;
-      if (Array.isArray(ids)) {
-        ids.forEach(id => paidInvoiceIds.add(id));
-      }
-    });
-
-    for (const invoiceId of invoiceIds) {
-      const invoice = await prisma.salesMaster.findUnique({ where: { id: invoiceId } });
-      if (!invoice) {
-        return createErrorResponse('NOT_FOUND', `發票 ID ${invoiceId} 不存在`, 404);
-      }
-      if (paidInvoiceIds.has(invoiceId)) {
-        return createErrorResponse('VALIDATION_FAILED', `發票 ID ${invoiceId} 已付款`, 400);
-      }
-    }
-
-    // 計算總金額
-    let totalAmount = 0;
-    const invoices = await prisma.salesMaster.findMany({
-      where: { id: { in: invoiceIds } }
-    });
-    invoices.forEach(invoice => {
-      totalAmount += Number(invoice.totalAmount || 0);
-    });
-
     const discountAmount = data.discount ? parseFloat(data.discount) : 0;
-    const paymentAmount = data.amount ? parseFloat(data.amount) : (totalAmount - discountAmount);
 
-    // 產生付款單號
-    let paymentNo = data.paymentNo;
-    if (!paymentNo || paymentNo.trim() === '') {
-      const paymentDate = data.paymentDate || new Date().toISOString().split('T')[0];
-      const yearMonth = paymentDate.substring(0, 7).replace(/-/g, '');
-
-      const existingPayments = await prisma.payment.findMany({
-        where: { paymentNo: { startsWith: yearMonth } },
-        select: { paymentNo: true }
-      });
-
-      let maxSequence = 0;
-      existingPayments.forEach(p => {
-        const sequencePart = p.paymentNo.substring(6);
-        const sequence = parseInt(sequencePart) || 0;
-        if (sequence > maxSequence) maxSequence = sequence;
-      });
-
-      paymentNo = `${yearMonth}${String(maxSequence + 1).padStart(3, '0')}`;
-    }
-
-    // 使用交易建立付款和支出記錄
+    // 全部邏輯都在 $transaction 內，避免 race condition
     const result = await prisma.$transaction(async (tx) => {
+      // ── 關帳鎖定檢查 ──
+      const paymentDate = data.paymentDate || new Date().toISOString().split('T')[0];
+      await assertPeriodOpen(tx, paymentDate);
+
+      // ── 冪等檢查：同一組 invoiceIds 是否已有 Payment ──
+      const allPayments = await tx.payment.findMany({ select: { invoiceIds: true } });
+      const paidInvoiceIds = new Set();
+      allPayments.forEach(payment => {
+        const ids = payment.invoiceIds;
+        if (Array.isArray(ids)) {
+          ids.forEach(id => paidInvoiceIds.add(id));
+        }
+      });
+
+      // 驗證發票存在且尚未付款
+      for (const invoiceId of invoiceIds) {
+        const invoice = await tx.salesMaster.findUnique({ where: { id: invoiceId } });
+        if (!invoice) {
+          throw new Error(`NOT_FOUND:發票 ID ${invoiceId} 不存在`);
+        }
+        if (paidInvoiceIds.has(invoiceId)) {
+          throw new Error(`IDEMPOTENT:發票 ID ${invoiceId} 已付款`);
+        }
+        // 雙重保險：檢查發票狀態
+        if (invoice.status === '已核銷') {
+          throw new Error(`IDEMPOTENT:發票 ID ${invoiceId} 已核銷`);
+        }
+      }
+
+      // 計算總金額
+      const invoices = await tx.salesMaster.findMany({
+        where: { id: { in: invoiceIds } }
+      });
+      let totalAmount = 0;
+      invoices.forEach(invoice => {
+        totalAmount += Number(invoice.totalAmount || 0);
+      });
+
+      const paymentAmount = data.amount ? parseFloat(data.amount) : (totalAmount - discountAmount);
+
+      // 產生付款單號（在 transaction 內，確保序號不重複）
+      let paymentNo = data.paymentNo;
+      if (!paymentNo || paymentNo.trim() === '') {
+        const paymentDate = data.paymentDate || new Date().toISOString().split('T')[0];
+        const yearMonth = paymentDate.substring(0, 7).replace(/-/g, '');
+
+        const existingPayments = await tx.payment.findMany({
+          where: { paymentNo: { startsWith: yearMonth } },
+          select: { paymentNo: true }
+        });
+
+        let maxSequence = 0;
+        existingPayments.forEach(p => {
+          const sequencePart = p.paymentNo.substring(6);
+          const sequence = parseInt(sequencePart) || 0;
+          if (sequence > maxSequence) maxSequence = sequence;
+        });
+
+        paymentNo = `${yearMonth}${String(maxSequence + 1).padStart(3, '0')}`;
+      }
+
       const newPayment = await tx.payment.create({
         data: {
           paymentNo,
@@ -178,6 +188,8 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    return handleApiError(error);
+
+
+    return handleApiError(error, '/api/payments');
   }
 }

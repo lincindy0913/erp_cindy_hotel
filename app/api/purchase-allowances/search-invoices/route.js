@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 搜尋已付款的發票（供折讓選擇用）
 // 流程：發票(SalesMaster) → PaymentOrder(已執行) → 可折讓
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword') || '';
@@ -177,7 +182,7 @@ export async function GET(request) {
 
     return NextResponse.json(results);
   } catch (error) {
-    console.error('GET /api/purchase-allowances/search-invoices error:', error);
+    console.error('GET /api/purchase-allowances/search-invoices error:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -27,7 +27,7 @@ export async function GET(request, { params }) {
       }
     });
   } catch (error) {
-    console.error('下載合約錯誤:', error);
+    console.error('下載合約錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -50,7 +50,7 @@ export async function DELETE(request, { params }) {
     await prisma.supplierContract.delete({ where: { id: contractId } });
     return NextResponse.json({ message: '合約已刪除' });
   } catch (error) {
-    console.error('刪除合約錯誤:', error);
+    console.error('刪除合約錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

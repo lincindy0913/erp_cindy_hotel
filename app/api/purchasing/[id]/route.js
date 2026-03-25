@@ -3,7 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
@@ -18,32 +20,40 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '進貨單不存在', 404);
     }
 
-    await prisma.purchaseDetail.deleteMany({ where: { purchaseId: id } });
+    const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+    if (!wa.ok) return wa.response;
 
-    const updated = await prisma.purchaseMaster.update({
-      where: { id },
-      data: {
-        warehouse: data.warehouse || '',
-        department: data.department || '',
-        supplierId: parseInt(data.supplierId),
-        purchaseDate: data.purchaseDate,
-        paymentTerms: data.paymentTerms || '月結',
-        status: data.status,
-        amount: parseFloat(data.amount || 0),
-        tax: 0,
-        totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : parseFloat(data.amount || 0),
-        details: {
-          create: (data.items || []).map(item => ({
-            productId: parseInt(item.productId),
-            quantity: parseInt(item.quantity),
-            unitPrice: parseFloat(item.unitPrice),
-            note: item.note || '',
-            status: item.status || '待入庫',
-            inventoryWarehouse: item.inventoryWarehouse || null
-          }))
-        }
-      },
-      include: { details: true }
+    const updated = await prisma.$transaction(async (tx) => {
+      const record = await tx.purchaseMaster.findUnique({ where: { id } });
+      await assertPeriodOpen(tx, record.purchaseDate, record.warehouse);
+
+      await tx.purchaseDetail.deleteMany({ where: { purchaseId: id } });
+
+      return await tx.purchaseMaster.update({
+        where: { id },
+        data: {
+          warehouse: data.warehouse || '',
+          department: data.department || '',
+          supplierId: parseInt(data.supplierId),
+          purchaseDate: data.purchaseDate,
+          paymentTerms: data.paymentTerms || '月結',
+          status: data.status,
+          amount: parseFloat(data.amount || 0),
+          tax: 0,
+          totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : parseFloat(data.amount || 0),
+          details: {
+            create: (data.items || []).map(item => ({
+              productId: parseInt(item.productId),
+              quantity: parseInt(item.quantity),
+              unitPrice: parseFloat(item.unitPrice),
+              note: item.note || '',
+              status: item.status || '待入庫',
+              inventoryWarehouse: item.inventoryWarehouse || null
+            }))
+          }
+        },
+        include: { details: true }
+      });
     });
 
     const result = {
@@ -99,7 +109,15 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('NOT_FOUND', '進貨單不存在', 404);
     }
 
-    await prisma.purchaseMaster.delete({ where: { id } });
+    const waDel = assertWarehouseAccess(auth.session, existing.warehouse);
+    if (!waDel.ok) return waDel.response;
+
+    await prisma.$transaction(async (tx) => {
+      const record = await tx.purchaseMaster.findUnique({ where: { id } });
+      await assertPeriodOpen(tx, record.purchaseDate, record.warehouse);
+
+      await tx.purchaseMaster.delete({ where: { id } });
+    });
 
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.PURCHASE_DELETE,

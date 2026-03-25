@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getAllowedAccountIds } from '@/lib/warehouse-access';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
@@ -52,6 +53,18 @@ export async function GET(request) {
 
     if (countYear) where.countYear = parseInt(countYear);
     if (countMonth) where.countMonth = parseInt(countMonth);
+
+    // Warehouse-level access control via account
+    const allowedIds = await getAllowedAccountIds(prisma, auth.session);
+    if (allowedIds !== null) {
+      if (where.accountId) {
+        if (!allowedIds.includes(where.accountId)) {
+          return NextResponse.json([]);
+        }
+      } else {
+        where.accountId = { in: allowedIds };
+      }
+    }
 
     // Date range filter on countDate (stored as string YYYY-MM-DD)
     if (startDate && endDate) {

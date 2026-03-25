@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,12 @@ export async function GET(request, { params }) {
 
     if (!reconciliation) {
       return createErrorResponse('NOT_FOUND', '對帳記錄不存在', 404);
+    }
+
+    // Warehouse-level access via account
+    if (reconciliation.account?.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, reconciliation.account.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     // Also get all bank statement lines for this account/month (could be from multiple imports)
@@ -105,11 +112,17 @@ export async function PUT(request, { params }) {
     const { action } = data;
 
     const reconciliation = await prisma.bankReconciliation.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id) },
+      include: { account: { select: { warehouse: true } } }
     });
 
     if (!reconciliation) {
       return createErrorResponse('NOT_FOUND', '對帳記錄不存在', 404);
+    }
+
+    if (reconciliation.account?.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, reconciliation.account.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     if (action === 'update_bank_balance') {
@@ -199,11 +212,17 @@ export async function DELETE(request, { params }) {
     const { id } = params;
 
     const reconciliation = await prisma.bankReconciliation.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id) },
+      include: { account: { select: { warehouse: true } } }
     });
 
     if (!reconciliation) {
       return createErrorResponse('NOT_FOUND', '對帳記錄不存在', 404);
+    }
+
+    if (reconciliation.account?.warehouse) {
+      const waDel = assertWarehouseAccess(auth.session, reconciliation.account.warehouse);
+      if (!waDel.ok) return waDel.response;
     }
 
     if (reconciliation.status !== 'draft') {

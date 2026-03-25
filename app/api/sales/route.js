@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,7 +74,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('查詢銷貨單錯誤:', error);
+    console.error('查詢銷貨單錯誤:', error.message || error);
     return NextResponse.json([]);
   }
 }
@@ -96,36 +97,43 @@ export async function POST(request) {
     });
     const salesNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
 
-    const newInvoice = await prisma.salesMaster.create({
-      data: {
-        salesNo,
-        invoiceNo: data.invoiceNo,
-        invoiceDate: data.invoiceDate || new Date().toISOString().split('T')[0],
-        invoiceTitle: data.invoiceTitle || null,
-        taxType: data.taxType || null,
-        invoiceAmount: data.invoiceAmount ? parseFloat(data.invoiceAmount) : null,
-        supplierDiscount: data.supplierDiscount ? parseFloat(data.supplierDiscount) : 0,
-        amount: parseFloat(data.amount || 0),
-        tax: parseFloat(data.tax || 0),
-        totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)),
-        status: data.status || '待核銷',
-        details: {
-          create: (data.items || []).map(item => ({
-            purchaseItemId: item.purchaseItemId || '',
-            purchaseId: item.purchaseId ? parseInt(item.purchaseId) : null,
-            purchaseNo: item.purchaseNo || null,
-            purchaseDate: item.purchaseDate || null,
-            warehouse: item.warehouse || null,
-            supplierId: item.supplierId ? parseInt(item.supplierId) : null,
-            productId: item.productId ? parseInt(item.productId) : null,
-            quantity: item.quantity ? parseInt(item.quantity) : null,
-            unitPrice: item.unitPrice ? parseFloat(item.unitPrice) : null,
-            note: item.note || null,
-            subtotal: item.subtotal ? parseFloat(item.subtotal) : null
-          }))
-        }
-      },
-      include: { details: true }
+    const invoiceDate = data.invoiceDate || new Date().toISOString().split('T')[0];
+    const warehouse = data.warehouse || (data.items && data.items[0] && data.items[0].warehouse) || undefined;
+
+    const newInvoice = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, invoiceDate, warehouse);
+
+      return tx.salesMaster.create({
+        data: {
+          salesNo,
+          invoiceNo: data.invoiceNo,
+          invoiceDate,
+          invoiceTitle: data.invoiceTitle || null,
+          taxType: data.taxType || null,
+          invoiceAmount: data.invoiceAmount ? parseFloat(data.invoiceAmount) : null,
+          supplierDiscount: data.supplierDiscount ? parseFloat(data.supplierDiscount) : 0,
+          amount: parseFloat(data.amount || 0),
+          tax: parseFloat(data.tax || 0),
+          totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)),
+          status: data.status || '待核銷',
+          details: {
+            create: (data.items || []).map(item => ({
+              purchaseItemId: item.purchaseItemId || '',
+              purchaseId: item.purchaseId ? parseInt(item.purchaseId) : null,
+              purchaseNo: item.purchaseNo || null,
+              purchaseDate: item.purchaseDate || null,
+              warehouse: item.warehouse || null,
+              supplierId: item.supplierId ? parseInt(item.supplierId) : null,
+              productId: item.productId ? parseInt(item.productId) : null,
+              quantity: item.quantity ? parseInt(item.quantity) : null,
+              unitPrice: item.unitPrice ? parseFloat(item.unitPrice) : null,
+              note: item.note || null,
+              subtotal: item.subtotal ? parseFloat(item.subtotal) : null
+            }))
+          }
+        },
+        include: { details: true }
+      });
     });
 
     const result = {
@@ -160,7 +168,7 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    console.error('建立發票錯誤:', error);
+    console.error('建立發票錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

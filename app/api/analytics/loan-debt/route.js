@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,11 +13,17 @@ export async function GET() {
   
   try {
     // Get all active loans
+    const loanWhere = { status: '使用中' };
+    const wf = applyWarehouseFilter(auth.session, loanWhere);
+    if (!wf.ok) return wf.response;
+
     const loans = await prisma.loanMaster.findMany({
-      where: { status: '使用中' },
+      where: loanWhere,
+      take: 1000,
       include: {
         monthlyRecords: {
-          orderBy: [{ recordYear: 'asc' }, { recordMonth: 'asc' }]
+          orderBy: [{ recordYear: 'asc' }, { recordMonth: 'asc' }],
+          take: 120
         }
       }
     });

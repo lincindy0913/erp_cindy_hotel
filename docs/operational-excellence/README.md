@@ -8,7 +8,8 @@
 | [disaster-recovery.md](./disaster-recovery.md) | RTO/RPO、聯絡人、災難宣告流程 |
 | [async-jobs-retries-alerts.md](./async-jobs-retries-alerts.md) | 通知/排程/第三方 API：佇列、重試、死信、告警 |
 | [uat-regression-checklist.md](./uat-regression-checklist.md) | 上線前 UAT 與煙霧測試清單 |
-| [release-process.md](./release-process.md) | 分支、Staging、CI、回滾 |
+| [release-process.md](./release-process.md) | **測試→預備→正式**、關卡、Railway 雙環境、GitHub 審批 |
+| [change-approval-template.md](./change-approval-template.md) | 變更審批／上線申請單範本 |
 | [report-traceability.md](./report-traceability.md) | 報表數字鑽取至單據/分錄的設計要點 |
 
 ## 專案內已提供的自動化

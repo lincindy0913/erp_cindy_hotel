@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,9 +43,16 @@ export async function PUT(request, { params }) {
     if (data.accountingName !== undefined) updateData.accountingName = data.accountingName;
     if (data.note !== undefined) updateData.note = data.note || null;
 
-    const updated = await prisma.pmsIncomeRecord.update({
-      where: { id },
-      data: updateData
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.pmsIncomeRecord.findUnique({ where: { id } });
+      if (current) {
+        await assertPeriodOpen(tx, current.businessDate, current.warehouse || undefined);
+      }
+
+      return tx.pmsIncomeRecord.update({
+        where: { id },
+        data: updateData
+      });
     });
 
     return NextResponse.json({
@@ -72,7 +80,10 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('NOT_FOUND', '記錄不存在', 404);
     }
 
-    await prisma.pmsIncomeRecord.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, existing.businessDate, existing.warehouse || undefined);
+      await tx.pmsIncomeRecord.delete({ where: { id } });
+    });
 
     return NextResponse.json({ success: true, message: '記錄已刪除' });
   } catch (error) {

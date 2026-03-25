@@ -12,6 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 
+# Run as non-root user for security
+RUN groupadd --system appgroup && useradd --system --gid appgroup appuser
+USER appuser
+
 EXPOSE 5001
 
 # Railway injects $PORT dynamically; fall back to 5001 for local Docker Compose

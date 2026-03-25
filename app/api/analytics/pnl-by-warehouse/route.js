@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getPnlSubjectMeta, getPnlSubjectKey, buildPnlCashflowWhere } from '@/lib/pnl-by-warehouse-shared';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +29,12 @@ export async function GET(request) {
 
     const where = buildPnlCashflowWhere(startDate, endDate, warehouse);
 
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const transactions = await prisma.cashTransaction.findMany({
       where,
+      take: 50000,
       select: {
         warehouse: true,
         type: true,

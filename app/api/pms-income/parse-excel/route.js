@@ -353,7 +353,7 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.error('[pms-income/parse-excel]', error);
+    console.error('[pms-income/parse-excel]', error.message || error);
     return handleApiError(error);
   }
 }

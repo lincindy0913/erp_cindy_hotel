@@ -1,39 +1,21 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../auth/[...nextauth]/route';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function POST(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return createErrorResponse('UNAUTHORIZED', '未登入', 401);
-    }
+    const auth = await requirePermission(PERMISSIONS.CASHFLOW_EDIT);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const id = parseInt(params.id);
     const body = await request.json();
@@ -67,7 +49,7 @@ export async function POST(request, { params }) {
       }
 
       // Generate new transaction number
-      const txNo = await generateTransactionNo(tx, original.transactionDate);
+      const txNo = await nextCashTransactionNo(tx, original.transactionDate);
 
       // Create reversal transaction with opposite type
       const reversalTx = await tx.cashTransaction.create({
@@ -135,18 +117,9 @@ export async function POST(request, { params }) {
       updatedAt: result.updatedAt.toISOString(),
     });
   } catch (error) {
-    if (error.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('TRANSACTION_CONFIRMED_IMMUTABLE', error.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (error.message?.startsWith('NOT_FOUND:')) {
-      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
-    }
-    if (error.message?.startsWith('VALIDATION:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('VALIDATION:', ''), 400);
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
+
+
+
     return handleApiError(error);
   }
 }

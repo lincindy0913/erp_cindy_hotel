@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,12 @@ export async function GET() {
     const auth = await requirePermission(PERMISSIONS.CASHFLOW_VIEW);
     if (!auth.ok) return auth.response;
 
+    const where = {};
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const accounts = await prisma.cashAccount.findMany({
+      where,
       orderBy: [{ warehouse: 'asc' }, { type: 'asc' }, { name: 'asc' }]
     });
 

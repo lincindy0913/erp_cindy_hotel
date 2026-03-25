@@ -3,8 +3,58 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireModuleViewPermission, requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
+
+// Resolve warehouse from source record to enforce warehouse-level access control
+const SOURCE_MODULE_MAP = {
+  purchasing: { model: 'purchaseMaster', field: 'warehouse' },
+  payment_order: { model: 'paymentOrder', field: 'warehouse' },
+  expense: { model: 'expenseRecord', field: 'warehouse' },
+  check: { model: 'check', field: 'warehouse' },
+  cashier: { model: 'cashierExecution', field: null }, // no direct warehouse
+  engineering_contract: { model: 'engineeringContract', field: 'warehouse' },
+  rental: { model: 'rentalContract', field: 'warehouse' },
+};
+
+async function checkSourceWarehouseAccess(session, sourceModule, sourceRecordId) {
+  const mapping = SOURCE_MODULE_MAP[sourceModule];
+  if (!mapping || !mapping.field) return { ok: true }; // no warehouse field — skip
+
+  try {
+    const record = await prisma[mapping.model]?.findUnique({
+      where: { id: sourceRecordId },
+      select: { [mapping.field]: true },
+    });
+    if (!record) return { ok: true }; // record not found — module-level auth already checked
+    return assertWarehouseAccess(session, record[mapping.field]);
+  } catch {
+    return { ok: true }; // best effort — don't block on lookup failures
+  }
+}
 
 export const dynamic = 'force-dynamic';
+
+// Magic bytes validation — checks file header matches declared MIME type
+function validateMagicBytes(buffer, mimeType) {
+  if (buffer.length < 4) return false;
+
+  const signatures = {
+    'application/pdf':  [[0x25, 0x50, 0x44, 0x46]],                   // %PDF
+    'image/jpeg':       [[0xFF, 0xD8, 0xFF]],                          // JFIF/EXIF
+    'image/png':        [[0x89, 0x50, 0x4E, 0x47]],                   // .PNG
+    'image/webp':       [[0x52, 0x49, 0x46, 0x46]],                   // RIFF (WebP container)
+    'application/msword': [[0xD0, 0xCF, 0x11, 0xE0]],                 // OLE compound
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [[0x50, 0x4B, 0x03, 0x04]], // ZIP (OOXML)
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [[0x50, 0x4B, 0x03, 0x04]],       // ZIP (OOXML)
+  };
+
+  const sigs = signatures[mimeType];
+  if (!sigs) return true; // No signature defined (e.g. text/csv) — allow
+
+  return sigs.some(sig =>
+    sig.every((byte, i) => buffer[i] === byte)
+  );
+}
 
 // GET - list attachments by sourceModule + sourceRecordId
 export async function GET(request) {
@@ -23,6 +73,10 @@ export async function GET(request) {
 
     const auth = await requireModuleViewPermission(sourceModule);
     if (!auth.ok) return auth.response;
+
+    // Warehouse-level access control on source record
+    const warehouseCheck = await checkSourceWarehouseAccess(auth.session, sourceModule, parsedSourceRecordId);
+    if (!warehouseCheck.ok) return warehouseCheck.response;
 
     const attachments = await prisma.attachment.findMany({
       where: {
@@ -67,6 +121,10 @@ export async function POST(request) {
     const moduleAuth = await requireModuleViewPermission(sourceModule);
     if (!moduleAuth.ok) return moduleAuth.response;
 
+    // Warehouse-level access control on source record
+    const warehouseCheck = await checkSourceWarehouseAccess(uploadAuth.session, sourceModule, parsedSourceRecordId);
+    if (!warehouseCheck.ok) return warehouseCheck.response;
+
     // Validate file size (10MB)
     const MAX_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
@@ -86,6 +144,11 @@ export async function POST(request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Validate file content via magic bytes (prevent MIME type spoofing)
+    if (!validateMagicBytes(buffer, file.type)) {
+      return createErrorResponse('VALIDATION_FAILED', '檔案內容與宣告格式不符，疑似偽造檔案', 400);
+    }
 
     const attachment = await prisma.attachment.create({
       data: {

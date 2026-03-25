@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,9 @@ export async function POST(request) {
       if (!bounced) throw new Error('NOT_FOUND:找不到該支票');
       if (bounced.status !== 'bounced') throw new Error('IDEMPOTENT:僅能對已退票的支票重新開票');
       if (bounced.checkType !== 'payable') throw new Error('VALIDATION:僅支援應付支票重新開票');
+
+      // Period lock check — new check dueDate is todayStr
+      await assertPeriodOpen(tx, todayStr, bounced.warehouse);
 
       // 是否已重新開票過
       const existingReissue = await tx.check.findFirst({
@@ -152,15 +156,6 @@ export async function POST(request) {
       message: '已建立重新開票之付款單，請至出納執行付款後，新支票將顯示於支票管理並可標記為已兌現。',
     }, { status: 201 });
   } catch (e) {
-    if (e.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('VALIDATION_FAILED', e.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (e.message?.startsWith('NOT_FOUND:')) {
-      return createErrorResponse('NOT_FOUND', e.message.replace('NOT_FOUND:', ''), 404);
-    }
-    if (e.message?.startsWith('VALIDATION:')) {
-      return createErrorResponse('VALIDATION_FAILED', e.message.replace('VALIDATION:', ''), 400);
-    }
-    return handleApiError(e);
+    return handleApiError(e, '/api/checks/reissue');
   }
 }

@@ -89,8 +89,18 @@ export async function DELETE(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id 參數', 400);
     }
 
+    const parsedId = parseInt(id);
+
+    // Check referential integrity before deleting
+    const refCount = await prisma.cashCategory.count({
+      where: { accountingSubjectId: parsedId }
+    });
+    if (refCount > 0) {
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此會計科目已被 ${refCount} 筆現金分類引用，無法刪除`, 400);
+    }
+
     await prisma.accountingSubject.delete({
-      where: { id: parseInt(id) }
+      where: { id: parsedId }
     });
 
     return NextResponse.json({ message: '刪除成功' });

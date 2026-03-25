@@ -116,7 +116,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error('PUT /api/rentals/maintenance/[id] error:', error);
+    console.error('PUT /api/rentals/maintenance/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -153,7 +153,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ message: '已刪除' });
   } catch (error) {
-    console.error('DELETE /api/rentals/maintenance/[id] error:', error);
+    console.error('DELETE /api/rentals/maintenance/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -62,7 +62,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('GET /api/rentals/tenants error:', error);
+    console.error('GET /api/rentals/tenants error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -113,7 +113,7 @@ export async function POST(request) {
 
     return NextResponse.json(tenant, { status: 201 });
   } catch (error) {
-    console.error('POST /api/rentals/tenants error:', error);
+    console.error('POST /api/rentals/tenants error:', error.message || error);
     return handleApiError(error);
   }
 }

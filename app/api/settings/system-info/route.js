@@ -44,7 +44,7 @@ export async function GET() {
       loanCount,
     });
   } catch (error) {
-    console.error('查詢系統資訊錯誤:', error);
+    console.error('查詢系統資訊錯誤:', error.message || error);
     return NextResponse.json({
       version: '2.0.0',
       dbStatus: '連線異常',

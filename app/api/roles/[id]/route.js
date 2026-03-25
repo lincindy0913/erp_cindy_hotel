@@ -34,7 +34,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(updated);
   } catch (error) {
-    console.error('更新角色錯誤:', error);
+    console.error('更新角色錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -66,7 +66,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ message: '角色已刪除' });
   } catch (error) {
-    console.error('刪除角色錯誤:', error);
+    console.error('刪除角色錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

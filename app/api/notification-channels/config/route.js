@@ -1,21 +1,22 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { encryptField, decryptFields } from '@/lib/field-encryption';
+
+const SENSITIVE_FIELDS = ['smtpPassword', 'lineBotChannelSecret', 'lineBotAccessToken'];
 
 export const dynamic = 'force-dynamic';
 
 // GET - Get SystemNotificationConfig (SMTP settings, LINE settings)
 export async function GET(request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_VIEW);
+  if (!auth.ok) return auth.response;
 
+  try {
     // Only admin can view full config; regular users get status only
-    const isAdmin = session.user.role === 'admin';
+    const isAdmin = auth.session.user.role === 'admin';
 
     let config = await prisma.systemNotificationConfig.findFirst();
 
@@ -30,13 +31,16 @@ export async function GET(request) {
       });
     }
 
+    // Decrypt sensitive fields for existence checks (values are masked in response)
+    const decrypted = decryptFields(config, SENSITIVE_FIELDS);
+
     if (!isAdmin) {
       // Non-admin users only see enabled status (no credentials)
       return NextResponse.json({
         emailEnabled: config.smtpEnabled,
         emailConfigured: !!(config.smtpHost && config.smtpUser && config.smtpFromEmail),
         lineEnabled: config.lineBotEnabled,
-        lineConfigured: !!(config.lineBotChannelId && config.lineBotAccessToken),
+        lineConfigured: !!(config.lineBotChannelId && decrypted.lineBotAccessToken),
       });
     }
 
@@ -48,15 +52,15 @@ export async function GET(request) {
       smtpHost: config.smtpHost || '',
       smtpPort: config.smtpPort || 587,
       smtpUser: config.smtpUser || '',
-      smtpPassword: config.smtpPassword ? '********' : '', // masked
+      smtpPassword: decrypted.smtpPassword ? '********' : '', // masked
       smtpUseTls: config.smtpUseTls,
       smtpFromName: config.smtpFromName || '',
       smtpFromEmail: config.smtpFromEmail || '',
       // LINE Bot settings
       lineBotEnabled: config.lineBotEnabled,
       lineBotChannelId: config.lineBotChannelId || '',
-      lineBotChannelSecret: config.lineBotChannelSecret ? '********' : '', // masked
-      lineBotAccessToken: config.lineBotAccessToken ? '********' : '', // masked
+      lineBotChannelSecret: decrypted.lineBotChannelSecret ? '********' : '', // masked
+      lineBotAccessToken: decrypted.lineBotAccessToken ? '********' : '', // masked
       lineBotName: config.lineBotName || '',
       // Meta
       updatedAt: config.updatedAt,
@@ -68,16 +72,11 @@ export async function GET(request) {
 
 // PUT - Update SystemNotificationConfig (admin only)
 export async function PUT(request) {
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  if (!auth.ok) return auth.response;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
-
-    if (session.user.role !== 'admin') {
-      return createErrorResponse('FORBIDDEN', '僅管理員可修改系統通知渠道設定', 403);
-    }
-
+    const session = auth.session;
     const data = await request.json();
 
     // Find existing config or create
@@ -92,9 +91,9 @@ export async function PUT(request) {
     if (data.smtpHost !== undefined) updateData.smtpHost = data.smtpHost?.trim() || null;
     if (data.smtpPort !== undefined) updateData.smtpPort = data.smtpPort ? parseInt(data.smtpPort) : null;
     if (data.smtpUser !== undefined) updateData.smtpUser = data.smtpUser?.trim() || null;
-    // Only update password if not masked placeholder
+    // Only update password if not masked placeholder — encrypt before storing
     if (data.smtpPassword !== undefined && data.smtpPassword !== '********') {
-      updateData.smtpPassword = data.smtpPassword || null;
+      updateData.smtpPassword = data.smtpPassword ? encryptField(data.smtpPassword) : null;
     }
     if (data.smtpUseTls !== undefined) updateData.smtpUseTls = Boolean(data.smtpUseTls);
     if (data.smtpFromName !== undefined) updateData.smtpFromName = data.smtpFromName?.trim() || null;
@@ -104,10 +103,10 @@ export async function PUT(request) {
     if (data.lineBotEnabled !== undefined) updateData.lineBotEnabled = Boolean(data.lineBotEnabled);
     if (data.lineBotChannelId !== undefined) updateData.lineBotChannelId = data.lineBotChannelId?.trim() || null;
     if (data.lineBotChannelSecret !== undefined && data.lineBotChannelSecret !== '********') {
-      updateData.lineBotChannelSecret = data.lineBotChannelSecret || null;
+      updateData.lineBotChannelSecret = data.lineBotChannelSecret ? encryptField(data.lineBotChannelSecret) : null;
     }
     if (data.lineBotAccessToken !== undefined && data.lineBotAccessToken !== '********') {
-      updateData.lineBotAccessToken = data.lineBotAccessToken || null;
+      updateData.lineBotAccessToken = data.lineBotAccessToken ? encryptField(data.lineBotAccessToken) : null;
     }
     if (data.lineBotName !== undefined) updateData.lineBotName = data.lineBotName?.trim() || null;
 
@@ -175,7 +174,7 @@ export async function PUT(request) {
       console.error('Audit log error:', auditError);
     }
 
-    // Return masked response
+    // Return masked response (encrypted fields are truthy, so mask check still works)
     return NextResponse.json({
       id: result.id,
       smtpEnabled: result.smtpEnabled,

@@ -41,7 +41,7 @@ export async function GET(request) {
     const where = conditions.length > 0 ? { AND: conditions } : {};
 
     if (all || activeOnly) {
-      const suppliers = await prisma.supplier.findMany({ where, orderBy: { id: 'asc' } });
+      const suppliers = await prisma.supplier.findMany({ where, orderBy: { id: 'asc' }, take: 5000 });
       return NextResponse.json(suppliers);
     }
 
@@ -55,7 +55,7 @@ export async function GET(request) {
       pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) }
     });
   } catch (error) {
-    console.error('查詢廠商錯誤:', error);
+    console.error('查詢廠商錯誤:', error.message || error);
     return NextResponse.json([]);
   }
 }
@@ -96,7 +96,7 @@ export async function POST(request) {
 
     return NextResponse.json(newSupplier, { status: 201 });
   } catch (error) {
-    console.error('建立廠商錯誤:', error);
+    console.error('建立廠商錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

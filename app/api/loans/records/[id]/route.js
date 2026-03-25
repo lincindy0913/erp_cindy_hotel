@@ -4,29 +4,13 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryIdByCode } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.LOAN_CONFIRM);
@@ -45,6 +29,11 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '還款記錄不存在', 404);
     }
 
+    if (existing.loan?.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, existing.loan.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
     // Step 2: 核實 (Confirm actual amounts)
     if (data.actualPrincipal !== undefined && data.actualInterest !== undefined) {
       const actualPrincipal = parseFloat(data.actualPrincipal);
@@ -55,8 +44,8 @@ export async function PUT(request, { params }) {
 
       const result = await prisma.$transaction(async (tx) => {
         // Generate transaction numbers for principal and interest
-        const principalTxNo = await generateTransactionNo(tx, today);
-        const interestTxNo = await generateTransactionNo(tx, today);
+        const principalTxNo = await nextCashTransactionNo(tx, today);
+        const interestTxNo = await nextCashTransactionNo(tx, today);
         // Ensure unique: if same prefix, increment
         const finalInterestTxNo = interestTxNo === principalTxNo
           ? principalTxNo.replace(/(\d{4})$/, (m) => String(parseInt(m) + 1).padStart(4, '0'))
@@ -206,6 +195,11 @@ export async function DELETE(request, { params }) {
 
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '還款記錄不存在', 404);
+    }
+
+    if (existing.loan?.warehouse) {
+      const waDel = assertWarehouseAccess(auth.session, existing.loan.warehouse);
+      if (!waDel.ok) return waDel.response;
     }
 
     if (existing.status === '暫估') {

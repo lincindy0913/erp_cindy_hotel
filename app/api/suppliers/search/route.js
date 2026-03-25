@@ -59,7 +59,7 @@ export async function GET(request) {
       throw innerError;
     }
   } catch (error) {
-    console.error('搜尋廠商錯誤:', error);
+    console.error('搜尋廠商錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

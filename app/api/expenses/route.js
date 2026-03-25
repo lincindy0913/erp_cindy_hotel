@@ -3,7 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +14,13 @@ export async function GET(request) {
   if (!auth.ok) return auth.response;
   
   try {
+    const where = {};
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const expenses = await prisma.expense.findMany({
+      where,
       orderBy: { id: 'asc' }
     });
 
@@ -47,19 +55,23 @@ export async function POST(request) {
     const supErr = await validateSupplier(data.supplierName);
     if (supErr) return createErrorResponse('VALIDATION_FAILED', supErr, 400);
 
-    const newExpense = await prisma.expense.create({
-      data: {
-        invoiceId: parseInt(data.invoiceId),
-        invoiceNo: data.invoiceNo,
-        invoiceDate: data.invoiceDate || '',
-        amount: parseFloat(data.amount),
-        actualPaymentDate: '',
-        actualPaymentAmount: 0,
-        status: '未完成',
-        supplierId: data.supplierId ? parseInt(data.supplierId) : null,
-        supplierName: data.supplierName || '',
-        warehouse: data.warehouse || ''
-      }
+    const newExpense = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, data.invoiceDate, data.warehouse);
+
+      return tx.expense.create({
+        data: {
+          invoiceId: parseInt(data.invoiceId),
+          invoiceNo: data.invoiceNo,
+          invoiceDate: data.invoiceDate || '',
+          amount: parseFloat(data.amount),
+          actualPaymentDate: '',
+          actualPaymentAmount: 0,
+          status: '未完成',
+          supplierId: data.supplierId ? parseInt(data.supplierId) : null,
+          supplierName: data.supplierName || '',
+          warehouse: data.warehouse || ''
+        }
+      });
     });
 
     return NextResponse.json({

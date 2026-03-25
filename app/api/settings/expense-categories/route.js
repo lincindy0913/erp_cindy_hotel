@@ -17,7 +17,7 @@ export async function GET() {
     });
     return NextResponse.json(categories);
   } catch (error) {
-    console.error('查詢費用分類錯誤:', error);
+    console.error('查詢費用分類錯誤:', error.message || error);
     return NextResponse.json([], { status: 500 });
   }
 }
@@ -40,10 +40,6 @@ export async function POST(request) {
     });
     return NextResponse.json(category, { status: 201 });
   } catch (error) {
-    if (error.code === 'P2002') {
-      return createErrorResponse('CONFLICT_UNIQUE', '分類名稱已存在', 409);
-    }
-    console.error('新增費用分類錯誤:', error);
     return handleApiError(error);
   }
 }
@@ -68,7 +64,7 @@ export async function PUT(request) {
     });
     return NextResponse.json(updated);
   } catch (error) {
-    console.error('更新費用分類錯誤:', error);
+    console.error('更新費用分類錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -88,7 +84,7 @@ export async function DELETE(request) {
     });
     return NextResponse.json({ message: '分類已刪除' });
   } catch (error) {
-    console.error('刪除費用分類錯誤:', error);
+    console.error('刪除費用分類錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

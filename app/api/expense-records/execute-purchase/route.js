@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requireSession } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
@@ -50,7 +51,7 @@ async function generateNo(tx, model, prefix) {
 // Invoice validation: invoiceAmount = purchaseAmount + taxAmount - supplierDiscount
 // 登入即可執行（採購頁快速執行）
 export async function POST(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
   if (!auth.ok) return auth.response;
 
   try {
@@ -294,9 +295,6 @@ export async function POST(request) {
   } catch (error) {
     if (error.message?.startsWith('DUPLICATE:')) {
       return createErrorResponse('CONFLICT_UNIQUE', error.message.replace('DUPLICATE:', ''), 409, { duplicate: true });
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
     }
     return handleApiError(error);
   }

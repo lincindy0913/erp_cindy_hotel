@@ -1,5 +1,12 @@
 # 部署到 Docker 與 Railway
 
+## 測試 → 預備 → 正式（流程）
+
+完整關卡、變更審批與 GitHub 人工核准請見：**[`docs/operational-excellence/release-process.md`](docs/operational-excellence/release-process.md)**。  
+建議 Railway **正式** 連 `main`、**預備（Staging）** 另開 Service 連 `develop` 或手動選 commit，與正式 DB 分離。
+
+---
+
 ## Docker（本機）
 
 ```bash

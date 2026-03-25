@@ -5,6 +5,22 @@ import bcrypt from 'bcryptjs';
 // Demo users module for development without database
 const demoUsers = require('@/lib/demo-users');
 
+// Validate NEXTAUTH_SECRET — reject weak/placeholder values at runtime
+function _validateSecret() {
+  const secret = process.env.NEXTAUTH_SECRET;
+  const PLACEHOLDER_PATTERNS = ['change-me', 'your-secret', 'placeholder', 'example', 'xxxxxxxx', 'secret-at-least'];
+  const isPlaceholder = !secret || PLACEHOLDER_PATTERNS.some(p => secret.toLowerCase().includes(p));
+  const isTooShort = secret && secret.length < 32;
+
+  if (isPlaceholder || isTooShort) {
+    const msg = 'FATAL: NEXTAUTH_SECRET is missing, too short (<32 chars), or using a placeholder. Set a secure value via: openssl rand -base64 32';
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(msg);
+    }
+    console.warn(`[auth] WARNING: ${msg}`);
+  }
+}
+
 export const authOptions = {
   providers: [
     CredentialsProvider({
@@ -14,6 +30,8 @@ export const authOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        _validateSecret(); // Throws in production if secret is weak
+
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
@@ -58,6 +76,7 @@ export const authOptions = {
             roles: roleCodes,
             permissions: isAdmin ? ['*'] : Array.from(permSet),
             warehouseRestriction: user.warehouseRestriction || null,
+            passwordChangedAt: user.passwordChangedAt ? user.passwordChangedAt.getTime() : null,
           };
         } catch (error) {
           // Only fall back to demo mode for DB connection errors
@@ -73,7 +92,13 @@ export const authOptions = {
             return null;
           }
 
-          console.log('Database not available, using demo mode');
+          // Block demo fallback in production
+          if (process.env.NODE_ENV === 'production') {
+            console.error('Database unavailable in production — demo fallback disabled');
+            return null;
+          }
+
+          console.log('Database not available, using demo mode (development only)');
 
           // Fallback to demo users (file-based storage)
           const user = demoUsers.getUserByEmail(credentials.email);
@@ -107,6 +132,12 @@ export const authOptions = {
         token.roles = user.roles || [];
         token.permissions = user.permissions;
         token.warehouseRestriction = user.warehouseRestriction || null;
+        token.passwordChangedAt = user.passwordChangedAt || null;
+        token.issuedAt = Date.now();
+      }
+      // Invalidate session if password was changed after token was issued
+      if (token.issuedAt && token.passwordChangedAt && token.passwordChangedAt > token.issuedAt) {
+        return null; // Forces re-login
       }
       return token;
     },

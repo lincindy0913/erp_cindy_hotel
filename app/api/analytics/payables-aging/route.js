@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ export async function GET() {
     // Get all unpaid invoices (status != 已核銷)
     const unpaidInvoices = await prisma.salesMaster.findMany({
       where: { status: { not: '已核銷' } },
+      take: 10000,
       include: {
         supplier: { select: { id: true, name: true } },
       },
@@ -58,35 +60,51 @@ export async function GET() {
     }));
 
     // Cash pressure forecast (7/14/30 days)
+    const cashAccountWhere = { isActive: true };
+    const wf = applyWarehouseFilter(auth.session, cashAccountWhere);
+    if (!wf.ok) return wf.response;
+
     const cashAccounts = await prisma.cashAccount.findMany({
-      where: { isActive: true },
+      where: cashAccountWhere,
       select: { currentBalance: true },
     });
     const currentCash = cashAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
 
     // Pending checks due
+    const checkWhere7 = {
+      checkType: 'payable',
+      status: { in: ['pending', 'due'] },
+      dueDate: { lte: new Date(today.getTime() + 7 * 86400000).toISOString().split('T')[0] },
+    };
+    const cwf1 = applyWarehouseFilter(auth.session, checkWhere7);
+    if (!cwf1.ok) return cwf1.response;
+
     const checksDue7 = await prisma.check.findMany({
-      where: {
-        checkType: 'payable',
-        status: { in: ['pending', 'due'] },
-        dueDate: { lte: new Date(today.getTime() + 7 * 86400000).toISOString().split('T')[0] },
-      },
+      where: checkWhere7,
       select: { amount: true },
     });
+    const checkWhere14 = {
+      checkType: 'payable',
+      status: { in: ['pending', 'due'] },
+      dueDate: { lte: new Date(today.getTime() + 14 * 86400000).toISOString().split('T')[0] },
+    };
+    const cwf2 = applyWarehouseFilter(auth.session, checkWhere14);
+    if (!cwf2.ok) return cwf2.response;
+
     const checksDue14 = await prisma.check.findMany({
-      where: {
-        checkType: 'payable',
-        status: { in: ['pending', 'due'] },
-        dueDate: { lte: new Date(today.getTime() + 14 * 86400000).toISOString().split('T')[0] },
-      },
+      where: checkWhere14,
       select: { amount: true },
     });
+    const checkWhere30 = {
+      checkType: 'payable',
+      status: { in: ['pending', 'due'] },
+      dueDate: { lte: new Date(today.getTime() + 30 * 86400000).toISOString().split('T')[0] },
+    };
+    const cwf3 = applyWarehouseFilter(auth.session, checkWhere30);
+    if (!cwf3.ok) return cwf3.response;
+
     const checksDue30 = await prisma.check.findMany({
-      where: {
-        checkType: 'payable',
-        status: { in: ['pending', 'due'] },
-        dueDate: { lte: new Date(today.getTime() + 30 * 86400000).toISOString().split('T')[0] },
-      },
+      where: checkWhere30,
       select: { amount: true },
     });
 

@@ -19,7 +19,7 @@ export async function GET() {
 
     return NextResponse.json(titles);
   } catch (error) {
-    console.error('查詢發票抬頭錯誤:', error);
+    console.error('查詢發票抬頭錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -51,7 +51,7 @@ export async function POST(request) {
 
     return NextResponse.json(newTitle, { status: 201 });
   } catch (error) {
-    console.error('建立發票抬頭錯誤:', error);
+    console.error('建立發票抬頭錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -71,7 +71,7 @@ export async function DELETE(request) {
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('刪除發票抬頭錯誤:', error);
+    console.error('刪除發票抬頭錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

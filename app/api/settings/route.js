@@ -19,7 +19,7 @@ export async function GET() {
     configs.forEach(c => { keyValue[c.key] = c.value; });
     return NextResponse.json(keyValue);
   } catch (error) {
-    console.error('查詢系統設定錯誤:', error);
+    console.error('查詢系統設定錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -64,7 +64,7 @@ export async function PUT(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('更新系統設定錯誤:', error);
+    console.error('更新系統設定錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -34,7 +34,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(property);
   } catch (error) {
-    console.error('GET /api/rentals/properties/[id] error:', error);
+    console.error('GET /api/rentals/properties/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -64,7 +64,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(property);
   } catch (error) {
-    console.error('PUT /api/rentals/properties/[id] error:', error);
+    console.error('PUT /api/rentals/properties/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -88,7 +88,7 @@ export async function DELETE(request, { params }) {
     await prisma.rentalProperty.delete({ where: { id: propertyId } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('DELETE /api/rentals/properties/[id] error:', error);
+    console.error('DELETE /api/rentals/properties/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }

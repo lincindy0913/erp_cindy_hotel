@@ -4,31 +4,16 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import { requireMoney, safeMoney } from '@/lib/safe-parse';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.CASHFLOW_VIEW);
@@ -57,6 +42,10 @@ export async function GET(request) {
     if (sourceType) where.sourceType = sourceType;
     const categoryId = searchParams.get('categoryId');
     if (categoryId) where.categoryId = parseInt(categoryId);
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
 
     // Pagination support
     const page = parseInt(searchParams.get('page')) || 1;
@@ -121,21 +110,31 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '類型必須是「收入」、「支出」或「移轉」', 400);
     }
 
-    const amount = parseFloat(data.amount);
-    if (amount <= 0) {
-      return createErrorResponse('VALIDATION_FAILED', '金額必須大於零', 400);
+    const amount = requireMoney(data.amount, '金額', { min: 0.01 });
+
+    const fee = data.hasFee ? (safeMoney(data.fee, '手續費', { min: 0 }) || 0) : 0;
+
+    const parsedAccountId = parseInt(data.accountId);
+    if (Number.isNaN(parsedAccountId)) {
+      return createErrorResponse('VALIDATION_FAILED', '帳戶ID 格式錯誤', 400);
     }
 
-    const fee = data.hasFee ? (parseFloat(data.fee) || 0) : 0;
     const sourceType = data.sourceType || 'manual';
     const sourceRecordId = data.sourceRecordId ? parseInt(data.sourceRecordId) : null;
+    if (data.sourceRecordId && Number.isNaN(sourceRecordId)) {
+      return createErrorResponse('VALIDATION_FAILED', 'sourceRecordId 格式錯誤', 400);
+    }
 
     // Validate transfer requires destination account
     if (data.type === '移轉') {
       if (!data.transferAccountId) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '移轉必須指定目的帳戶', 400);
       }
-      if (parseInt(data.transferAccountId) === parseInt(data.accountId)) {
+      const parsedTransferAccountId = parseInt(data.transferAccountId);
+      if (Number.isNaN(parsedTransferAccountId)) {
+        return createErrorResponse('VALIDATION_FAILED', '目的帳戶ID 格式錯誤', 400);
+      }
+      if (parsedTransferAccountId === parsedAccountId) {
         return createErrorResponse('VALIDATION_FAILED', '來源帳戶與目的帳戶不可相同', 400);
       }
     }
@@ -148,7 +147,7 @@ export async function POST(request) {
 
       if (data.type === '移轉') {
         // Create 2 linked transactions for transfer
-        const outNo = await generateTransactionNo(data.transactionDate);
+        const outNo = await nextCashTransactionNo(tx, data.transactionDate);
         const outTx = await tx.cashTransaction.create({
           data: {
             transactionNo: outNo,
@@ -214,7 +213,7 @@ export async function POST(request) {
         return { outTx, inTx };
       } else {
         // Income or Expense: single transaction
-        const txNo = await generateTransactionNo(data.transactionDate);
+        const txNo = await nextCashTransactionNo(tx, data.transactionDate);
         const newTx = await tx.cashTransaction.create({
           data: {
             transactionNo: txNo,
@@ -258,9 +257,6 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
     return handleApiError(error);
   }
 }

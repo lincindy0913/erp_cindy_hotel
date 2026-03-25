@@ -5,28 +5,13 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.CHECK_VIEW);
@@ -48,6 +33,11 @@ export async function GET(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到支票', 404);
     }
 
+    if (check.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, check.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
     return NextResponse.json(check);
   } catch (error) {
     return handleApiError(error);
@@ -65,13 +55,18 @@ export async function PUT(request, { params }) {
     const check = await prisma.check.findUnique({
       where: { id },
       include: {
-        sourceAccount: { select: { id: true, name: true } },
+        sourceAccount: { select: { id: true, name: true, warehouse: true } },
         destinationAccount: { select: { id: true, name: true } }
       }
     });
 
     if (!check) {
       return createErrorResponse('NOT_FOUND', '找不到支票', 404);
+    }
+
+    if (check.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, check.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     // If already cleared and trying to do non-bounce action
@@ -86,6 +81,7 @@ export async function PUT(request, { params }) {
       }
 
       const clearDate = data.clearDate || new Date().toISOString().split('T')[0];
+      await assertPeriodOpen(prisma, clearDate, check.warehouse);
       const actualAmount = data.actualAmount ? parseFloat(data.actualAmount) : Number(check.amount);
       const clearedBy = data.clearedBy || null;
 
@@ -95,7 +91,7 @@ export async function PUT(request, { params }) {
 
       if (!fromPaymentOrder) {
         // 非付款單支票：建立 CashTransaction 並連動現金流
-        const transactionNo = await generateTransactionNo(clearDate);
+        const transactionNo = await nextCashTransactionNo(tx, clearDate);
         let accountId, txType, sourceType;
         if (check.checkType === 'payable') {
           accountId = check.sourceAccountId;
@@ -160,10 +156,12 @@ export async function PUT(request, { params }) {
     }
 
     if (data.action === 'bounce') {
-      if (check.status !== 'pending' && check.status !== 'due' && check.status !== 'cleared') {
-        return createErrorResponse('VALIDATION_FAILED', '無法將此狀態的支票標記為退票', 400);
+      const bounceable = ['pending', 'due', 'cleared'];
+      if (!bounceable.includes(check.status)) {
+        return createErrorResponse('VALIDATION_FAILED', `支票狀態「${check.status}」無法退票（僅限待處理/到期/已兌現）`, 400);
       }
 
+      await assertPeriodOpen(prisma, check.dueDate, check.warehouse);
       const updateData = {
         status: 'bounced',
         bouncedReason: data.bouncedReason || null
@@ -172,7 +170,7 @@ export async function PUT(request, { params }) {
       // If was cleared, create reverse transaction
       if (check.status === 'cleared' && check.cashTransactionId) {
         const reverseDate = new Date().toISOString().split('T')[0];
-        const reverseTransactionNo = await generateTransactionNo(reverseDate);
+        const reverseTransactionNo = await nextCashTransactionNo(tx, reverseDate);
 
         let accountId, txType;
         if (check.checkType === 'payable') {
@@ -235,6 +233,7 @@ export async function PUT(request, { params }) {
         return createErrorResponse('VALIDATION_FAILED', '只有待兌現或到期的支票才能作廢', 400);
       }
 
+      await assertPeriodOpen(prisma, check.dueDate, check.warehouse);
       const updatedCheck = await prisma.check.update({
         where: { id },
         data: {

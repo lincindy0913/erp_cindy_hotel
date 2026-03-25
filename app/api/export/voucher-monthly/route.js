@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,16 @@ export const dynamic = 'force-dynamic';
  * 廠商月度傳票列印 — 傳票表頭 + 品項日期矩陣
  */
 export async function GET(request) {
+  const auth = await requireAnyPermission([PERMISSIONS.FINANCE_VIEW, PERMISSIONS.EXPORT_PDF]);
+  if (!auth.ok) return auth.response;
+  // Additional check: non-admin must have export.pdf specifically
+  if (!auth.session.user.permissions?.includes('*')) {
+    const perms = auth.session.user.permissions || [];
+    if (!perms.includes(PERMISSIONS.EXPORT_PDF)) {
+      return createErrorResponse('FORBIDDEN', '需要匯出 PDF 權限', 403);
+    }
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const supplierId = parseInt(searchParams.get('supplierId'));
@@ -22,8 +33,7 @@ export async function GET(request) {
       return createErrorResponse('VALIDATION_FAILED', '缺少必要參數 supplierId / month', 400);
     }
 
-    const session = await getServerSession(authOptions).catch(() => null);
-    const makerName = session?.user?.name || session?.user?.email?.split('@')[0] || '未知使用者';
+    const makerName = auth.session?.user?.name || auth.session?.user?.email?.split('@')[0] || '未知使用者';
 
     const supplier = await prisma.supplier.findUnique({
       where: { id: supplierId },
@@ -536,6 +546,13 @@ export async function GET(request) {
       doc.setTextColor(180, 180, 180);
       doc.text(`第 ${i} 頁 / 共 ${totalPages} 頁`, pageWidth - margin, pageHeight - 6, { align: 'right' });
     }
+
+    // Audit log for export
+    auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.DATA_EXPORT || 'data_export',
+      targetModule: 'payment-orders',
+      note: `匯出月度傳票 PDF: ${supplier.name} ${month} ${warehouseDisplay}`,
+    }).catch(() => {}); // fire-and-forget
 
     const pdfOutput = doc.output('arraybuffer');
     const filename = `voucher-${supplier.name}-${month}-${warehouseDisplay}.pdf`;

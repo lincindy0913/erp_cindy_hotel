@@ -3,7 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { validateWarehouse } from '@/lib/master-data-validator';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +30,10 @@ export async function GET(request) {
     if (status) where.status = status;
     if (templateId) where.templateId = parseInt(templateId);
     if (executionType) where.executionType = executionType;
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
 
     // If filtering by payment status, we need to join with PaymentOrder
     const paymentStatusFilter = searchParams.get('paymentStatus');
@@ -158,58 +164,66 @@ export async function POST(request) {
       return createErrorResponse('CONFLICT_UNIQUE', `此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`, 409, { duplicate: true });
     }
 
-    // Generate recordNo: EXP-YYYYMMDD-XXXX
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-    const todayStart = `EXP-${dateStr}-`;
+    // Parse expenseMonth for period lock check (format: "YYYY-MM")
+    const [year, month] = data.expenseMonth.trim().split('-');
+    const periodDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
 
-    const lastRecord = await prisma.commonExpenseRecord.findFirst({
-      where: {
-        recordNo: { startsWith: todayStart }
-      },
-      orderBy: { recordNo: 'desc' }
-    });
+    const record = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, periodDateStr, data.warehouse.trim());
 
-    let seq = 1;
-    if (lastRecord) {
-      const lastSeq = parseInt(lastRecord.recordNo.split('-').pop());
-      seq = lastSeq + 1;
-    }
-    const recordNo = `${todayStart}${String(seq).padStart(4, '0')}`;
+      // Generate recordNo: EXP-YYYYMMDD-XXXX
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const todayStart = `EXP-${dateStr}-`;
 
-    const record = await prisma.commonExpenseRecord.create({
-      data: {
-        recordNo,
-        templateId: parseInt(data.templateId),
-        warehouse: data.warehouse.trim(),
-        expenseMonth: data.expenseMonth.trim(),
-        supplierId: data.supplierId ? parseInt(data.supplierId) : null,
-        supplierName: data.supplierName?.trim() || null,
-        paymentMethod: data.paymentMethod?.trim() || null,
-        totalDebit: debitTotal,
-        totalCredit: creditTotal,
-        status: '待確認',
-        note: data.note?.trim() || null,
-        createdBy: data.createdBy.trim(),
-        entryLines: {
-          create: data.entryLines.map((line, idx) => ({
-            entryType: line.entryType,
-            accountingCode: line.accountingCode,
-            accountingName: line.accountingName,
-            summary: line.summary || '',
-            amount: parseFloat(line.amount),
-            sortOrder: line.sortOrder ?? idx
-          }))
-        }
-      },
-      include: {
-        template: {
-          select: { id: true, name: true }
+      const lastRecord = await tx.commonExpenseRecord.findFirst({
+        where: {
+          recordNo: { startsWith: todayStart }
         },
-        entryLines: {
-          orderBy: { sortOrder: 'asc' }
-        }
+        orderBy: { recordNo: 'desc' }
+      });
+
+      let seq = 1;
+      if (lastRecord) {
+        const lastSeq = parseInt(lastRecord.recordNo.split('-').pop());
+        seq = lastSeq + 1;
       }
+      const recordNo = `${todayStart}${String(seq).padStart(4, '0')}`;
+
+      return tx.commonExpenseRecord.create({
+        data: {
+          recordNo,
+          templateId: parseInt(data.templateId),
+          warehouse: data.warehouse.trim(),
+          expenseMonth: data.expenseMonth.trim(),
+          supplierId: data.supplierId ? parseInt(data.supplierId) : null,
+          supplierName: data.supplierName?.trim() || null,
+          paymentMethod: data.paymentMethod?.trim() || null,
+          totalDebit: debitTotal,
+          totalCredit: creditTotal,
+          status: '待確認',
+          note: data.note?.trim() || null,
+          createdBy: data.createdBy.trim(),
+          entryLines: {
+            create: data.entryLines.map((line, idx) => ({
+              entryType: line.entryType,
+              accountingCode: line.accountingCode,
+              accountingName: line.accountingName,
+              summary: line.summary || '',
+              amount: parseFloat(line.amount),
+              sortOrder: line.sortOrder ?? idx
+            }))
+          }
+        },
+        include: {
+          template: {
+            select: { id: true, name: true }
+          },
+          entryLines: {
+            orderBy: { sortOrder: 'asc' }
+          }
+        }
+      });
     });
 
     const result = {

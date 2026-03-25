@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,9 @@ export const dynamic = 'force-dynamic';
  * 回傳 printConfig (orientation, dateColumns, makerName) + 品項比價附記資訊
  */
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.FINANCE_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const supplierId = parseInt(searchParams.get('supplierId'));
@@ -22,8 +25,7 @@ export async function GET(request) {
       return createErrorResponse('VALIDATION_FAILED', '缺少必要參數', 400);
     }
 
-    const session = await getServerSession(authOptions).catch(() => null);
-    const makerName = session?.user?.name || session?.user?.email?.split('@')[0] || '未知使用者';
+    const makerName = auth.session?.user?.name || auth.session?.user?.email?.split('@')[0] || '未知使用者';
 
     const supplier = await prisma.supplier.findUnique({
       where: { id: supplierId },

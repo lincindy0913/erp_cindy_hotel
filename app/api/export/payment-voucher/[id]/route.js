@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +14,16 @@ export const dynamic = 'force-dynamic';
  * Returns a PDF document as a downloadable response
  */
 export async function GET(request, { params }) {
+  // Require export.pdf permission AND at least one relevant module view permission
   const auth = await requireAnyPermission([PERMISSIONS.EXPORT_PDF, PERMISSIONS.FINANCE_VIEW, PERMISSIONS.PURCHASING_VIEW]);
   if (!auth.ok) return auth.response;
+  // Additional check: non-admin must have export.pdf specifically
+  if (!auth.session.user.permissions?.includes('*')) {
+    const perms = auth.session.user.permissions || [];
+    if (!perms.includes(PERMISSIONS.EXPORT_PDF)) {
+      return createErrorResponse('FORBIDDEN', '需要匯出 PDF 權限', 403);
+    }
+  }
   
   try {
     const orderId = parseInt(params.id);
@@ -362,6 +371,15 @@ export async function GET(request, { params }) {
       doc.internal.pageSize.getHeight() - 8,
       { align: 'center' }
     );
+
+    // Audit log for export
+    auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.DATA_EXPORT || 'data_export',
+      targetModule: 'payment-orders',
+      targetRecordId: orderId,
+      targetRecordNo: order.orderNo,
+      note: `匯出付款傳票 PDF: ${order.orderNo}`,
+    }).catch(() => {}); // fire-and-forget
 
     // Convert to buffer and return as response
     const pdfOutput = doc.output('arraybuffer');

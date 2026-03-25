@@ -186,7 +186,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('更新發票錯誤:', error);
+    console.error('更新發票錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -224,7 +224,7 @@ export async function DELETE(request, { params }) {
     await prisma.salesMaster.delete({ where: { id } });
     return NextResponse.json({ message: '發票已刪除，相關進貨單品項已可重新核銷' });
   } catch (error) {
-    console.error('刪除發票錯誤:', error);
+    console.error('刪除發票錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

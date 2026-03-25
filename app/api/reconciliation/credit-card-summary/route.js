@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
-import { requireSession } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 月度信用卡對帳匯總 (per warehouse)
 export async function GET(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_VIEW);
   if (!auth.ok) return auth.response;
 
   try {

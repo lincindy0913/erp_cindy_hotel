@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,7 @@ export async function GET(request) {
 
     const records = await prisma.loanMonthlyRecord.findMany({
       where,
+      take: 5000,
       include: {
         loan: {
           select: {
@@ -174,20 +176,26 @@ export async function POST(request) {
     const repDay = Math.min(loan.repaymentDay, 28); // safe day
     const dueDate = `${recordYear}-${String(recordMonth).padStart(2, '0')}-${String(repDay).padStart(2, '0')}`;
 
-    const record = await prisma.loanMonthlyRecord.create({
-      data: {
-        loanId,
-        recordYear,
-        recordMonth,
-        dueDate,
-        status: '暫估',
-        estimatedPrincipal,
-        estimatedInterest,
-        estimatedTotal,
-        estimatedAt: new Date(),
-        deductAccountId: loan.deductAccountId,
-        note: data.note || null
-      }
+    const dateStr = `${recordYear}-${String(recordMonth).padStart(2, '0')}-01`;
+
+    const record = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, dateStr, loan.warehouse || undefined);
+
+      return tx.loanMonthlyRecord.create({
+        data: {
+          loanId,
+          recordYear,
+          recordMonth,
+          dueDate,
+          status: '暫估',
+          estimatedPrincipal,
+          estimatedInterest,
+          estimatedTotal,
+          estimatedAt: new Date(),
+          deductAccountId: loan.deductAccountId,
+          note: data.note || null
+        }
+      });
     });
 
     return NextResponse.json({

@@ -1,13 +1,22 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
+import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
+import { checkIdempotency, saveIdempotency } from '@/lib/idempotency';
+import { requireMoney } from '@/lib/safe-parse';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.FINANCE_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -53,6 +62,10 @@ export async function GET(request) {
       ];
     }
 
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const formatOrder = (o) => ({
       ...o,
       amount: Number(o.amount),
@@ -69,12 +82,13 @@ export async function GET(request) {
       })),
     });
 
-    // 不分頁模式（向下相容：page 未帶或 all=true）
+    // 不分頁模式（向下相容：page 未帶或 all=true），上限 5000 筆
     if (all || page === 0) {
       const orders = await prisma.paymentOrder.findMany({
         where,
         include: { executions: true },
         orderBy: { createdAt: 'desc' },
+        take: 5000,
       });
       return NextResponse.json(orders.map(formatOrder));
     }
@@ -102,30 +116,24 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const cachedRes = checkIdempotency(request);
+  if (cachedRes) return cachedRes;
+
+  const authPost = await requirePermission(PERMISSIONS.FINANCE_CREATE);
+  if (!authPost.ok) return authPost.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = authPost.session;
     const data = await request.json();
 
     if (!data.invoiceIds || !data.paymentMethod || data.netAmount === undefined) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
     }
 
-    // Auto-generate orderNo: PAY-YYYYMMDD-XXXX
+    // Validate monetary amount within Decimal(12,2) range
+    requireMoney(data.netAmount, '淨額', { min: 0 });
+
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-    const prefix = `PAY-${dateStr}-`;
-
-    const existing = await prisma.paymentOrder.findMany({
-      where: { orderNo: { startsWith: prefix } },
-    });
-
-    let maxSeq = 0;
-    for (const item of existing) {
-      const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-    const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-
     const isCheck = data.paymentMethod === '支票';
     const checkAccountId = data.checkAccountId ? parseInt(data.checkAccountId) : null;
     let checkAccountName = data.checkAccount || null;
@@ -135,6 +143,38 @@ export async function POST(request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // ── 關帳鎖定檢查：禁止在已關帳月份建立付款單 ──
+      const lockDate = data.dueDate || now.toISOString().split('T')[0];
+      await assertPeriodOpen(tx, lockDate, data.warehouse || null);
+
+      // ── 冪等檢查：同一 sourceType + sourceRecordId 不可重複建立 ──
+      if (data.sourceType && data.sourceRecordId != null) {
+        const dup = await tx.paymentOrder.findFirst({
+          where: {
+            sourceType: data.sourceType,
+            sourceRecordId: parseInt(data.sourceRecordId),
+            status: { notIn: ['已作廢'] },
+          },
+        });
+        if (dup) {
+          throw new Error(`IDEMPOTENT:此來源記錄已有付款單 ${dup.orderNo}，請勿重複建立`);
+        }
+      }
+
+      // Auto-generate orderNo 在 transaction 內，避免序號衝突
+      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+      const prefix = `PAY-${dateStr}-`;
+      const existing = await tx.paymentOrder.findMany({
+        where: { orderNo: { startsWith: prefix } },
+        select: { orderNo: true },
+      });
+      let maxSeq = 0;
+      for (const item of existing) {
+        const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
+        if (seq > maxSeq) maxSeq = seq;
+      }
+      const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+
       const order = await tx.paymentOrder.create({
         data: {
           orderNo,
@@ -242,7 +282,7 @@ export async function POST(request) {
         });
       }
 
-      return { order, check, advance };
+      return { order, check, advance, orderNo };
     });
 
     const order = result.order;
@@ -252,20 +292,23 @@ export async function POST(request) {
         action: AUDIT_ACTIONS.PAYMENT_ORDER_CREATE,
         targetModule: 'payment-orders',
         targetRecordId: order.id,
-        targetRecordNo: orderNo,
+        targetRecordNo: result.orderNo,
         afterState: { invoiceIds: data.invoiceIds, netAmount: data.netAmount, checkCreated: isCheck },
       });
     }
 
-    return NextResponse.json({
+    const resBody = {
       ...order,
       amount: Number(order.amount),
       discount: Number(order.discount),
       netAmount: Number(order.netAmount),
       linkedCheckNo: result.check?.checkNo || null,
       linkedAdvanceNo: result.advance?.advanceNo || null,
-    }, { status: 201 });
+    };
+    saveIdempotency(request, resBody, 201);
+    return NextResponse.json(resBody, { status: 201 });
   } catch (error) {
-    return handleApiError(error);
+
+    return handleApiError(error, '/api/payment-orders');
   }
 }

@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +36,11 @@ export async function GET(request, { params }) {
 
     if (!loan) {
       return createErrorResponse('NOT_FOUND', '貸款不存在', 404);
+    }
+
+    if (loan.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, loan.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     return NextResponse.json({
@@ -83,6 +90,11 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '貸款不存在', 404);
     }
 
+    if (existing.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
     const updateData = {};
     if (data.loanName !== undefined) updateData.loanName = data.loanName;
     if (data.ownerType !== undefined) updateData.ownerType = data.ownerType;
@@ -123,9 +135,16 @@ export async function PUT(request, { params }) {
       if (!isNaN(so)) updateData.sortOrder = so;
     }
 
-    const updated = await prisma.loanMaster.update({
-      where: { id },
-      data: updateData
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.loanMaster.findUnique({ where: { id } });
+      if (current) {
+        await assertPeriodOpen(tx, current.startDate, current.warehouse || undefined);
+      }
+
+      return tx.loanMaster.update({
+        where: { id },
+        data: updateData
+      });
     });
 
     return NextResponse.json({

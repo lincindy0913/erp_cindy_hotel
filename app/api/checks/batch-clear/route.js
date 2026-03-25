@@ -9,27 +9,10 @@ import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.CHECK_CLEAR);
@@ -49,101 +32,93 @@ export async function POST(request) {
     };
 
     const effectiveClearDate = clearDate || new Date().toISOString().split('T')[0];
-    const affectedAccountIds = new Set();
 
-    for (const checkId of checkIds) {
-      try {
-        await prisma.$transaction(async (tx) => {
-          const check = await tx.check.findUnique({ where: { id: parseInt(checkId) } });
+    // Wrap entire batch in a single transaction — all succeed or all fail
+    const clearedCount = await prisma.$transaction(async (tx) => {
+      let count = 0;
+      for (const checkId of checkIds) {
+        const check = await tx.check.findUnique({ where: { id: parseInt(checkId) } });
 
-          if (!check) throw new Error('找不到支票');
+        if (!check) throw new Error(`VALIDATION:找不到支票 ID ${checkId}`);
 
-          // Enforce period lock
-          await assertPeriodOpen(tx, effectiveClearDate, check.warehouse);
-          if (check.status === 'cleared') throw new Error('支票已兌現');
-          if (check.status !== 'pending' && check.status !== 'due') throw new Error(`支票狀態 ${check.status} 無法兌現`);
+        // Enforce period lock
+        await assertPeriodOpen(tx, effectiveClearDate, check.warehouse);
+        if (check.status === 'cleared') throw new Error(`VALIDATION:支票 ${check.checkNo} 已兌現`);
+        if (check.status !== 'pending' && check.status !== 'due') {
+          throw new Error(`VALIDATION:支票 ${check.checkNo} 狀態「${check.status}」無法兌現`);
+        }
 
-          // 規則：有 paymentId 的支票 = 來自付款單，現金流已在出納執行時建立，此處不重複建立 CashTransaction（避免重複扣款）
-          const fromPaymentOrder = !!check.paymentId;
-          let cashTransactionId = null;
+        // 規則：有 paymentId 的支票 = 來自付款單，現金流已在出納執行時建立，此處不重複建立 CashTransaction
+        const fromPaymentOrder = !!check.paymentId;
+        let cashTransactionId = null;
 
-          if (!fromPaymentOrder) {
-            let accountId, txType, sourceType;
-            if (check.checkType === 'payable') {
-              accountId = check.sourceAccountId;
-              txType = '支出';
-              sourceType = 'check_payment';
-            } else {
-              accountId = check.destinationAccountId;
-              txType = '收入';
-              sourceType = 'check_receipt';
-            }
-
-            if (!accountId) throw new Error('支票未關聯帳戶');
-
-            const transactionNo = await generateTransactionNo(effectiveClearDate);
-            const categoryId = await getCategoryId(tx, sourceType);
-            const transaction = await tx.cashTransaction.create({
-              data: {
-                transactionNo,
-                transactionDate: effectiveClearDate,
-                type: txType,
-                warehouse: check.warehouse,
-                accountId,
-                categoryId,
-                amount: Number(check.amount),
-                description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
-                sourceType,
-                sourceRecordId: check.id,
-                status: '已確認'
-              }
-            });
-            cashTransactionId = transaction.id;
-
-            // Recalc balance inside transaction
-            await recalcBalance(tx, accountId);
+        if (!fromPaymentOrder) {
+          let accountId, txType, sourceType;
+          if (check.checkType === 'payable') {
+            accountId = check.sourceAccountId;
+            txType = '支出';
+            sourceType = 'check_payment';
+          } else {
+            accountId = check.destinationAccountId;
+            txType = '收入';
+            sourceType = 'check_receipt';
           }
 
-          await tx.check.update({
-            where: { id: parseInt(checkId) },
+          if (!accountId) throw new Error(`VALIDATION:支票 ${check.checkNo} 未關聯帳戶`);
+
+          const transactionNo = await nextCashTransactionNo(tx, effectiveClearDate);
+          const categoryId = await getCategoryId(tx, sourceType);
+          const transaction = await tx.cashTransaction.create({
             data: {
-              status: 'cleared',
-              clearDate: effectiveClearDate,
-              actualAmount: Number(check.amount),
-              clearedBy: clearedBy || null,
-              ...(cashTransactionId ? { cashTransactionId } : {})
+              transactionNo,
+              transactionDate: effectiveClearDate,
+              type: txType,
+              warehouse: check.warehouse,
+              accountId,
+              categoryId,
+              amount: Number(check.amount),
+              description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,
+              sourceType,
+              sourceRecordId: check.id,
+              status: '已確認'
             }
           });
-        });
+          cashTransactionId = transaction.id;
 
-        results.success++;
-      } catch (err) {
-        results.failed++;
-        results.errors.push({ checkId, error: err.message });
+          await recalcBalance(tx, accountId);
+        }
+
+        await tx.check.update({
+          where: { id: parseInt(checkId) },
+          data: {
+            status: 'cleared',
+            clearDate: effectiveClearDate,
+            actualAmount: Number(check.amount),
+            clearedBy: clearedBy || null,
+            ...(cashTransactionId ? { cashTransactionId } : {})
+          }
+        });
+        count++;
       }
-    }
+      return count;
+    }, { timeout: 60000 });
 
     // Audit log
-    if (results.success > 0) {
-      const session = await getServerSession(authOptions);
-      if (session) {
-        await auditFromSession(prisma, session, {
-          action: AUDIT_ACTIONS.CHECK_CLEAR,
-          targetModule: 'check',
-          afterState: { success: results.success, failed: results.failed, clearDate: effectiveClearDate },
-          note: `批次兌現 ${results.success} 筆支票`,
-        });
-      }
+    const session = await getServerSession(authOptions);
+    if (session) {
+      await auditFromSession(prisma, session, {
+        action: AUDIT_ACTIONS.CHECK_CLEAR,
+        targetModule: 'check',
+        afterState: { success: clearedCount, clearDate: effectiveClearDate },
+        note: `批次兌現 ${clearedCount} 筆支票`,
+      });
     }
 
     return NextResponse.json({
-      message: `批次兌現完成：成功 ${results.success} 筆，失敗 ${results.failed} 筆`,
-      ...results
+      message: `批次兌現完成：成功 ${clearedCount} 筆`,
+      success: clearedCount, failed: 0, errors: []
     });
   } catch (error) {
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
     return handleApiError(error);
   }
 }

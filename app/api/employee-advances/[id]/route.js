@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 取得單筆代墊款
 export async function GET(request, { params }) {
   try {
+    const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
+    if (!auth.ok) return auth.response;
+
     const id = parseInt(params.id);
     const record = await prisma.employeeAdvance.findUnique({ where: { id } });
     if (!record) {
@@ -21,6 +27,9 @@ export async function GET(request, { params }) {
 // PUT: 編輯代墊款（僅限待結算狀態）
 export async function PUT(request, { params }) {
   try {
+    const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+    if (!auth.ok) return auth.response;
+
     const id = parseInt(params.id);
     const body = await request.json();
 
@@ -28,6 +37,10 @@ export async function PUT(request, { params }) {
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '找不到代墊款記錄', 404);
     }
+
+    const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+    if (!wa.ok) return wa.response;
+
     if (existing.status !== '待結算') {
       return createErrorResponse('VALIDATION_FAILED', `無法編輯：目前狀態為「${existing.status}」，僅「待結算」可編輯`, 400);
     }
@@ -84,12 +97,19 @@ export async function PUT(request, { params }) {
 // DELETE: 刪除代墊款（僅限待結算狀態），連動刪除關聯資料
 export async function DELETE(request, { params }) {
   try {
+    const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+    if (!auth.ok) return auth.response;
+
     const id = parseInt(params.id);
 
     const existing = await prisma.employeeAdvance.findUnique({ where: { id } });
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '找不到代墊款記錄', 404);
     }
+
+    const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+    if (!wa.ok) return wa.response;
+
     if (existing.status !== '待結算') {
       return createErrorResponse('VALIDATION_FAILED', `無法刪除：目前狀態為「${existing.status}」，僅「待結算」可刪除`, 400);
     }

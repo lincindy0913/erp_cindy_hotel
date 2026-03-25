@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { handleApiError, createErrorResponse } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,14 +25,12 @@ const DEFAULT_SETTINGS = {
 };
 
 export async function GET() {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requirePermission(PERMISSIONS.NOTIFICATION_VIEW);
+  if (!auth.ok) return auth.response;
 
+  try {
     const user = await prisma.user.findUnique({
-      where: { id: parseInt(session.user.id) },
+      where: { id: parseInt(auth.session.user.id) },
       select: { notificationSettings: true },
     });
 
@@ -50,12 +48,10 @@ export async function GET() {
 }
 
 export async function PUT(request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requirePermission(PERMISSIONS.NOTIFICATION_VIEW);
+  if (!auth.ok) return auth.response;
 
+  try {
     const body = await request.json();
     const { settings } = body;
 
@@ -71,7 +67,7 @@ export async function PUT(request) {
     }
 
     await prisma.user.update({
-      where: { id: parseInt(session.user.id) },
+      where: { id: parseInt(auth.session.user.id) },
       data: { notificationSettings: cleanSettings },
     });
 

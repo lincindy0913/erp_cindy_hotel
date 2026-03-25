@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,9 +26,13 @@ export async function GET(request) {
     }
     if (warehouse) where.warehouse = warehouse;
 
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     // Fetch all qualifying purchases with supplier info
     const purchases = await prisma.purchaseMaster.findMany({
       where,
+      take: 10000,
       include: {
         supplier: { select: { id: true, name: true } },
         details: {

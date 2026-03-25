@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +21,14 @@ export async function GET(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供年份', 400);
     }
 
+    // Warehouse-level access control
+    const meWhere = { year };
+    const wf = applyWarehouseFilter(auth.session, meWhere);
+    if (!wf.ok) return wf.response;
+
     // Get all month-end statuses for the year
     const statuses = await prisma.monthEndStatus.findMany({
-      where: { year },
+      where: meWhere,
       include: {
         reports: {
           select: { id: true, reportType: true, generatedAt: true }
@@ -175,20 +181,6 @@ export async function POST(request) {
 
     if (!year || !month || month < 1 || month > 12) {
       return createErrorResponse('VALIDATION_FAILED', '請提供有效的年份和月份', 400);
-    }
-
-    // Check if already closed
-    const existing = await prisma.monthEndStatus.findFirst({
-      where: {
-        year,
-        month,
-        warehouse: warehouse || null,
-        status: { in: ['已結帳', '已鎖定'] }
-      }
-    });
-
-    if (existing) {
-      return createErrorResponse('PERIOD_LOCKED', '此月份已結帳或已鎖定，無法重複結帳', 423);
     }
 
     const monthStr = String(month).padStart(2, '0');
@@ -560,7 +552,22 @@ export async function POST(request) {
     // ==========================================
     // 3. Create MonthEndStatus and Reports in DB
     // ==========================================
+    const closedByName = auth.session?.user?.name || auth.session?.user?.email || null;
+
     const result = await prisma.$transaction(async (tx) => {
+      // 冪等檢查：已結帳/已鎖定 → 不可重複結帳（在 transaction 內避免 race condition）
+      const existing = await tx.monthEndStatus.findFirst({
+        where: {
+          year,
+          month,
+          warehouse: warehouse || null,
+          status: { in: ['已結帳', '已鎖定'] }
+        }
+      });
+      if (existing) {
+        throw new Error('PERIOD_LOCKED:此月份已結帳或已鎖定，無法重複結帳');
+      }
+
       // Delete existing unclosed status if any
       await tx.monthEndStatus.deleteMany({
         where: {
@@ -578,7 +585,7 @@ export async function POST(request) {
           month,
           warehouse: warehouse || null,
           status: '已結帳',
-          closedBy: body.closedBy || null,
+          closedBy: closedByName,
           closedAt: now,
           note: body.note || null
         }
@@ -682,7 +689,7 @@ export async function POST(request) {
           decisionRecommendations,
           executiveSummary,
           generatedAt: new Date(),
-          generatedBy: body.closedBy || 'system',
+          generatedBy: closedByName || 'system',
         },
         update: {
           profitAnalysis,

@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 折讓單列表
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -35,6 +41,10 @@ export async function GET(request) {
       ];
     }
 
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const records = await prisma.purchaseAllowance.findMany({
       where,
       include: { details: true },
@@ -62,6 +72,9 @@ export async function GET(request) {
 
 // POST: 新增折讓單
 export async function POST(request) {
+  const authPost = await requirePermission(PERMISSIONS.PURCHASING_CREATE);
+  if (!authPost.ok) return authPost.response;
+
   try {
     const data = await request.json();
 

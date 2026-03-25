@@ -21,7 +21,7 @@ export async function GET(request) {
     const endDate = searchParams.get('endDate');
     const triggerType = searchParams.get('triggerType');
     const page = parseInt(searchParams.get('page')) || 1;
-    const pageSize = parseInt(searchParams.get('pageSize')) || 50;
+    const pageSize = Math.min(parseInt(searchParams.get('pageSize')) || 50, 100);
 
     const where = {};
 
@@ -103,20 +103,27 @@ export async function POST(request) {
       );
     }
 
-    // 檢查是否有進行中的備份（同一 tier）
+    // 全域鎖定：任何 tier 進行中時，不允許啟動新備份（避免同時跑 tier1+tier2 壓垮 DB）
     const inProgress = await prisma.backupRecord.findFirst({
-      where: {
-        tier: data.tier,
-        status: 'in_progress',
-      },
+      where: { status: 'in_progress' },
+      select: { id: true, tier: true, startedAt: true },
     });
 
     if (inProgress) {
-      return createErrorResponse(
-        'BACKUP_IN_PROGRESS',
-        `已有進行中的 ${data.tier} 備份（ID: ${inProgress.id}），請等待完成後再執行`,
-        409
-      );
+      // 超過 2 小時的 in_progress 視為卡住，自動標記為 failed
+      const stuckThreshold = 2 * 60 * 60 * 1000;
+      if (Date.now() - new Date(inProgress.startedAt).getTime() > stuckThreshold) {
+        await prisma.backupRecord.update({
+          where: { id: inProgress.id },
+          data: { status: 'failed', errorMessage: '備份超時（逾 2 小時未完成），已自動標記為失敗', completedAt: new Date() },
+        });
+      } else {
+        return createErrorResponse(
+          'BACKUP_IN_PROGRESS',
+          `已有進行中的備份 ${inProgress.tier}（ID: ${inProgress.id}），請等待完成後再執行`,
+          409
+        );
+      }
     }
 
     const triggerType = data.triggerType || 'manual';

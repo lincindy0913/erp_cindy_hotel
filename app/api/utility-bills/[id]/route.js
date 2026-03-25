@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../auth/[...nextauth]/route';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const id = parseInt(params.id, 10);
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
@@ -32,8 +35,10 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  if (!auth.ok) return auth.response;
+
   try {
-    await getServerSession(authOptions);
     const id = parseInt(params.id, 10);
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 

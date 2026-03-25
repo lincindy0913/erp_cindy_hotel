@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,9 @@ export const dynamic = 'force-dynamic';
  * Query: month (YYYY-MM), warehouse (optional)
  */
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.FINANCE_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');

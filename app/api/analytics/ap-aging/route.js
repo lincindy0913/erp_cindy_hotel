@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,12 @@ export async function GET(request) {
     const where = { status: { not: '已完成' } };
     if (warehouse) where.warehouse = warehouse;
 
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const unpaidExpenses = await prisma.expense.findMany({
       where,
+      take: 10000,
       select: {
         id: true,
         invoiceNo: true,

@@ -29,7 +29,7 @@ export async function GET(request) {
       : {};
 
     if (all) {
-      const products = await prisma.product.findMany({ where, orderBy: { id: 'asc' } });
+      const products = await prisma.product.findMany({ where, orderBy: { id: 'asc' }, take: 5000 });
       return NextResponse.json(products);
     }
 
@@ -63,6 +63,20 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
 
+    const costPrice = parseFloat(data.costPrice);
+    const salesPrice = parseFloat(data.salesPrice);
+    if (Number.isNaN(costPrice) || Number.isNaN(salesPrice)) {
+      return createErrorResponse('VALIDATION_FAILED', '成本價或售價格式錯誤', 400);
+    }
+    if (costPrice < 0 || salesPrice < 0) {
+      return createErrorResponse('VALIDATION_FAILED', '價格不可為負數', 400);
+    }
+
+    const supplierId = data.supplierId ? parseInt(data.supplierId) : null;
+    if (data.supplierId && Number.isNaN(supplierId)) {
+      return createErrorResponse('VALIDATION_FAILED', 'supplierId 格式錯誤', 400);
+    }
+
     const existing = await prisma.product.findUnique({ where: { code: data.code } });
     if (existing) {
       return createErrorResponse('PRODUCT_CODE_DUPLICATE', '產品代碼已存在', 409);
@@ -80,12 +94,12 @@ export async function POST(request) {
         name: data.name,
         category: data.category || '',
         unit: data.unit || '',
-        costPrice: parseFloat(data.costPrice),
-        salesPrice: parseFloat(data.salesPrice),
+        costPrice,
+        salesPrice,
         isInStock,
         warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
         accountingSubject: data.accountingSubject || '',
-        supplierId: data.supplierId ? parseInt(data.supplierId) : null
+        supplierId,
       }
     });
 

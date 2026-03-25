@@ -47,7 +47,7 @@ export async function DELETE(request, { params }) {
     await prisma.rentalUtilityIncome.delete({ where: { id: incomeId } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('DELETE /api/rentals/utility-income/[id] error:', error);
+    console.error('DELETE /api/rentals/utility-income/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }

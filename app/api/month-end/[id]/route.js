@@ -3,9 +3,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +30,11 @@ export async function GET(request, { params }) {
 
     if (!monthEnd) {
       return createErrorResponse('NOT_FOUND', '找不到月結記錄', 404);
+    }
+
+    if (monthEnd.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, monthEnd.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     return NextResponse.json({
@@ -63,8 +67,11 @@ export async function GET(request, { params }) {
 
 // PUT: Update month-end status (lock / unlock)
 export async function PUT(request, { params }) {
+  const authPut = await requirePermission(PERMISSIONS.MONTHEND_EXECUTE);
+  if (!authPut.ok) return authPut.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = authPut.session;
     const id = parseInt(params.id);
     if (!id) {
       return createErrorResponse('VALIDATION_FAILED', '無效的ID', 400);
@@ -73,91 +80,121 @@ export async function PUT(request, { params }) {
     const body = await request.json();
     const { action } = body;
 
-    const monthEnd = await prisma.monthEndStatus.findUnique({
+    // Pre-read for warehouse access check (outside transaction is fine for authz)
+    const monthEndCheck = await prisma.monthEndStatus.findUnique({
       where: { id }
     });
-
-    if (!monthEnd) {
+    if (!monthEndCheck) {
       return createErrorResponse('NOT_FOUND', '找不到月結記錄', 404);
     }
+    if (monthEndCheck.warehouse) {
+      const wa = assertWarehouseAccess(session, monthEndCheck.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
+    const operatorName = session?.user?.name || session?.user?.email || null;
 
     if (action === 'lock') {
-      // Lock the period: status must be '已結帳'
-      if (monthEnd.status !== '已結帳') {
-        return createErrorResponse('VALIDATION_FAILED', '只能鎖定已結帳的月份', 400);
-      }
+      const updated = await prisma.$transaction(async (tx) => {
+        // Re-read inside transaction for atomicity
+        const monthEnd = await tx.monthEndStatus.findUnique({ where: { id } });
+        if (!monthEnd) throw new Error('NOT_FOUND:找不到月結記錄');
 
-      const updated = await prisma.monthEndStatus.update({
-        where: { id },
-        data: {
-          status: '已鎖定',
-          lockedAt: new Date()
+        // 冪等：已鎖定 → 直接回傳成功
+        if (monthEnd.status === '已鎖定') {
+          return { idempotent: true, monthEnd };
         }
+        if (monthEnd.status !== '已結帳') {
+          throw new Error('VALIDATION:只能鎖定已結帳的月份');
+        }
+
+        return {
+          idempotent: false,
+          monthEnd: await tx.monthEndStatus.update({
+            where: { id },
+            data: {
+              status: '已鎖定',
+              lockedAt: new Date()
+            }
+          })
+        };
       });
 
-      if (session) {
+      if (!updated.idempotent) {
         await auditFromSession(prisma, session, {
           action: AUDIT_ACTIONS.MONTH_END_CLOSE,
           targetModule: 'month-end',
           targetRecordId: id,
-          beforeState: { status: monthEnd.status, year: monthEnd.year, month: monthEnd.month },
+          beforeState: { status: monthEndCheck.status, year: monthEndCheck.year, month: monthEndCheck.month },
           afterState: { status: '已鎖定' },
-          note: `月結鎖定 ${monthEnd.year}/${monthEnd.month}`,
+          note: `月結鎖定 ${monthEndCheck.year}/${monthEndCheck.month}`,
         });
       }
 
       return NextResponse.json({
         success: true,
-        id: updated.id,
-        status: updated.status,
-        lockedAt: updated.lockedAt.toISOString()
+        id: updated.monthEnd.id,
+        status: updated.monthEnd.status,
+        lockedAt: updated.monthEnd.lockedAt ? updated.monthEnd.lockedAt.toISOString() : null
       });
 
     } else if (action === 'unlock') {
-      // Unlock: status must be '已結帳' or '已鎖定'
-      if (!['已結帳', '已鎖定'].includes(monthEnd.status)) {
-        return createErrorResponse('VALIDATION_FAILED', '此月份無法解鎖', 400);
-      }
-
-      const { unlockedBy, unlockReason } = body;
+      const { unlockReason } = body;
       if (!unlockReason) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '解鎖需要提供原因', 400);
       }
 
-      const updated = await prisma.monthEndStatus.update({
-        where: { id },
-        data: {
-          status: '未結帳',
-          unlockedBy: unlockedBy || null,
-          unlockedAt: new Date(),
-          unlockReason
+      const updated = await prisma.$transaction(async (tx) => {
+        const monthEnd = await tx.monthEndStatus.findUnique({ where: { id } });
+        if (!monthEnd) throw new Error('NOT_FOUND:找不到月結記錄');
+
+        // 冪等：已是未結帳 → 直接回傳
+        if (monthEnd.status === '未結帳') {
+          return { idempotent: true, monthEnd };
         }
+        if (!['已結帳', '已鎖定'].includes(monthEnd.status)) {
+          throw new Error('VALIDATION:此月份無法解鎖');
+        }
+
+        return {
+          idempotent: false,
+          monthEnd: await tx.monthEndStatus.update({
+            where: { id },
+            data: {
+              status: '未結帳',
+              unlockedBy: operatorName,
+              unlockedAt: new Date(),
+              unlockReason
+            }
+          })
+        };
       });
 
-      if (session) {
+      if (!updated.idempotent) {
         await auditFromSession(prisma, session, {
           action: AUDIT_ACTIONS.MONTH_END_UNLOCK,
           targetModule: 'month-end',
           targetRecordId: id,
-          beforeState: { status: monthEnd.status, year: monthEnd.year, month: monthEnd.month },
-          afterState: { status: '未結帳', unlockedBy: unlockedBy || null, unlockReason },
-          note: `月結解鎖 ${monthEnd.year}/${monthEnd.month}：${unlockReason}`,
+          beforeState: { status: monthEndCheck.status, year: monthEndCheck.year, month: monthEndCheck.month },
+          afterState: { status: '未結帳', unlockedBy: operatorName, unlockReason },
+          note: `月結解鎖 ${monthEndCheck.year}/${monthEndCheck.month}：${unlockReason}`,
         });
       }
 
       return NextResponse.json({
         success: true,
-        id: updated.id,
-        status: updated.status,
-        unlockedAt: updated.unlockedAt.toISOString(),
-        unlockedBy: updated.unlockedBy,
-        unlockReason: updated.unlockReason
+        id: updated.monthEnd.id,
+        status: updated.monthEnd.status,
+        unlockedAt: updated.monthEnd.unlockedAt ? updated.monthEnd.unlockedAt.toISOString() : null,
+        unlockedBy: updated.monthEnd.unlockedBy,
+        unlockReason: updated.monthEnd.unlockReason
       });
 
     } else {
       return createErrorResponse('VALIDATION_FAILED', '不支援的操作', 400);
     }
   } catch (error) {
+
     return handleApiError(error);
   }
 }

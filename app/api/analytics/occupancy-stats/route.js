@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +31,12 @@ export async function GET(request) {
     };
     if (warehouse) where.warehouse = warehouse;
 
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const batches = await prisma.pmsImportBatch.findMany({
       where,
+      take: 10000,
       select: {
         warehouse: true,
         businessDate: true,

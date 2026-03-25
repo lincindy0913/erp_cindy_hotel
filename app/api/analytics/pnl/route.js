@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +27,12 @@ export async function GET(request) {
     if (Object.keys(pmsDateFilter).length > 0) pmsWhere.businessDate = pmsDateFilter;
     if (warehouse) pmsWhere.warehouse = warehouse;
 
+    const wf1 = applyWarehouseFilter(auth.session, pmsWhere);
+    if (!wf1.ok) return wf1.response;
+
     const pmsRecords = await prisma.pmsIncomeRecord.findMany({
       where: pmsWhere,
+      take: 50000,
       select: { businessDate: true, amount: true }
     });
 
@@ -42,8 +47,12 @@ export async function GET(request) {
     }
     if (warehouse) purchaseWhere.warehouse = warehouse;
 
+    const wf2 = applyWarehouseFilter(auth.session, purchaseWhere);
+    if (!wf2.ok) return wf2.response;
+
     const purchases = await prisma.purchaseMaster.findMany({
       where: purchaseWhere,
+      take: 50000,
       select: { purchaseDate: true, totalAmount: true }
     });
 
@@ -58,8 +67,12 @@ export async function GET(request) {
     }
     if (warehouse) allowanceWhere.warehouse = warehouse;
 
+    const wf3 = applyWarehouseFilter(auth.session, allowanceWhere);
+    if (!wf3.ok) return wf3.response;
+
     const allowances = await prisma.purchaseAllowance.findMany({
       where: allowanceWhere,
+      take: 10000,
       select: { allowanceDate: true, totalAmount: true }
     });
 
@@ -75,8 +88,12 @@ export async function GET(request) {
     }
     if (warehouse) expenseWhere.warehouse = warehouse;
 
+    const wf4 = applyWarehouseFilter(auth.session, expenseWhere);
+    if (!wf4.ok) return wf4.response;
+
     const expenses = await prisma.expense.findMany({
       where: expenseWhere,
+      take: 50000,
       select: { invoiceDate: true, amount: true }
     });
 

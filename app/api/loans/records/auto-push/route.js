@@ -4,6 +4,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { createAlert, ALERT_CATEGORIES } from '@/lib/alert';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,6 +160,12 @@ export async function POST(request) {
         : '沒有符合條件的記錄需要推送'
     });
   } catch (error) {
-    return handleApiError(error);
+    createAlert(
+      ALERT_CATEGORIES.WEBHOOK_FAILURE,
+      '貸款自動推送失敗',
+      error.message || 'Unknown error',
+      { route: '/api/loans/records/auto-push' }
+    ).catch(() => {});
+    return handleApiError(error, '/api/loans/records/auto-push');
   }
 }

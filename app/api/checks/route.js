@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { requireMoney } from '@/lib/safe-parse';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +57,11 @@ export async function GET(request) {
     if (status) where.status = status;
     if (warehouse) where.warehouse = warehouse;
     if (supplierId) where.supplierId = parseInt(supplierId);
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     if (dueDateFrom && dueDateTo) {
       where.dueDate = { gte: dueDateFrom, lte: dueDateTo };
     } else if (dueDateFrom) {
@@ -99,6 +107,9 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '應收支票必須指定目的帳戶', 400);
     }
 
+    // Validate amount (with Decimal(12,2) max enforcement)
+    const parsedCheckAmount = requireMoney(data.amount, '支票金額', { min: 0.01 });
+
     // Validate checkNumber uniqueness within same warehouse
     const existingCheck = await prisma.check.findFirst({
       where: {
@@ -117,33 +128,37 @@ export async function POST(request) {
     const today = new Date().toISOString().split('T')[0];
     const initialStatus = data.dueDate <= today ? 'due' : 'pending';
 
-    const newCheck = await prisma.check.create({
-      data: {
-        checkNo,
-        checkType: data.checkType,
-        checkNumber: data.checkNumber,
-        amount: parseFloat(data.amount),
-        issueDate: data.issueDate || null,
-        dueDate: data.dueDate,
-        status: initialStatus,
-        drawerType: data.drawerType || 'company',
-        drawerName: data.drawerName || null,
-        sourceAccountId: data.sourceAccountId ? parseInt(data.sourceAccountId) : null,
-        payeeName: data.payeeName || null,
-        supplierId: data.supplierId ? parseInt(data.supplierId) : null,
-        destinationAccountId: data.destinationAccountId ? parseInt(data.destinationAccountId) : null,
-        paymentId: data.paymentId ? parseInt(data.paymentId) : null,
-        invoiceIds: data.invoiceIds || null,
-        warehouse: data.warehouse || null,
-        bankName: data.bankName || null,
-        bankBranch: data.bankBranch || null,
-        note: data.note || null,
-        createdBy: data.createdBy || null
-      },
-      include: {
-        sourceAccount: { select: { id: true, name: true, accountCode: true } },
-        destinationAccount: { select: { id: true, name: true, accountCode: true } }
-      }
+    const newCheck = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, data.dueDate, data.warehouse || null);
+
+      return tx.check.create({
+        data: {
+          checkNo,
+          checkType: data.checkType,
+          checkNumber: data.checkNumber,
+          amount: parsedCheckAmount,
+          issueDate: data.issueDate || null,
+          dueDate: data.dueDate,
+          status: initialStatus,
+          drawerType: data.drawerType || 'company',
+          drawerName: data.drawerName || null,
+          sourceAccountId: data.sourceAccountId ? parseInt(data.sourceAccountId) : null,
+          payeeName: data.payeeName || null,
+          supplierId: data.supplierId ? parseInt(data.supplierId) : null,
+          destinationAccountId: data.destinationAccountId ? parseInt(data.destinationAccountId) : null,
+          paymentId: data.paymentId ? parseInt(data.paymentId) : null,
+          invoiceIds: data.invoiceIds || null,
+          warehouse: data.warehouse || null,
+          bankName: data.bankName || null,
+          bankBranch: data.bankBranch || null,
+          note: data.note || null,
+          createdBy: data.createdBy || null
+        },
+        include: {
+          sourceAccount: { select: { id: true, name: true, accountCode: true } },
+          destinationAccount: { select: { id: true, name: true, accountCode: true } }
+        }
+      });
     });
 
     return NextResponse.json(newCheck, { status: 201 });

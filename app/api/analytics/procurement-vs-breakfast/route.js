@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, getAllowedWarehouse } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,10 @@ export async function GET(request) {
     // 1) 當月早餐人數總計（來自 PmsImportBatch）
     const batchWhere = { businessDate: { startsWith: monthPrefix } };
     if (warehouse) batchWhere.warehouse = warehouse;
+
+    const wf1 = applyWarehouseFilter(auth.session, batchWhere);
+    if (!wf1.ok) return wf1.response;
+
     const batches = await prisma.pmsImportBatch.findMany({
       where: batchWhere,
       select: { breakfastCount: true, guestCount: true, occupiedRooms: true },
@@ -70,6 +75,9 @@ export async function GET(request) {
         productId: { in: productIds },
       };
       if (warehouse) purchaseWhere.purchaseMaster.warehouse = warehouse;
+
+      const wf2 = applyWarehouseFilter(auth.session, purchaseWhere.purchaseMaster);
+      if (!wf2.ok) return wf2.response;
 
       const details = await prisma.purchaseDetail.findMany({
         where: purchaseWhere,

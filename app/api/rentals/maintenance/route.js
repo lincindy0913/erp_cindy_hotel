@@ -33,7 +33,7 @@ export async function GET(request) {
 
     return NextResponse.json(records);
   } catch (error) {
-    console.error('GET /api/rentals/maintenance error:', error);
+    console.error('GET /api/rentals/maintenance error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -124,7 +124,7 @@ export async function POST(request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    console.error('POST /api/rentals/maintenance error:', error);
+    console.error('POST /api/rentals/maintenance error:', error.message || error);
     return handleApiError(error);
   }
 }

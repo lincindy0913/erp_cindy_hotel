@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
-import { requireSession } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 查詢信用卡對帳單
 export async function GET(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_VIEW);
   if (!auth.ok) return auth.response;
 
   try {
@@ -54,7 +55,7 @@ export async function GET(request) {
 
 // POST: 新增信用卡對帳單 (手動或 PDF 解析)
 export async function POST(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
   if (!auth.ok) return auth.response;
 
   try {
@@ -220,7 +221,7 @@ async function handleParsedUpload(data) {
 
 // DELETE: 刪除對帳單
 export async function DELETE(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
   if (!auth.ok) return auth.response;
 
   try {
@@ -243,7 +244,7 @@ export async function DELETE(request) {
 
 // PUT: 更新狀態 (確認/比對PMS)
 export async function PUT(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
   if (!auth.ok) return auth.response;
 
   try {

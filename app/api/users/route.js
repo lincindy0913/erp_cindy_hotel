@@ -4,6 +4,7 @@ import { authOptions } from '../auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { validatePasswordStrength } from '@/lib/password-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Get users error:', error);
+    console.error('Get users error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -61,6 +62,11 @@ export async function POST(request) {
 
     if (!data.email || !data.password || !data.name) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫必要欄位', 400);
+    }
+
+    const pwCheck = validatePasswordStrength(data.password);
+    if (!pwCheck.ok) {
+      return createErrorResponse('VALIDATION_FAILED', pwCheck.message, 400);
     }
 
     const bcrypt = (await import('bcryptjs')).default;
@@ -120,7 +126,7 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create user error:', error);
+    console.error('Create user error:', error.message || error);
     return handleApiError(error);
   }
 }

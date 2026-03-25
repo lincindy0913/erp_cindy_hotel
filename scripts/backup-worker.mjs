@@ -2,15 +2,28 @@
 import fs from 'fs/promises';
 import { createReadStream, createWriteStream } from 'fs';
 import path from 'path';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { createGzip } from 'zlib';
-import { createHash } from 'crypto';
+import { createHash, randomBytes, createCipheriv } from 'crypto';
 import { spawn } from 'child_process';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const BACKUP_ROOT = process.env.BACKUP_ROOT || path.join(process.cwd(), 'backup-data');
+const PG_DUMP_BIN = process.env.PG_DUMP_PATH || 'pg_dump';
+
+// Minimum free disk space required to start a backup (default: 500 MB)
+const MIN_FREE_SPACE_MB = parseInt(process.env.BACKUP_MIN_FREE_SPACE_MB) || 500;
+
+// Encryption key: BACKUP_ENCRYPTION_KEY env var (hex-encoded 32 bytes = 64 hex chars)
+// Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+function getEncryptionKey() {
+  const keyHex = process.env.BACKUP_ENCRYPTION_KEY;
+  if (!keyHex) return null;
+  if (keyHex.length !== 64) throw new Error('BACKUP_ENCRYPTION_KEY 必須為 64 個十六進位字元（32 bytes）');
+  return Buffer.from(keyHex, 'hex');
+}
 
 function todayStamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -18,6 +31,21 @@ function todayStamp() {
 
 async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
+}
+
+// Check available disk space on the backup volume
+async function checkDiskSpace(targetDir) {
+  await ensureDir(targetDir);
+  try {
+    // Cross-platform: use Node's fs.statfs (Node 18.15+)
+    const stats = await fs.statfs(targetDir);
+    const freeBytes = stats.bfree * stats.bsize;
+    const freeMB = Math.floor(freeBytes / (1024 * 1024));
+    return { ok: freeMB >= MIN_FREE_SPACE_MB, freeMB, requiredMB: MIN_FREE_SPACE_MB };
+  } catch {
+    // fs.statfs not available (older Node) — skip check
+    return { ok: true, freeMB: null, requiredMB: MIN_FREE_SPACE_MB, skipped: true };
+  }
 }
 
 function spawnAndWait(command, args, options = {}) {
@@ -43,36 +71,52 @@ async function sha256File(filePath) {
   });
 }
 
+// ── Complete table export plan ──────────────────────────────
+// Dynamically covers ALL Prisma models, not a hardcoded subset.
+// Uses Prisma DMMF (Data Model Meta Format) to discover all models at runtime.
+
+function getAllModelNames() {
+  // Prisma client exposes model names via its internal DMMF
+  const dmmf = prisma._baseDmmf || prisma._dmmf;
+  if (dmmf?.datamodel?.models) {
+    return dmmf.datamodel.models.map(m => m.name);
+  }
+  // Fallback: enumerate prisma client properties that have findMany
+  const models = [];
+  for (const key of Object.keys(prisma)) {
+    if (key.startsWith('_') || key.startsWith('$')) continue;
+    if (typeof prisma[key]?.findMany === 'function') {
+      models.push(key);
+    }
+  }
+  return models;
+}
+
+// Tier2 snapshot tables (cache/aggregation only)
+const TIER2_MODELS = new Set([
+  'accountMonthlySnapshot', 'inventoryMonthlySnapshot', 'priceSummaryCache',
+  'monthlyAggregation', 'inventoryLowStockCache', 'supplierMonthlySummary',
+  'rentalMonthlyCache',
+]);
+
+// Internal/config tables excluded from JSON backup (pg_dump covers them in tier1)
+const INTERNAL_MODELS = new Set([
+  'backupRecord', 'backupConfig', 'backupVerification', 'restoreDrill', 'errorAlertLog',
+]);
+
 function tableExportPlan(tier) {
+  const allModels = getAllModelNames();
+
   if (tier === 'tier2_snapshot') {
-    return [
-      ['accountMonthlySnapshots', () => prisma.accountMonthlySnapshot.findMany()],
-      ['inventoryMonthlySnapshots', () => prisma.inventoryMonthlySnapshot.findMany()],
-      ['priceSummaryCaches', () => prisma.priceSummaryCache.findMany()],
-      ['monthlyAggregations', () => prisma.monthlyAggregation.findMany()],
-      ['inventoryLowStockCaches', () => prisma.inventoryLowStockCache.findMany()],
-      ['supplierMonthlySummaries', () => prisma.supplierMonthlySummary.findMany()],
-      ['rentalMonthlyCaches', () => prisma.rentalMonthlyCache.findMany()],
-    ];
+    return allModels
+      .filter(m => TIER2_MODELS.has(m))
+      .map(m => [m, () => prisma[m].findMany()]);
   }
 
-  return [
-    ['products', () => prisma.product.findMany()],
-    ['suppliers', () => prisma.supplier.findMany()],
-    ['purchaseMasters', () => prisma.purchaseMaster.findMany()],
-    ['salesMasters', () => prisma.salesMaster.findMany()],
-    ['cashAccounts', () => prisma.cashAccount.findMany()],
-    ['cashTransactions', () => prisma.cashTransaction.findMany()],
-    ['paymentOrders', () => prisma.paymentOrder.findMany()],
-    ['cashierExecutions', () => prisma.cashierExecution.findMany()],
-    ['checks', () => prisma.check.findMany()],
-    ['loanMasters', () => prisma.loanMaster.findMany()],
-    ['loanMonthlyRecords', () => prisma.loanMonthlyRecord.findMany()],
-    ['monthEndStatuses', () => prisma.monthEndStatus.findMany()],
-    ['yearEndRollovers', () => prisma.yearEndRollover.findMany()],
-    ['bankReconciliations', () => prisma.bankReconciliation.findMany()],
-    ['auditLogs', () => prisma.auditLog.findMany()],
-  ];
+  // tier1 JSON fallback / tier3: export ALL models except internal backup tables
+  return allModels
+    .filter(m => !INTERNAL_MODELS.has(m))
+    .map(m => [m, () => prisma[m].findMany()]);
 }
 
 async function createPgDump(filePath) {
@@ -96,7 +140,7 @@ async function createPgDump(filePath) {
   const port = parsed.port || '5432';
 
   await spawnAndWait(
-    'pg_dump',
+    PG_DUMP_BIN,
     [
       '--format=custom',
       '--no-owner',
@@ -111,20 +155,17 @@ async function createPgDump(filePath) {
   );
 }
 
-async function estimateCoreCounts() {
-  const counts = await Promise.all([
-    prisma.product.count(),
-    prisma.supplier.count(),
-    prisma.purchaseMaster.count(),
-    prisma.salesMaster.count(),
-    prisma.cashAccount.count(),
-    prisma.cashTransaction.count(),
-    prisma.paymentOrder.count(),
-    prisma.check.count(),
-  ]);
+async function estimateAllTableCounts() {
+  const allModels = getAllModelNames().filter(m => !INTERNAL_MODELS.has(m));
+  let totalRecords = 0;
+  for (const m of allModels) {
+    try {
+      totalRecords += await prisma[m].count();
+    } catch { /* skip if count fails */ }
+  }
   return {
-    tableCount: counts.length,
-    totalRecords: counts.reduce((sum, c) => sum + c, 0),
+    tableCount: allModels.length,
+    totalRecords,
   };
 }
 
@@ -146,6 +187,7 @@ async function createJsonBackup(filePath, tier, backupRecord) {
       triggerType: backupRecord.triggerType,
       businessPeriod: backupRecord.businessPeriod,
       generatedAt: new Date().toISOString(),
+      tableNames: Object.keys(data),
     },
     data,
   };
@@ -161,35 +203,87 @@ async function createJsonBackup(filePath, tier, backupRecord) {
   };
 }
 
+// ── Encryption ──────────────────────────────────────────────
+// Format: [16-byte IV][AES-256-GCM ciphertext][16-byte auth tag]
+// Reads plain file, writes .enc file, deletes plain file.
+
+async function encryptFile(plainPath) {
+  const key = getEncryptionKey();
+  if (!key) return { encrypted: false, finalPath: plainPath };
+
+  const encPath = plainPath + '.enc';
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+
+  const readStream = createReadStream(plainPath);
+  const writeStream = createWriteStream(encPath);
+
+  // Write IV header first
+  writeStream.write(iv);
+
+  // Pipe through cipher
+  await pipeline(readStream, cipher, writeStream);
+
+  // Append auth tag
+  const authTag = cipher.getAuthTag();
+  await fs.appendFile(encPath, authTag);
+
+  // Remove unencrypted file
+  await fs.unlink(plainPath);
+
+  return { encrypted: true, finalPath: encPath };
+}
+
+// ── Main backup runner ──────────────────────────────────────
+
 async function runBackup(backupId) {
   const backupRecord = await prisma.backupRecord.findUnique({ where: { id: backupId } });
   if (!backupRecord) throw new Error(`找不到備份任務: ${backupId}`);
   if (backupRecord.status !== 'in_progress') return;
 
+  const config = await prisma.backupConfig.findFirst({ orderBy: { id: 'asc' } });
+  const shouldEncrypt = config?.encryptionEnabled && !!getEncryptionKey();
+
   const tierDir = path.join(BACKUP_ROOT, backupRecord.tier);
   await ensureDir(tierDir);
 
+  // Pre-flight: disk space check
+  const spaceCheck = await checkDiskSpace(tierDir);
+  if (!spaceCheck.ok) {
+    throw new Error(`磁碟空間不足：剩餘 ${spaceCheck.freeMB} MB，需至少 ${spaceCheck.requiredMB} MB。請清理備份目錄或擴充磁碟空間。`);
+  }
+
   const ext = backupRecord.tier === 'tier1_full' ? 'dump' : 'json.gz';
-  const filePath = path.join(tierDir, `${backupRecord.tier}_${todayStamp()}_${backupId}.${ext}`);
+  const plainPath = path.join(tierDir, `${backupRecord.tier}_${todayStamp()}_${backupId}.${ext}`);
 
   let stats;
   if (backupRecord.tier === 'tier1_full') {
-    await createPgDump(filePath);
-    stats = await estimateCoreCounts();
+    await createPgDump(plainPath);
+    stats = await estimateAllTableCounts();
   } else {
-    stats = await createJsonBackup(filePath, backupRecord.tier, backupRecord);
+    stats = await createJsonBackup(plainPath, backupRecord.tier, backupRecord);
   }
 
-  const fileStat = await fs.stat(filePath);
-  const sha256 = await sha256File(filePath);
+  // Encrypt if enabled
+  let finalPath = plainPath;
+  let encrypted = false;
+  if (shouldEncrypt) {
+    const encResult = await encryptFile(plainPath);
+    finalPath = encResult.finalPath;
+    encrypted = encResult.encrypted;
+  }
+
+  const fileStat = await fs.stat(finalPath);
+  const sha256 = await sha256File(finalPath);
 
   await prisma.backupRecord.update({
     where: { id: backupId },
     data: {
       status: 'completed',
-      filePath,
+      filePath: finalPath,
       fileSize: BigInt(fileStat.size),
       sha256,
+      encrypted,
       tableCount: stats.tableCount,
       totalRecords: stats.totalRecords,
       completedAt: new Date(),

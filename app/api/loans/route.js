@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +42,10 @@ export async function GET(request) {
     if (warehouse) where.warehouse = warehouse;
     if (status) where.status = status;
     if (ownerType) where.ownerType = ownerType;
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
 
     const loans = await prisma.loanMaster.findMany({
       where,
@@ -114,6 +120,8 @@ export async function POST(request) {
     const repaymentDayNum = parseInt(data.repaymentDay, 10) || 1;
 
     const result = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, data.startDate, data.warehouse || undefined);
+
       const loan = await tx.loanMaster.create({
         data: {
           loanCode,

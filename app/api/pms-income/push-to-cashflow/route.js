@@ -4,23 +4,11 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { createAlert, ALERT_CATEGORIES } from '@/lib/alert';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-async function generateTransactionNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 // POST: 將收入記錄明細的「借方」收款方式依帳戶設定同步至現金流交易
 export async function POST(request) {
@@ -137,7 +125,7 @@ export async function POST(request) {
           const groupFee = feeMap[`${rec.warehouse}|${settlementDate}`] ?? 0;
           const groupNet = Math.max(0, groupSum - groupFee);
 
-          const txNo = await generateTransactionNo(tx, settlementDate);
+          const txNo = await nextCashTransactionNo(tx, settlementDate);
           const newTx = await tx.cashTransaction.create({
             data: {
               transactionNo: txNo,
@@ -175,7 +163,7 @@ export async function POST(request) {
         }
 
         const txDate = rec.businessDate;
-        const txNo = await generateTransactionNo(tx, txDate);
+        const txNo = await nextCashTransactionNo(tx, txDate);
         const newTx = await tx.cashTransaction.create({
           data: {
             transactionNo: txNo,
@@ -216,7 +204,13 @@ export async function POST(request) {
       errors: errors.length ? errors : undefined
     });
   } catch (error) {
-    console.error('push-to-cashflow error:', error);
-    return handleApiError(error);
+    console.error('push-to-cashflow error:', error.message || error);
+    createAlert(
+      ALERT_CATEGORIES.WEBHOOK_FAILURE,
+      'PMS 推送金流失敗',
+      error.message || 'Unknown error',
+      { route: '/api/pms-income/push-to-cashflow' }
+    ).catch(() => {});
+    return handleApiError(error, '/api/pms-income/push-to-cashflow');
   }
 }

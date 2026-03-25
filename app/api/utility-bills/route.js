@@ -3,11 +3,17 @@ import prisma from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 列表，可篩選 館別、年、月、類型
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse');
@@ -20,6 +26,10 @@ export async function GET(request) {
     if (year) where.billYear = parseInt(year, 10);
     if (month) where.billMonth = parseInt(month, 10);
     if (billType) where.billType = billType;
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
 
     const list = await prisma.utilityBillRecord.findMany({
       where,
@@ -43,8 +53,11 @@ export async function GET(request) {
 
 // POST: 儲存一筆解析結果
 export async function POST(request) {
+  const authPost = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  if (!authPost.ok) return authPost.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = authPost.session;
     const body = await request.json();
     const { warehouse, billYear, billMonth, billType, summaryJson, fileName } = body;
 

@@ -58,7 +58,7 @@ export async function GET(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('GET /api/rentals/contracts error:', error);
+    console.error('GET /api/rentals/contracts error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -130,7 +130,7 @@ export async function POST(request) {
 
     return NextResponse.json(contract, { status: 201 });
   } catch (error) {
-    console.error('POST /api/rentals/contracts error:', error);
+    console.error('POST /api/rentals/contracts error:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -90,7 +90,7 @@ export async function GET(request) {
 
     return NextResponse.json(invoicesWithInfo);
   } catch (error) {
-    console.error('查詢發票列表錯誤:', error);
+    console.error('查詢發票列表錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

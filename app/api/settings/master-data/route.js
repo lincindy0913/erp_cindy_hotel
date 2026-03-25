@@ -26,7 +26,7 @@ export async function GET() {
 
     return NextResponse.json({ warehouses, accountingSubjects });
   } catch (error) {
-    console.error('查詢主資料錯誤:', error);
+    console.error('查詢主資料錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

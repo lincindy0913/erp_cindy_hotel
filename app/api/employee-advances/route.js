@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { validateWarehouse } from '@/lib/master-data-validator';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 查詢員工代墊款清單
 export async function GET(request) {
   try {
+    const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
+    if (!auth.ok) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const employeeName = searchParams.get('employeeName');
@@ -18,6 +22,9 @@ export async function GET(request) {
     if (status) where.status = status;
     if (employeeName) where.employeeName = employeeName;
 
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const records = await prisma.employeeAdvance.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -25,7 +32,7 @@ export async function GET(request) {
 
     return NextResponse.json(records);
   } catch (error) {
-    console.error('GET /api/employee-advances error:', error);
+    console.error('GET /api/employee-advances error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -33,7 +40,9 @@ export async function GET(request) {
 // POST: 手動新增代墊款紀錄
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
+    const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
     const body = await request.json();
     const { employeeName, paymentMethod, amount, sourceDescription, expenseName, summary, warehouse, note } = body;
 
@@ -77,7 +86,7 @@ export async function POST(request) {
 
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
-    console.error('POST /api/employee-advances error:', error);
+    console.error('POST /api/employee-advances error:', error.message || error);
     return handleApiError(error);
   }
 }

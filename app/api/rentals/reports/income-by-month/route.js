@@ -152,7 +152,7 @@ export async function GET(request) {
 
     return NextResponse.json({ year: displayYear, rows });
   } catch (error) {
-    console.error('GET /api/rentals/reports/income-by-month error:', error);
+    console.error('GET /api/rentals/reports/income-by-month error:', error.message || error);
     return handleApiError(error);
   }
 }

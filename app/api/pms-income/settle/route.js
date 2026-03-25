@@ -9,23 +9,10 @@ import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-async function generateTransactionNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 // POST: 結算已核對的月度 PMS 收入 → 建立現金流交易
 export async function POST(request) {
@@ -140,7 +127,7 @@ export async function POST(request) {
         }
 
         // Create income transaction
-        const txNo = await generateTransactionNo(tx, txDate);
+        const txNo = await nextCashTransactionNo(tx, txDate);
         const pmsCatId = await getCategoryId(tx, 'pms_income_settlement');
         const cashTx = await tx.cashTransaction.create({
           data: {
@@ -175,7 +162,7 @@ export async function POST(request) {
 
         // If there's a fee (credit card), create a separate expense transaction for the fee
         if (fee > 0) {
-          const feeTxNo = await generateTransactionNo(tx, txDate);
+          const feeTxNo = await nextCashTransactionNo(tx, txDate);
           const feeCatId = await getCategoryId(tx, 'pms_income_fee');
           await tx.cashTransaction.create({
             data: {
@@ -244,15 +231,8 @@ export async function POST(request) {
       skipped: result.skipped
     });
   } catch (error) {
-    if (error.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (error.message?.startsWith('VALIDATION:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('VALIDATION:', ''), 400);
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
+
+
     return handleApiError(error);
   }
 }

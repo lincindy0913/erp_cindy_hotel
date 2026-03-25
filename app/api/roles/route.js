@@ -22,7 +22,7 @@ export async function GET() {
       _count: undefined,
     })));
   } catch (error) {
-    console.error('取得角色列表錯誤:', error);
+    console.error('取得角色列表錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -57,7 +57,7 @@ export async function POST(request) {
 
     return NextResponse.json(role, { status: 201 });
   } catch (error) {
-    console.error('建立角色錯誤:', error);
+    console.error('建立角色錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

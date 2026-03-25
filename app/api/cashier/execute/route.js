@@ -1,18 +1,27 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../auth/[...nextauth]/route';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { nextSequence } from '@/lib/sequence-generator';
+import { checkIdempotency, saveIdempotency, getIdempotencyKey } from '@/lib/idempotency';
+import { requireMoney, requireInt } from '@/lib/safe-parse';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
+  // Idempotency-Key support: replay cached response if available
+  const cachedRes = checkIdempotency(request);
+  if (cachedRes) return cachedRes;
+
   try {
-    const session = await getServerSession(authOptions);
+    const auth = await requirePermission(PERMISSIONS.CASHIER_EXECUTE);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
     const data = await request.json();
 
     const { paymentOrderId, executionDate, actualAmount, accountId, paymentMethod, isEmployeeAdvance, advancedBy, advancePaymentMethod } = data;
@@ -21,42 +30,24 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
     }
 
+    const parsedAmount = requireMoney(actualAmount, '金額', { min: 0.01 });
+    const parsedAccountId = requireInt(accountId, '帳戶ID');
+    const parsedOrderId = requireInt(paymentOrderId, '付款單ID');
+
     const dateStr = executionDate.replace(/-/g, '');
 
     const result = await prisma.$transaction(async (tx) => {
       // 0. Re-fetch and verify status INSIDE transaction to prevent double-execution
-      const order = await tx.paymentOrder.findUnique({ where: { id: parseInt(paymentOrderId) } });
+      const order = await tx.paymentOrder.findUnique({ where: { id: parsedOrderId } });
       if (!order) throw new Error('NOT_FOUND:付款單不存在');
       if (order.status !== '待出納') throw new Error('IDEMPOTENT:付款單已執行或狀態不正確');
 
       // Enforce period lock
       await assertPeriodOpen(tx, executionDate, order.warehouse);
 
-      // Auto-generate executionNo: CSH-YYYYMMDD-XXXX
-      const prefix = `CSH-${dateStr}-`;
-      const existingExec = await tx.cashierExecution.findMany({
-        where: { executionNo: { startsWith: prefix } },
-        select: { executionNo: true },
-      });
-      let maxSeq = 0;
-      for (const item of existingExec) {
-        const seq = parseInt(item.executionNo.substring(prefix.length)) || 0;
-        if (seq > maxSeq) maxSeq = seq;
-      }
-      const executionNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-
-      // Auto-generate transaction number
-      const txPrefix = `CF-${dateStr}-`;
-      const existingTx = await tx.cashTransaction.findMany({
-        where: { transactionNo: { startsWith: txPrefix } },
-        select: { transactionNo: true },
-      });
-      let maxTxSeq = 0;
-      for (const item of existingTx) {
-        const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
-        if (seq > maxTxSeq) maxTxSeq = seq;
-      }
-      const txNo = `${txPrefix}${String(maxTxSeq + 1).padStart(4, '0')}`;
+      // Auto-generate executionNo & txNo with row-level locking to prevent race conditions
+      const executionNo = await nextSequence(tx, 'cashierExecution', 'executionNo', `CSH-${dateStr}-`);
+      const txNo = await nextSequence(tx, 'cashTransaction', 'transactionNo', `CF-${dateStr}-`);
 
       // 1. 建立現金流扣款（包含支票支付：出納執行時即建立，支票分頁兌現時不再重複建立）
       const categoryId = await getCategoryId(tx, 'cashier_payment');
@@ -66,7 +57,7 @@ export async function POST(request) {
           transactionDate: executionDate,
           type: '支出',
           warehouse: order.warehouse,
-          accountId: parseInt(accountId),
+          accountId: parsedAccountId,
           categoryId,
           amount: actualAmount,
           description: `出納付款 - ${order.orderNo} - ${order.supplierName || ''}`,
@@ -78,16 +69,16 @@ export async function POST(request) {
       });
 
       // 2. Recalculate account balance
-      await recalcBalance(tx, parseInt(accountId));
+      await recalcBalance(tx, parsedAccountId);
 
       // 3. Create CashierExecution
       const execution = await tx.cashierExecution.create({
         data: {
           executionNo,
-          paymentOrderId: parseInt(paymentOrderId),
+          paymentOrderId: parsedOrderId,
           executionDate,
           actualAmount,
-          accountId: parseInt(accountId),
+          accountId: parsedAccountId,
           paymentMethod: paymentMethod || order.paymentMethod,
           checkNo: data.checkNo || null,
           cashTransactionId: cashTx.id,
@@ -99,13 +90,13 @@ export async function POST(request) {
 
       // 4. Update PaymentOrder status
       await tx.paymentOrder.update({
-        where: { id: parseInt(paymentOrderId) },
+        where: { id: parsedOrderId },
         data: { status: '已執行' },
       });
 
       // 4b. 支票支付：若有關聯 Check，將支票標記為兌現（現金流已在步驟1建立，不重複）
       const linkedCheck = await tx.check.findFirst({
-        where: { paymentId: parseInt(paymentOrderId) },
+        where: { paymentId: parsedOrderId },
       });
       if (linkedCheck) {
         await tx.check.update({
@@ -122,7 +113,7 @@ export async function POST(request) {
 
       // 5. If this PaymentOrder is linked to a loan record, update it to 已預付 with actual amounts
       const linkedLoanRecord = await tx.loanMonthlyRecord.findFirst({
-        where: { paymentOrderId: parseInt(paymentOrderId) }
+        where: { paymentOrderId: parsedOrderId }
       });
       if (linkedLoanRecord && linkedLoanRecord.status === '待出納') {
         await tx.loanMonthlyRecord.update({
@@ -131,14 +122,14 @@ export async function POST(request) {
             status: '已預付',
             actualTotal: actualAmount,
             actualDebitDate: executionDate,
-            deductAccountId: parseInt(accountId)
+            deductAccountId: parsedAccountId
           }
         });
       }
 
       // 6. If this PaymentOrder is linked to rental maintenance, update maintenance to paid and link cash tx
       const linkedMaintenance = await tx.rentalMaintenance.findFirst({
-        where: { paymentOrderId: parseInt(paymentOrderId) }
+        where: { paymentOrderId: parsedOrderId }
       });
       if (linkedMaintenance) {
         await tx.rentalMaintenance.update({
@@ -148,18 +139,7 @@ export async function POST(request) {
 
         // 7. If maintenance was an employee advance, create EmployeeAdvance record
         if (linkedMaintenance.isEmployeeAdvance && linkedMaintenance.advancedBy) {
-          const advDateStr = executionDate.replace(/-/g, '');
-          const advPrefix = `ADV-${advDateStr}-`;
-          const existingAdv = await tx.employeeAdvance.findMany({
-            where: { advanceNo: { startsWith: advPrefix } },
-            select: { advanceNo: true },
-          });
-          let maxAdvSeq = 0;
-          for (const item of existingAdv) {
-            const seq = parseInt(item.advanceNo.substring(advPrefix.length)) || 0;
-            if (seq > maxAdvSeq) maxAdvSeq = seq;
-          }
-          const advanceNo = `${advPrefix}${String(maxAdvSeq + 1).padStart(4, '0')}`;
+          const advanceNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${dateStr}-`);
 
           const advance = await tx.employeeAdvance.create({
             data: {
@@ -169,7 +149,7 @@ export async function POST(request) {
               sourceType: 'maintenance',
               sourceRecordId: linkedMaintenance.id,
               sourceDescription: `維護費 - ${order.summary || ''}`,
-              paymentOrderId: parseInt(paymentOrderId),
+              paymentOrderId: parsedOrderId,
               paymentOrderNo: order.orderNo,
               amount: actualAmount,
               status: '待結算',
@@ -198,8 +178,11 @@ export async function POST(request) {
             where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已執行' },
             select: { amount: true },
           });
-          const totalPaid = allPOs.reduce((s, po) => s + Number(po.amount), 0) + Number(order.amount);
-          const termAmount = Number(linkedTerm.amount);
+          // Use cents-based arithmetic to avoid floating-point accumulation errors
+          const totalPaidCents = allPOs.reduce((s, po) => s + Math.round(Number(po.amount) * 100), 0) + Math.round(Number(order.amount) * 100);
+          const termAmountCents = Math.round(Number(linkedTerm.amount) * 100);
+          const totalPaid = totalPaidCents / 100;
+          const termAmount = termAmountCents / 100;
 
           if (totalPaid >= termAmount) {
             // Fully paid
@@ -208,7 +191,7 @@ export async function POST(request) {
               data: {
                 status: 'paid',
                 paidAt: executionDate,
-                paymentOrderId: parseInt(paymentOrderId),
+                paymentOrderId: parsedOrderId,
               },
             });
             // Auto-update contract status if all terms are now paid
@@ -240,7 +223,7 @@ export async function POST(request) {
 
       // 6d. If this PaymentOrder is linked to property tax, update tax to paid and link cash tx
       const linkedTax = await tx.propertyTax.findFirst({
-        where: { paymentOrderId: parseInt(paymentOrderId) }
+        where: { paymentOrderId: parsedOrderId }
       });
       if (linkedTax) {
         await tx.propertyTax.update({
@@ -256,18 +239,7 @@ export async function POST(request) {
 
       // 8. If cashier marked this as employee advance (from cashier form), create EmployeeAdvance
       if (isEmployeeAdvance && advancedBy) {
-        const advDateStr2 = executionDate.replace(/-/g, '');
-        const advPrefix2 = `ADV-${advDateStr2}-`;
-        const existingAdv2 = await tx.employeeAdvance.findMany({
-          where: { advanceNo: { startsWith: advPrefix2 } },
-          select: { advanceNo: true },
-        });
-        let maxAdvSeq2 = 0;
-        for (const item of existingAdv2) {
-          const seq = parseInt(item.advanceNo.substring(advPrefix2.length)) || 0;
-          if (seq > maxAdvSeq2) maxAdvSeq2 = seq;
-        }
-        const advNo = `${advPrefix2}${String(maxAdvSeq2 + 1).padStart(4, '0')}`;
+        const advNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${dateStr}-`);
 
         await tx.employeeAdvance.create({
           data: {
@@ -277,7 +249,7 @@ export async function POST(request) {
             sourceType: 'cashier',
             sourceRecordId: order.id,
             sourceDescription: order.summary || `付款單 ${order.orderNo}`,
-            paymentOrderId: parseInt(paymentOrderId),
+            paymentOrderId: parsedOrderId,
             paymentOrderNo: order.orderNo,
             amount: actualAmount,
             status: '待結算',
@@ -306,22 +278,15 @@ export async function POST(request) {
       });
     }
 
-    return NextResponse.json({
+    const resBody = {
       executionNo: result.executionNo,
       cashTransactionNo: result.cashTx.transactionNo,
       message: '出納確認執行成功',
-    }, { status: 201 });
+    };
+    saveIdempotency(request, resBody, 201);
+    return NextResponse.json(resBody, { status: 201 });
   } catch (error) {
-    // Handle idempotency errors gracefully (return 409 instead of 500)
-    if (error.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (error.message?.startsWith('NOT_FOUND:')) {
-      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
-    return handleApiError(error);
+    // handleApiError now handles all prefix patterns (IDEMPOTENT:, NOT_FOUND:, PERIOD_LOCKED:, etc.) + Prisma errors
+    return handleApiError(error, '/api/cashier/execute');
   }
 }

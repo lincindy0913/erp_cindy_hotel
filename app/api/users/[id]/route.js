@@ -4,6 +4,7 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { validatePasswordStrength } from '@/lib/password-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,8 +77,11 @@ export async function PUT(request, { params }) {
       if (data.notificationSettings !== undefined) updateData.notificationSettings = data.notificationSettings;
 
       if (data.password && data.password.trim() !== '') {
+        const pwCheck = validatePasswordStrength(data.password);
+        if (!pwCheck.ok) throw new Error('VALIDATION:' + pwCheck.message);
         const bcrypt = (await import('bcryptjs')).default;
         updateData.password = await bcrypt.hash(data.password, 10);
+        updateData.passwordChangedAt = new Date();
       }
 
       if (Object.keys(updateData).length > 0) {

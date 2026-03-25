@@ -31,7 +31,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(contracts);
   } catch (error) {
-    console.error('查詢合約錯誤:', error);
+    console.error('查詢合約錯誤:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -75,7 +75,7 @@ export async function POST(request, { params }) {
     const { fileData, ...contractInfo } = newContract;
     return NextResponse.json(contractInfo, { status: 201 });
   } catch (error) {
-    console.error('上傳合約錯誤:', error);
+    console.error('上傳合約錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

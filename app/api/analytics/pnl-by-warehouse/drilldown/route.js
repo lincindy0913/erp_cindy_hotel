@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { buildPnlCashflowWhere, getPnlSubjectKey } from '@/lib/pnl-by-warehouse-shared';
 import { resolveCashTransactionSource } from '@/lib/resolve-cash-transaction-source';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,9 @@ export async function GET(request) {
     } else if (warehouse) {
       where.warehouse = warehouse;
     }
+
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
 
     const transactions = await prisma.cashTransaction.findMany({
       where,

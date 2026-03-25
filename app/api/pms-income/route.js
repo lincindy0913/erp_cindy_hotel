@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +27,10 @@ export async function GET(request) {
     if (warehouse) where.warehouse = warehouse;
     if (entryType) where.entryType = entryType;
     if (accountingCode) where.accountingCode = accountingCode;
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
     if (startDate && endDate) {
       where.businessDate = { gte: startDate, lte: endDate };
     } else if (startDate) {
@@ -84,18 +90,22 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '借貸方必須是「貸方」或「借方」', 400);
     }
 
-    const record = await prisma.pmsIncomeRecord.create({
-      data: {
-        warehouse: data.warehouse,
-        businessDate: data.businessDate,
-        entryType: data.entryType,
-        pmsColumnName: data.pmsColumnName,
-        amount: parseFloat(data.amount),
-        accountingCode: data.accountingCode,
-        accountingName: data.accountingName,
-        note: data.note || null,
-        isModified: false
-      }
+    const record = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, data.businessDate, data.warehouse);
+
+      return tx.pmsIncomeRecord.create({
+        data: {
+          warehouse: data.warehouse,
+          businessDate: data.businessDate,
+          entryType: data.entryType,
+          pmsColumnName: data.pmsColumnName,
+          amount: parseFloat(data.amount),
+          accountingCode: data.accountingCode,
+          accountingName: data.accountingName,
+          note: data.note || null,
+          isModified: false
+        }
+      });
     });
 
     return NextResponse.json({

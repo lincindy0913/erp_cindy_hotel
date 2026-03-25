@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // PUT - Update a notification channel preference
 export async function PUT(request, { params }) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requirePermission(PERMISSIONS.NOTIFICATION_VIEW);
+  if (!auth.ok) return auth.response;
 
+  try {
+    const session = auth.session;
     const id = parseInt(params.id);
     if (isNaN(id)) {
       return createErrorResponse('VALIDATION_FAILED', '無效的 ID', 400);
@@ -73,12 +72,11 @@ export async function PUT(request, { params }) {
 
 // DELETE - Remove a notification channel preference (resets to defaults)
 export async function DELETE(request, { params }) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requirePermission(PERMISSIONS.NOTIFICATION_VIEW);
+  if (!auth.ok) return auth.response;
 
+  try {
+    const session = auth.session;
     const id = parseInt(params.id);
     if (isNaN(id)) {
       return createErrorResponse('VALIDATION_FAILED', '無效的 ID', 400);

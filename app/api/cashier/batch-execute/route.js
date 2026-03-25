@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../auth/[...nextauth]/route';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
@@ -39,7 +39,9 @@ async function generateNo(tx, model, prefix, dateStr) {
 // Validation: sum of account amounts must equal sum of selected orders
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
+    const auth = await requirePermission(PERMISSIONS.CASHIER_EXECUTE);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
     const data = await request.json();
 
     const { orderIds, accounts, executionDate, note, orderExtras, isEmployeeAdvance, advancedBy, advancePaymentMethod } = data;
@@ -452,12 +454,7 @@ export async function POST(request) {
       message: `批次執行成功！共 ${orders.length} 筆付款單，${accounts.length} 個帳戶`,
     }, { status: 201 });
   } catch (error) {
-    if (error.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
+
     console.error('Batch execute error:', error?.message, error?.stack);
     return handleApiError(error);
   }

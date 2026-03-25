@@ -17,7 +17,7 @@ export async function GET() {
     });
     return NextResponse.json(rules);
   } catch (error) {
-    console.error('Error fetching PMS mapping rules:', error);
+    console.error('Error fetching PMS mapping rules:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -67,7 +67,7 @@ export async function POST(request) {
 
     return NextResponse.json(rule, { status: 201 });
   } catch (error) {
-    console.error('Error creating PMS mapping rule:', error);
+    console.error('Error creating PMS mapping rule:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -106,7 +106,7 @@ export async function PUT(request) {
 
     return NextResponse.json(rule);
   } catch (error) {
-    console.error('Error updating PMS mapping rule:', error);
+    console.error('Error updating PMS mapping rule:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -140,7 +140,7 @@ export async function DELETE(request) {
 
     return NextResponse.json({ message: '刪除成功' });
   } catch (error) {
-    console.error('Error deleting PMS mapping rule:', error);
+    console.error('Error deleting PMS mapping rule:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ export async function GET(request) {
       const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       dateFilter = { purchaseDate: { startsWith: prefix } };
     }
+
+    const wf = applyWarehouseFilter(auth.session, dateFilter);
+    if (!wf.ok) return wf.response;
 
     // Get all purchases for the period
     const purchases = await prisma.purchaseMaster.findMany({

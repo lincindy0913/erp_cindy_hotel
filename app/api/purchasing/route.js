@@ -3,8 +3,10 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { validateWarehouse } from '@/lib/master-data-validator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +40,10 @@ export async function GET(request) {
       ];
     }
 
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
+
     const formatPurchase = (p) => ({
       id: p.id,
       purchaseNo: p.purchaseNo,
@@ -66,10 +72,10 @@ export async function GET(request) {
     const includeOpts = { details: true };
     const orderByOpts = { id: 'desc' };
 
-    // 不分頁模式（向下相容）
+    // 不分頁模式（向下相容），上限 5000 筆
     if (all || page === 0) {
       const purchases = await prisma.purchaseMaster.findMany({
-        where, include: includeOpts, orderBy: orderByOpts,
+        where, include: includeOpts, orderBy: orderByOpts, take: 5000,
       });
       return NextResponse.json(purchases.map(formatPurchase));
     }
@@ -107,53 +113,59 @@ export async function POST(request) {
     const whErr = await validateWarehouse(data.warehouse);
     if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
 
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const todayPrefix = `PUR-${today}-`;
-    const existingCount = await prisma.purchaseMaster.count({
-      where: { purchaseNo: { startsWith: todayPrefix } }
-    });
-    const purchaseNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
+    const newPurchase = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, data.purchaseDate, data.warehouse);
 
-    const newPurchase = await prisma.purchaseMaster.create({
-      data: {
-        purchaseNo,
-        warehouse: data.warehouse || '',
-        department: data.department || '',
-        supplierId: parseInt(data.supplierId),
-        purchaseDate: data.purchaseDate,
-        paymentTerms: data.paymentTerms || '月結',
-        taxType: data.taxType || null,
-        amount: parseFloat(data.amount || 0),
-        tax: 0,
-        totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : parseFloat(data.amount || 0),
-        status: data.status || '待入庫',
-        details: {
-          create: (data.items || []).map(item => ({
-            productId: parseInt(item.productId),
-            quantity: parseInt(item.quantity),
-            unitPrice: parseFloat(item.unitPrice),
-            note: item.note || '',
-            status: item.status || '待入庫',
-            inventoryWarehouse: item.inventoryWarehouse || null
-          }))
-        }
-      },
-      include: { details: true }
-    });
+      const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const todayPrefix = `PUR-${today}-`;
+      const existingCount = await tx.purchaseMaster.count({
+        where: { purchaseNo: { startsWith: todayPrefix } }
+      });
+      const purchaseNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
 
-    // 記錄價格歷史
-    for (const item of (data.items || [])) {
-      if (item.productId && item.unitPrice) {
-        await prisma.priceHistory.create({
-          data: {
-            supplierId: parseInt(data.supplierId),
-            productId: parseInt(item.productId),
-            purchaseDate: data.purchaseDate,
-            unitPrice: parseFloat(item.unitPrice)
+      const created = await tx.purchaseMaster.create({
+        data: {
+          purchaseNo,
+          warehouse: data.warehouse || '',
+          department: data.department || '',
+          supplierId: parseInt(data.supplierId),
+          purchaseDate: data.purchaseDate,
+          paymentTerms: data.paymentTerms || '月結',
+          taxType: data.taxType || null,
+          amount: parseFloat(data.amount || 0),
+          tax: 0,
+          totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : parseFloat(data.amount || 0),
+          status: data.status || '待入庫',
+          details: {
+            create: (data.items || []).map(item => ({
+              productId: parseInt(item.productId),
+              quantity: parseInt(item.quantity),
+              unitPrice: parseFloat(item.unitPrice),
+              note: item.note || '',
+              status: item.status || '待入庫',
+              inventoryWarehouse: item.inventoryWarehouse || null
+            }))
           }
-        });
+        },
+        include: { details: true }
+      });
+
+      // 記錄價格歷史
+      for (const item of (data.items || [])) {
+        if (item.productId && item.unitPrice) {
+          await tx.priceHistory.create({
+            data: {
+              supplierId: parseInt(data.supplierId),
+              productId: parseInt(item.productId),
+              purchaseDate: data.purchaseDate,
+              unitPrice: parseFloat(item.unitPrice)
+            }
+          });
+        }
       }
-    }
+
+      return created;
+    });
 
     const result = {
       id: newPurchase.id,

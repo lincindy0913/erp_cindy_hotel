@@ -1,0 +1,57 @@
+# 正式上線前：自動檢查 + GitHub Environment「production」人工審批閘門
+# 公司規定：變更正式環境須老闆同意 → Required reviewers 請包含老闆（或授權之 GitHub 帳號）
+# 設定：Repo → Settings → Environments → production → Required reviewers
+name: Release gate (production approval)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: '變更摘要／版本說明（會寫入 Summary）'
+        required: true
+        type: string
+
+concurrency:
+  group: production-release-gate
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Lint & unit/API tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit & API tests
+        run: npm test
+
+  production-handoff:
+    name: Production approval gate
+    needs: verify
+    runs-on: ubuntu-latest
+    # 在 GitHub 建立同名 Environment 並設定 Required reviewers 後，此 job 會暫停直到核准
+    environment: production
+    steps:
+      - name: Record handoff
+        run: |
+          echo "## 正式環境發布手動步驟" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**變更摘要:** ${{ inputs.release_notes }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. 確認 **老闆已於** \`change-approval-template.md\`（或同等表單）**簽核同意**。" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. 確認 \`main\` 上的 commit 即將部署之版本。" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. 在 **Railway**（或貴司正式管道）執行正式部署：推送 \`main\` 或儀表板 **Redeploy**。" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. 上線後檢查 \`/api/health\` 與 UAT 煙霧項目。" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "詳見 \`docs/operational-excellence/release-process.md\`。" >> "$GITHUB_STEP_SUMMARY"

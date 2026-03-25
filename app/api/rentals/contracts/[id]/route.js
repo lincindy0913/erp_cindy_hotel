@@ -6,27 +6,10 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
@@ -58,7 +41,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json(contract);
   } catch (error) {
-    console.error('GET /api/rentals/contracts/[id] error:', error);
+    console.error('GET /api/rentals/contracts/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -84,7 +67,7 @@ export async function PUT(request, { params }) {
     if (body.action === 'depositReceive') {
       const accountId = existing.depositAccountId || existing.rentAccountId;
       const today = new Date().toISOString().split('T')[0];
-      const transactionNo = await generateTransactionNo(today);
+      const transactionNo = await nextCashTransactionNo(tx, today);
 
       const depositInCatId = await getCategoryId(prisma, 'rental_deposit_in');
       const tx = await prisma.cashTransaction.create({
@@ -223,7 +206,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(contract);
   } catch (error) {
-    console.error('PUT /api/rentals/contracts/[id] error:', error);
+    console.error('PUT /api/rentals/contracts/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -261,7 +244,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('DELETE /api/rentals/contracts/[id] error:', error);
+    console.error('DELETE /api/rentals/contracts/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }

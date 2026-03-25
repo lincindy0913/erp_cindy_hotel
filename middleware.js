@@ -1,6 +1,80 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
 
+// ── API Versioning ──
+// Current API version. Bump when making breaking changes.
+const API_VERSION = '1.0';
+// Clients can send Api-Version header; for now we accept all and return current version.
+
+// ── CSRF protection (Origin/Referer validation) ──
+const CSRF_STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CSRF_EXEMPT_PREFIXES = ['/api/auth']; // NextAuth handles its own CSRF
+
+function validateCsrf(req) {
+  const method = req.method?.toUpperCase();
+  if (!CSRF_STATE_CHANGING.has(method)) return { ok: true };
+  if (CSRF_EXEMPT_PREFIXES.some(p => req.nextUrl.pathname.startsWith(p))) return { ok: true };
+
+  const origin = req.headers.get('origin');
+  const referer = req.headers.get('referer');
+
+  if (!origin && !referer) {
+    const ct = req.headers.get('content-type') || '';
+    if (ct.includes('application/json') || ct === '') return { ok: true };
+    return { ok: false };
+  }
+
+  const expectedHost = req.nextUrl.host;
+  const source = origin || referer;
+  try {
+    const srcHost = new URL(source).host;
+    return { ok: srcHost === expectedHost };
+  } catch {
+    return { ok: false };
+  }
+}
+
+// ── Rate limiting (in-memory sliding window) ──
+const rateLimitStore = new Map();
+const RATE_LIMITS = {
+  '/api/auth': { windowMs: 15 * 60_000, max: 10 },  // login: 10 per 15 min
+  '/api/backup': { windowMs: 60_000, max: 10 },      // backup ops: 10 per min
+};
+
+function checkRateLimit(pathname, ip) {
+  let config = null;
+  for (const [prefix, cfg] of Object.entries(RATE_LIMITS)) {
+    if (pathname.startsWith(prefix)) { config = cfg; break; }
+  }
+  if (!config) return { allowed: true };
+
+  const key = `${pathname.split('/').slice(0, 3).join('/')}:${ip}`;
+  const now = Date.now();
+  const windowStart = now - config.windowMs;
+
+  let timestamps = rateLimitStore.get(key);
+  if (!timestamps) { timestamps = []; rateLimitStore.set(key, timestamps); }
+
+  while (timestamps.length > 0 && timestamps[0] <= windowStart) timestamps.shift();
+
+  if (timestamps.length >= config.max) {
+    return { allowed: false, retryAfterMs: timestamps[0] + config.windowMs - now };
+  }
+  timestamps.push(now);
+  return { allowed: true };
+}
+
+// Periodic cleanup (runs on cold start, non-blocking)
+if (typeof globalThis.__rlCleanup === 'undefined') {
+  globalThis.__rlCleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [key, ts] of rateLimitStore) {
+      while (ts.length > 0 && ts[0] <= now - 15 * 60_000) ts.shift();
+      if (ts.length === 0) rateLimitStore.delete(key);
+    }
+  }, 5 * 60_000);
+}
+
 // 模組路由 → 所需權限對應表
 const ROUTE_PERMISSIONS = {
   '/purchasing': 'purchasing.view',
@@ -54,6 +128,30 @@ export default withAuth(
       return NextResponse.next();
     }
 
+    // ── Rate limiting (before auth check) ──
+    if (isApiRoute) {
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        || req.headers.get('x-real-ip') || 'unknown';
+      const rl = checkRateLimit(pathname, ip);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { error: { code: 'RATE_LIMITED', message: '請求過於頻繁，請稍後再試' } },
+          { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs || 60000) / 1000)) } }
+        );
+      }
+    }
+
+    // ── CSRF protection on API state-changing requests ──
+    if (isApiRoute) {
+      const csrf = validateCsrf(req);
+      if (!csrf.ok) {
+        return NextResponse.json(
+          { error: { code: 'CSRF_FAILED', message: '跨站請求驗證失敗' } },
+          { status: 403 }
+        );
+      }
+    }
+
     // API 路由：統一回傳 JSON，避免被重導向
     if (isApiRoute && !token) {
       return NextResponse.json(
@@ -95,7 +193,13 @@ export default withAuth(
       }
     }
 
-    return NextResponse.next();
+    // ── Attach API version header to all API responses ──
+    const res = NextResponse.next();
+    if (isApiRoute) {
+      res.headers.set('Api-Version', API_VERSION);
+      res.headers.set('Deprecation', 'false');
+    }
+    return res;
   },
   {
     callbacks: {

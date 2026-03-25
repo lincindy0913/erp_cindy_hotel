@@ -6,28 +6,10 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX (optional tx for use inside transaction)
-async function generateTransactionNo(date, txClient = null) {
-  const db = txClient || prisma;
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await db.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
@@ -83,7 +65,7 @@ export async function PUT(request, { params }) {
       ? income.tenant.companyName
       : income.tenant.fullName;
 
-    const transactionNo = await generateTransactionNo(actualDate);
+    const transactionNo = await nextCashTransactionNo(tx, actualDate);
     const categoryId = await getCategoryId(prisma, 'rental_income');
     const category = categoryId
       ? await prisma.cashCategory.findUnique({
@@ -157,7 +139,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ success: true, status: newStatus, transactionId: tx.id, sequenceNo: nextSeq });
   } catch (error) {
-    console.error('PUT /api/rentals/income/[id] error:', error);
+    console.error('PUT /api/rentals/income/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -243,7 +225,7 @@ export async function PATCH(request, { params }) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('PATCH /api/rentals/income/[id] error:', error);
+    console.error('PATCH /api/rentals/income/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -268,6 +250,10 @@ export async function DELETE(request, { params }) {
     if (!income) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
     }
+    // 冪等：若已經是 pending 狀態，視為已作廢完成
+    if (income.status === 'pending') {
+      return createErrorResponse('VALIDATION_FAILED', '此紀錄已為待收款狀態，無需作廢', 409);
+    }
     const payments = income.payments || [];
     if (payments.length === 0 && !income.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '僅可作廢已收款的紀錄', 400);
@@ -286,25 +272,29 @@ export async function DELETE(request, { params }) {
     await prisma.$transaction(async (tx) => {
       const revDate = new Date().toISOString().split('T')[0];
       for (const cashTx of txsToReverse) {
+        // 冪等：re-read in transaction 確認尚未被沖銷
+        const fresh = await tx.cashTransaction.findUnique({ where: { id: cashTx.id } });
+        if (!fresh || fresh.reversedById) continue; // 已沖銷，跳過
+
         const revNo = await generateTransactionNo(revDate, tx);
         const reversalTx = await tx.cashTransaction.create({
           data: {
             transactionNo: revNo,
             transactionDate: revDate,
             type: '支出',
-            accountId: cashTx.accountId,
-            categoryId: cashTx.categoryId,
-            amount: Number(cashTx.amount),
-            description: `沖銷：${cashTx.description || ''}`,
+            accountId: fresh.accountId,
+            categoryId: fresh.categoryId,
+            amount: Number(fresh.amount),
+            description: `沖銷：${fresh.description || ''}`,
             sourceType: 'reversal',
-            sourceRecordId: cashTx.id,
+            sourceRecordId: fresh.id,
             status: '已確認',
             isReversal: true,
-            reversalOfId: cashTx.id
+            reversalOfId: fresh.id
           }
         });
         await tx.cashTransaction.update({
-          where: { id: cashTx.id },
+          where: { id: fresh.id },
           data: { reversedById: reversalTx.id }
         });
       }
@@ -342,7 +332,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('DELETE /api/rentals/income/[id] error:', error);
+    console.error('DELETE /api/rentals/income/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { createAlert, ALERT_CATEGORIES } from '@/lib/alert';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,11 @@ export async function POST(request) {
 
     if (!data || !Array.isArray(data) || data.length === 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少匯入資料或資料為空陣列', 400);
+    }
+
+    const MAX_IMPORT_BATCH = 5000;
+    if (data.length > MAX_IMPORT_BATCH) {
+      return createErrorResponse('VALIDATION_FAILED', `單次匯入上限 ${MAX_IMPORT_BATCH} 筆，目前 ${data.length} 筆`, 400);
     }
 
     const validImportTypes = ['products', 'suppliers', 'accounting_subjects'];
@@ -86,7 +92,13 @@ export async function POST(request) {
       { status: statusCode }
     );
   } catch (error) {
-    return handleApiError(error);
+    createAlert(
+      ALERT_CATEGORIES.IMPORT_FAILURE,
+      '資料匯入失敗',
+      error.message || 'Unknown import error',
+      { route: '/api/import' }
+    ).catch(() => {});
+    return handleApiError(error, '/api/import');
   }
 }
 

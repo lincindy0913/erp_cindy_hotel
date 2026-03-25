@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
@@ -13,7 +13,9 @@ export const dynamic = 'force-dynamic';
 // POST: 結算員工代墊款 (資金移轉：公司帳戶 → 員工)
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
+    const auth = await requirePermission(PERMISSIONS.CASHIER_EXECUTE);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
     const body = await request.json();
     const { advanceIds, accountId, settleDate, paymentMethod, note, billTotal, privateAmount, privateAccountId } = body;
 
@@ -162,10 +164,7 @@ export async function POST(request) {
       ...result,
     }, { status: 200 });
   } catch (error) {
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
-    console.error('POST /api/employee-advances/settle error:', error);
+    console.error('POST /api/employee-advances/settle error:', error.message || error);
     return handleApiError(error);
   }
 }

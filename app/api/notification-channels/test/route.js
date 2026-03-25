@@ -1,20 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { decryptField } from '@/lib/field-encryption';
 
 export const dynamic = 'force-dynamic';
 
 // POST - Send test notification to verify channel configuration
 export async function POST(request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
+  if (!auth.ok) return auth.response;
 
-    const userId = parseInt(session.user.id);
+  try {
+    const userId = parseInt(auth.session.user.id);
     const data = await request.json();
     const { channel } = data; // 'email' or 'line'
 
@@ -26,8 +25,14 @@ export async function POST(request) {
       );
     }
 
-    // Get system config
-    const sysConfig = await prisma.systemNotificationConfig.findFirst();
+    // Get system config and decrypt sensitive fields
+    const rawConfig = await prisma.systemNotificationConfig.findFirst();
+    const sysConfig = rawConfig ? {
+      ...rawConfig,
+      smtpPassword: decryptField(rawConfig.smtpPassword),
+      lineBotAccessToken: decryptField(rawConfig.lineBotAccessToken),
+      lineBotChannelSecret: decryptField(rawConfig.lineBotChannelSecret),
+    } : null;
 
     // Get user info
     const user = await prisma.user.findUnique({

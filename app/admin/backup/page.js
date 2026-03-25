@@ -16,6 +16,7 @@ const STATUS_COLORS = {
   failed: 'bg-red-100 text-red-800',
   verified: 'bg-emerald-100 text-emerald-800',
   corrupted: 'bg-orange-100 text-orange-800',
+  passed: 'bg-green-100 text-green-800',
 };
 
 const STATUS_LABELS = {
@@ -24,6 +25,7 @@ const STATUS_LABELS = {
   failed: '失敗',
   verified: '已驗證',
   corrupted: '已損壞',
+  passed: '通過',
 };
 
 const TRIGGER_LABELS = {
@@ -49,10 +51,22 @@ export default function BackupPage() {
   const [savingConfig, setSavingConfig] = useState(false);
   const [expandedRecord, setExpandedRecord] = useState(null);
   const [verifyingId, setVerifyingId] = useState(null);
+  // Drill / RTO-RPO state
+  const [drillData, setDrillData] = useState(null);
+  const [rtoRpoData, setRtoRpoData] = useState(null);
+  const [runningDrill, setRunningDrill] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    fetchDrillData();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'drill') fetchDrillData();
+  }, [activeTab]);
 
   async function fetchData() {
     setLoading(true);
@@ -76,6 +90,19 @@ export default function BackupPage() {
     setLoading(false);
   }
 
+  async function fetchDrillData() {
+    try {
+      const [drillRes, statusRes] = await Promise.all([
+        fetch('/api/backup/restore-drill'),
+        fetch('/api/backup/rto-rpo-status'),
+      ]);
+      if (drillRes.ok) setDrillData(await drillRes.json());
+      if (statusRes.ok) setRtoRpoData(await statusRes.json());
+    } catch (err) {
+      console.error('取得演練資料失敗:', err);
+    }
+  }
+
   async function triggerBackup(tier) {
     if (!confirm(`確定要手動觸發 ${TIER_LABELS[tier]}？`)) return;
     setTriggeringTier(tier);
@@ -96,6 +123,29 @@ export default function BackupPage() {
       showToast('系統錯誤', 'error');
     }
     setTriggeringTier(null);
+  }
+
+  async function triggerDrill() {
+    if (!confirm('確定要手動執行還原演練？將對最近備份執行實際還原測試。')) return;
+    setRunningDrill(true);
+    try {
+      const res = await fetch('/api/backup/restore-drill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoRestore: true }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const statusText = data.status === 'passed' ? '通過' : '失敗';
+        showToast(`還原演練${statusText} — RTO: ${data.rto?.actualFormatted || '-'}, RPO: ${data.rpo?.actualFormatted || '-'}`, data.status === 'passed' ? 'success' : 'error');
+        fetchDrillData();
+      } else {
+        showToast(data.error || '演練觸發失敗', 'error');
+      }
+    } catch {
+      showToast('系統錯誤', 'error');
+    }
+    setRunningDrill(false);
   }
 
   async function verifyBackup(recordId) {
@@ -145,7 +195,7 @@ export default function BackupPage() {
 
   function showToast(message, type = 'success') {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   }
 
   function formatFileSize(bytes) {
@@ -183,7 +233,7 @@ export default function BackupPage() {
       <Navigation borderColor="border-gray-500" />
 
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm max-w-md ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
           {toast.message}
         </div>
       )}
@@ -195,12 +245,12 @@ export default function BackupPage() {
             <div className="flex items-center gap-3">
               {failedCount > 0 && (
                 <span className="px-3 py-1 bg-red-100 text-red-700 text-sm rounded-full font-medium">
-                  🔴 {failedCount} 筆備份失敗
+                  {failedCount} 筆備份失敗
                 </span>
               )}
               {inProgressCount > 0 && (
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm rounded-full font-medium">
-                  🔄 {inProgressCount} 筆執行中
+                  {inProgressCount} 筆執行中
                 </span>
               )}
             </div>
@@ -211,6 +261,7 @@ export default function BackupPage() {
         <div className="flex gap-1 mb-6 border-b border-gray-200">
           {[
             { key: 'overview', label: '備份總覽' },
+            { key: 'drill', label: '還原演練' },
             { key: 'history', label: '備份歷史' },
             { key: 'config', label: '備份設定' },
           ].map(tab => (
@@ -235,6 +286,51 @@ export default function BackupPage() {
             {/* ===== 備份總覽 ===== */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
+                {/* RTO/RPO Health Score Banner */}
+                {rtoRpoData && (
+                  <div className={`rounded-lg border p-4 ${
+                    rtoRpoData.healthScore >= 80 ? 'bg-green-50 border-green-200' :
+                    rtoRpoData.healthScore >= 60 ? 'bg-yellow-50 border-yellow-200' :
+                    rtoRpoData.healthScore >= 40 ? 'bg-orange-50 border-orange-200' :
+                    'bg-red-50 border-red-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-1">備份可還原性健康分數</h3>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-3xl font-bold ${
+                            rtoRpoData.healthScore >= 80 ? 'text-green-700' :
+                            rtoRpoData.healthScore >= 60 ? 'text-yellow-700' :
+                            rtoRpoData.healthScore >= 40 ? 'text-orange-700' :
+                            'text-red-700'
+                          }`}>
+                            {rtoRpoData.healthScore}/100 ({rtoRpoData.healthGrade})
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('drill')}
+                        className="px-3 py-1.5 text-xs bg-gray-700 text-white rounded hover:bg-gray-800"
+                      >
+                        查看詳情
+                      </button>
+                    </div>
+                    {rtoRpoData.recommendations?.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {rtoRpoData.recommendations.slice(0, 2).map((r, i) => (
+                          <div key={i} className={`text-xs px-2 py-1 rounded ${
+                            r.level === 'critical' ? 'bg-red-100 text-red-700' :
+                            r.level === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {r.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Status Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {tiers.map(tier => {
@@ -242,21 +338,20 @@ export default function BackupPage() {
                     const inProg = records.find(r => r.tier === tier && r.status === 'in_progress');
                     const failed = records.find(r => r.tier === tier && r.status === 'failed');
 
-                    let statusIcon = '⏳';
                     let statusText = '尚無備份';
                     let statusColor = 'text-gray-400';
 
-                    if (inProg) { statusIcon = '🔄'; statusText = '執行中'; statusColor = 'text-blue-600'; }
+                    if (inProg) { statusText = '執行中'; statusColor = 'text-blue-600'; }
                     else if (latest) {
-                      if (latest.status === 'verified') { statusIcon = '✅'; statusText = '已驗證'; statusColor = 'text-emerald-600'; }
-                      else { statusIcon = '✅'; statusText = '已完成'; statusColor = 'text-green-600'; }
-                    } else if (failed) { statusIcon = '❌'; statusText = '上次失敗'; statusColor = 'text-red-600'; }
+                      if (latest.status === 'verified') { statusText = '已驗證'; statusColor = 'text-emerald-600'; }
+                      else { statusText = '已完成'; statusColor = 'text-green-600'; }
+                    } else if (failed) { statusText = '上次失敗'; statusColor = 'text-red-600'; }
 
                     return (
                       <div key={tier} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
                         <h3 className="text-xs font-medium text-gray-500 mb-2">{TIER_LABELS[tier]}</h3>
                         <div className={`text-sm font-semibold mb-1 ${statusColor}`}>
-                          {statusIcon} {statusText}
+                          {statusText}
                         </div>
                         {latest && (
                           <>
@@ -273,7 +368,7 @@ export default function BackupPage() {
                           disabled={!!triggeringTier || !!inProg}
                           className="w-full px-3 py-1.5 bg-gray-700 text-white text-xs rounded hover:bg-gray-800 disabled:opacity-40 transition-colors"
                         >
-                          {triggeringTier === tier ? '觸發中...' : '▶ 手動觸發'}
+                          {triggeringTier === tier ? '觸發中...' : '手動觸發'}
                         </button>
                       </div>
                     );
@@ -294,9 +389,9 @@ export default function BackupPage() {
                         <div className="font-medium text-gray-700">每日 {config.tier2SnapshotTime || '04:30'}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-400 mb-0.5">自動驗證</div>
+                        <div className="text-xs text-gray-400 mb-0.5">還原演練頻率</div>
                         <div className="font-medium text-gray-700">
-                          {DAY_LABELS[config.verifyDayOfWeek ?? 0]} {config.verifyTime || '06:00'}
+                          每 {config.drillFrequencyDays || 7} 天
                         </div>
                       </div>
                       <div>
@@ -318,6 +413,201 @@ export default function BackupPage() {
                       <li>Tier 2（快照）— 本地保存 <strong>{config.tier2RetainDays || 30}</strong> 天，雲端保存 30 天</li>
                       <li>Tier 3（月結/年結）— 依台灣商業會計法規保存 <strong>7 年</strong>，不自動刪除</li>
                     </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===== 還原演練 (Drill + RTO/RPO) ===== */}
+            {activeTab === 'drill' && (
+              <div className="space-y-6">
+                {/* RTO/RPO Dashboard */}
+                {rtoRpoData && (
+                  <>
+                    {/* Health Score */}
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                      <div className={`rounded-lg border p-4 ${
+                        rtoRpoData.healthScore >= 80 ? 'bg-green-50 border-green-200' :
+                        rtoRpoData.healthScore >= 60 ? 'bg-yellow-50 border-yellow-200' :
+                        rtoRpoData.healthScore >= 40 ? 'bg-orange-50 border-orange-200' :
+                        'bg-red-50 border-red-200'
+                      }`}>
+                        <div className="text-xs text-gray-500 mb-1">健康分數</div>
+                        <div className={`text-2xl font-bold ${
+                          rtoRpoData.healthScore >= 80 ? 'text-green-700' :
+                          rtoRpoData.healthScore >= 60 ? 'text-yellow-700' :
+                          rtoRpoData.healthScore >= 40 ? 'text-orange-700' :
+                          'text-red-700'
+                        }`}>
+                          {rtoRpoData.healthScore} <span className="text-lg">/ 100</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">等級: {rtoRpoData.healthGrade}</div>
+                      </div>
+                      <div className={`bg-white rounded-lg border p-4 ${rtoRpoData.currentStatus.rpoCompliant ? 'border-green-200' : 'border-red-200'}`}>
+                        <div className="text-xs text-gray-500 mb-1">RPO 現況</div>
+                        <div className={`text-lg font-bold ${rtoRpoData.currentStatus.rpoCompliant ? 'text-green-700' : 'text-red-700'}`}>
+                          {rtoRpoData.currentStatus.rpoFormatted || '無備份'}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">目標: {rtoRpoData.targets.rpoTargetHours} 小時內</div>
+                      </div>
+                      <div className={`bg-white rounded-lg border p-4 ${rtoRpoData.drillStatus.lastRtoCompliant ? 'border-green-200' : 'border-red-200'}`}>
+                        <div className="text-xs text-gray-500 mb-1">RTO 上次實測</div>
+                        <div className={`text-lg font-bold ${rtoRpoData.drillStatus.lastRtoCompliant === null ? 'text-gray-400' : rtoRpoData.drillStatus.lastRtoCompliant ? 'text-green-700' : 'text-red-700'}`}>
+                          {rtoRpoData.drillStatus.lastRestoreFormatted || '尚未測試'}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">目標: {rtoRpoData.targets.rtoTargetMinutes} 分鐘內</div>
+                      </div>
+                      <div className={`bg-white rounded-lg border p-4 ${rtoRpoData.drillStatus.drillOverdue ? 'border-red-200' : 'border-green-200'}`}>
+                        <div className="text-xs text-gray-500 mb-1">上次演練</div>
+                        <div className={`text-lg font-bold ${rtoRpoData.drillStatus.drillOverdue ? 'text-red-700' : 'text-green-700'}`}>
+                          {rtoRpoData.drillStatus.daysSinceLastDrill != null ? `${rtoRpoData.drillStatus.daysSinceLastDrill} 天前` : '從未執行'}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">頻率: 每 {rtoRpoData.targets.drillFrequencyDays} 天</div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="text-xs text-gray-500 mb-1">演練通過率</div>
+                        <div className="text-lg font-bold text-gray-700">
+                          {rtoRpoData.trend.passRate || '-'}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">RTO: {rtoRpoData.trend.rtoPassRate || '-'} | RPO: {rtoRpoData.trend.rpoPassRate || '-'}</div>
+                      </div>
+                    </div>
+
+                    {/* Health Factors */}
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">健康評分明細</h3>
+                      <div className="space-y-2">
+                        {rtoRpoData.healthFactors?.map((f, i) => (
+                          <div key={i} className="flex items-center gap-3">
+                            <div className="w-24 text-xs text-gray-500">{f.factor}</div>
+                            <div className="flex-1">
+                              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${f.score >= f.max * 0.8 ? 'bg-green-500' : f.score >= f.max * 0.5 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                  style={{ width: `${(f.score / f.max) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div className="w-16 text-xs text-right text-gray-600">{f.score}/{f.max}</div>
+                            <div className="w-40 text-xs text-gray-400 truncate">{f.detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recommendations */}
+                    {rtoRpoData.recommendations?.length > 0 && (
+                      <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
+                        <h3 className="text-sm font-semibold text-amber-800 mb-2">改善建議</h3>
+                        <div className="space-y-2">
+                          {rtoRpoData.recommendations.map((r, i) => (
+                            <div key={i} className={`text-xs px-3 py-2 rounded ${
+                              r.level === 'critical' ? 'bg-red-100 text-red-700 font-medium' :
+                              r.level === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>
+                              {r.level === 'critical' ? '[嚴重] ' : r.level === 'warning' ? '[警告] ' : '[建議] '}{r.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Drill Action + History */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-gray-700">還原演練紀錄</h3>
+                    <button
+                      onClick={triggerDrill}
+                      disabled={runningDrill}
+                      className="px-4 py-2 bg-gray-700 text-white text-sm rounded hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {runningDrill ? '演練中...' : '立即執行還原演練'}
+                    </button>
+                  </div>
+
+                  {drillData?.drills?.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-100">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">時間</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">備份層級</th>
+                          <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">狀態</th>
+                          <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">還原方式</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">RTO 實測</th>
+                          <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">RTO</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">RPO</th>
+                          <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">RPO</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">觸發</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {drillData.drills.map(d => (
+                          <tr key={d.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs text-gray-600">{formatDate(d.startedAt)}</td>
+                            <td className="px-3 py-2 text-xs">{TIER_LABELS[d.backup?.tier] || d.backup?.tier || '-'}</td>
+                            <td className="px-3 py-2 text-center">
+                              <span className={`px-2 py-0.5 rounded text-xs ${STATUS_COLORS[d.status] || 'bg-gray-100 text-gray-700'}`}>
+                                {STATUS_LABELS[d.status] || d.status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-center text-xs text-gray-500">
+                              {d.restoreMethod === 'pg_restore_temp_schema' ? 'pg_restore' :
+                               d.restoreMethod === 'json_validate_insert' ? 'JSON 驗證' :
+                               d.restoreMethod || '-'}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs font-mono">
+                              {d.restoreDurationMs != null ? formatDuration(d.restoreDurationMs) : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {d.rtoCompliant === true && <span className="text-green-600 text-xs font-medium">OK</span>}
+                              {d.rtoCompliant === false && <span className="text-red-600 text-xs font-medium">超標</span>}
+                              {d.rtoCompliant == null && <span className="text-gray-400 text-xs">-</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs text-gray-600">
+                              {d.dataAgeMinutes != null ? (d.dataAgeMinutes < 60 ? `${d.dataAgeMinutes}m` : `${(d.dataAgeMinutes / 60).toFixed(1)}h`) : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {d.rpoCompliant === true && <span className="text-green-600 text-xs font-medium">OK</span>}
+                              {d.rpoCompliant === false && <span className="text-red-600 text-xs font-medium">超標</span>}
+                              {d.rpoCompliant == null && <span className="text-gray-400 text-xs">-</span>}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-400">{d.triggeredBy || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      尚無還原演練紀錄，請點擊「立即執行還原演練」開始第一次演練
+                    </div>
+                  )}
+                </div>
+
+                {/* Trend / Stats */}
+                {rtoRpoData?.trend && (
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">趨勢統計（近 30 次）</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">平均還原時間</div>
+                        <div className="font-medium text-gray-700">{rtoRpoData.trend.avgRestoreFormatted || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">最長還原時間</div>
+                        <div className="font-medium text-gray-700">{rtoRpoData.trend.maxRestoreFormatted || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">RTO 達標率</div>
+                        <div className="font-medium text-gray-700">{rtoRpoData.trend.rtoPassRate || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-0.5">RPO 達標率</div>
+                        <div className="font-medium text-gray-700">{rtoRpoData.trend.rpoPassRate || '-'}</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -390,7 +680,7 @@ export default function BackupPage() {
                             </td>
                             <td className="px-4 py-3 text-center text-xs">
                               {r.cloudUploaded ? (
-                                <span className="text-green-600">☁️ 已上傳</span>
+                                <span className="text-green-600">已上傳</span>
                               ) : (
                                 <span className="text-gray-400">-</span>
                               )}
@@ -402,7 +692,7 @@ export default function BackupPage() {
                                   disabled={verifyingId === r.id}
                                   className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 disabled:opacity-50"
                                 >
-                                  {verifyingId === r.id ? '驗證中...' : '🔍 驗證'}
+                                  {verifyingId === r.id ? '驗證中...' : '驗證'}
                                 </button>
                               )}
                             </td>
@@ -423,7 +713,7 @@ export default function BackupPage() {
                                   )}
                                   {r.verified && (
                                     <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-green-700">
-                                      ✅ 備份已驗證（{formatDate(r.verifiedAt)}）
+                                      備份已驗證（{formatDate(r.verifiedAt)}）
                                     </div>
                                   )}
                                   {r.createdBy && <div><span className="text-gray-400">觸發人員：</span>{r.createdBy}</div>}
@@ -450,7 +740,7 @@ export default function BackupPage() {
                         onClick={() => setEditingConfig(true)}
                         className="px-3 py-1.5 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
                       >
-                        ✏️ 編輯
+                        編輯
                       </button>
                     ) : (
                       <div className="flex gap-2">
@@ -473,32 +763,8 @@ export default function BackupPage() {
 
                   <div className="space-y-4 text-sm">
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Tier 1 全量備份時間</label>
-                        {editingConfig ? (
-                          <input
-                            type="time"
-                            value={configForm.tier1BackupTime || '04:00'}
-                            onChange={e => setConfigForm(p => ({ ...p, tier1BackupTime: e.target.value }))}
-                            className="border rounded px-2 py-1 text-sm w-full"
-                          />
-                        ) : (
-                          <div className="font-medium text-gray-700">{configForm.tier1BackupTime || '04:00'}</div>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Tier 2 快照備份時間</label>
-                        {editingConfig ? (
-                          <input
-                            type="time"
-                            value={configForm.tier2SnapshotTime || '04:30'}
-                            onChange={e => setConfigForm(p => ({ ...p, tier2SnapshotTime: e.target.value }))}
-                            className="border rounded px-2 py-1 text-sm w-full"
-                          />
-                        ) : (
-                          <div className="font-medium text-gray-700">{configForm.tier2SnapshotTime || '04:30'}</div>
-                        )}
-                      </div>
+                      <ConfigField label="Tier 1 全量備份時間" value={configForm.tier1BackupTime || '04:00'} editing={editingConfig} type="time" onChange={v => setConfigForm(p => ({ ...p, tier1BackupTime: v }))} />
+                      <ConfigField label="Tier 2 快照備份時間" value={configForm.tier2SnapshotTime || '04:30'} editing={editingConfig} type="time" onChange={v => setConfigForm(p => ({ ...p, tier2SnapshotTime: v }))} />
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">自動驗證星期</label>
                         {editingConfig ? (
@@ -513,52 +779,75 @@ export default function BackupPage() {
                           <div className="font-medium text-gray-700">{DAY_LABELS[configForm.verifyDayOfWeek ?? 0]}</div>
                         )}
                       </div>
+                      <ConfigField label="自動驗證時間" value={configForm.verifyTime || '06:00'} editing={editingConfig} type="time" onChange={v => setConfigForm(p => ({ ...p, verifyTime: v }))} />
+                    </div>
+
+                    <hr className="border-gray-100" />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <ConfigField label="Tier 1 本地保留天數" value={configForm.tier1RetainDays || 90} editing={editingConfig} type="number" min={1} suffix=" 天" onChange={v => setConfigForm(p => ({ ...p, tier1RetainDays: parseInt(v) }))} />
+                      <ConfigField label="Tier 2 本地保留天數" value={configForm.tier2RetainDays || 30} editing={editingConfig} type="number" min={1} suffix=" 天" onChange={v => setConfigForm(p => ({ ...p, tier2RetainDays: parseInt(v) }))} />
+                    </div>
+
+                    <hr className="border-gray-100" />
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">RTO / RPO 目標</h4>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <ConfigField label="RTO 目標（分鐘）" value={configForm.rtoTargetMinutes || 60} editing={editingConfig} type="number" min={1} max={1440} suffix=" 分鐘" onChange={v => setConfigForm(p => ({ ...p, rtoTargetMinutes: parseInt(v) }))} />
+                      <ConfigField label="RPO 目標（小時）" value={configForm.rpoTargetHours || 24} editing={editingConfig} type="number" min={1} max={168} suffix=" 小時" onChange={v => setConfigForm(p => ({ ...p, rpoTargetHours: parseInt(v) }))} />
+                    </div>
+
+                    <hr className="border-gray-100" />
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">還原演練排程</h4>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <ConfigField label="演練頻率（天）" value={configForm.drillFrequencyDays || 7} editing={editingConfig} type="number" min={1} max={90} suffix=" 天" onChange={v => setConfigForm(p => ({ ...p, drillFrequencyDays: parseInt(v) }))} />
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">自動驗證時間</label>
+                        <label className="block text-xs text-gray-500 mb-1">啟用自動演練</label>
                         {editingConfig ? (
-                          <input
-                            type="time"
-                            value={configForm.verifyTime || '06:00'}
-                            onChange={e => setConfigForm(p => ({ ...p, verifyTime: e.target.value }))}
-                            className="border rounded px-2 py-1 text-sm w-full"
-                          />
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={configForm.drillEnabled !== false} onChange={e => setConfigForm(p => ({ ...p, drillEnabled: e.target.checked }))} className="rounded" />
+                            <span className="text-sm text-gray-700">定期自動執行還原演練</span>
+                          </label>
                         ) : (
-                          <div className="font-medium text-gray-700">{configForm.verifyTime || '06:00'}</div>
+                          <div className={`font-medium ${configForm.drillEnabled !== false ? 'text-green-600' : 'text-gray-400'}`}>
+                            {configForm.drillEnabled !== false ? '已啟用' : '已停用'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">演練時執行實際還原</label>
+                        {editingConfig ? (
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={configForm.drillAutoRestore !== false} onChange={e => setConfigForm(p => ({ ...p, drillAutoRestore: e.target.checked }))} className="rounded" />
+                            <span className="text-sm text-gray-700">還原至暫時結構並驗證</span>
+                          </label>
+                        ) : (
+                          <div className={`font-medium ${configForm.drillAutoRestore !== false ? 'text-green-600' : 'text-gray-400'}`}>
+                            {configForm.drillAutoRestore !== false ? '已啟用' : '僅檔案驗證'}
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <hr className="border-gray-100" />
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Tier 1 本地保留天數</label>
-                        {editingConfig ? (
-                          <input
-                            type="number"
-                            min={1}
-                            value={configForm.tier1RetainDays || 90}
-                            onChange={e => setConfigForm(p => ({ ...p, tier1RetainDays: parseInt(e.target.value) }))}
-                            className="border rounded px-2 py-1 text-sm w-full"
-                          />
-                        ) : (
-                          <div className="font-medium text-gray-700">{configForm.tier1RetainDays || 90} 天</div>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Tier 2 本地保留天數</label>
-                        {editingConfig ? (
-                          <input
-                            type="number"
-                            min={1}
-                            value={configForm.tier2RetainDays || 30}
-                            onChange={e => setConfigForm(p => ({ ...p, tier2RetainDays: parseInt(e.target.value) }))}
-                            className="border rounded px-2 py-1 text-sm w-full"
-                          />
-                        ) : (
-                          <div className="font-medium text-gray-700">{configForm.tier2RetainDays || 30} 天</div>
-                        )}
-                      </div>
+                    {/* 加密設定 */}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">備份加密（AES-256-GCM）</label>
+                      {editingConfig ? (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={!!configForm.encryptionEnabled} onChange={e => setConfigForm(p => ({ ...p, encryptionEnabled: e.target.checked }))} className="rounded" />
+                          <span className="text-sm text-gray-700">啟用靜態加密（需設定 BACKUP_ENCRYPTION_KEY 環境變數）</span>
+                        </label>
+                      ) : (
+                        <div className={`font-medium ${configForm.encryptionEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                          {configForm.encryptionEnabled ? '已啟用' : '未啟用'}
+                        </div>
+                      )}
                     </div>
 
                     <hr className="border-gray-100" />
@@ -605,12 +894,13 @@ export default function BackupPage() {
                 </div>
 
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-amber-800 mb-2">⚠️ 注意事項</h3>
+                  <h3 className="text-sm font-semibold text-amber-800 mb-2">注意事項</h3>
                   <ul className="text-xs text-amber-700 space-y-1">
-                    <li>• Tier 1 全量備份需要系統具備 pg_dump 工具與足夠磁碟空間</li>
-                    <li>• 自動驗證會在 Staging 環境執行還原測試，請確保環境就緒</li>
-                    <li>• 雲端上傳需設定對應的 Access Key 與 Secret（請聯繫系統管理員）</li>
-                    <li>• Tier 3 年度備份保存 7 年，不提供自動刪除</li>
+                    <li>Tier 1 全量備份需要系統具備 pg_dump 工具與足夠磁碟空間</li>
+                    <li>還原演練會在臨時 schema 中執行 pg_restore 測試，不影響正式資料</li>
+                    <li>RTO 目標 = 還原可接受的最大時間；RPO 目標 = 可容忍的資料遺失時間</li>
+                    <li>建議 RTO/RPO 演練頻率至少每 7 天一次，高風險環境建議每日</li>
+                    <li>Tier 3 年度備份保存 7 年，不提供自動刪除</li>
                   </ul>
                 </div>
               </div>
@@ -620,4 +910,31 @@ export default function BackupPage() {
       </main>
     </div>
   );
+}
+
+function ConfigField({ label, value, editing, type, min, max, suffix, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      {editing ? (
+        <input
+          type={type}
+          min={min}
+          max={max}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="border rounded px-2 py-1 text-sm w-full"
+        />
+      ) : (
+        <div className="font-medium text-gray-700">{value}{suffix || ''}</div>
+      )}
+    </div>
+  );
+}
+
+function formatDuration(ms) {
+  if (ms == null) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
 }

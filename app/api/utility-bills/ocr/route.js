@@ -1,11 +1,41 @@
 import { NextResponse } from 'next/server';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const maxDuration = 300; // 5 minutes for AI inference
 
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || 'http://ocr:5001';
 
-export async function POST(request) {
+// SSRF protection: validate that OCR_SERVICE_URL is an allowed host
+function validateOcrUrl(baseUrl) {
   try {
+    const parsed = new URL(baseUrl);
+    // Block file://, ftp://, etc. — only http/https allowed
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    const host = parsed.hostname.toLowerCase();
+    // Block common internal metadata endpoints
+    const blocked = ['169.254.169.254', 'metadata.google.internal', '100.100.100.200', '[::1]'];
+    if (blocked.includes(host)) return false;
+    // Block localhost unless explicitly configured (dev)
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return process.env.NODE_ENV !== 'production';
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(request) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  if (!auth.ok) return auth.response;
+
+  try {
+    if (!validateOcrUrl(OCR_SERVICE_URL)) {
+      console.error('[OCR] blocked SSRF-risk URL:', OCR_SERVICE_URL);
+      return NextResponse.json({ error: 'OCR 服務 URL 設定異常' }, { status: 500 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file');
     const billType = formData.get('bill_type') || '電費';
@@ -15,13 +45,19 @@ export async function POST(request) {
       return NextResponse.json({ error: '請上傳 PDF 檔案' }, { status: 400 });
     }
 
+    // Validate page is a numeric string to prevent injection into URL
+    const pageNum = parseInt(page, 10);
+    if (Number.isNaN(pageNum) || pageNum < 0) {
+      return NextResponse.json({ error: 'page 參數格式錯誤' }, { status: 400 });
+    }
+
     const ocrForm = new FormData();
     ocrForm.append('file', file);
     ocrForm.append('bill_type', billType);
-    ocrForm.append('page', page);
+    ocrForm.append('page', String(pageNum));
 
     const ocrRes = await fetch(
-      `${OCR_SERVICE_URL}/ocr?bill_type=${encodeURIComponent(billType)}&page=${page}`,
+      `${OCR_SERVICE_URL}/ocr?bill_type=${encodeURIComponent(billType)}&page=${pageNum}`,
       { method: 'POST', body: ocrForm, signal: AbortSignal.timeout(290000) }
     );
 

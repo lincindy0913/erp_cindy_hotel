@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 單筆折讓單
 export async function GET(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const id = parseInt(params.id);
     const record = await prisma.purchaseAllowance.findUnique({
@@ -13,6 +19,11 @@ export async function GET(request, { params }) {
       include: { details: true },
     });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到折讓單', 404);
+
+    if (record.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, record.warehouse);
+      if (!wa.ok) return wa.response;
+    }
 
     return NextResponse.json({
       ...record,
@@ -33,12 +44,21 @@ export async function GET(request, { params }) {
 
 // PUT: 編輯折讓單（僅草稿可編輯）
 export async function PUT(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  if (!auth.ok) return auth.response;
+
   try {
     const id = parseInt(params.id);
     const data = await request.json();
 
     const existing = await prisma.purchaseAllowance.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到折讓單', 404);
+
+    if (existing.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
     if (existing.status !== '草稿') {
       return createErrorResponse('VALIDATION_FAILED', `無法編輯：目前狀態為「${existing.status}」，僅「草稿」可編輯`, 400);
     }
@@ -91,10 +111,19 @@ export async function PUT(request, { params }) {
 
 // DELETE: 刪除折讓單（僅草稿可刪除）
 export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  if (!auth.ok) return auth.response;
+
   try {
     const id = parseInt(params.id);
     const existing = await prisma.purchaseAllowance.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到折讓單', 404);
+
+    if (existing.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
     if (existing.status !== '草稿') {
       return createErrorResponse('VALIDATION_FAILED', `無法刪除：目前狀態為「${existing.status}」，僅「草稿」可刪除`, 400);
     }

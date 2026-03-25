@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
@@ -27,8 +27,11 @@ async function generateTxNo(tx, dateStr) {
 
 // POST: 確認折讓/全額退貨 → 建立退款交易 + 回沖相關資料
 export async function POST(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  if (!auth.ok) return auth.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = auth.session;
     const id = parseInt(params.id);
     const body = await request.json();
     const { accountId, refundDate } = body;
@@ -289,16 +292,9 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({ message, ...result });
   } catch (error) {
-    if (error.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (error.message?.startsWith('NOT_FOUND:')) {
-      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
-    console.error('POST /api/purchase-allowances/[id]/confirm error:', error);
+
+
+    console.error('POST /api/purchase-allowances/[id]/confirm error:', error.message || error);
     return handleApiError(error);
   }
 }

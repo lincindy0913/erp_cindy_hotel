@@ -7,6 +7,7 @@ import { createHash } from 'crypto';
 import { gunzipSync } from 'zlib';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { validateBackupPath } from '@/lib/backup-restore';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,12 +81,28 @@ export async function PUT(request, { params }) {
       return createErrorResponse('VALIDATION_FAILED', '備份檔案路徑不存在，無法驗證', 400);
     }
 
+    // 0) 路徑安全性驗證
+    const pathCheck = validateBackupPath(record.filePath);
+    if (!pathCheck.ok) {
+      return createErrorResponse('VALIDATION_FAILED', pathCheck.reason, 400);
+    }
+
     // 1) 檔案存在性
     await fs.access(record.filePath);
 
-    // 2) checksum 驗證
+    // 2) checksum 驗證（sha256 必須存在，否則視為驗證失敗）
     const actualSha256 = await sha256File(record.filePath);
-    const checksumMatch = !!record.sha256 && actualSha256 === record.sha256;
+    let checksumMatch;
+    if (!record.sha256) {
+      checksumMatch = false;
+      // Backfill: compute and store checksum for legacy backups
+      await prisma.backupRecord.update({
+        where: { id },
+        data: { sha256: actualSha256 },
+      });
+    } else {
+      checksumMatch = actualSha256 === record.sha256;
+    }
 
     // 3) DB 可連線（透過 Prisma）
     await prisma.$queryRaw`SELECT 1`;

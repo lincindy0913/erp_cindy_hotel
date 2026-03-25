@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,38 +22,58 @@ export async function GET(request) {
     const endDateStr = endDate.toISOString().split('T')[0];
 
     // Current cash balance
+    const cashAccountWhere = { isActive: true };
+    const wf1 = applyWarehouseFilter(auth.session, cashAccountWhere);
+    if (!wf1.ok) return wf1.response;
+
     const cashAccounts = await prisma.cashAccount.findMany({
-      where: { isActive: true },
+      where: cashAccountWhere,
+      take: 1000,
       select: { id: true, name: true, currentBalance: true, type: true, warehouse: true },
     });
     const currentCash = cashAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
 
     // Expected outflows: pending checks
+    const checksPayableWhere = {
+      checkType: 'payable',
+      status: { in: ['pending', 'due'] },
+      dueDate: { gte: todayStr, lte: endDateStr },
+    };
+    const wf2 = applyWarehouseFilter(auth.session, checksPayableWhere);
+    if (!wf2.ok) return wf2.response;
+
     const pendingChecksPayable = await prisma.check.findMany({
-      where: {
-        checkType: 'payable',
-        status: { in: ['pending', 'due'] },
-        dueDate: { gte: todayStr, lte: endDateStr },
-      },
+      where: checksPayableWhere,
+      take: 5000,
       select: { amount: true, dueDate: true, payeeName: true },
       orderBy: { dueDate: 'asc' },
     });
 
     // Expected outflows: loan repayments
+    const loanWhere = { status: 'active' };
+    const wf4 = applyWarehouseFilter(auth.session, loanWhere);
+    if (!wf4.ok) return wf4.response;
+
     const loanRepayments = await prisma.loanMaster.findMany({
-      where: { status: 'active' },
+      where: loanWhere,
+      take: 1000,
       select: {
         id: true, loanName: true, monthlyPayment: true, repaymentDay: true,
       },
     });
 
     // Expected inflows: pending checks receivable
+    const checksReceivableWhere = {
+      checkType: 'receivable',
+      status: { in: ['pending', 'due'] },
+      dueDate: { gte: todayStr, lte: endDateStr },
+    };
+    const wf3 = applyWarehouseFilter(auth.session, checksReceivableWhere);
+    if (!wf3.ok) return wf3.response;
+
     const pendingChecksReceivable = await prisma.check.findMany({
-      where: {
-        checkType: 'receivable',
-        status: { in: ['pending', 'due'] },
-        dueDate: { gte: todayStr, lte: endDateStr },
-      },
+      where: checksReceivableWhere,
+      take: 5000,
       select: { amount: true, dueDate: true, drawerName: true },
       orderBy: { dueDate: 'asc' },
     });
@@ -63,6 +84,7 @@ export async function GET(request) {
         status: { in: ['pending', 'overdue'] },
         dueDate: { gte: todayStr, lte: endDateStr },
       },
+      take: 5000,
       select: { expectedAmount: true, dueDate: true },
       orderBy: { dueDate: 'asc' },
     });

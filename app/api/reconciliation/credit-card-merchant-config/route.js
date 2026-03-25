@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
-import { requireSession } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 // GET: 取得所有信用卡特約商店設定
 export async function GET() {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_VIEW);
   if (!auth.ok) return auth.response;
 
   try {
@@ -23,7 +24,7 @@ export async function GET() {
 
 // POST: 新增/更新信用卡特約商店設定
 export async function POST(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
   if (!auth.ok) return auth.response;
 
   try {
@@ -68,7 +69,7 @@ export async function POST(request) {
 
 // DELETE: 刪除特約商店設定
 export async function DELETE(request) {
-  const auth = await requireSession();
+  const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
   if (!auth.ok) return auth.response;
 
   try {

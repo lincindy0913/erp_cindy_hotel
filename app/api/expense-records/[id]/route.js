@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
@@ -159,9 +160,9 @@ async function createExpenseCashTransaction(tx, record, template) {
 // Helper: reverse CashTransaction for expense void
 async function reverseExpenseCashTransaction(tx, recordId) {
   const cashTx = await tx.cashTransaction.findFirst({
-    where: { sourceType: 'common_expense', sourceRecordId: recordId, status: '已確認', isReversal: false }
+    where: { sourceType: 'common_expense', sourceRecordId: recordId, status: '已確認', isReversal: false, reversedById: null }
   });
-  if (!cashTx) return null;
+  if (!cashTx) return null; // 找不到或已被沖銷
 
   const transactionDate = new Date().toISOString().split('T')[0];
   const reversalTxNo = await generateTxNo(tx, transactionDate);
@@ -234,6 +235,11 @@ export async function GET(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到費用記錄', 404);
     }
 
+    if (record.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, record.warehouse);
+      if (!wa.ok) return wa.response;
+    }
+
     return NextResponse.json(formatRecord(record));
   } catch (error) {
     return handleApiError(error);
@@ -260,6 +266,11 @@ export async function PUT(request, { params }) {
 
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '找不到費用記錄', 404);
+    }
+
+    if (existing.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, existing.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     // Action: confirm
@@ -483,15 +494,8 @@ export async function PUT(request, { params }) {
 
     return createErrorResponse('VALIDATION_FAILED', '無效的操作，請指定 action: confirm、void 或 edit', 400);
   } catch (error) {
-    if (error.message?.startsWith('IDEMPOTENT:')) {
-      return createErrorResponse('VALIDATION_FAILED', error.message.replace('IDEMPOTENT:', ''), 409);
-    }
-    if (error.message?.startsWith('NOT_FOUND:')) {
-      return createErrorResponse('NOT_FOUND', error.message.replace('NOT_FOUND:', ''), 404);
-    }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
+
+
     return handleApiError(error);
   }
 }
@@ -515,6 +519,11 @@ export async function DELETE(request, { params }) {
 
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '找不到費用記錄', 404);
+    }
+
+    if (existing.warehouse) {
+      const waDel = assertWarehouseAccess(auth.session, existing.warehouse);
+      if (!waDel.ok) return waDel.response;
     }
 
     // Check linked payment order status

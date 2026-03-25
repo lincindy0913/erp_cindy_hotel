@@ -4,29 +4,14 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
 // Helper: generate cash transaction number
-async function generateTransactionNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 // Helper: serialize a CashCount record for JSON response
 function serializeCashCount(c) {
@@ -73,6 +58,12 @@ export async function GET(request, { params }) {
 
     if (!cashCount) {
       return createErrorResponse('NOT_FOUND', '盤點記錄不存在', 404);
+    }
+
+    // Warehouse-level access via account
+    if (cashCount.account?.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, cashCount.account.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     // If there is a linked transaction, fetch it
@@ -132,6 +123,12 @@ export async function PUT(request, { params }) {
 
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '盤點記錄不存在', 404);
+    }
+
+    // Warehouse-level access via account
+    if (existing.account?.warehouse) {
+      const wa = assertWarehouseAccess(auth.session, existing.account.warehouse);
+      if (!wa.ok) return wa.response;
     }
 
     const action = data.action || 'update';
@@ -269,7 +266,7 @@ export async function PUT(request, { params }) {
 
         // Create adjustment transaction if there is a non-zero difference
         if (differenceType !== 'balanced') {
-          const txNo = await generateTransactionNo(tx, existing.countDate);
+          const txNo = await nextCashTransactionNo(tx, existing.countDate);
           const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
 
           if (differenceType === 'surplus') {
@@ -384,7 +381,7 @@ export async function PUT(request, { params }) {
           const absDifference = Math.abs(Number(existing.difference));
           const accountId = existing.accountId;
           const account = await tx.cashAccount.findUnique({ where: { id: accountId } });
-          const txNo = await generateTransactionNo(tx, existing.countDate);
+          const txNo = await nextCashTransactionNo(tx, existing.countDate);
 
           if (existing.differenceType === 'shortage') {
             const shortageCatId2 = await getCategoryId(tx, 'cash_count_shortage');

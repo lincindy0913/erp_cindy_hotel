@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission, requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { encryptField, decryptFields } from '@/lib/field-encryption';
+
+const CLOUD_SENSITIVE_FIELDS = ['cloudAccessKey', 'cloudSecretKey'];
 
 export const dynamic = 'force-dynamic';
 
@@ -64,8 +67,13 @@ export async function GET() {
       };
     };
 
+    // Mask sensitive cloud credentials in response
+    const maskedConfig = { ...config };
+    if (maskedConfig.cloudAccessKey) maskedConfig.cloudAccessKey = '********';
+    if (maskedConfig.cloudSecretKey) maskedConfig.cloudSecretKey = '********';
+
     return NextResponse.json({
-      config,
+      config: maskedConfig,
       summary: {
         latestTier1: serializeSummary(latestTier1),
         latestTier2: serializeSummary(latestTier2),
@@ -186,8 +194,14 @@ export async function PUT(request) {
     if (data.cloudBucketTier1 !== undefined) updateData.cloudBucketTier1 = data.cloudBucketTier1 || null;
     if (data.cloudBucketTier2 !== undefined) updateData.cloudBucketTier2 = data.cloudBucketTier2 || null;
     if (data.cloudBucketTier3 !== undefined) updateData.cloudBucketTier3 = data.cloudBucketTier3 || null;
-    if (data.cloudAccessKey !== undefined) updateData.cloudAccessKey = data.cloudAccessKey || null;
-    if (data.cloudSecretKey !== undefined) updateData.cloudSecretKey = data.cloudSecretKey || null;
+    if (data.cloudAccessKey !== undefined) {
+      updateData.cloudAccessKey = data.cloudAccessKey && data.cloudAccessKey !== '********'
+        ? encryptField(data.cloudAccessKey) : (data.cloudAccessKey === '********' ? undefined : null);
+    }
+    if (data.cloudSecretKey !== undefined) {
+      updateData.cloudSecretKey = data.cloudSecretKey && data.cloudSecretKey !== '********'
+        ? encryptField(data.cloudSecretKey) : (data.cloudSecretKey === '********' ? undefined : null);
+    }
     if (data.cloudRegion !== undefined) updateData.cloudRegion = data.cloudRegion || null;
 
     // 通知設定
@@ -203,6 +217,45 @@ export async function PUT(request) {
       updateData.alertAfterFailCount = count;
     }
 
+    // RTO/RPO 目標設定
+    if (data.rtoTargetMinutes !== undefined) {
+      const rto = parseInt(data.rtoTargetMinutes);
+      if (isNaN(rto) || rto < 1 || rto > 1440) {
+        return createErrorResponse('VALIDATION_FAILED', 'rtoTargetMinutes 需為 1-1440 分鐘', 400);
+      }
+      updateData.rtoTargetMinutes = rto;
+    }
+
+    if (data.rpoTargetHours !== undefined) {
+      const rpo = parseInt(data.rpoTargetHours);
+      if (isNaN(rpo) || rpo < 1 || rpo > 168) {
+        return createErrorResponse('VALIDATION_FAILED', 'rpoTargetHours 需為 1-168 小時', 400);
+      }
+      updateData.rpoTargetHours = rpo;
+    }
+
+    // 演練排程設定
+    if (data.drillEnabled !== undefined) {
+      updateData.drillEnabled = Boolean(data.drillEnabled);
+    }
+
+    if (data.drillFrequencyDays !== undefined) {
+      const freq = parseInt(data.drillFrequencyDays);
+      if (isNaN(freq) || freq < 1 || freq > 90) {
+        return createErrorResponse('VALIDATION_FAILED', 'drillFrequencyDays 需為 1-90 天', 400);
+      }
+      updateData.drillFrequencyDays = freq;
+    }
+
+    if (data.drillAutoRestore !== undefined) {
+      updateData.drillAutoRestore = Boolean(data.drillAutoRestore);
+    }
+
+    // 加密設定
+    if (data.encryptionEnabled !== undefined) {
+      updateData.encryptionEnabled = Boolean(data.encryptionEnabled);
+    }
+
     // 沒有任何需要更新的欄位
     if (Object.keys(updateData).length === 0) {
       return createErrorResponse('VALIDATION_FAILED', '未提供任何需要更新的欄位', 400);
@@ -213,7 +266,12 @@ export async function PUT(request) {
       data: updateData,
     });
 
-    return NextResponse.json(updatedConfig);
+    // Mask sensitive fields in response
+    const maskedResult = { ...updatedConfig };
+    if (maskedResult.cloudAccessKey) maskedResult.cloudAccessKey = '********';
+    if (maskedResult.cloudSecretKey) maskedResult.cloudSecretKey = '********';
+
+    return NextResponse.json(maskedResult);
   } catch (error) {
     return handleApiError(error);
   }

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getAllowedAccountIds } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,18 @@ export async function GET(request) {
     if (month) where.statementMonth = month;
     if (accountId) where.accountId = accountId;
     if (status) where.status = status;
+
+    // Warehouse-level access control via account
+    const allowedIds = await getAllowedAccountIds(prisma, auth.session);
+    if (allowedIds !== null) {
+      if (where.accountId) {
+        if (!allowedIds.includes(where.accountId)) {
+          return NextResponse.json([]);
+        }
+      } else {
+        where.accountId = { in: allowedIds };
+      }
+    }
 
     const reconciliations = await prisma.bankReconciliation.findMany({
       where,

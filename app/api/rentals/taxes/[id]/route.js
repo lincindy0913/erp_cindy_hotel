@@ -5,27 +5,10 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// Generate transaction number: CF-YYYYMMDD-XXXX
-async function generateTransactionNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
@@ -55,7 +38,7 @@ export async function PUT(request, { params }) {
 
     const acctId = parseInt(accountId);
     const txDate = paymentDate || new Date().toISOString().split('T')[0];
-    const transactionNo = await generateTransactionNo(txDate);
+    const transactionNo = await nextCashTransactionNo(tx, txDate);
 
     // Create CashTransaction for tax payment
     const categoryId = await getCategoryId(prisma, 'rental_tax');
@@ -90,7 +73,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ success: true, transactionId: tx.id });
   } catch (error) {
-    console.error('PUT /api/rentals/taxes/[id] error:', error);
+    console.error('PUT /api/rentals/taxes/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -163,7 +146,7 @@ export async function PATCH(request, { params }) {
     });
     return NextResponse.json(updated);
   } catch (error) {
-    console.error('PATCH /api/rentals/taxes/[id] error:', error);
+    console.error('PATCH /api/rentals/taxes/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -200,7 +183,7 @@ export async function DELETE(request, { params }) {
 
     return NextResponse.json({ message: '已刪除' });
   } catch (error) {
-    console.error('DELETE /api/rentals/taxes/[id] error:', error);
+    console.error('DELETE /api/rentals/taxes/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }

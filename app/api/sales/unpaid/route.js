@@ -107,7 +107,7 @@ export async function GET(request) {
 
     return NextResponse.json(unpaidInvoices);
   } catch (error) {
-    console.error('查詢未付款發票錯誤:', error);
+    console.error('查詢未付款發票錯誤:', error.message || error);
     return handleApiError(error);
   }
 }

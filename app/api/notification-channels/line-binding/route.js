@@ -1,20 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { requireSession } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
 // POST - Generate LINE binding token for current user
 export async function POST(request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
-    const userId = parseInt(session.user.id);
+  try {
+    const userId = parseInt(auth.session.user.id);
 
     // Check if user already has LINE bound
     const user = await prisma.user.findUnique({
@@ -200,12 +197,11 @@ export async function PUT(request) {
 
 // DELETE - Unbind LINE from current user
 export async function DELETE(request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
-    }
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
 
+  try {
+    const session = auth.session;
     const userId = parseInt(session.user.id);
 
     const user = await prisma.user.findUnique({

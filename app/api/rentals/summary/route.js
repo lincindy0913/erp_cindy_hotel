@@ -77,7 +77,7 @@ export async function GET() {
       pendingMaintenance
     });
   } catch (error) {
-    console.error('GET /api/rentals/summary error:', error);
+    console.error('GET /api/rentals/summary error:', error.message || error);
     return handleApiError(error);
   }
 }

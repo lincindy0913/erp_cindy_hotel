@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { requirePermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +115,9 @@ async function computeMetrics(year, month) {
 
 // GET /api/analytics/business-report?month=YYYYMM
 export async function GET(request) {
+  const auth = await requirePermission(PERMISSIONS.ANALYTICS_VIEW);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const monthStr = searchParams.get('month');

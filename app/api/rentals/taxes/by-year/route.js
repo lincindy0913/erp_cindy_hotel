@@ -52,7 +52,7 @@ export async function GET(request) {
 
     return NextResponse.json({ year: y, rows });
   } catch (error) {
-    console.error('GET /api/rentals/taxes/by-year error:', error);
+    console.error('GET /api/rentals/taxes/by-year error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -149,7 +149,7 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, year: y });
   } catch (error) {
-    console.error('POST /api/rentals/taxes/by-year error:', error);
+    console.error('POST /api/rentals/taxes/by-year error:', error.message || error);
     return handleApiError(error);
   }
 }

@@ -697,9 +697,6 @@ export async function POST(request) {
     if (error.message?.startsWith('DUPLICATE:')) {
       return createErrorResponse('CONFLICT_UNIQUE', error.message.replace('DUPLICATE:', ''), 409, { duplicate: true });
     }
-    if (error.message?.startsWith('PERIOD_LOCKED:')) {
-      return createErrorResponse('PERIOD_LOCKED', error.message.replace('PERIOD_LOCKED:', ''), 423);
-    }
     return handleApiError(error);
   }
 }
