@@ -19,18 +19,44 @@ const TABS = [
   { key: 'mapping', label: 'PMS 科目對應設定' }
 ];
 
-// Default PMS mapping rules for the upload form
+// Default PMS mapping rules for the upload form (matches 日營業報表 columns)
 const DEFAULT_PMS_COLUMNS = [
-  { pmsColumnName: '住房收入', entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
-  { pmsColumnName: '餐飲收入', entryType: '貸方', accountingCode: '4112', accountingName: '餐飲收入' },
-  { pmsColumnName: '其他營業收入', entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
-  { pmsColumnName: '服務費收入', entryType: '貸方', accountingCode: '4114', accountingName: '服務費收入' },
-  { pmsColumnName: '代收款-稅金', entryType: '貸方', accountingCode: '2171', accountingName: '代收款-稅金' },
-  { pmsColumnName: '預收款', entryType: '借方', accountingCode: '2131', accountingName: '預收款' },
-  { pmsColumnName: '應收帳款', entryType: '借方', accountingCode: '1131', accountingName: '應收帳款' },
-  { pmsColumnName: '現金收入', entryType: '借方', accountingCode: '1111', accountingName: '現金收入' },
-  { pmsColumnName: '信用卡收入', entryType: '借方', accountingCode: '1141', accountingName: '信用卡收入' },
-  { pmsColumnName: '轉帳收入', entryType: '借方', accountingCode: '1112', accountingName: '銀行轉帳收入' },
+  // ── 貸方科目 (收入) ── 本日貸方
+  { pmsColumnName: '住宿金額',   entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
+  { pmsColumnName: '月租金額',   entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
+  { pmsColumnName: '服務費',     entryType: '貸方', accountingCode: '4114', accountingName: '服務費收入' },
+  { pmsColumnName: '休息金額',   entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
+  { pmsColumnName: '延時費',     entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '加床費',     entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '電話費',     entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '傳真費',     entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '餐飲部',     entryType: '貸方', accountingCode: '4112', accountingName: '餐飲收入' },
+  { pmsColumnName: '精品櫃',     entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '其他收入',   entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '旅遊行程',   entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '娛樂收入',   entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  { pmsColumnName: '未設定4207', entryType: '貸方', accountingCode: '4207', accountingName: '未設定4207' },
+  { pmsColumnName: '未設定4208', entryType: '貸方', accountingCode: '4208', accountingName: '未設定4208' },
+  { pmsColumnName: '其他未設定', entryType: '貸方', accountingCode: '4209', accountingName: '其他未設定' },
+  { pmsColumnName: '售禮券',     entryType: '貸方', accountingCode: '4113', accountingName: '其他營業收入' },
+  // ── 借方科目 (資產/支出) ── 本日借方
+  { pmsColumnName: '現金',       entryType: '借方', accountingCode: '1111', accountingName: '現金收入' },
+  { pmsColumnName: '招待',       entryType: '借方', accountingCode: '6201', accountingName: '招待費' },
+  { pmsColumnName: '信用卡',     entryType: '借方', accountingCode: '1141', accountingName: '信用卡收入' },
+  { pmsColumnName: '折讓',       entryType: '借方', accountingCode: '4901', accountingName: '銷售折讓' },
+  { pmsColumnName: '佣金',       entryType: '借方', accountingCode: '6101', accountingName: '佣金費用' },
+  { pmsColumnName: '票據',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '電匯',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '劃撥',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '匯票',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '禮券',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: 'ATM',        entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '其他',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '沖訂金',     entryType: '借方', accountingCode: '2131', accountingName: '預收款' },
+  { pmsColumnName: '扣抵積點',   entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
+  { pmsColumnName: '應收帳款',   entryType: '借方', accountingCode: '1131', accountingName: '應收帳款' },
+  { pmsColumnName: '收訂金',     entryType: '借方', accountingCode: '2131', accountingName: '預收款' },
+  { pmsColumnName: '網訂',       entryType: '借方', accountingCode: '1112', accountingName: '轉帳收入' },
 ];
 
 function formatNumber(num) {

@@ -29,10 +29,13 @@ const EXCEL_TO_ACCOUNTING = [
   { excelCol: '旅遊行程', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
   { excelCol: '娛樂收入', section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
   { excelCol: '娛樂費',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '售禮券',   section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
-  { excelCol: '服務費',   section: '本日貸方', entryType: '貸方', code: '4114', name: '服務費收入' },
+  { excelCol: '售禮券',     section: '本日貸方', entryType: '貸方', code: '4113', name: '其他營業收入' },
+  { excelCol: '服務費',     section: '本日貸方', entryType: '貸方', code: '4114', name: '服務費收入' },
+  { excelCol: '未設定4207', section: '本日貸方', entryType: '貸方', code: '4207', name: '未設定4207' },
+  { excelCol: '未設定4208', section: '本日貸方', entryType: '貸方', code: '4208', name: '未設定4208' },
+  { excelCol: '其他未設定', section: '本日貸方', entryType: '貸方', code: '4209', name: '其他未設定' },
   // 收訂金 is in 本日貸方 but maps to 借方
-  { excelCol: '收訂金',   section: '本日貸方', entryType: '借方', code: '2131', name: '預收款' },
+  { excelCol: '收訂金',     section: '本日貸方', entryType: '借方', code: '2131', name: '預收款' },
 
   // ── 借方 (Debit) ── from 本日借方 section
   { excelCol: '現金',     section: '本日借方', entryType: '借方', code: '1111', name: '現金收入' },
@@ -45,8 +48,9 @@ const EXCEL_TO_ACCOUNTING = [
   { excelCol: '劃撥',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
   { excelCol: 'ATM',      section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
   { excelCol: '禮券',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '折讓',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
-  { excelCol: '佣金',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
+  { excelCol: '折讓',     section: '本日借方', entryType: '借方', code: '4901', name: '銷售折讓' },
+  { excelCol: '佣金',     section: '本日借方', entryType: '借方', code: '6101', name: '佣金費用' },
+  { excelCol: '招待',     section: '本日借方', entryType: '借方', code: '6201', name: '招待費' },
   { excelCol: '其他',     section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
   { excelCol: '扣抵積點', section: '本日借方', entryType: '借方', code: '1112', name: '轉帳收入' },
   { excelCol: '沖訂金',   section: '本日借方', entryType: '借方', code: '2131', name: '預收款' },
