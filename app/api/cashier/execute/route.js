@@ -10,6 +10,7 @@ import { assertPeriodOpen } from '@/lib/period-lock';
 import { nextSequence } from '@/lib/sequence-generator';
 import { checkIdempotency, saveIdempotency, getIdempotencyKey } from '@/lib/idempotency';
 import { requireMoney, requireInt } from '@/lib/safe-parse';
+import { validateBody } from '@/lib/validate-body';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,13 +23,24 @@ export async function POST(request) {
     const auth = await requirePermission(PERMISSIONS.CASHIER_EXECUTE);
     if (!auth.ok) return auth.response;
     const session = auth.session;
-    const data = await request.json();
+    const rawData = await request.json();
+
+    // Validate and sanitize request body
+    const { ok: bodyOk, data, error: bodyError } = validateBody(rawData, {
+      paymentOrderId:       { type: 'number', required: true, integer: true, min: 1 },
+      executionDate:        { type: 'string', required: true, maxLength: 20 },
+      actualAmount:         { type: 'number', required: true, min: 0, max: 9999999999 },
+      accountId:            { type: 'number', required: true, integer: true, min: 1 },
+      paymentMethod:        { type: 'string', maxLength: 50 },
+      isEmployeeAdvance:    { type: 'boolean' },
+      advancedBy:           { type: 'string', maxLength: 255 },
+      advancePaymentMethod: { type: 'string', maxLength: 50 },
+    });
+    if (!bodyOk) {
+      return createErrorResponse('VALIDATION_FAILED', bodyError, 400);
+    }
 
     const { paymentOrderId, executionDate, actualAmount, accountId, paymentMethod, isEmployeeAdvance, advancedBy, advancePaymentMethod } = data;
-
-    if (!paymentOrderId || !executionDate || actualAmount === undefined || !accountId) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
-    }
 
     const parsedAmount = requireMoney(actualAmount, '金額', { min: 0.01 });
     const parsedAccountId = requireInt(accountId, '帳戶ID');

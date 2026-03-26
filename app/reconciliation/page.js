@@ -748,6 +748,10 @@ export default function ReconciliationPage() {
   // Parse Cathay United Bank credit card merchant statement
   function parseCathayPdf(text) {
     try {
+      // Guard against extremely large input (prevent regex DoS / UI freeze)
+      if (text.length > 500000) {
+        throw new Error('輸入文字過長，請縮短後再試 (上限 500KB)');
+      }
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
       // Extract merchant info

@@ -34,7 +34,7 @@ export async function GET(request) {
 
     const transactions = await prisma.cashTransaction.findMany({
       where,
-      take: 50000,
+      take: 20000,
       select: {
         warehouse: true,
         type: true,

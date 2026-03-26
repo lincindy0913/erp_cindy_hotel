@@ -45,6 +45,11 @@ export async function POST(request) {
       return NextResponse.json({ error: '請上傳 PDF 檔案' }, { status: 400 });
     }
 
+    // Guard against oversized files (20MB max)
+    if (file.size > 20 * 1024 * 1024) {
+      return NextResponse.json({ error: '檔案大小超過 20MB 上限' }, { status: 400 });
+    }
+
     // Validate page is a numeric string to prevent injection into URL
     const pageNum = parseInt(page, 10);
     if (Number.isNaN(pageNum) || pageNum < 0) {

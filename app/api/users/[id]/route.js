@@ -4,7 +4,7 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { validatePasswordStrength } from '@/lib/password-policy';
+import { validatePasswordStrength, checkPasswordHistory, buildUpdatedHistory } from '@/lib/password-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +56,9 @@ export async function PUT(request, { params }) {
     const user = await prisma.user.findUnique({
       where: { id },
       include: { userRoles: { include: { role: true } } },
+      // Need password + passwordHistory for history check on password change
     });
+    // Prisma include returns all scalar fields by default, so password/passwordHistory are available
 
     if (!user) {
       return createErrorResponse('NOT_FOUND', '使用者不存在', 404);
@@ -79,9 +81,15 @@ export async function PUT(request, { params }) {
       if (data.password && data.password.trim() !== '') {
         const pwCheck = validatePasswordStrength(data.password);
         if (!pwCheck.ok) throw new Error('VALIDATION:' + pwCheck.message);
+
+        // Check password history — prevent reuse of recent passwords
+        const histCheck = await checkPasswordHistory(data.password, user.password, user.passwordHistory || []);
+        if (!histCheck.ok) throw new Error('VALIDATION:' + histCheck.message);
+
         const bcrypt = (await import('bcryptjs')).default;
-        updateData.password = await bcrypt.hash(data.password, 10);
+        updateData.password = await bcrypt.hash(data.password, 12);
         updateData.passwordChangedAt = new Date();
+        updateData.passwordHistory = buildUpdatedHistory(user.password, user.passwordHistory || []);
       }
 
       if (Object.keys(updateData).length > 0) {

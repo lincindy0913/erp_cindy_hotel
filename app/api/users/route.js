@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { validatePasswordStrength } from '@/lib/password-policy';
+import { validateBody } from '@/lib/validate-body';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,10 +59,20 @@ export async function POST(request) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const data = await request.json();
+    const rawData = await request.json();
 
-    if (!data.email || !data.password || !data.name) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫必要欄位', 400);
+    // Validate and sanitize request body — strip unknown fields
+    const { ok: bodyOk, data, error: bodyError } = validateBody(rawData, {
+      email:                { type: 'string', required: true, maxLength: 255, pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+      password:             { type: 'string', required: true, minLength: 8, maxLength: 128 },
+      name:                 { type: 'string', required: true, maxLength: 100 },
+      role:                 { type: 'enum', values: ['admin', 'user', 'viewer'] },
+      roleIds:              { type: 'array', itemType: 'number', maxItems: 20 },
+      permissions:          { type: 'array', itemType: 'string', maxItems: 100 },
+      warehouseRestriction: { type: 'string', maxLength: 100 },
+    });
+    if (!bodyOk) {
+      return createErrorResponse('VALIDATION_FAILED', bodyError, 400);
     }
 
     const pwCheck = validatePasswordStrength(data.password);
@@ -79,7 +90,7 @@ export async function POST(request) {
       return createErrorResponse('CONFLICT_UNIQUE', '此電子郵件已被使用', 409);
     }
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(data.password, 12);
 
     // 預設角色為 viewer
     const roleIds = data.roleIds || [];

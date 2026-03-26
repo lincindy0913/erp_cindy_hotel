@@ -113,6 +113,12 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '請上傳 Excel 檔案', 400);
     }
 
+    // Guard against oversized files (20MB max for Excel parsing)
+    const MAX_EXCEL_SIZE = 20 * 1024 * 1024;
+    if (file.size > MAX_EXCEL_SIZE) {
+      return createErrorResponse('VALIDATION_FAILED', '檔案大小超過 20MB 上限', 400);
+    }
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileName = file.name || '日營業報表.xlsx';
 

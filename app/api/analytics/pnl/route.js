@@ -62,11 +62,11 @@ export async function GET(request) {
     // Execute all 4 queries in parallel
     const [pmsRecords, purchases, allowances, expenses] = await Promise.all([
       prisma.pmsIncomeRecord.findMany({
-        where: pmsWhere, take: 50000,
+        where: pmsWhere, take: 20000,
         select: { businessDate: true, amount: true }
       }),
       prisma.purchaseMaster.findMany({
-        where: purchaseWhere, take: 50000,
+        where: purchaseWhere, take: 20000,
         select: { purchaseDate: true, totalAmount: true }
       }),
       prisma.purchaseAllowance.findMany({
@@ -74,7 +74,7 @@ export async function GET(request) {
         select: { allowanceDate: true, totalAmount: true }
       }),
       prisma.expense.findMany({
-        where: expenseWhere, take: 50000,
+        where: expenseWhere, take: 20000,
         select: { invoiceDate: true, amount: true }
       }),
     ]);

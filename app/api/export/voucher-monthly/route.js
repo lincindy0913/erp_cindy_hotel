@@ -56,6 +56,7 @@ export async function GET(request) {
 
     const purchases = await prisma.purchaseMaster.findMany({
       where: whereClause,
+      take: 5000,
       include: {
         details: { include: { product: { select: { id: true, name: true, unit: true } } } }
       },

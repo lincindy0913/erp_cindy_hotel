@@ -37,18 +37,31 @@ function validateCsrf(req) {
 // ── Rate limiting (in-memory sliding window) ──
 const rateLimitStore = new Map();
 const RATE_LIMITS = {
-  '/api/auth': { windowMs: 15 * 60_000, max: 10 },  // login: 10 per 15 min
-  '/api/backup': { windowMs: 60_000, max: 10 },      // backup ops: 10 per min
+  '/api/auth':           { windowMs: 15 * 60_000, max: 10 },   // login: 10 per 15 min
+  '/api/backup':         { windowMs: 60_000, max: 10 },         // backup ops: 10 per min
+  '/api/users':          { windowMs: 60_000, max: 20 },         // user management: 20 per min
+  '/api/roles':          { windowMs: 60_000, max: 20 },         // role management: 20 per min
+  '/api/payment-orders': { windowMs: 60_000, max: 30 },         // payment orders: 30 per min
+  '/api/cashier':        { windowMs: 60_000, max: 30 },         // cashier execute: 30 per min
+  '/api/year-end':       { windowMs: 60_000, max: 10 },         // year-end: 10 per min
+  '/api/month-end':      { windowMs: 60_000, max: 10 },         // month-end: 10 per min
+  '/api/export':         { windowMs: 60_000, max: 15 },         // data export: 15 per min
+  '/api/import':         { windowMs: 60_000, max: 10 },         // data import: 10 per min
+  '/api/setup-import':   { windowMs: 60_000, max: 10 },         // setup import: 10 per min
+  '/api/settings':       { windowMs: 60_000, max: 20 },         // system settings: 20 per min
+  '/api/notification-channels': { windowMs: 60_000, max: 15 },  // notification config: 15 per min
 };
 
 function checkRateLimit(pathname, ip) {
   let config = null;
+  let matchedPrefix = null;
   for (const [prefix, cfg] of Object.entries(RATE_LIMITS)) {
-    if (pathname.startsWith(prefix)) { config = cfg; break; }
+    if (pathname.startsWith(prefix)) { config = cfg; matchedPrefix = prefix; break; }
   }
   if (!config) return { allowed: true };
 
-  const key = `${pathname.split('/').slice(0, 3).join('/')}:${ip}`;
+  // Group by matched prefix (e.g. /api/users, /api/auth) so sub-paths share the limit
+  const key = `${matchedPrefix}:${ip}`;
   const now = Date.now();
   const windowStart = now - config.windowMs;
 

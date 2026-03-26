@@ -2,10 +2,19 @@
 const nextConfig = {
   // Enable standalone output for Docker deployment
   output: 'standalone',
-  // App Router 已在 Next.js 14+ 穩定版內建，無需 experimental 設定
+
+  // Disable X-Powered-By header to avoid leaking framework info
+  poweredByHeader: false,
 
   // Security headers
   async headers() {
+    const isDev = process.env.NODE_ENV === 'development';
+
+    // Production: remove unsafe-eval (only needed for dev HMR/sourcemaps)
+    const scriptSrc = isDev
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      : "script-src 'self' 'unsafe-inline'";
+
     return [
       {
         source: '/(.*)',
@@ -15,7 +24,7 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  // Next.js requires unsafe-inline/eval for dev; tighten with nonce in prod
+              scriptSrc,
               "style-src 'self' 'unsafe-inline'",                  // CSS-in-JS requires unsafe-inline
               "img-src 'self' data: blob:",
               "font-src 'self' data:",
@@ -23,18 +32,23 @@ const nextConfig = {
               "frame-ancestors 'none'",                            // Prevent clickjacking (replaces X-Frame-Options)
               "base-uri 'self'",
               "form-action 'self'",
+              "object-src 'none'",                                 // Block Flash/Java plugins
+              "upgrade-insecure-requests",                         // Auto-upgrade http→https in production
             ].join('; '),
           },
           // Prevent MIME type sniffing
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Clickjacking protection (legacy fallback for older browsers)
           { key: 'X-Frame-Options', value: 'DENY' },
-          // HTTPS enforcement (enable in production behind TLS proxy)
-          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+          // HTTPS enforcement
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
           // Referrer policy — don't leak full URL to third parties
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           // Permissions policy — disable unused browser features
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' },
+          // Prevent cross-origin information leaks
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
         ],
       },
     ];
@@ -42,4 +56,3 @@ const nextConfig = {
 }
 
 module.exports = nextConfig
-

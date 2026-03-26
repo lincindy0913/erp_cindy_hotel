@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { validateBody } from '@/lib/validate-body';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { checkIdempotency, saveIdempotency } from '@/lib/idempotency';
@@ -124,10 +125,27 @@ export async function POST(request) {
 
   try {
     const session = authPost.session;
-    const data = await request.json();
+    const rawData = await request.json();
 
-    if (!data.invoiceIds || !data.paymentMethod || data.netAmount === undefined) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必要欄位', 400);
+    // Validate and sanitize request body
+    const { ok: bodyOk, data, error: bodyError } = validateBody(rawData, {
+      invoiceIds:      { type: 'array', required: true, itemType: 'number', maxItems: 100 },
+      paymentMethod:   { type: 'string', required: true, maxLength: 50 },
+      netAmount:       { type: 'number', required: true, min: 0, max: 9999999999 },
+      warehouse:       { type: 'string', maxLength: 100 },
+      supplierId:      { type: 'number', integer: true },
+      supplierName:    { type: 'string', maxLength: 255 },
+      dueDate:         { type: 'string', maxLength: 20 },
+      note:            { type: 'string', maxLength: 1000 },
+      checkAccountId:  { type: 'number', integer: true },
+      checkAccount:    { type: 'string', maxLength: 100 },
+      sourceType:      { type: 'string', maxLength: 50 },
+      sourceRecordId:  { type: 'number', integer: true },
+      creditCardTx:    { type: 'boolean' },
+      creditCardAccountId: { type: 'number', integer: true },
+    });
+    if (!bodyOk) {
+      return createErrorResponse('VALIDATION_FAILED', bodyError, 400);
     }
 
     // Validate monetary amount within Decimal(12,2) range

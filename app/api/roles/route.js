@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
+import { validateBody } from '@/lib/validate-body';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,9 +36,15 @@ export async function POST(request) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const data = await request.json();
-    if (!data.code || !data.name) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫角色代碼與名稱', 400);
+    const rawData = await request.json();
+    const { ok: bodyOk, data, error: bodyError } = validateBody(rawData, {
+      code:        { type: 'string', required: true, maxLength: 50, pattern: /^[a-z0-9_-]+$/ },
+      name:        { type: 'string', required: true, maxLength: 100 },
+      description: { type: 'string', maxLength: 500 },
+      permissions: { type: 'array', itemType: 'string', maxItems: 200 },
+    });
+    if (!bodyOk) {
+      return createErrorResponse('VALIDATION_FAILED', bodyError, 400);
     }
 
     const existing = await prisma.role.findUnique({ where: { code: data.code } });
