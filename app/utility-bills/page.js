@@ -116,7 +116,8 @@ export default function UtilityBillsPage() {
   }
 
   const showMessage = (text, type = 'success') => {
-    setMessage({ text, type });
+    const safe = typeof text === 'string' ? text : (text?.message || JSON.stringify(text) || '發生錯誤');
+    setMessage({ text: safe, type });
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   };
 
@@ -241,15 +242,27 @@ export default function UtilityBillsPage() {
         const month = updatedMeta.month || meta.month || String(new Date().getMonth() + 1).padStart(2, '0');
         const warehouse = p.館別 || updatedMeta.warehouse || meta.warehouse || '麗軒';
         if (isWater) {
-          setSummary({
-            館別: warehouse, 類型: '水費',
-            用水地址: p.用水地址 || '（未辨識，請手動填入）',
-            水號: p.水號 || '（未辨識，請手動填入）',
-            用水量: p.用水量 || '（未辨識，請手動填入）',
-            基本費: fmt(p.基本費), 水費: fmt(p.水費),
-            營業稅: fmt(p.營業稅), 其他費用: fmt(p.其他費用),
-            總金額: fmt(p.總金額),
+          // Build one editable form per page (like electric bill)
+          const waterForms = allRecords.map(r => {
+            const waterFeeSubtotal = parseInt(r.水費項目小計) || 0;
+            const agencyFee = parseInt(r.代徵費用小計) || 0;
+            return {
+              類型: '水費',
+              水號: r.水號 || '（未辨識，請手動填入）',
+              用水地址: r.用水地址 || '（未辨識，請手動填入）',
+              繳費年月: r.繳費年月 || '未辨識',
+              用水度數: r.用水度數 || '0',
+              本期實用度數: r.本期實用度數 || '0',
+              基本費: r.基本費 || '0',
+              用水費: r.用水費 || '0',
+              水費項目小計: r.水費項目小計 || String(waterFeeSubtotal),
+              營業稅: r.營業稅 || '0',
+              代徵費用小計: r.代徵費用小計 || '0',
+              水源保育與回饋費: r.水源保育與回饋費 || '0',
+              總金額: r.總金額 || String(waterFeeSubtotal + agencyFee),
+            };
           });
+          setFormRecords(waterForms);
         } else {
           // Build one editable form per page (館別 comes from user selection, not OCR)
           const forms = allRecords.map(r => {
@@ -273,8 +286,9 @@ export default function UtilityBillsPage() {
         }
       }
 
+      const billLabel = isWater ? '水費單' : '電費單';
       const msg = allRecords.length > 1
-        ? `辨識完成，共 ${allRecords.length} 筆電費單，請核對欄位內容`
+        ? `辨識完成，共 ${allRecords.length} 筆${billLabel}，請核對欄位內容`
         : 'OCR 辨識完成，請核對欄位內容';
       showMessage(msg);
     } catch (err) {
@@ -420,9 +434,8 @@ export default function UtilityBillsPage() {
   };
 
   const saveCurrentRecord = async () => {
-    const isElectricity = !isWater && formRecords.length > 0;
-    const isWaterReady = isWater && summary;
-    if (!meta.warehouse || (!isElectricity && !isWaterReady)) {
+    const hasRecords = formRecords.length > 0;
+    if (!meta.warehouse || !hasRecords) {
       showMessage('請先選擇館別並完成 OCR 辨識', 'error');
       return;
     }
@@ -438,7 +451,7 @@ export default function UtilityBillsPage() {
           billYear: parseInt(year, 10),
           billMonth: parseInt(month, 10),
           billType: isWater ? '水費' : '電費',
-          summaryJson: isElectricity ? formRecords : summary,
+          summaryJson: formRecords,
           fileName: pdfFile?.name || null,
         }),
       });
@@ -592,7 +605,7 @@ export default function UtilityBillsPage() {
               </div>
             )}
 
-            {ocrRecords.length > 1 && (
+            {ocrRecords.length > 1 && !isWater && (
               <div className="border-t pt-6">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">
                   OCR 辨識結果 — 共 {ocrRecords.length} 筆電費單
@@ -666,31 +679,193 @@ export default function UtilityBillsPage() {
               </div>
             )}
 
-            {/* Water bill: single summary form */}
-            {summary && isWater && (
+            {/* Water bill OCR summary table */}
+            {ocrRecords.length > 1 && isWater && (
               <div className="border-t pt-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">水費單格式（可手動修改後儲存）</h4>
-                <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
-                  <div className="space-y-3 text-sm">
-                    {Object.keys(summary).map(k => (
-                      <div key={k} className="flex flex-wrap items-center gap-2">
-                        <label className="font-medium text-gray-700 w-24 shrink-0">{k}</label>
-                        <input
-                          type="text"
-                          value={summary[k] ?? ''}
-                          onChange={e => setSummary(prev => ({ ...prev, [k]: e.target.value }))}
-                          className="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button type="button" onClick={copySummary} className="px-3 py-1.5 rounded text-xs bg-sky-600 hover:bg-sky-700 text-white">複製摘要</button>
-                    <button type="button" onClick={saveCurrentRecord} disabled={saving || !meta.warehouse} className="px-3 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white">
-                      {saving ? '儲存中…' : '儲存此筆'}
-                    </button>
-                  </div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                  OCR 辨識結果 — 共 {ocrRecords.length} 筆水費單
+                </h4>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-sky-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">#</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">水號</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">用水地址</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">繳費年月</th>
+                        <th className="px-3 py-2 text-center font-semibold text-teal-700 whitespace-nowrap bg-teal-100" colSpan={2}>度數</th>
+                        <th className="px-3 py-2 text-center font-semibold text-rose-700 whitespace-nowrap bg-rose-50" colSpan={3}>水費項目（元）</th>
+                        <th className="px-3 py-2 text-center font-semibold text-amber-700 whitespace-nowrap bg-amber-50" colSpan={2}>稅/代徵（元）</th>
+                        <th className="px-3 py-2 text-center font-semibold text-emerald-700 whitespace-nowrap bg-emerald-100">總金額</th>
+                      </tr>
+                      <tr className="border-b border-gray-200">
+                        <th colSpan={4} />
+                        <th className="px-3 py-1 text-right text-teal-700 bg-teal-50 whitespace-nowrap">用水度數</th>
+                        <th className="px-3 py-1 text-right text-teal-700 bg-teal-50 whitespace-nowrap">實用度數</th>
+                        <th className="px-3 py-1 text-right text-rose-700 bg-rose-50/60 whitespace-nowrap">基本費</th>
+                        <th className="px-3 py-1 text-right text-rose-700 bg-rose-50/60 whitespace-nowrap">用水費</th>
+                        <th className="px-3 py-1 text-right text-rose-700 bg-rose-100 font-bold whitespace-nowrap">小計</th>
+                        <th className="px-3 py-1 text-right text-amber-700 bg-amber-50 whitespace-nowrap">營業稅</th>
+                        <th className="px-3 py-1 text-right text-amber-700 bg-amber-50 whitespace-nowrap">代徵</th>
+                        <th className="px-3 py-1 text-right text-emerald-700 bg-emerald-100 font-bold whitespace-nowrap">代繳總金額</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {ocrRecords.map((r, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-3 py-1.5 text-gray-500">{i + 1}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap text-xs">{r.水號}</td>
+                          <td className="px-3 py-1.5 max-w-[140px] truncate" title={r.用水地址}>{r.用水地址}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap">{r.繳費年月}</td>
+                          <td className="px-3 py-1.5 text-right bg-teal-50/40">{r.用水度數}</td>
+                          <td className="px-3 py-1.5 text-right bg-teal-50/40">{r.本期實用度數}</td>
+                          <td className="px-3 py-1.5 text-right bg-rose-50/40">{r.基本費}</td>
+                          <td className="px-3 py-1.5 text-right bg-rose-50/40">{r.用水費}</td>
+                          <td className="px-3 py-1.5 text-right font-semibold bg-rose-100/60">{r.水費項目小計}</td>
+                          <td className="px-3 py-1.5 text-right bg-amber-50/40">{r.營業稅}</td>
+                          <td className="px-3 py-1.5 text-right bg-amber-50/40">{r.代徵費用小計}</td>
+                          <td className="px-3 py-1.5 text-right font-medium bg-emerald-100/60">{r.總金額}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-100 font-semibold">
+                      <tr>
+                        <td colSpan={4} className="px-3 py-2 text-right text-gray-700">合計</td>
+                        <td className="px-3 py-2 text-right text-teal-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.用水度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.本期實用度數) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-rose-700">{ocrRecords.reduce((s, r) => s + (parseFloat(r.基本費) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-rose-700">{ocrRecords.reduce((s, r) => s + (parseFloat(r.用水費) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-rose-800">{ocrRecords.reduce((s, r) => s + (parseInt(r.水費項目小計) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-amber-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.營業稅) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-amber-700">{ocrRecords.reduce((s, r) => s + (parseInt(r.代徵費用小計) || 0), 0).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-emerald-800">{ocrRecords.reduce((s, r) => s + (parseInt(r.總金額) || 0), 0).toLocaleString()}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
+              </div>
+            )}
+
+            {/* Water bill: single summary form */}
+            {/* Water bill: one form per page */}
+            {formRecords.length > 0 && isWater && (
+              <div className="border-t pt-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-sm font-semibold text-gray-700">水費單明細 — 共 {formRecords.length} 筆（每筆可手動修改）</h4>
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-sky-100 border border-sky-300 text-sky-800 text-xs font-semibold">
+                      館別：{meta.warehouse || '（請先選擇館別）'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveCurrentRecord}
+                    disabled={saving || !meta.warehouse}
+                    className="px-4 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium"
+                  >
+                    {saving ? '儲存中…' : `儲存全部 ${formRecords.length} 筆`}
+                  </button>
+                </div>
+                {formRecords.map((rec, idx) => {
+                  const basicFields = ['類型', '繳費年月', '水號', '用水地址'];
+                  const usageFields = ['用水度數', '本期實用度數'];
+                  const feeFields = ['基本費', '用水費', '水費項目小計'];
+                  const taxFields = ['營業稅', '代徵費用小計', '水源保育與回饋費'];
+                  const totalFields = ['總金額'];
+                  const readOnlyFields = ['水費項目小計', '總金額'];
+
+                  const renderWaterField = (k) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <label className="font-medium text-gray-600 shrink-0 text-xs" style={{ width: k.length > 6 ? '7rem' : '5rem' }}>{k}</label>
+                      <input
+                        type="text"
+                        value={rec[k] ?? ''}
+                        readOnly={readOnlyFields.includes(k)}
+                        onChange={e => {
+                          const updated = formRecords.map((r, i) => {
+                            if (i !== idx) return r;
+                            const next = { ...r, [k]: e.target.value };
+                            // Auto-calc 水費項目小計
+                            if (['基本費', '用水費'].includes(k)) {
+                              const base = parseFloat(k === '基本費' ? e.target.value : r.基本費) || 0;
+                              const usage = parseFloat(k === '用水費' ? e.target.value : r.用水費) || 0;
+                              next.水費項目小計 = String(Math.round(base + usage));
+                            }
+                            // Auto-calc 總金額
+                            const subtotal = parseInt(next.水費項目小計) || parseInt(rec.水費項目小計) || 0;
+                            const agency = parseInt(k === '代徵費用小計' ? e.target.value : r.代徵費用小計) || 0;
+                            if (['基本費', '用水費', '代徵費用小計'].includes(k)) {
+                              const newSubtotal = ['基本費', '用水費'].includes(k)
+                                ? Math.round((parseFloat(k === '基本費' ? e.target.value : r.基本費) || 0) + (parseFloat(k === '用水費' ? e.target.value : r.用水費) || 0))
+                                : subtotal;
+                              next.總金額 = String(newSubtotal + agency);
+                              if (['基本費', '用水費'].includes(k)) next.水費項目小計 = String(newSubtotal);
+                            }
+                            return next;
+                          });
+                          setFormRecords(updated);
+                        }}
+                        className={`flex-1 border rounded px-2 py-1 text-xs ${
+                          k === '總金額' ? 'bg-emerald-100 border-emerald-300 font-semibold text-emerald-800' :
+                          k === '水費項目小計' ? 'bg-rose-50 border-rose-300 font-semibold text-rose-800' :
+                          readOnlyFields.includes(k) ? 'bg-gray-100 border-gray-300' :
+                          'border-gray-300 bg-white'
+                        }`}
+                      />
+                    </div>
+                  );
+
+                  return (
+                    <div key={idx} className="bg-sky-50 border border-sky-200 rounded-lg p-4 space-y-4">
+                      <h5 className="text-xs font-semibold text-sky-700">第 {idx + 1} 筆 — 水號：{rec.水號}</h5>
+
+                      {/* Basic info */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        {basicFields.filter(k => k in rec).map(renderWaterField)}
+                      </div>
+
+                      {/* 使用度數 section (green) */}
+                      <div className="border border-teal-300 rounded-lg overflow-hidden">
+                        <div className="bg-teal-200 px-3 py-1.5">
+                          <span className="text-xs font-bold text-teal-900">使用度數</span>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white">
+                          {usageFields.filter(k => k in rec).map(renderWaterField)}
+                        </div>
+                      </div>
+
+                      {/* 水費項目 section (pink) */}
+                      <div className="border border-rose-300 rounded-lg overflow-hidden">
+                        <div className="bg-rose-100 px-3 py-1.5">
+                          <span className="text-xs font-bold text-rose-900">水費項目小計（元）</span>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white">
+                          {feeFields.filter(k => k in rec).map(renderWaterField)}
+                        </div>
+                      </div>
+
+                      {/* 稅額/代徵 section (amber) */}
+                      <div className="border border-amber-300 rounded-lg overflow-hidden">
+                        <div className="bg-amber-100 px-3 py-1.5">
+                          <span className="text-xs font-bold text-amber-900">稅額 / 代徵費用（元）</span>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white">
+                          {taxFields.filter(k => k in rec).map(renderWaterField)}
+                        </div>
+                      </div>
+
+                      {/* 總金額 section (green) */}
+                      <div className="border border-emerald-300 rounded-lg overflow-hidden">
+                        <div className="bg-emerald-100 px-3 py-1.5">
+                          <span className="text-xs font-bold text-emerald-900">代繳（代收）總金額（元）</span>
+                        </div>
+                        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white">
+                          {totalFields.filter(k => k in rec).map(renderWaterField)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -882,22 +1057,45 @@ export default function UtilityBillsPage() {
 
             {editRecord && editSummary !== null && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditRecord(null)}>
-                <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+                <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
                   <h4 className="text-lg font-semibold text-gray-800 mb-2">
                     編輯 — {editRecord.warehouse} {editRecord.billYear}年{editRecord.billMonth}月 {editRecord.billType}
                   </h4>
-                  <div className="space-y-3 text-sm mb-4">
-                    {Object.keys(editSummary).map(k => (
-                      <div key={k} className="flex flex-wrap items-center gap-2">
-                        <label className="font-medium text-gray-700 w-24 shrink-0">{k}</label>
-                        <input
-                          type="text"
-                          value={editSummary[k] ?? ''}
-                          onChange={e => setEditSummary(prev => ({ ...prev, [k]: e.target.value }))}
-                          className="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm"
-                        />
-                      </div>
-                    ))}
+                  <div className="space-y-4 text-sm mb-4">
+                    {Array.isArray(editSummary) ? (
+                      // Multi-record (water bill array)
+                      editSummary.map((rec, idx) => (
+                        <div key={idx} className="border border-sky-200 rounded-lg p-3 bg-sky-50">
+                          <div className="text-xs font-semibold text-sky-700 mb-2">第 {idx + 1} 筆 — 水號：{rec.水號}</div>
+                          <div className="grid grid-cols-1 gap-2">
+                            {Object.keys(rec).map(k => (
+                              <div key={k} className="flex items-center gap-2">
+                                <label className="font-medium text-gray-600 shrink-0 text-xs w-24">{k}</label>
+                                <input
+                                  type="text"
+                                  value={String(rec[k] ?? '')}
+                                  onChange={e => setEditSummary(prev => prev.map((r, i) => i === idx ? { ...r, [k]: e.target.value } : r))}
+                                  className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      // Single record (electricity bill flat object)
+                      Object.keys(editSummary).map(k => (
+                        <div key={k} className="flex flex-wrap items-center gap-2">
+                          <label className="font-medium text-gray-700 w-24 shrink-0">{k}</label>
+                          <input
+                            type="text"
+                            value={String(editSummary[k] ?? '')}
+                            onChange={e => setEditSummary(prev => ({ ...prev, [k]: e.target.value }))}
+                            className="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm"
+                          />
+                        </div>
+                      ))
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button

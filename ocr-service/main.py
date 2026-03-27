@@ -23,10 +23,15 @@ GOOGLE_VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
 # ─────────────────────────────────────────────────────────────
 # PDF page → base64 PNG via PyMuPDF
 # ─────────────────────────────────────────────────────────────
-def pdf_page_to_base64(pdf_bytes: bytes, page_num: int, dpi: int = 200) -> str:
+def pdf_page_to_base64(pdf_bytes: bytes, page_num: int, dpi: int = 200, auto_rotate: bool = True) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     page = doc[page_num]
-    mat = fitz.Matrix(dpi / 72, dpi / 72)
+    rect = page.rect
+    # Auto-rotate landscape pages to portrait for better OCR
+    if auto_rotate and rect.width > rect.height:
+        mat = fitz.Matrix(dpi / 72, dpi / 72).prerotate(-90)
+    else:
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
     pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
     img_bytes = pix.tobytes("png")
     doc.close()
@@ -307,45 +312,145 @@ def parse_electricity_page(text: str, page_num: int, billing_period: str = None)
 
 
 def parse_water_page(text: str, page_num: int, billing_period: str = None) -> dict:
+    """Parse a single water bill page from OCR text.
+
+    Handles columnar reading where Google Vision reads labels and values
+    separately (e.g. all left-column labels first, then right-column values).
+    Landscape pages are auto-rotated before OCR.
+    """
     result = {
-        "館別": "麗軒",
         "類型": "水費",
-        "計費期間": billing_period,
-        "用水地址": None,
         "水號": None,
-        "用水量": None,
+        "用水地址": None,
+        "繳費年月": billing_period,
+        "用水度數": None,
+        "本期實用度數": None,
         "基本費": None,
-        "水費": None,
+        "用水費": None,
+        "水費項目小計": None,
         "營業稅": None,
-        "其他費用": None,
+        "代徵費用小計": None,
+        "水源保育與回饋費": None,
         "總金額": None,
         "_page": page_num,
     }
 
-    if not result["計費期間"]:
-        m = re.search(r'(\d{2,3}年\d{1,2}月)', text)
-        result["計費期間"] = m.group(1).strip() if m else "未辨識"
+    # ── 水號 (Water account number) ──
+    # OCR patterns: "水號 9A 07951017 8" or "水號\n9AM\n07951027\n2"
+    m = re.search(r'水號\s+(\w{1,4})\s+(\d{7,10})\s+(\d{1,2})', text)
+    if m:
+        result["水號"] = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    else:
+        m = re.search(r'(?:水號|用戶編號|用水戶號)[：:\s]*([A-Z0-9\-\s]{6,20})', text)
+        result["水號"] = m.group(1).strip().replace("  ", " ") if m else "未辨識"
 
-    m = re.search(r'(?:水號|用戶編號)[：:\s]*([0-9\-]{6,15})', text)
-    result["水號"] = m.group(1).strip() if m else "未辨識"
+    # ── 用水地址 ──
+    # Google Vision separates "用水地址" label from the actual address (columnar).
+    # Strategy: find address pattern (county/city/street/number) near "用水地址" label.
+    addr_pat = r'((?:花蓮|台北|新北|桃園|台中|台南|高雄|基隆|新竹|苗栗|彰化|南投|雲林|嘉義|屏東|宜蘭|台東|澎湖|金門|連江)(?:縣|市).{2,40}?(?:號|樓)[A-Z\d\-]*)'
+    # Try after "用水地址" label first
+    idx = text.find('用水地址')
+    if idx >= 0:
+        m = re.search(addr_pat, text[idx:idx+200])
+        if m:
+            result["用水地址"] = m.group(1).strip()
+    # Fallback: first address pattern in entire text
+    if not result["用水地址"]:
+        all_addrs = re.findall(addr_pat, text)
+        result["用水地址"] = all_addrs[0].strip() if all_addrs else "未辨識"
 
-    m = re.search(r'(?:用水地址|地址)[：:]\s*(.+?)(?=\n|$)', text)
-    result["用水地址"] = m.group(1).strip() if m else "未辨識"
+    # ── 繳費年月 (format: "114/06" or "114年06月") ──
+    if not result["繳費年月"]:
+        # Direct match: "繳費年月\n...(up to 100 chars)...\n114/06"
+        m = re.search(r'繳費年月[\s\S]{0,100}?(\d{2,3}/\d{2})', text)
+        if m:
+            result["繳費年月"] = m.group(1)
+        else:
+            # Fallback: "114年06月" anywhere
+            m = re.search(r'(\d{2,3})年\s*(\d{1,2})\s*月', text)
+            if m:
+                result["繳費年月"] = f"{m.group(1)}/{m.group(2).zfill(2)}"
+            else:
+                result["繳費年月"] = "未辨識"
 
-    m = re.search(r'(?:用水量|本期用水)[：:\s]*(\d[\d,]+)', text)
-    result["用水量"] = m.group(1).replace(",", "") if m else "未辨識"
+    # ── 用水度數 (green highlighted on bill) ──
+    m = re.search(r'用水度數\s+(\d+)', text)
+    result["用水度數"] = m.group(1) if m else "0"
 
-    m = re.search(r'基本費[：:\s]*([\d,]+)', text)
-    result["基本費"] = m.group(1).replace(",", "") if m else "未辨識"
+    # ── 本期實用度數 ──
+    # Columnar reading may insert other labels between "本期實用度數" and the value
+    # e.g. "本期實用度數\n本期總表指針數\n25\n1411"
+    m = re.search(r'本期實用度數\s+(\d+)', text)
+    if not m:
+        m = re.search(r'本期實用度數\D{0,40}?(\d+)', text)
+    if not m:
+        # Fallback: find in the "實用度數 / 日平均度數" table section
+        m = re.search(r'實用度數[\s\S]{0,30}?本期\s+(\d+)', text)
+    if not m:
+        m = re.search(r'實用度數\D{0,30}?(\d+)', text)
+    result["本期實用度數"] = m.group(1) if m else "0"
 
-    m = re.search(r'(?:^|\s)水費[：:\s]*([\d,]+)', text, re.MULTILINE)
-    result["水費"] = m.group(1).replace(",", "") if m else "未辨識"
+    # ── 水費項目小計 ("$327元" or "$289元") — reliable anchor ──
+    m = re.search(r'水費項目小計\s*\$?([\d,]+)\s*元', text)
+    result["水費項目小計"] = m.group(1).replace(",", "") if m else "0"
 
-    m = re.search(r'營業稅[：:\s]*([\d,]+)', text)
-    result["營業稅"] = m.group(1).replace(",", "") if m else "未辨識"
+    # ── 基本費 & 用水費 ──
+    # Strategy 1: direct match "基本費\n132.30元"
+    m_base = re.search(r'基本費\s+([\d,]+(?:\.\s?\d+)?)\s*元', text)
+    m_water = re.search(r'用水費\s+([\d,]+(?:\.\s?\d+)?)\s*元', text)
 
-    m = re.search(r'(?:本期應繳|總金額|合計)[：:\s]*([\d,]+)', text)
-    result["總金額"] = m.group(1).replace(",", "") if m else "未辨識"
+    if m_base:
+        result["基本費"] = m_base.group(1).replace(",", "").replace(" ", "")
+    if m_water:
+        result["用水費"] = m_water.group(1).replace(",", "").replace(" ", "")
+
+    # Strategy 2 (columnar fallback): after "水費項目小計 $NNN元",
+    # the next two decimal values (NNN.NN元) are 基本費 and 用水費.
+    if not m_base or not m_water:
+        subtotal_m = re.search(r'水費項目小計\s*\$?[\d,]+\s*元', text)
+        if subtotal_m:
+            after = text[subtotal_m.end():]
+            decimals = re.findall(r'([\d,]+\.\s?\d+)\s*元', after[:300])
+            if len(decimals) >= 2:
+                if not m_base:
+                    result["基本費"] = decimals[0].replace(",", "").replace(" ", "")
+                if not m_water:
+                    result["用水費"] = decimals[1].replace(",", "").replace(" ", "")
+            elif len(decimals) == 1 and not m_base:
+                result["基本費"] = decimals[0].replace(",", "").replace(" ", "")
+    if result["基本費"] is None:
+        result["基本費"] = "0"
+    if result["用水費"] is None:
+        result["用水費"] = "0"
+
+    # ── 營業稅 ──
+    # Direct: "營業稅\n16元". Columnar fallback: find first integer+元 after "營業稅"
+    m = re.search(r'營業稅\s+([\d,]+)\s*元', text)
+    if not m:
+        tax_idx = text.find('營業稅')
+        if tax_idx >= 0:
+            after = text[tax_idx + 3:]
+            m = re.search(r'(\d{1,6})\s*元', after[:300])
+    result["營業稅"] = m.group(1).replace(",", "") if m else "0"
+
+    # ── 代徵費用小計 ("$9元" or "$0元") ──
+    m = re.search(r'代徵費用小計\s*\$?([\d,]+)\s*元', text)
+    result["代徵費用小計"] = m.group(1).replace(",", "") if m else "0"
+
+    # ── 水源保育與回饋費 ("9元") ──
+    m = re.search(r'水源保育與回饋費\s+([\d,]+)\s*元', text)
+    if not m:
+        m = re.search(r'水源保育[與及]?回饋費?\s*[：:\s]*([\d,]+)', text)
+    result["水源保育與回饋費"] = m.group(1).replace(",", "") if m else "0"
+
+    # ── 代繳(代收)總金額 ("336元") ──
+    # Reliable pattern: "代繳(代收)總金額\n336元" (often on one OCR line)
+    m = re.search(r'代繳\s*[\(（]代收[\)）]\s*總金額\s+([\d,]+)\s*元?', text)
+    if not m:
+        m = re.search(r'總金額\s+([\d,]+)\s*元', text)
+    if not m:
+        m = re.search(r'(?:本期應繳|合計)[：:\s]*([\d,]+)', text)
+    result["總金額"] = m.group(1).replace(",", "") if m else "0"
 
     return result
 
@@ -415,9 +520,13 @@ async def ocr_pdf(
 
             # Detect billing period from first page
             if page_idx == 0 and not billing_period:
-                m = re.search(r'(\d{2,3}年\d{1,2}月)', text)
+                m = re.search(r'繳費年月\s+(\d{2,3}/\d{1,2})', text)
                 if m:
                     billing_period = m.group(1).strip()
+                else:
+                    m = re.search(r'(\d{2,3}年\d{1,2}月)', text)
+                    if m:
+                        billing_period = m.group(1).strip()
 
             if bill_type == "電費":
                 rec = parse_electricity_page(text, page_idx + 1, billing_period)

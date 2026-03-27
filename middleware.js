@@ -8,7 +8,13 @@ const API_VERSION = '1.0';
 
 // ── CSRF protection (Origin/Referer validation) ──
 const CSRF_STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const CSRF_EXEMPT_PREFIXES = ['/api/auth']; // NextAuth handles its own CSRF
+const CSRF_EXEMPT_PREFIXES = [
+  '/api/auth',           // NextAuth handles its own CSRF
+  '/api/utility-bills',  // file upload endpoints (multipart/form-data) — auth via JWT session
+  '/api/import',         // file upload
+  '/api/setup-import',   // file upload
+  '/api/pms-income',     // file upload (Excel parse)
+];
 
 function validateCsrf(req) {
   const method = req.method?.toUpperCase();

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requirePermission } from '@/lib/api-auth';
+import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const maxDuration = 300; // 5 minutes for AI inference
@@ -27,7 +27,7 @@ function validateOcrUrl(baseUrl) {
 }
 
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  const auth = await requireAnyPermission([PERMISSIONS.EXPENSE_CREATE, PERMISSIONS.EXPENSE_VIEW, PERMISSIONS.FINANCE_VIEW]);
   if (!auth.ok) return auth.response;
 
   try {
@@ -45,9 +45,9 @@ export async function POST(request) {
       return NextResponse.json({ error: '請上傳 PDF 檔案' }, { status: 400 });
     }
 
-    // Guard against oversized files (20MB max)
-    if (file.size > 20 * 1024 * 1024) {
-      return NextResponse.json({ error: '檔案大小超過 20MB 上限' }, { status: 400 });
+    // Guard against oversized files (100MB max)
+    if (file.size > 100 * 1024 * 1024) {
+      return NextResponse.json({ error: '檔案大小超過 100MB 上限' }, { status: 400 });
     }
 
     // Validate page is a numeric string to prevent injection into URL

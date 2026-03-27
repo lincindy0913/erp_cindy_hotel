@@ -3,6 +3,11 @@ const nextConfig = {
   // Enable standalone output for Docker deployment
   output: 'standalone',
 
+  // Increase body size limit for large PDF uploads (water/electricity bills can be 50MB+)
+  experimental: {
+    serverActions: { bodySizeLimit: '100mb' },
+  },
+
   // Disable X-Powered-By header to avoid leaking framework info
   poweredByHeader: false,
 
@@ -33,15 +38,15 @@ const nextConfig = {
               "base-uri 'self'",
               "form-action 'self'",
               "object-src 'none'",                                 // Block Flash/Java plugins
-              "upgrade-insecure-requests",                         // Auto-upgrade http→https in production
+              ...(!isDev ? ['upgrade-insecure-requests'] : []), // Auto-upgrade http→https in production only
             ].join('; '),
           },
           // Prevent MIME type sniffing
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Clickjacking protection (legacy fallback for older browsers)
           { key: 'X-Frame-Options', value: 'DENY' },
-          // HTTPS enforcement
-          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
+          // HTTPS enforcement — only in production to avoid breaking local HTTP dev
+          ...(!isDev ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' }] : []),
           // Referrer policy — don't leak full URL to third parties
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           // Permissions policy — disable unused browser features
