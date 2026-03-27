@@ -10,7 +10,7 @@ services:
     environment:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required — set your Railway PostgreSQL URL in .env}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
     restart: unless-stopped
@@ -33,7 +33,7 @@ services:
     ports:
       - "5001:5001"
     environment:
-      GOOGLE_VISION_API_KEY: ${GOOGLE_VISION_API_KEY}
+      GOOGLE_VISION_API_KEY: ${GOOGLE_VISION_API_KEY:?GOOGLE_VISION_API_KEY is required — set your Google Vision API key in .env}
     restart: unless-stopped
 
   pgadmin:

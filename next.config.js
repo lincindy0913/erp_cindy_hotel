@@ -6,6 +6,7 @@ const nextConfig = {
   // Increase body size limit for large PDF uploads (water/electricity bills can be 50MB+)
   experimental: {
     serverActions: { bodySizeLimit: '100mb' },
+    instrumentationHook: true,
   },
 
   // Disable X-Powered-By header to avoid leaking framework info

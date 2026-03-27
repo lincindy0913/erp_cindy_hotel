@@ -20,6 +20,15 @@ GOOGLE_VISION_API_KEY = os.environ.get("GOOGLE_VISION_API_KEY", "")
 GOOGLE_VISION_URL = "https://vision.googleapis.com/v1/images:annotate"
 
 
+@app.on_event("startup")
+async def startup_check():
+    if not GOOGLE_VISION_API_KEY:
+        raise RuntimeError(
+            "FATAL: GOOGLE_VISION_API_KEY is not set. "
+            "Add it to your .env file and restart: docker compose --env-file .env up -d ocr"
+        )
+
+
 # ─────────────────────────────────────────────────────────────
 # PDF page → base64 PNG via PyMuPDF
 # ─────────────────────────────────────────────────────────────
