@@ -757,14 +757,24 @@ export default function UtilityBillsPage() {
                       館別：{meta.warehouse || '（請先選擇館別）'}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={saveCurrentRecord}
-                    disabled={saving || !meta.warehouse}
-                    className="px-4 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium"
-                  >
-                    {saving ? '儲存中…' : `儲存全部 ${formRecords.length} 筆`}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setFormRecords([]); setOcrRecords([]); setPdfFile(null); setSummary(null); }}
+                      disabled={saving}
+                      className="px-4 py-1.5 rounded text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium"
+                    >
+                      取消帳單
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveCurrentRecord}
+                      disabled={saving || !meta.warehouse}
+                      className="px-4 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium"
+                    >
+                      {saving ? '儲存中…' : `儲存全部 ${formRecords.length} 筆`}
+                    </button>
+                  </div>
                 </div>
                 {formRecords.map((rec, idx) => {
                   const basicFields = ['類型', '繳費年月', '水號', '用水地址'];
@@ -879,14 +889,24 @@ export default function UtilityBillsPage() {
                       館別：{meta.warehouse || '（請先選擇館別）'}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={saveCurrentRecord}
-                    disabled={saving || !meta.warehouse}
-                    className="px-4 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium"
-                  >
-                    {saving ? '儲存中…' : `儲存全部 ${formRecords.length} 筆`}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setFormRecords([]); setOcrRecords([]); setPdfFile(null); setSummary(null); }}
+                      disabled={saving}
+                      className="px-4 py-1.5 rounded text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium"
+                    >
+                      取消帳單
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveCurrentRecord}
+                      disabled={saving || !meta.warehouse}
+                      className="px-4 py-1.5 rounded text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium"
+                    >
+                      {saving ? '儲存中…' : `儲存全部 ${formRecords.length} 筆`}
+                    </button>
+                  </div>
                 </div>
                 {formRecords.map((rec, idx) => {
                   const basicFields = ['類型', '繳費期限', '地址', '電號'];
