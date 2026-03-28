@@ -131,7 +131,7 @@ export async function POST(request) {
 
     for (let idx = 0; idx < orders.length; idx++) {
       const order = orders[idx];
-      if (idx > 0) doc.addPage();
+      if (idx > 0) { doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal'); }
 
       const invoiceIds = Array.isArray(order.invoiceIds) ? order.invoiceIds.map(id => parseInt(id)) : [];
       const invoices = invoiceIds.map(id => invoiceMap.get(id)).filter(Boolean);

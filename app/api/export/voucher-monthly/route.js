@@ -462,7 +462,7 @@ export async function GET(request) {
 
     // Check if we need a new page for the matrix
     if (y + 30 > pageHeight - 15) {
-      doc.addPage();
+      doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal');
       y = 12;
     }
 
@@ -477,7 +477,7 @@ export async function GET(request) {
 
     for (let batch = 0; batch < totalDateBatches; batch++) {
       if (batch > 0) {
-        doc.addPage();
+        doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal');
         y = 12;
         doc.setFontSize(isLandscape ? 7.5 : 9);
         doc.setTextColor(80, 80, 80);
@@ -586,7 +586,7 @@ export async function GET(request) {
     // ---- Price notes section ----
     if (showPriceNote && priceNoteItems.length > 0) {
       if (y + 40 > pageHeight - 15) {
-        doc.addPage();
+        doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal');
         y = 12;
       }
       y += 4;

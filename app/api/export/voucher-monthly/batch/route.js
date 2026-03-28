@@ -190,15 +190,15 @@ export async function POST(request) {
       }
 
       // Create or add page to PDF
+      const cjkFont = getCJKFontFamily?.() || undefined;
       if (!doc) {
         doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
         addCJKFontToDoc(doc);
       } else {
         doc.addPage(orientation === 'landscape' ? [297, 210] : [210, 297]);
+        if (cjkFont) doc.setFont(cjkFont, 'normal');
       }
       supplierCount++;
-
-      const cjkFont = getCJKFontFamily?.() || undefined;
       const pageWidth = orientation === 'landscape' ? 297 : 210;
       const pageHeight = orientation === 'landscape' ? 210 : 297;
       const m = 12;
@@ -400,7 +400,7 @@ export async function POST(request) {
       let grandTotal = 0;
       const products = Array.from(productMap.entries());
 
-      if (y + 30 > pageHeight - 15) { doc.addPage(); y = 12; }
+      if (y + 30 > pageHeight - 15) { doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal'); y = 12; }
       doc.setFontSize(isLandscape ? 7 : 8);
       doc.setFont(undefined, 'bold');
       doc.setTextColor(80, 80, 80);
@@ -410,7 +410,7 @@ export async function POST(request) {
       y += 4;
 
       for (let batch = 0; batch < totalDateBatches; batch++) {
-        if (batch > 0) { doc.addPage(); y = 12; }
+        if (batch > 0) { doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal'); y = 12; }
         const batchDates = sortedDates.slice(batch * PAGES_BATCH, (batch + 1) * PAGES_BATCH);
         const isLastBatch = batch === totalDateBatches - 1;
         const dateCols = batchDates.map(d => { const parts = d.split('-'); return `${parseInt(parts[1])}/${parseInt(parts[2])}`; });
@@ -456,7 +456,7 @@ export async function POST(request) {
 
       // Price notes
       if (showPriceNote && priceNoteItems.length > 0) {
-        if (y + 40 > pageHeight - 15) { doc.addPage(); y = 12; }
+        if (y + 40 > pageHeight - 15) { doc.addPage(); if (cjkFont) doc.setFont(cjkFont, 'normal'); y = 12; }
         y += 4;
         doc.setDrawColor(204, 204, 204);
         doc.setLineWidth(0.5);
