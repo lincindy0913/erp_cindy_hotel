@@ -5,10 +5,13 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 
-const TABS = [
-  { key: 'parse', label: '電費單解析' },
-  { key: 'water', label: '水費單解析' },
-  { key: 'list', label: '各館別月份一覽' },
+const TABS_ADMIN = [
+  { key: 'parse', label: '電費單解析', icon: '⚡', desc: 'OCR 辨識台電帳單' },
+  { key: 'water', label: '水費單解析', icon: '💧', desc: 'OCR 辨識台水帳單' },
+  { key: 'list',  label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+];
+const TABS_VIEWER = [
+  { key: 'list',  label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
 ];
 
 // Fallback — will be replaced by API data on mount
@@ -22,8 +25,11 @@ const WAREHOUSE_OPTIONS_FALLBACK = [
 
 export default function UtilityBillsPage() {
   const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'admin';
+  const TABS = isAdmin ? TABS_ADMIN : TABS_VIEWER;
+
   const [WAREHOUSE_OPTIONS, setWarehouseOptions] = useState(WAREHOUSE_OPTIONS_FALLBACK);
-  const [activeTab, setActiveTab] = useState('parse');
+  const [activeTab, setActiveTab] = useState(() => isAdmin ? 'parse' : 'list');
   const [message, setMessage] = useState({ text: '', type: '' });
   const [pdfFile, setPdfFile] = useState(null);
   const [startPage, setStartPage] = useState(1);
@@ -58,6 +64,11 @@ export default function UtilityBillsPage() {
       })
       .catch(() => {});
   }, []);
+
+  // If session loads and user is not admin, force to list tab
+  useEffect(() => {
+    if (session && !isAdmin && activeTab !== 'list') setActiveTab('list');
+  }, [session, isAdmin]);
 
   // 檔名或地址關鍵字 → 館別（用於自動判讀）
   const WAREHOUSE_KEYWORDS = WAREHOUSE_OPTIONS.filter(o => o.value).map(o => ({ keyword: o.value, warehouse: o.value }));
@@ -473,26 +484,55 @@ export default function UtilityBillsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-teal-600" />
       <NotificationBanner moduleFilter="utility" />
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold text-teal-800 mb-6">水電費</h2>
 
+      {/* Page header */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 py-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-teal-800 flex items-center gap-2">
+                <span className="text-2xl">🔌</span> 水電費管理
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {isAdmin ? 'OCR 自動辨識帳單 · 儲存記錄 · 各館別查詢' : '各館別水電費記錄查詢'}
+              </p>
+            </div>
+            {!isAdmin && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 border border-gray-200 text-xs text-gray-500">
+                👁 檢視模式
+              </span>
+            )}
+          </div>
+
+          {/* Tab navbar */}
+          <div className="flex gap-1 mt-4">
+            {TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-all ${
+                  activeTab === tab.key
+                    ? 'border-teal-600 bg-teal-50 text-teal-800'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="text-base leading-none">{tab.icon}</span>
+                <span>{tab.label}</span>
+                <span className={`hidden md:inline text-xs font-normal ml-0.5 ${activeTab === tab.key ? 'text-teal-500' : 'text-gray-400'}`}>
+                  {tab.desc}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-5xl mx-auto px-4 py-6">
         {message.text && (
-          <div className={`mb-4 px-4 py-2 rounded ${message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+          <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${message.type === 'error' ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-green-100 text-green-700 border border-green-200'}`}>
             {message.text}
           </div>
         )}
-
-        <div className="flex gap-2 mb-6">
-          {TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === tab.key ? 'bg-teal-600 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
 
         {(activeTab === 'parse' || activeTab === 'water') && (
           <div className="bg-white rounded-lg shadow-sm border border-teal-100 p-6 space-y-6">
