@@ -98,6 +98,14 @@
   --year-end-light: #EDE9FE;
   --year-end-dark: #6D28D9;
 
+  --utility-primary: #0F766E;
+  --utility-light: #CCFBF1;
+  --utility-dark: #0D5E57;
+
+  --engineering-primary: #B45309;
+  --engineering-light: #FEF3C7;
+  --engineering-dark: #92400E;
+
   --backup-primary: #DC2626;
   --backup-light: #FEE2E2;
   --backup-dark: #B91C1C;
@@ -374,6 +382,26 @@ table th, table td {
 }
 .link-year-end:hover { background: rgba(124, 58, 237, 0.2); }
 .link-year-end.active { background: var(--year-end-primary); color: white; }
+
+.link-utility {
+  color: var(--utility-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(15, 118, 110, 0.1);
+  transition: all 0.2s;
+}
+.link-utility:hover { background: rgba(15, 118, 110, 0.2); }
+.link-utility.active { background: var(--utility-primary); color: white; }
+
+.link-engineering {
+  color: var(--engineering-primary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(180, 83, 9, 0.1);
+  transition: all 0.2s;
+}
+.link-engineering:hover { background: rgba(180, 83, 9, 0.2); }
+.link-engineering.active { background: var(--engineering-primary); color: white; }
 
 /* Page background colors with 60% transparency (smooth, subtle tint) */
 .page-bg-dashboard { background: linear-gradient(180deg, rgba(37, 99, 235, 0.08) 0%, rgba(37, 99, 235, 0.15) 100%); }

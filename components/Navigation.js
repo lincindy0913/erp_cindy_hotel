@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
   { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
-  { href: '/engineering', label: '工程', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+  { href: '/engineering', label: '工程',      linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
   { href: '/utility-bills', label: '水電費', linkClass: 'link-utility', requiredPermission: null },
   { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },
 ];
