@@ -1097,7 +1097,12 @@ export default function UtilityBillsPage() {
                               try {
                                 const sum = typeof r.summaryJson === 'string' ? JSON.parse(r.summaryJson) : (r.summaryJson || {});
                                 setEditRecord(r);
-                                setEditSummary(typeof sum === 'object' && sum !== null ? { ...sum } : {});
+                                // Water bills: array of records — keep as array. Electricity: flat object.
+                                if (Array.isArray(sum)) {
+                                  setEditSummary(sum);
+                                } else {
+                                  setEditSummary(typeof sum === 'object' && sum !== null ? { ...sum } : {});
+                                }
                               } catch {
                                 setEditRecord(r);
                                 setEditSummary({});
