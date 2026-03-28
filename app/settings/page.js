@@ -16,7 +16,6 @@ const SECTIONS = [
   { key: 'backup', label: '資料備份', icon: '💾' },
   { key: 'data-import', label: '期初資料匯入', icon: '📥' },
   { key: 'users', label: '使用者管理', icon: '👥' },
-  { key: 'master-governance', label: '主檔治理', icon: '🔍', href: '/settings/master-data-governance' },
   { key: 'system-info', label: '系統資訊', icon: '⚙️' },
 ];
 
@@ -453,7 +452,6 @@ export default function SettingsPage() {
   const [taxRate, setTaxRate] = useState('5');
   const [invoiceTitles, setInvoiceTitles] = useState([]);
   const [newInvoiceTitle, setNewInvoiceTitle] = useState('');
-  const [newInvoiceTaxId, setNewInvoiceTaxId] = useState('');
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [newPaymentMethod, setNewPaymentMethod] = useState('');
 
@@ -461,7 +459,6 @@ export default function SettingsPage() {
   const [warehouseData, setWarehouseData] = useState({});
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [newWarehouse, setNewWarehouse] = useState('');
-  const [selectedBuildingForStorage, setSelectedBuildingForStorage] = useState('');
   const [newDeptWarehouse, setNewDeptWarehouse] = useState('');
   const [newDeptName, setNewDeptName] = useState('');
   const [newBuilding, setNewBuilding] = useState('');
@@ -653,8 +650,8 @@ export default function SettingsPage() {
   async function fetchMasterDataCounts() {
     try {
       const [productsRes, suppliersRes, accountingRes, warehouseRes] = await Promise.all([
-        fetch('/api/products?all=true').catch(() => null),
-        fetch('/api/suppliers?all=true').catch(() => null),
+        fetch('/api/products').catch(() => null),
+        fetch('/api/suppliers').catch(() => null),
         fetch('/api/accounting-subjects').catch(() => null),
         fetch('/api/warehouse-departments').catch(() => null),
       ]);
@@ -778,11 +775,10 @@ export default function SettingsPage() {
       const res = await fetch('/api/settings/invoice-titles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newInvoiceTitle.trim(), taxId: newInvoiceTaxId.trim() || null }),
+        body: JSON.stringify({ title: newInvoiceTitle.trim() }),
       });
       if (res.ok) {
         setNewInvoiceTitle('');
-        setNewInvoiceTaxId('');
         await fetchInvoiceTitles();
         showToast('發票抬頭已新增');
       } else {
@@ -1077,19 +1073,22 @@ export default function SettingsPage() {
     }
   }, [activeSection]);
 
-  async function addStorageLocation() {
-    if (!selectedBuildingForStorage) { showToast('請先選擇館別', 'error'); return; }
+  async function addWarehouse() {
     if (!newWarehouse.trim()) { showToast('請輸入倉庫名稱', 'error'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'addStorageLocation', buildingId: parseInt(selectedBuildingForStorage), name: newWarehouse.trim() }),
+        body: JSON.stringify({ action: 'addWarehouse', name: newWarehouse.trim(), type: 'storage' }),
       });
       const result = await res.json();
       if (res.ok && result.list) {
         setWarehouseData({ list: result.list, byName: result.byName || {} });
+        setNewWarehouse('');
+        showToast(`倉庫「${newWarehouse.trim()}」已新增`);
+      } else if (res.ok) {
+        fetchWarehouses();
         setNewWarehouse('');
         showToast(`倉庫「${newWarehouse.trim()}」已新增`);
       } else {
@@ -1097,24 +1096,6 @@ export default function SettingsPage() {
       }
     } catch { showToast('新增失敗', 'error'); }
     setSaving(false);
-  }
-
-  async function deleteStorageLocation(id, name) {
-    if (!confirm(`確定刪除倉庫「${name}」？`)) return;
-    try {
-      const res = await fetch('/api/warehouse-departments', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteStorageLocation', id }),
-      });
-      const result = await res.json();
-      if (res.ok && result.list) {
-        setWarehouseData({ list: result.list, byName: result.byName || {} });
-        showToast(`倉庫「${name}」已刪除`);
-      } else {
-        showToast(result.error?.message || '刪除失敗', 'error');
-      }
-    } catch { showToast('刪除失敗', 'error'); }
   }
 
   async function addBuilding() {
@@ -1211,32 +1192,24 @@ export default function SettingsPage() {
 
   function renderWarehousesSection() {
     const list = Array.isArray(warehouseData.list) ? warehouseData.list : [];
-    const buildings = list.filter(x => x.type === 'building' && !x.parentId);
+    const storageNames = list.filter(x => x.type === 'storage').map(x => x.name);
     return (
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-4">倉庫管理</h3>
-          <p className="text-sm text-gray-500 mb-4">倉庫為館別內的實體儲存地點。請先至「館別設定」新增館別，再於此設定各館別的倉庫位置。</p>
-          <div className="flex gap-3 mb-4 flex-wrap items-center">
-            <select
-              value={selectedBuildingForStorage}
-              onChange={e => setSelectedBuildingForStorage(e.target.value)}
-              className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 text-sm"
-            >
-              <option value="">選擇館別</option>
-              {buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+          <p className="text-sm text-gray-500 mb-4">倉庫指實體儲存地點（如麗格地下室、備品室、2F倉庫、小倉庫）。庫存查詢、領用、調撥、盤點皆需選擇倉庫。館別與部門請至「館別設定」管理。</p>
+          <div className="flex gap-3 mb-4">
             <input
               type="text"
               value={newWarehouse}
               onChange={e => setNewWarehouse(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addStorageLocation()}
-              placeholder="倉庫名稱，例如：地下室、備品室、2F倉庫"
-              className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
+              onKeyDown={e => e.key === 'Enter' && addWarehouse()}
+              placeholder="例如：麗格地下室、備品室、2F倉庫、小倉庫"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
             />
             <button
-              onClick={addStorageLocation}
-              disabled={saving || !selectedBuildingForStorage || !newWarehouse.trim()}
+              onClick={addWarehouse}
+              disabled={saving || !newWarehouse.trim()}
               className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 text-sm font-medium"
             >
               新增倉庫
@@ -1244,39 +1217,21 @@ export default function SettingsPage() {
           </div>
           {warehouseLoading ? (
             <p className="text-sm text-gray-500">載入中...</p>
-          ) : buildings.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">尚無館別，請先至「館別設定」新增館別（如：麗格）</p>
+          ) : storageNames.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">尚無倉庫，請先新增倉庫（如：麗格地下室、備品室、2F倉庫、小倉庫）</p>
           ) : (
-            <div className="space-y-3">
-              {buildings.map(b => {
-                const storageLocations = list.filter(x => x.type === 'storage' && x.parentId === b.id);
-                return (
-                  <div key={b.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="px-4 py-3 bg-gray-50 flex items-center justify-between">
-                      <span className="font-medium text-gray-800">{b.name}（館別）</span>
-                    </div>
-                    <div className="px-4 py-3">
-                      {storageLocations.length === 0 ? (
-                        <p className="text-sm text-gray-400">尚無倉庫位置</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {storageLocations.map(loc => (
-                            <span key={loc.id} className="inline-flex items-center gap-1 px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm">
-                              {loc.name}
-                              <button onClick={() => deleteStorageLocation(loc.id, loc.name)} className="ml-1 text-green-400 hover:text-red-500 leading-none" title="刪除倉庫">×</button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <ul className="space-y-2">
+              {storageNames.map(wh => (
+                <li key={wh} className="flex items-center justify-between px-4 py-2 border border-gray-200 rounded-lg">
+                  <span className="font-medium text-gray-800">{wh}</span>
+                  <button onClick={() => deleteWarehouse(wh)} className="text-xs text-red-500 hover:text-red-700 hover:underline">刪除倉庫</button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <p className="text-sm text-amber-800">範例：館別「麗格」底下可設倉庫「地下室」、「備品室」、「2F倉庫」、「小倉庫」。</p>
+          <p className="text-sm text-amber-800">提示：館別（如麗格）與部門（行政部、管理部、房務部）請在「館別設定」頁籤設定。</p>
         </div>
       </div>
     );
@@ -1472,16 +1427,8 @@ export default function SettingsPage() {
               value={newInvoiceTitle}
               onChange={e => setNewInvoiceTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addInvoiceTitle()}
-              placeholder="發票抬頭名稱..."
+              placeholder="輸入發票抬頭名稱..."
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
-            />
-            <input
-              type="text"
-              value={newInvoiceTaxId}
-              onChange={e => setNewInvoiceTaxId(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addInvoiceTitle()}
-              placeholder="統一編號（選填）"
-              className="w-40 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-gray-400 text-sm"
             />
             <button
               onClick={addInvoiceTitle}
@@ -1496,10 +1443,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               {invoiceTitles.map((item) => (
                 <div key={item.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-gray-100">
-                  <div>
-                    <span className="text-sm text-gray-700 font-medium">{item.title}</span>
-                    {item.taxId && <span className="text-xs text-gray-400 ml-2">({item.taxId})</span>}
-                  </div>
+                  <span className="text-sm text-gray-700">{item.title}</span>
                   <button
                     onClick={() => deleteInvoiceTitle(item.id)}
                     className="text-red-500 hover:text-red-700 text-sm font-medium transition-colors"
@@ -2334,30 +2278,18 @@ export default function SettingsPage() {
               </div>
               <nav className="p-2 space-y-1">
                 {SECTIONS.map((section) => (
-                  section.href ? (
-                    <a
-                      key={section.key}
-                      href={section.href}
-                      className="w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-3 text-gray-600 hover:bg-gray-100 hover:text-gray-800"
-                    >
-                      <span className="text-base">{section.icon}</span>
-                      <span>{section.label}</span>
-                      <span className="ml-auto text-xs text-gray-400">&rarr;</span>
-                    </a>
-                  ) : (
-                    <button
-                      key={section.key}
-                      onClick={() => handleSectionChange(section.key)}
-                      className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-3 ${
-                        activeSection === section.key
-                          ? 'bg-gray-700 text-white shadow-sm'
-                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                      }`}
-                    >
-                      <span className="text-base">{section.icon}</span>
-                      <span>{section.label}</span>
-                    </button>
-                  )
+                  <button
+                    key={section.key}
+                    onClick={() => handleSectionChange(section.key)}
+                    className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-3 ${
+                      activeSection === section.key
+                        ? 'bg-gray-700 text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                    }`}
+                  >
+                    <span className="text-base">{section.icon}</span>
+                    <span>{section.label}</span>
+                  </button>
                 ))}
               </nav>
             </div>

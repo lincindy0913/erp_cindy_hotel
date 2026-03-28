@@ -81,7 +81,6 @@ export async function PUT(request, { params }) {
       const updatePayload = {
         name: data.name.trim(),
         description: data.description?.trim() || null,
-        summary: data.summary?.trim() || null,
         templateType: data.templateType || existing.templateType || 'fixed',
         categoryId: data.categoryId ? parseInt(data.categoryId) : null,
         warehouse: data.warehouse?.trim() || null,
@@ -111,12 +110,9 @@ export async function PUT(request, { params }) {
             accountingName: line.accountingName || '',
             summary: line.summary?.trim() || null,
             defaultAmount: line.defaultAmount ? parseFloat(line.defaultAmount) : null,
-            supplierId: line.supplierId ? parseInt(line.supplierId) : null,
-            supplierName: line.supplierName?.trim() || null,
             warehouse: line.warehouse?.trim() || null,
             paymentMethod: line.paymentMethod?.trim() || null,
             accountId: line.accountId ? parseInt(line.accountId) : null,
-            advancedBy: line.advancedBy?.trim() || null,
             sortOrder: line.sortOrder ?? idx
           }))
         };

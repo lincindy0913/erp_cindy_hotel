@@ -95,3 +95,23 @@ export async function DELETE(request) {
     return handleApiError(error);
   }
 }
+
+export async function DELETE(request) {
+  const auth = await requireAnyPermission([PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
+  if (!auth.ok) return auth.response;
+
+  const { searchParams } = new URL(request.url);
+  const id = parseInt(searchParams.get('id'));
+  if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 ID', 400);
+
+  try {
+    await prisma.paymentMethodOption.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('刪除付款方式錯誤:', error);
+    return handleApiError(error);
+  }
+}
