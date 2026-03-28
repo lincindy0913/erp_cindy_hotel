@@ -72,3 +72,18 @@ export async function PUT(request, { params }) {
     return handleApiError(error);
   }
 }
+
+export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const id = parseInt(params.id, 10);
+    if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+
+    await prisma.utilityBillRecord.delete({ where: { id } });
+    return NextResponse.json({ message: '已刪除' });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

@@ -6,12 +6,14 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 
 const TABS_ADMIN = [
-  { key: 'parse', label: '電費單解析', icon: '⚡', desc: 'OCR 辨識台電帳單' },
-  { key: 'water', label: '水費單解析', icon: '💧', desc: 'OCR 辨識台水帳單' },
-  { key: 'list',  label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+  { key: 'parse',   label: '電費單解析',   icon: '⚡', desc: 'OCR 辨識台電帳單' },
+  { key: 'water',   label: '水費單解析',   icon: '💧', desc: 'OCR 辨識台水帳單' },
+  { key: 'list',    label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+  { key: 'detail',  label: '帳單明細管理', icon: '🗂', desc: '逐筆編輯與刪除' },
 ];
 const TABS_VIEWER = [
-  { key: 'list',  label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+  { key: 'list',    label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+  { key: 'detail',  label: '帳單明細管理', icon: '🗂️', desc: '逐筆查詢' },
 ];
 
 // Fallback — will be replaced by API data on mount
@@ -51,6 +53,13 @@ export default function UtilityBillsPage() {
   const [editSummary, setEditSummary] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Detail tab state
+  const [detailRecords, setDetailRecords] = useState([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailFilter, setDetailFilter] = useState({ warehouse: '', year: '', billType: '' });
+  const [detailDeleting, setDetailDeleting] = useState(null); // id being deleted
+  const [confirmDelete, setConfirmDelete] = useState(null); // record to confirm delete
+
   // 載入主檔館別
   useEffect(() => {
     fetch('/api/warehouse-departments')
@@ -87,6 +96,10 @@ export default function UtilityBillsPage() {
     if (activeTab === 'list') fetchRecords();
   }, [activeTab, listFilter.warehouse, listFilter.year, listFilter.month, listFilter.billType]);
 
+  useEffect(() => {
+    if (activeTab === 'detail') fetchDetailRecords();
+  }, [activeTab, detailFilter.warehouse, detailFilter.year, detailFilter.billType]);
+
   async function fetchRecords() {
     setListLoading(true);
     try {
@@ -102,6 +115,41 @@ export default function UtilityBillsPage() {
       setRecords([]);
     }
     setListLoading(false);
+  }
+
+  async function fetchDetailRecords() {
+    setDetailLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (detailFilter.warehouse) params.set('warehouse', detailFilter.warehouse);
+      if (detailFilter.year) params.set('year', detailFilter.year);
+      if (detailFilter.billType) params.set('billType', detailFilter.billType);
+      const res = await fetch(`/api/utility-bills?${params}`);
+      const data = await res.json();
+      setDetailRecords(Array.isArray(data) ? data : []);
+    } catch {
+      setDetailRecords([]);
+    }
+    setDetailLoading(false);
+  }
+
+  async function deleteRecord(id) {
+    setDetailDeleting(id);
+    try {
+      const res = await fetch(`/api/utility-bills/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showMessage('已刪除');
+        setConfirmDelete(null);
+        fetchDetailRecords();
+        fetchRecords();
+      } else {
+        const d = await res.json();
+        showMessage(d.error || '刪除失敗', 'error');
+      }
+    } catch {
+      showMessage('刪除失敗', 'error');
+    }
+    setDetailDeleting(null);
   }
 
   // 從檔名與內文自動判讀 館別、年、月
@@ -1120,7 +1168,129 @@ export default function UtilityBillsPage() {
               </div>
             )}
 
-            {editRecord && editSummary !== null && (
+          </div>
+        )}
+
+        {/* ══ 帳單明細管理 tab ══ */}
+        {activeTab === 'detail' && (
+          <div className="space-y-4">
+            {/* Filters */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select value={detailFilter.warehouse} onChange={e => setDetailFilter(f => ({ ...f, warehouse: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {WAREHOUSE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">年度</label>
+                <input type="text" value={detailFilter.year} onChange={e => setDetailFilter(f => ({ ...f, year: e.target.value }))}
+                  placeholder="例：114" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">類型</label>
+                <select value={detailFilter.billType} onChange={e => setDetailFilter(f => ({ ...f, billType: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">全部</option>
+                  <option value="水費">水費</option>
+                  <option value="電費">電費</option>
+                </select>
+              </div>
+              <button onClick={fetchDetailRecords} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700">
+                重新查詢
+              </button>
+            </div>
+
+            {detailLoading ? (
+              <div className="py-12 text-center text-gray-400">載入中…</div>
+            ) : detailRecords.length === 0 ? (
+              <div className="py-12 text-center text-gray-400">尚無記錄</div>
+            ) : (
+              <div className="space-y-4">
+                {detailRecords.map(r => {
+                  let rows = [];
+                  try {
+                    const parsed = typeof r.summaryJson === 'string' ? JSON.parse(r.summaryJson) : r.summaryJson;
+                    rows = Array.isArray(parsed) ? parsed : [parsed];
+                  } catch { rows = []; }
+
+                  const isWaterBill = r.billType === '水費';
+                  const borderColor = isWaterBill ? 'border-sky-200' : 'border-amber-200';
+                  const headerBg = isWaterBill ? 'bg-sky-50' : 'bg-amber-50';
+                  const badgeColor = isWaterBill ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700';
+                  const accentColor = isWaterBill ? 'text-sky-600' : 'text-amber-600';
+
+                  return (
+                    <div key={r.id} className={`bg-white rounded-xl border ${borderColor} shadow-sm overflow-hidden`}>
+                      {/* Record header */}
+                      <div className={`px-4 py-3 ${headerBg} border-b ${borderColor} flex items-center justify-between`}>
+                        <div className="flex items-center gap-3">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${badgeColor}`}>
+                            {isWaterBill ? '💧 水費' : '⚡ 電費'}
+                          </span>
+                          <span className="font-semibold text-gray-800">{r.warehouse}</span>
+                          <span className="text-sm text-gray-600">{r.billYear} 年 {r.billMonth} 月</span>
+                          {r.fileName && <span className="text-xs text-gray-400 hidden md:inline">📄 {r.fileName}</span>}
+                          <span className="text-xs text-gray-400">{rows.length} 筆明細</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              try {
+                                const sum = typeof r.summaryJson === 'string' ? JSON.parse(r.summaryJson) : (r.summaryJson || {});
+                                setEditRecord(r);
+                                setEditSummary(Array.isArray(sum) ? sum : { ...sum });
+                              } catch { setEditRecord(r); setEditSummary({}); }
+                            }}
+                            className="px-3 py-1 text-xs bg-white border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50 font-medium"
+                          >
+                            編輯
+                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => setConfirmDelete(r)}
+                              className="px-3 py-1 text-xs bg-white border border-red-300 text-red-600 rounded-lg hover:bg-red-50 font-medium"
+                            >
+                              刪除
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Rows table */}
+                      {rows.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                {Object.keys(rows[0]).map(k => (
+                                  <th key={k} className={`px-3 py-2 text-left font-medium whitespace-nowrap ${accentColor}`}>{k}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {rows.map((row, i) => (
+                                <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}>
+                                  {Object.values(row).map((val, j) => (
+                                    <td key={j} className="px-3 py-2 text-gray-700 whitespace-nowrap">{String(val ?? '—')}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ Edit modal (shared across list + detail tabs) ══ */}
+        {editRecord && editSummary !== null && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditRecord(null)}>
                 <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
                   <h4 className="text-lg font-semibold text-gray-800 mb-2">
@@ -1179,6 +1349,7 @@ export default function UtilityBillsPage() {
                             setEditRecord(null);
                             setEditSummary(null);
                             fetchRecords();
+                            fetchDetailRecords();
                           } else {
                             showMessage(data.error || '更新失敗', 'error');
                           }
@@ -1203,9 +1374,38 @@ export default function UtilityBillsPage() {
                 </div>
               </div>
             )}
-          </div>
-        )}
       </main>
+
+      {/* ══ Delete confirmation modal ══ */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">確認刪除</h4>
+            <p className="text-sm text-gray-600 mb-1">
+              確定要刪除以下帳單記錄？此操作無法復原。
+            </p>
+            <div className="my-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold mr-2 ${confirmDelete.billType === '水費' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>
+                {confirmDelete.billType === '水費' ? '💧 水費' : '⚡ 電費'}
+              </span>
+              <strong>{confirmDelete.warehouse}</strong> {confirmDelete.billYear} 年 {confirmDelete.billMonth} 月
+              {confirmDelete.fileName && <div className="text-gray-400 text-xs mt-1">📄 {confirmDelete.fileName}</div>}
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                取消
+              </button>
+              <button
+                onClick={() => deleteRecord(confirmDelete.id)}
+                disabled={detailDeleting === confirmDelete.id}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                {detailDeleting === confirmDelete.id ? '刪除中…' : '確認刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
