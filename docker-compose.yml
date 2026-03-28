@@ -12,7 +12,7 @@ services:
       HOSTNAME: 0.0.0.0
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required — set your Railway PostgreSQL URL in .env}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}"
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
     restart: unless-stopped
 
   db:
