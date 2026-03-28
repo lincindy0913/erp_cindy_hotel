@@ -1,1335 +1,983 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 
-const ANALYTICS_TABS = [
-  { key: 'price', label: '價格分析' },
-  { key: 'pnl-warehouse', label: '館別損益表' },
-  { key: 'supplier-risk', label: '供應商風險' },
-  { key: 'payables', label: '應付帳齡' },
-  { key: 'cashflow-forecast', label: '現金流預測' },
-  { key: 'department', label: '部門支出' },
-  { key: 'business-report', label: '月度報告' },
-  { key: 'breakfast-procurement', label: '早餐與採購比較' },
+const TABS = [
+  { key: 'overview',       label: '經營總覽' },
+  { key: 'pnl-warehouse',  label: '館別損益' },
+  { key: 'cashflow',       label: '現金流預測' },
+  { key: 'procurement',    label: '採購分析' },
+  { key: 'payables',       label: '應付帳齡' },
+  { key: 'report',         label: '月度報告' },
 ];
 
+const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
+const pct = (v) => `${Number(v || 0).toFixed(1)}%`;
+
+const riskBadge = (level) => {
+  const map = { low: 'bg-green-100 text-green-700', medium: 'bg-amber-100 text-amber-700', high: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
+  const label = { low: '低風險', medium: '中風險', high: '高風險', critical: '危急' };
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[level] || map.low}`}>{label[level] || level}</span>;
+};
+
+const KpiCard = ({ label, value, sub, color = 'text-gray-900', icon }) => (
+  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div className="flex items-start justify-between">
+      <p className="text-xs text-gray-500 font-medium">{label}</p>
+      {icon && <span className="text-lg">{icon}</span>}
+    </div>
+    <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+    {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+  </div>
+);
+
+const SectionTitle = ({ children }) => (
+  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+    <span className="w-1 h-4 bg-cyan-500 rounded-full inline-block" />
+    {children}
+  </h3>
+);
+
+const Loading = ({ text = '載入中...' }) => (
+  <div className="flex items-center justify-center py-20 text-gray-400">
+    <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+    </svg>
+    {text}
+  </div>
+);
+
+const Bar = ({ value, max, color = 'bg-cyan-500' }) => {
+  const w = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="flex-1 bg-gray-100 rounded-full h-2">
+      <div className={`${color} h-2 rounded-full transition-all`} style={{ width: `${w}%` }} />
+    </div>
+  );
+};
+
 export default function AnalyticsPage() {
-  const { data: session } = useSession();
-  const isLoggedIn = !!session;
-  const [activeTab, setActiveTab] = useState('price');
-  const [products, setProducts] = useState([]);
-  const [priceHistory, setPriceHistory] = useState([]);
-  const [priceComparison, setPriceComparison] = useState([]);
-  const [departmentExpenses, setDepartmentExpenses] = useState([]);
-  const [selectedProduct, setSelectedProduct] = useState('');
-  const [timeRange, setTimeRange] = useState('6');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  useSession();
+  const [activeTab, setActiveTab] = useState('overview');
 
-  // Supplier risk state
-  const [supplierRisk, setSupplierRisk] = useState(null);
-  const [riskLoading, setRiskLoading] = useState(false);
+  // ── Overview ─────────────────────────────────────────────────
+  const [overview, setOverview] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
-  // Payables aging state
-  const [payablesAging, setPayablesAging] = useState(null);
-  const [payablesLoading, setPayablesLoading] = useState(false);
+  // ── P&L by Warehouse ─────────────────────────────────────────
+  const [pnl, setPnl] = useState(null);
+  const [pnlLoading, setPnlLoading] = useState(false);
+  const [pnlStart, setPnlStart] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [pnlEnd, setPnlEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [pnlWarehouse, setPnlWarehouse] = useState('');
+  const [pnlTrace, setPnlTrace] = useState(null);
+  const [pnlTraceCtx, setPnlTraceCtx] = useState(null);
+  const [pnlTraceLoading, setPnlTraceLoading] = useState(false);
 
-  // Cash flow forecast state
-  const [cashForecast, setCashForecast] = useState(null);
-  const [forecastLoading, setForecastLoading] = useState(false);
+  // ── Cash Flow ─────────────────────────────────────────────────
+  const [cashflow, setCashflow] = useState(null);
+  const [cashflowLoading, setCashflowLoading] = useState(false);
   const [forecastDays, setForecastDays] = useState(30);
 
-  // Business report state
-  const [businessReport, setBusinessReport] = useState(null);
+  // ── Procurement / Supplier Risk ───────────────────────────────
+  const [supplierRisk, setSupplierRisk] = useState(null);
+  const [supplierLoading, setSupplierLoading] = useState(false);
+  const [riskMonth, setRiskMonth] = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  // ── Payables Aging ────────────────────────────────────────────
+  const [payables, setPayables] = useState(null);
+  const [payablesLoading, setPayablesLoading] = useState(false);
+
+  // ── Monthly Report ────────────────────────────────────────────
+  const [report, setReport] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportMonth, setReportMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const n = new Date(); return `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}`;
   });
   const [reportApproving, setReportApproving] = useState(false);
 
-  // 館別損益表（從 cashflow 依會計科目彙總）
-  const [pnlByWarehouse, setPnlByWarehouse] = useState(null);
-  const [pnlWarehouseLoading, setPnlWarehouseLoading] = useState(false);
-  const [pnlStartDate, setPnlStartDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [pnlEndDate, setPnlEndDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [pnlWarehouseFilter, setPnlWarehouseFilter] = useState('');
-
-  /** 館別損益表：追溯現金流明細 */
-  const [pnlTraceOpen, setPnlTraceOpen] = useState(false);
-  const [pnlTraceCtx, setPnlTraceCtx] = useState(null);
-  const [pnlTraceLoading, setPnlTraceLoading] = useState(false);
-  const [pnlTraceData, setPnlTraceData] = useState(null);
-  const [pnlTraceError, setPnlTraceError] = useState('');
-
-  // 早餐與採購比較（依早餐人數判斷品項叫貨是否過高，例：牛奶）
-  const [breakfastYearMonth, setBreakfastYearMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [breakfastWarehouse, setBreakfastWarehouse] = useState('');
-  const [breakfastKeyword, setBreakfastKeyword] = useState('');
-  const [breakfastProductId, setBreakfastProductId] = useState('');
-  const [breakfastResult, setBreakfastResult] = useState(null);
-  const [breakfastLoading, setBreakfastLoading] = useState(false);
-  const [warehouseOptions, setWarehouseOptions] = useState([]);
-
-  useEffect(() => {
-    fetchProducts();
-    fetchPriceComparison();
-    fetchDepartmentExpenses();
+  // ── Fetch helpers ─────────────────────────────────────────────
+  const fetchOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    try {
+      const now = new Date();
+      const month = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const [reportRes, cashRes, payRes] = await Promise.all([
+        fetch(`/api/analytics/business-report?month=${month}`),
+        fetch('/api/analytics/cash-flow-forecast?days=30'),
+        fetch('/api/analytics/payables-aging'),
+      ]);
+      const [rep, cash, pay] = await Promise.all([
+        reportRes.ok ? reportRes.json() : null,
+        cashRes.ok ? cashRes.json() : null,
+        payRes.ok ? payRes.json() : null,
+      ]);
+      setOverview({ rep, cash, pay });
+    } catch (e) { console.error(e); }
+    setOverviewLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (activeTab === 'supplier-risk' && !supplierRisk) fetchSupplierRisk();
-    if (activeTab === 'payables' && !payablesAging) fetchPayablesAging();
-    if (activeTab === 'cashflow-forecast' && !cashForecast) fetchCashForecast();
-    if (activeTab === 'business-report') fetchBusinessReport(reportMonth);
-    if (activeTab === 'pnl-warehouse') fetchPnlByWarehouse();
-    if (activeTab === 'breakfast-procurement') fetchWarehouseOptions();
-  }, [activeTab]);
-
-  async function fetchPnlByWarehouse() {
-    setPnlWarehouseLoading(true);
-    setPnlByWarehouse(null);
+  const fetchPnl = useCallback(async () => {
+    setPnlLoading(true); setPnl(null);
     try {
-      const params = new URLSearchParams({ startDate: pnlStartDate, endDate: pnlEndDate });
-      if (pnlWarehouseFilter.trim()) params.set('warehouse', pnlWarehouseFilter.trim());
-      const res = await fetch(`/api/analytics/pnl-by-warehouse?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPnlByWarehouse(data);
-      }
-    } catch (e) {
-      console.error('取得館別損益表失敗:', e);
-    }
-    setPnlWarehouseLoading(false);
-  }
+      const p = new URLSearchParams({ startDate: pnlStart, endDate: pnlEnd });
+      if (pnlWarehouse.trim()) p.set('warehouse', pnlWarehouse.trim());
+      const res = await fetch(`/api/analytics/pnl-by-warehouse?${p}`);
+      if (res.ok) setPnl(await res.json());
+    } catch (e) { console.error(e); }
+    setPnlLoading(false);
+  }, [pnlStart, pnlEnd, pnlWarehouse]);
 
-  async function openPnlTrace({ warehouseLabel, flowType, subjectKey, subjectName }) {
-    setPnlTraceCtx({ warehouseLabel, flowType, subjectKey, subjectName });
-    setPnlTraceOpen(true);
-    setPnlTraceData(null);
-    setPnlTraceError('');
-    setPnlTraceLoading(true);
+  const fetchPnlTrace = useCallback(async ({ warehouseLabel, flowType, subjectKey }) => {
+    setPnlTraceCtx({ warehouseLabel, flowType, subjectKey }); setPnlTrace(null); setPnlTraceLoading(true);
     try {
-      const params = new URLSearchParams({
-        startDate: pnlStartDate,
-        endDate: pnlEndDate,
-        flowType,
-        subjectKey,
-      });
-      if (pnlWarehouseFilter.trim()) {
-        params.set('warehouse', pnlWarehouseFilter.trim());
-      } else if (warehouseLabel === '未指定館別') {
-        params.set('warehouse', '__NULL__');
-      } else {
-        params.set('warehouse', warehouseLabel);
-      }
-      const res = await fetch(`/api/analytics/pnl-by-warehouse/drilldown?${params}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || '載入失敗');
-      setPnlTraceData(data);
-    } catch (e) {
-      setPnlTraceError(e.message || '載入失敗');
-    }
+      const p = new URLSearchParams({ startDate: pnlStart, endDate: pnlEnd, flowType, subjectKey });
+      p.set('warehouse', warehouseLabel === '未指定館別' ? '__NULL__' : (pnlWarehouse.trim() || warehouseLabel));
+      const res = await fetch(`/api/analytics/pnl-by-warehouse/drilldown?${p}`);
+      if (res.ok) setPnlTrace(await res.json());
+    } catch (e) { console.error(e); }
     setPnlTraceLoading(false);
-  }
+  }, [pnlStart, pnlEnd, pnlWarehouse]);
 
-  async function fetchWarehouseOptions() {
+  const fetchCashflow = useCallback(async () => {
+    setCashflowLoading(true);
     try {
-      const end = new Date();
-      const start = new Date();
-      start.setFullYear(start.getFullYear() - 1);
-      const params = new URLSearchParams({
-        startDate: start.toISOString().slice(0, 10),
-        endDate: end.toISOString().slice(0, 10),
-      });
-      const res = await fetch(`/api/pms-income/batches?${params}`);
-      if (res.ok) {
-        const list = await res.json();
-        const wh = [...new Set((list || []).map(b => b.warehouse).filter(Boolean))].sort();
-        setWarehouseOptions(wh);
-      }
-    } catch (e) {
-      console.error('取得館別列表失敗:', e);
-    }
-  }
+      const res = await fetch(`/api/analytics/cash-flow-forecast?days=${forecastDays}`);
+      if (res.ok) setCashflow(await res.json());
+    } catch (e) { console.error(e); }
+    setCashflowLoading(false);
+  }, [forecastDays]);
 
-  async function fetchBreakfastProcurement() {
-    setBreakfastLoading(true);
-    setBreakfastResult(null);
+  const fetchSupplierRisk = useCallback(async () => {
+    setSupplierLoading(true);
     try {
-      const params = new URLSearchParams({ yearMonth: breakfastYearMonth });
-      if (breakfastWarehouse.trim()) params.set('warehouse', breakfastWarehouse.trim());
-      if (breakfastProductId) params.set('productId', breakfastProductId);
-      if (breakfastKeyword.trim()) params.set('keyword', breakfastKeyword.trim());
-      const res = await fetch(`/api/analytics/procurement-vs-breakfast?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setBreakfastResult(data);
-      } else {
-        const err = await res.json();
-        setBreakfastResult({ error: err.error?.message || '查詢失敗' });
-      }
-    } catch (e) {
-      console.error('早餐與採購查詢失敗:', e);
-      setBreakfastResult({ error: e.message || '查詢失敗' });
-    }
-    setBreakfastLoading(false);
-  }
+      const res = await fetch(`/api/analytics/supplier-risk?month=${riskMonth}`);
+      if (res.ok) setSupplierRisk(await res.json());
+    } catch (e) { console.error(e); }
+    setSupplierLoading(false);
+  }, [riskMonth]);
 
-  useEffect(() => {
-    if (selectedProduct) {
-      fetchPriceHistory(selectedProduct);
-    } else {
-      setPriceHistory([]);
-    }
-  }, [selectedProduct]);
-
-  async function fetchProducts() {
-    try {
-      const response = await fetch('/api/products?all=true');
-      const data = await response.json();
-      setProducts(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得產品列表失敗:', error);
-      setProducts([]);
-    }
-  }
-
-  async function fetchPriceHistory(productId) {
-    try {
-      const response = await fetch(`/api/price-history?productId=${productId}`);
-      const data = await response.json();
-      setPriceHistory(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得歷史價格失敗:', error);
-      setPriceHistory([]);
-    }
-  }
-
-  async function fetchPriceComparison() {
-    try {
-      const response = await fetch('/api/price-comparison');
-      const data = await response.json();
-      setPriceComparison(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得比價資料失敗:', error);
-      setPriceComparison([]);
-    }
-  }
-
-  async function fetchDepartmentExpenses() {
-    try {
-      const response = await fetch(`/api/department-expenses?year=${selectedYear}`);
-      const data = await response.json();
-      setDepartmentExpenses(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得部門支出失敗:', error);
-      setDepartmentExpenses([]);
-    }
-  }
-
-  async function fetchSupplierRisk() {
-    setRiskLoading(true);
-    try {
-      const res = await fetch('/api/analytics/supplier-risk');
-      if (res.ok) {
-        const data = await res.json();
-        setSupplierRisk(data);
-      }
-    } catch (error) {
-      console.error('取得供應商風險資料失敗:', error);
-    }
-    setRiskLoading(false);
-  }
-
-  async function fetchPayablesAging() {
+  const fetchPayables = useCallback(async () => {
     setPayablesLoading(true);
     try {
       const res = await fetch('/api/analytics/payables-aging');
-      if (res.ok) {
-        const data = await res.json();
-        setPayablesAging(data);
-      }
-    } catch (error) {
-      console.error('取得應付帳齡資料失敗:', error);
-    }
+      if (res.ok) setPayables(await res.json());
+    } catch (e) { console.error(e); }
     setPayablesLoading(false);
-  }
+  }, []);
 
-  async function fetchCashForecast() {
-    setForecastLoading(true);
+  const fetchReport = useCallback(async () => {
+    setReportLoading(true); setReport(null);
     try {
-      const res = await fetch(`/api/analytics/cash-flow-forecast?days=${forecastDays}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCashForecast(data);
-      }
-    } catch (error) {
-      console.error('取得現金流預測失敗:', error);
-    }
-    setForecastLoading(false);
-  }
-
-  async function fetchBusinessReport(month) {
-    setReportLoading(true);
-    setBusinessReport(null);
-    try {
-      const res = await fetch(`/api/analytics/business-report?month=${month}`);
-      if (res.ok) {
-        const data = await res.json();
-        setBusinessReport(data);
-      }
-    } catch (error) {
-      console.error('取得月度報告失敗:', error);
-    }
+      const res = await fetch(`/api/analytics/business-report?month=${reportMonth}`);
+      if (res.ok) setReport(await res.json());
+    } catch (e) { console.error(e); }
     setReportLoading(false);
-  }
+  }, [reportMonth]);
 
-  async function approveReport() {
+  const approveReport = async () => {
     setReportApproving(true);
     try {
-      const res = await fetch(`/api/analytics/business-report?month=${reportMonth}`, {
-        method: 'PATCH',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBusinessReport(prev => ({ ...prev, report: data.report }));
-      }
-    } catch (error) {
-      console.error('簽核失敗:', error);
-    }
+      const res = await fetch(`/api/analytics/business-report?month=${reportMonth}`, { method: 'PATCH' });
+      if (res.ok) { const d = await res.json(); setReport(prev => ({ ...prev, report: d.report })); }
+    } catch (e) { console.error(e); }
     setReportApproving(false);
-  }
+  };
 
-  // 按月份分組部門支出
-  const groupedExpenses = departmentExpenses.reduce((acc, exp) => {
-    const key = `${exp.year}-${exp.month}`;
-    if (!acc[key]) {
-      acc[key] = { year: exp.year, month: exp.month, total: 0, items: [] };
-    }
-    acc[key].total += parseFloat(exp.totalAmount || 0);
-    acc[key].items.push(exp);
-    return acc;
-  }, {});
+  // Load on tab activation
+  useEffect(() => {
+    if (activeTab === 'overview') fetchOverview();
+    if (activeTab === 'pnl-warehouse') fetchPnl();
+    if (activeTab === 'cashflow') fetchCashflow();
+    if (activeTab === 'procurement') fetchSupplierRisk();
+    if (activeTab === 'payables') fetchPayables();
+    if (activeTab === 'report') fetchReport();
+  }, [activeTab]);
 
+  useEffect(() => { if (activeTab === 'report') fetchReport(); }, [reportMonth]);
+
+  // ── Render ────────────────────────────────────────────────────
   return (
     <div className="min-h-screen page-bg-analytics">
       <Navigation borderColor="border-cyan-500" />
 
-      <main className="max-w-[100rem] mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">決策分析</h2>
+      <main className="max-w-[96rem] mx-auto px-4 py-8">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">決策分析</h2>
+          <p className="text-sm text-gray-500 mt-1">整合現金流、損益、採購與帳齡的即時分析儀表板</p>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow-sm p-1">
-          {ANALYTICS_TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+        {/* Tab bar */}
+        <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'bg-cyan-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {tab.label}
+                activeTab === t.key ? 'bg-cyan-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+              }`}>
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Supplier Risk Tab */}
-        {activeTab === 'supplier-risk' && (
-          <div className="space-y-6">
-            {riskLoading ? (
-              <div className="text-center py-12 text-gray-500">載入供應商風險分析中...</div>
-            ) : supplierRisk ? (
-              <>
-                {/* Risk Summary */}
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="bg-white rounded-lg shadow-sm p-4">
-                    <p className="text-xs text-gray-500">供應商數量</p>
-                    <p className="text-2xl font-bold mt-1">{supplierRisk.supplierCount || 0}</p>
-                  </div>
-                  <div className="bg-white rounded-lg shadow-sm p-4">
-                    <p className="text-xs text-gray-500">HHI 指數</p>
-                    <p className={`text-2xl font-bold mt-1 ${(supplierRisk.hhi || 0) > 0.15 ? 'text-red-600' : 'text-green-600'}`}>
-                      {(supplierRisk.hhi || 0).toFixed(4)}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">{(supplierRisk.hhi || 0) > 0.15 ? '集中度過高' : '集中度正常'}</p>
-                  </div>
-                  <div className="bg-white rounded-lg shadow-sm p-4">
-                    <p className="text-xs text-gray-500">Top 1 佔比</p>
-                    <p className={`text-2xl font-bold mt-1 ${(supplierRisk.top1Percentage || 0) > 20 ? 'text-orange-600' : 'text-green-600'}`}>
-                      {(supplierRisk.top1Percentage || 0).toFixed(1)}%
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-lg shadow-sm p-4">
-                    <p className="text-xs text-gray-500">Top 3 佔比</p>
-                    <p className={`text-2xl font-bold mt-1 ${(supplierRisk.top3Percentage || 0) > 50 ? 'text-orange-600' : 'text-green-600'}`}>
-                      {(supplierRisk.top3Percentage || 0).toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
-
-                {/* Risk Alerts */}
-                {supplierRisk.alerts?.length > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-amber-800 mb-2">風險警示</h4>
-                    <ul className="space-y-1">
-                      {supplierRisk.alerts.map((alert, i) => (
-                        <li key={i} className="text-sm text-amber-700">• {alert}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Supplier Table */}
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 border-b bg-gray-50">
-                    <h3 className="font-medium text-gray-700">供應商採購佔比</h3>
-                  </div>
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">排名</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">供應商</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">採購金額</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">佔比</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">風險等級</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {(supplierRisk.suppliers || []).map((s, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-500">{i + 1}</td>
-                          <td className="px-4 py-3 font-medium">{s.supplierName}</td>
-                          <td className="px-4 py-3 text-right">NT$ {Number(s.amount || 0).toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right">{(s.percentage || 0).toFixed(1)}%</td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded text-xs ${
-                              s.riskLevel === 'high' ? 'bg-red-100 text-red-700' :
-                              s.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>
-                              {s.riskLevel === 'high' ? '高' : s.riskLevel === 'medium' ? '中' : '低'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-12 text-gray-400">無法載入供應商風險資料</div>
-            )}
-          </div>
+        {/* ══ 總覽 ══════════════════════════════════════════════ */}
+        {activeTab === 'overview' && (
+          overviewLoading ? <Loading text="載入經營總覽..." /> :
+          overview ? <OverviewTab data={overview} onTabSwitch={setActiveTab} /> :
+          <div className="text-center py-12 text-gray-400">無法載入資料</div>
         )}
 
-        {/* 館別損益表（從 cashflow 依會計科目） */}
+        {/* ══ 館別損益 ═══════════════════════════════════════════ */}
         {activeTab === 'pnl-warehouse' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-4 mb-4">
-              <label className="text-sm text-gray-600">區間</label>
-              <input
-                type="date"
-                value={pnlStartDate}
-                onChange={e => setPnlStartDate(e.target.value)}
-                className="px-3 py-1.5 border rounded-lg text-sm"
-              />
-              <span className="text-gray-400">～</span>
-              <input
-                type="date"
-                value={pnlEndDate}
-                onChange={e => setPnlEndDate(e.target.value)}
-                className="px-3 py-1.5 border rounded-lg text-sm"
-              />
-              <label className="text-sm text-gray-600 ml-2">館別篩選（選填）</label>
-              <input
-                type="text"
-                value={pnlWarehouseFilter}
-                onChange={e => setPnlWarehouseFilter(e.target.value)}
-                placeholder="留空＝全部"
-                className="px-3 py-1.5 border rounded-lg text-sm w-32"
-              />
-              <button
-                onClick={fetchPnlByWarehouse}
-                disabled={pnlWarehouseLoading}
-                className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700 disabled:opacity-50"
-              >
-                {pnlWarehouseLoading ? '查詢中…' : '查詢'}
-              </button>
-            </div>
-            <p className="text-sm text-gray-500">
-              資料來源：<Link href="/cashflow" className="text-cyan-600 hover:underline">現金流</Link>（含租屋收入、PMS 收入、貸款支出、出納支出等），依館別與會計科目彙總。
-              <span className="block mt-1 text-cyan-700">點擊科目金額可<strong>追溯明細</strong>（對應現金流交易與來源單據提示）。</span>
-            </p>
-            {pnlWarehouseLoading ? (
-              <div className="text-center py-12 text-gray-500">載入館別損益表中…</div>
-            ) : pnlByWarehouse?.byWarehouse?.length > 0 ? (
-              <div className="space-y-8">
-                {pnlByWarehouse.byWarehouse.map((row, idx) => (
-                  <div key={idx} className="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b bg-gray-50 flex justify-between items-center">
-                      <h3 className="font-medium text-gray-700">館別：{row.warehouse}</h3>
-                      <div className="flex gap-6 text-sm">
-                        <span className="text-green-600">收入合計 NT$ {Number(row.totalIncome || 0).toLocaleString()}</span>
-                        <span className="text-red-600">支出合計 NT$ {Number(row.totalExpense || 0).toLocaleString()}</span>
-                        <span className="font-medium">損益 NT$ {Number(row.netProfit || 0).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-6 p-4">
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-2">收入（按會計科目）</h4>
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left">
-                              <th className="py-2 pr-2">會計科目</th>
-                              <th className="py-2 text-right">金額</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(row.incomeBySubject || []).map((item, i) => (
-                              <tr key={i} className="border-b border-gray-100">
-                                <td className="py-1.5 pr-2">{item.subject?.name ?? item.name ?? '-'}</td>
-                                <td className="py-1.5 text-right text-green-700">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      openPnlTrace({
-                                        warehouseLabel: row.warehouse,
-                                        flowType: 'income',
-                                        subjectKey: item.subjectKey ?? item.subject?.code ?? item.subject?.name,
-                                        subjectName: item.subject?.name ?? item.name,
-                                      })
-                                    }
-                                    className="underline decoration-dotted hover:bg-green-50 rounded px-1 -mx-1 text-right w-full"
-                                    title="追溯現金流明細"
-                                  >
-                                    NT$ {Number(item.amount || 0).toLocaleString()}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            {(!row.incomeBySubject || row.incomeBySubject.length === 0) && (
-                              <tr><td colSpan={2} className="py-2 text-gray-400">無</td></tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-medium text-gray-500 mb-2">支出（按會計科目）</h4>
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left">
-                              <th className="py-2 pr-2">會計科目</th>
-                              <th className="py-2 text-right">金額</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(row.expenseBySubject || []).map((item, i) => (
-                              <tr key={i} className="border-b border-gray-100">
-                                <td className="py-1.5 pr-2">{item.subject?.name ?? item.name ?? '-'}</td>
-                                <td className="py-1.5 text-right text-red-700">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      openPnlTrace({
-                                        warehouseLabel: row.warehouse,
-                                        flowType: 'expense',
-                                        subjectKey: item.subjectKey ?? item.subject?.code ?? item.subject?.name,
-                                        subjectName: item.subject?.name ?? item.name,
-                                      })
-                                    }
-                                    className="underline decoration-dotted hover:bg-red-50 rounded px-1 -mx-1 text-right w-full"
-                                    title="追溯現金流明細"
-                                  >
-                                    NT$ {Number(item.amount || 0).toLocaleString()}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            {(!row.expenseBySubject || row.expenseBySubject.length === 0) && (
-                              <tr><td colSpan={2} className="py-2 text-gray-400">無</td></tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input type="date" value={pnlStart} onChange={e => setPnlStart(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input type="date" value={pnlEnd} onChange={e => setPnlEnd(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <input type="text" value={pnlWarehouse} onChange={e => setPnlWarehouse(e.target.value)}
+                    placeholder="全部館別" className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <button onClick={fetchPnl} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                  查詢
+                </button>
               </div>
-            ) : pnlByWarehouse && (!pnlByWarehouse.byWarehouse || pnlByWarehouse.byWarehouse.length === 0) ? (
-              <div className="text-center py-12 text-gray-400">此區間無現金流資料，請調整日期或館別後再查詢。</div>
-            ) : null}
-          </div>
-        )}
-
-        {/* Payables Aging Tab */}
-        {activeTab === 'payables' && (
-          <div className="space-y-6">
-            {payablesLoading ? (
-              <div className="text-center py-12 text-gray-500">載入應付帳齡分析中...</div>
-            ) : payablesAging ? (
-              <>
-                {/* Aging Buckets */}
-                <div className="grid grid-cols-4 gap-4">
-                  {(payablesAging.buckets || []).map((b, i) => (
-                    <div key={i} className={`bg-white rounded-lg shadow-sm p-4 border-l-4 ${
-                      i === 0 ? 'border-green-400' : i === 1 ? 'border-yellow-400' : i === 2 ? 'border-orange-400' : 'border-red-400'
-                    }`}>
-                      <p className="text-xs text-gray-500">{b.label}</p>
-                      <p className="text-2xl font-bold mt-1">NT$ {Number(b.amount || 0).toLocaleString()}</p>
-                      <p className="text-xs text-gray-400 mt-1">{b.count || 0} 筆</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Cash Pressure Forecast */}
-                {payablesAging.cashPressure && (
-                  <div className="bg-white rounded-lg shadow-sm p-6">
-                    <h3 className="font-medium text-gray-700 mb-4">資金壓力預測</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="text-center p-4 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">7 天內應付</p>
-                        <p className="text-xl font-bold text-gray-800">NT$ {Number(payablesAging.cashPressure.days7 || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="text-center p-4 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">14 天內應付</p>
-                        <p className="text-xl font-bold text-gray-800">NT$ {Number(payablesAging.cashPressure.days14 || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="text-center p-4 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">30 天內應付</p>
-                        <p className="text-xl font-bold text-gray-800">NT$ {Number(payablesAging.cashPressure.days30 || 0).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Supplier Detail */}
-                {payablesAging.bySupplier?.length > 0 && (
-                  <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b bg-gray-50">
-                      <h3 className="font-medium text-gray-700">供應商應付明細</h3>
-                    </div>
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">供應商</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">應付金額</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">逾期金額</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">帳齡分佈</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {payablesAging.bySupplier.slice(0, 20).map((s, i) => (
-                          <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-medium">{s.supplierName}</td>
-                            <td className="px-4 py-3 text-right">NT$ {Number(s.totalAmount || 0).toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right text-red-600">NT$ {Number(s.overdueAmount || 0).toLocaleString()}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-1">
-                                {s.aging && Object.entries(s.aging).map(([k, v]) => (
-                                  v > 0 && <span key={k} className="text-xs px-1 bg-gray-100 rounded">{k}: ${Number(v).toLocaleString()}</span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-12 text-gray-400">無法載入應付帳齡資料</div>
-            )}
-          </div>
-        )}
-
-        {/* Cash Flow Forecast Tab */}
-        {activeTab === 'cashflow-forecast' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 mb-4">
-              <label className="text-sm text-gray-600">預測天數：</label>
-              <select
-                value={forecastDays}
-                onChange={e => { setForecastDays(Number(e.target.value)); setCashForecast(null); }}
-                className="px-3 py-1.5 border rounded-lg text-sm"
-              >
-                <option value={7}>7 天</option>
-                <option value={14}>14 天</option>
-                <option value={30}>30 天</option>
-                <option value={60}>60 天</option>
-                <option value={90}>90 天</option>
-              </select>
-              <button onClick={fetchCashForecast} className="px-3 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700">重新預測</button>
             </div>
 
-            {forecastLoading ? (
-              <div className="text-center py-12 text-gray-500">計算現金流預測中...</div>
-            ) : cashForecast ? (
-              <>
-                {/* Scenario Cards */}
-                <div className="grid grid-cols-3 gap-4">
-                  {['optimistic', 'risk', 'crisis'].map(scenario => {
-                    const data = cashForecast[scenario];
-                    if (!data) return null;
-                    const labels = { optimistic: '樂觀情境', risk: '風險情境', crisis: '危機情境' };
-                    const colors = { optimistic: 'border-green-400 bg-green-50', risk: 'border-yellow-400 bg-yellow-50', crisis: 'border-red-400 bg-red-50' };
-                    return (
-                      <div key={scenario} className={`rounded-lg shadow-sm p-5 border-l-4 ${colors[scenario]}`}>
-                        <p className="text-sm font-medium text-gray-700 mb-3">{labels[scenario]}</p>
-                        <div className="space-y-2">
-                          <div>
-                            <p className="text-xs text-gray-500">期末預估餘額</p>
-                            <p className="text-xl font-bold">{data.endBalance != null ? `NT$ ${Number(data.endBalance).toLocaleString()}` : '-'}</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <p className="text-xs text-gray-500">預計流入</p>
-                              <p className="text-sm font-medium text-green-700">+{Number(data.totalInflow || 0).toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500">預計流出</p>
-                              <p className="text-sm font-medium text-red-700">-{Number(data.totalOutflow || 0).toLocaleString()}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Forecast Detail */}
-                {cashForecast.dailyForecast?.length > 0 && (
-                  <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b bg-gray-50">
-                      <h3 className="font-medium text-gray-700">每日現金流預測（樂觀情境）</h3>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">日期</th>
-                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">流入</th>
-                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">流出</th>
-                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">淨流量</th>
-                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">預估餘額</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {cashForecast.dailyForecast.map((d, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="px-4 py-2">{d.date}</td>
-                              <td className="px-4 py-2 text-right text-green-600">+{Number(d.inflow || 0).toLocaleString()}</td>
-                              <td className="px-4 py-2 text-right text-red-600">-{Number(d.outflow || 0).toLocaleString()}</td>
-                              <td className={`px-4 py-2 text-right font-medium ${(d.net || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                {Number(d.net || 0).toLocaleString()}
-                              </td>
-                              <td className={`px-4 py-2 text-right font-medium ${(d.balance || 0) >= 0 ? '' : 'text-red-700'}`}>
-                                NT$ {Number(d.balance || 0).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-12 text-gray-400">無法載入現金流預測資料</div>
-            )}
+            {pnlLoading ? <Loading text="計算損益中..." /> :
+              pnl ? <PnlTab data={pnl} onTrace={fetchPnlTrace} /> :
+              <div className="text-center py-12 text-gray-400">請設定日期範圍後查詢</div>
+            }
           </div>
         )}
 
-        {/* Price Analysis Tab (existing content) */}
-        {activeTab === 'price' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* 歷史價格分析 */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold mb-4">歷史價格分析</h3>
-            <div className="space-y-4">
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedProduct}
-                onChange={(e) => setSelectedProduct(e.target.value)}
-              >
-                <option value="">選擇產品...</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              
-              {priceHistory.length > 0 ? (
-                <div className="overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">日期</th>
-                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">供應商</th>
-                        <th className="px-3 py-2 text-right text-sm font-medium text-gray-700">價格</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {priceHistory.slice(0, 10).map(ph => (
-                        <tr key={ph.id}>
-                          <td className="px-3 py-2 text-sm">{ph.purchaseDate}</td>
-                          <td className="px-3 py-2 text-sm">{ph.supplierName}</td>
-                          <td className="px-3 py-2 text-sm text-right">NT$ {parseFloat(ph.unitPrice).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="h-64 bg-gray-50 rounded flex items-center justify-center text-gray-500">
-                  {selectedProduct ? '該產品尚無歷史價格資料' : '請選擇產品查看歷史價格'}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 比價分析 */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold mb-4">💰 供應商比價</h3>
-            <div className="space-y-4">
-              {priceComparison.length > 0 ? (
-                <div className="overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
-                        <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">供應商</th>
-                        <th className="px-3 py-2 text-right text-sm font-medium text-gray-700">價格</th>
-                        <th className="px-3 py-2 text-center text-sm font-medium text-gray-700">最低價</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {priceComparison.map((comp, index) => (
-                        <tr key={index}>
-                          <td className="px-3 py-2 text-sm">{comp.productName}</td>
-                          <td className="px-3 py-2 text-sm">{comp.supplierName}</td>
-                          <td className="px-3 py-2 text-sm text-right">NT$ {parseFloat(comp.unitPrice).toFixed(2)}</td>
-                          <td className="px-3 py-2 text-center">
-                            {comp.isMinPrice ? (
-                              <span className="inline-flex px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">
-                                ✓ 最低
-                              </span>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="h-64 bg-gray-50 rounded flex items-center justify-center text-gray-500">
-                  尚無比價資料
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        )}
-
-        {/* Business Report Tab */}
-        {activeTab === 'business-report' && (
-          <div className="space-y-6">
-            {/* Month selector */}
-            <div className="flex items-center gap-4 bg-white rounded-lg shadow-sm p-4">
-              <label className="text-sm text-gray-600 font-medium">選擇月份：</label>
-              <input
-                type="month"
-                value={`${reportMonth.substring(0, 4)}-${reportMonth.substring(4, 6)}`}
-                onChange={e => {
-                  const val = e.target.value.replace('-', '');
-                  setReportMonth(val);
-                  fetchBusinessReport(val);
-                }}
-                className="px-3 py-1.5 border rounded-lg text-sm"
-              />
-              <button
-                onClick={() => fetchBusinessReport(reportMonth)}
-                className="px-3 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700"
-              >
-                重新載入
-              </button>
-            </div>
-
-            {reportLoading ? (
-              <div className="text-center py-12 text-gray-500">載入月度報告中...</div>
-            ) : businessReport ? (() => {
-              const r = businessReport.report || businessReport.generated;
-              if (!r) return <div className="text-center py-12 text-gray-400">無報告資料</div>;
-              const profit = r.profitAnalysis || {};
-              const risk = r.riskAnalysis || {};
-              const cashFlow = r.cashFlowAnalysis || {};
-              const recs = r.decisionRecommendations || [];
-              const isLive = !businessReport.report;
-              const isApproved = r.status === 'approved';
-
-              return (
-                <div className="space-y-4">
-                  {/* Report header */}
-                  <div className="bg-white rounded-lg shadow-sm p-5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-800">
-                          {r.reportYear}年{r.reportMonth}月 經營分析報告
-                        </h3>
-                        {r.reportNo && <p className="text-xs text-gray-400 mt-0.5">報告編號：{r.reportNo}</p>}
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            isLive ? 'bg-blue-100 text-blue-700' :
-                            isApproved ? 'bg-green-100 text-green-700' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {isLive ? '即時預覽' : isApproved ? '已簽核' : '草稿'}
-                          </span>
-                          {r.generatedAt && (
-                            <span className="text-xs text-gray-400">
-                              生成於 {new Date(r.generatedAt).toLocaleDateString('zh-TW')}
-                            </span>
-                          )}
-                          {isApproved && r.approvedBy && (
-                            <span className="text-xs text-green-600">簽核人：{r.approvedBy}</span>
-                          )}
-                        </div>
-                      </div>
-                      {!isLive && !isApproved && (
-                        <button
-                          onClick={approveReport}
-                          disabled={reportApproving}
-                          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
-                        >
-                          {reportApproving ? '簽核中...' : '簽核批准'}
-                        </button>
-                      )}
-                    </div>
-                    {r.executiveSummary && (
-                      <p className="mt-3 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-3">
-                        {r.executiveSummary}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Profit Analysis */}
-                  {profit.totalSales !== undefined && (
-                    <div className="bg-white rounded-lg shadow-sm p-5">
-                      <h4 className="font-semibold text-gray-700 mb-4">利潤分析</h4>
-                      <div className="grid grid-cols-4 gap-4">
-                        <div className="text-center p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500">銷貨額</p>
-                          <p className="text-lg font-bold text-gray-800 mt-1">NT$ {Number(profit.totalSales || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="text-center p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500">採購額</p>
-                          <p className="text-lg font-bold text-gray-800 mt-1">NT$ {Number(profit.totalPurchase || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="text-center p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500">毛利</p>
-                          <p className={`text-lg font-bold mt-1 ${(profit.grossProfit || 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            NT$ {Number(profit.grossProfit || 0).toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="text-center p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500">毛利率</p>
-                          <p className={`text-lg font-bold mt-1 ${(profit.grossMargin || 0) >= (profit.targetGrossMargin || 36) ? 'text-green-700' : 'text-amber-600'}`}>
-                            {profit.grossMargin || 0}%
-                          </p>
-                          <p className="text-xs text-gray-400">目標 {profit.targetGrossMargin || 36}%</p>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          profit.status === 'achieved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {profit.status === 'achieved' ? '✅ 達成目標' : `⚠️ 目標達成率 ${profit.achievement}%`}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Risk Analysis */}
-                  {risk.supplierConcentration && (
-                    <div className="bg-white rounded-lg shadow-sm p-5">
-                      <h4 className="font-semibold text-gray-700 mb-4">風險分析</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm font-medium text-gray-700 mb-2">廠商集中度風險</p>
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-500">最大廠商佔比</span>
-                              <span className={`font-medium ${(risk.supplierConcentration.top1Percentage || 0) > 20 ? 'text-red-600' : 'text-green-600'}`}>
-                                {risk.supplierConcentration.top1Percentage || 0}%
-                                {(risk.supplierConcentration.top1Percentage || 0) > 20 ? ' 🔴' : ' ✅'}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-500">Top 3 廠商佔比</span>
-                              <span className={`font-medium ${(risk.supplierConcentration.top3Percentage || 0) > 50 ? 'text-red-600' : 'text-green-600'}`}>
-                                {risk.supplierConcentration.top3Percentage || 0}%
-                                {(risk.supplierConcentration.top3Percentage || 0) > 50 ? ' 🔴' : ' ✅'}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-500">廠商數量</span>
-                              <span className="font-medium text-gray-700">{risk.supplierConcentration.supplierCount || 0} 家</span>
-                            </div>
-                            <div className="mt-2">
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                risk.supplierConcentration.riskLevel === 'high' ? 'bg-red-100 text-red-700' :
-                                risk.supplierConcentration.riskLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {risk.supplierConcentration.riskLevel === 'high' ? '高風險' :
-                                 risk.supplierConcentration.riskLevel === 'medium' ? '中風險' : '低風險'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm font-medium text-gray-700 mb-2">現金流風險</p>
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-500">當前現金餘額</span>
-                              <span className={`font-medium ${(risk.cashShortage?.currentCash || 0) < 100000 ? 'text-red-600' : 'text-green-600'}`}>
-                                NT$ {Number(risk.cashShortage?.currentCash || 0).toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="mt-2">
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                risk.cashShortage?.riskLevel === 'critical' ? 'bg-red-100 text-red-700' :
-                                risk.cashShortage?.riskLevel === 'high' ? 'bg-amber-100 text-amber-700' :
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {risk.cashShortage?.riskLevel === 'critical' ? '危急' :
-                                 risk.cashShortage?.riskLevel === 'high' ? '高風險' : '正常'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Decision Recommendations */}
-                  {recs.length > 0 && (
-                    <div className="bg-white rounded-lg shadow-sm p-5">
-                      <h4 className="font-semibold text-gray-700 mb-4">決策建議（按優先級）</h4>
-                      <div className="space-y-3">
-                        {recs.map((rec, i) => (
-                          <div key={i} className={`p-4 rounded-lg border-l-4 ${
-                            rec.priority === 1 ? 'bg-red-50 border-red-400' :
-                            rec.priority === 2 ? 'bg-amber-50 border-amber-400' :
-                            'bg-blue-50 border-blue-400'
-                          }`}>
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <span className={`text-sm font-semibold ${
-                                  rec.priority === 1 ? 'text-red-800' :
-                                  rec.priority === 2 ? 'text-amber-800' :
-                                  'text-blue-800'
-                                }`}>
-                                  {rec.priority}. {rec.action}
-                                </span>
-                                <p className={`text-xs mt-1 ${
-                                  rec.priority === 1 ? 'text-red-600' :
-                                  rec.priority === 2 ? 'text-amber-600' :
-                                  'text-blue-600'
-                                }`}>{rec.description}</p>
-                                {rec.expectedImpact && (
-                                  <p className="text-xs text-gray-500 mt-1">預期效果：{rec.expectedImpact}</p>
-                                )}
-                              </div>
-                              {rec.timeline && (
-                                <span className="text-xs text-gray-400 whitespace-nowrap ml-4">{rec.timeline}</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })() : (
-              <div className="text-center py-12 text-gray-400">無法載入月度報告</div>
-            )}
-          </div>
-        )}
-
-        {/* 部門支出 Tab */}
-        {activeTab === 'department' && (
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h3 className="text-lg font-semibold mb-4">部門支出分析</h3>
-          <div className="space-y-4">
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={selectedYear}
-              onChange={(e) => {
-                setSelectedYear(parseInt(e.target.value));
-                fetchDepartmentExpenses();
-              }}
-            >
-              {[2024, 2023, 2022].map(year => (
-                <option key={year} value={year}>{year} 年</option>
-              ))}
-            </select>
-            
-            {departmentExpenses.length > 0 ? (
-              <div className="overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">年月</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">部門</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">類別</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">稅額</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">總金額</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {departmentExpenses.map(exp => (
-                      <tr key={exp.id}>
-                        <td className="px-4 py-3 text-sm">{exp.year}年{exp.month}月</td>
-                        <td className="px-4 py-3 text-sm">{exp.department}</td>
-                        <td className="px-4 py-3 text-sm">{exp.category}</td>
-                        <td className="px-4 py-3 text-sm text-right">NT$ {parseFloat(exp.tax).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-right">NT$ {parseFloat(exp.totalAmount).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="h-64 bg-gray-50 rounded flex items-center justify-center text-gray-500">
-                尚無部門支出資料
-              </div>
-            )}
-          </div>
-        </div>
-        )}
-
-        {/* 早餐與採購比較：依早餐人數判斷品項叫貨是否過高（例：牛奶） */}
-        {activeTab === 'breakfast-procurement' && (
-          <div className="space-y-6">
-            <p className="text-sm text-gray-600">
-              資料來源：<Link href="/pms-income" className="text-cyan-600 hover:underline">PMS 收入</Link>的「早餐人數、住宿人數、住宿間數」與進貨採購。請先在 PMS 收入匯入或建立每日資料時填寫營運指標。
-            </p>
-            <div className="flex flex-wrap items-end gap-4 bg-white rounded-lg shadow-sm p-4">
+        {/* ══ 現金流預測 ════════════════════════════════════════ */}
+        {activeTab === 'cashflow' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-end gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">月份</label>
-                <input
-                  type="month"
-                  value={breakfastYearMonth}
-                  onChange={e => setBreakfastYearMonth(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">館別（選填）</label>
-                <select
-                  value={breakfastWarehouse}
-                  onChange={e => setBreakfastWarehouse(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-40"
-                >
-                  <option value="">全部</option>
-                  {warehouseOptions.map(w => (
-                    <option key={w} value={w}>{w}</option>
-                  ))}
+                <label className="block text-xs text-gray-500 mb-1">預測天數</label>
+                <select value={forecastDays} onChange={e => setForecastDays(Number(e.target.value))}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                  <option value={7}>7 天</option>
+                  <option value={14}>14 天</option>
+                  <option value={30}>30 天</option>
+                  <option value={60}>60 天</option>
+                  <option value={90}>90 天</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">品項關鍵字（例：牛奶）</label>
-                <input
-                  type="text"
-                  value={breakfastKeyword}
-                  onChange={e => { setBreakfastKeyword(e.target.value); setBreakfastProductId(''); }}
-                  placeholder="輸入品名或代碼"
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-48"
-                />
-              </div>
-              <button
-                onClick={fetchBreakfastProcurement}
-                disabled={breakfastLoading || !breakfastKeyword.trim()}
-                className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm hover:bg-cyan-700 disabled:opacity-50"
-              >
-                {breakfastLoading ? '查詢中…' : '查詢'}
+              <button onClick={fetchCashflow} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                重新預測
               </button>
             </div>
-            {breakfastResult && (
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                {breakfastResult.error ? (
-                  <div className="p-4 text-amber-700 bg-amber-50">{breakfastResult.error}</div>
-                ) : (
-                  <>
-                    <div className="px-4 py-3 border-b bg-gray-50">
-                      <h3 className="font-medium text-gray-700">
-                        {breakfastYearMonth} {breakfastResult.warehouse && `－ ${breakfastResult.warehouse}`}
-                        {breakfastResult.productInfo && ` · ${breakfastResult.productInfo.name || breakfastResult.productInfo.code}`}
-                      </h3>
-                    </div>
-                    <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">當月早餐人數</p>
-                        <p className="text-xl font-bold mt-1">{Number(breakfastResult.totalBreakfastCount || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">當月住宿人數</p>
-                        <p className="text-xl font-bold mt-1">{Number(breakfastResult.totalGuestCount || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">當月採購數量</p>
-                        <p className="text-xl font-bold mt-1">{Number(breakfastResult.totalProcurementQty || 0).toLocaleString()} {breakfastResult.productInfo?.unit || ''}</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-500">當月採購金額</p>
-                        <p className="text-xl font-bold mt-1">NT$ {Number(breakfastResult.totalProcurementAmount || 0).toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <div className="px-4 pb-4 flex flex-wrap gap-4">
-                      <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-100">
-                        <p className="text-xs text-cyan-700">平均每人早餐用量（數量）</p>
-                        <p className="text-lg font-bold text-cyan-800 mt-1">
-                          {breakfastResult.perBreakfastQty != null ? `${breakfastResult.perBreakfastQty} ${breakfastResult.productInfo?.unit || ''}/人` : '－'}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-100">
-                        <p className="text-xs text-cyan-700">平均每人早餐金額</p>
-                        <p className="text-lg font-bold text-cyan-800 mt-1">
-                          {breakfastResult.perBreakfastAmount != null ? `NT$ ${breakfastResult.perBreakfastAmount.toFixed(2)}/人` : '－'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="px-4 pb-4 text-sm text-gray-600">
-                      若每人早餐用量或金額明顯高於常態，可能表示該品項叫貨過高，可對照歷史月份或他館數據調整採購。
-                    </div>
-                  </>
-                )}
+            {cashflowLoading ? <Loading text="預測現金流中..." /> :
+              cashflow ? <CashflowTab data={cashflow} /> :
+              <div className="text-center py-12 text-gray-400">無資料</div>
+            }
+          </div>
+        )}
+
+        {/* ══ 採購分析 ═══════════════════════════════════════════ */}
+        {activeTab === 'procurement' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-end gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
+                <input type="text" value={riskMonth} onChange={e => setRiskMonth(e.target.value)}
+                  placeholder="202506" maxLength={6}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
               </div>
-            )}
+              <button onClick={fetchSupplierRisk} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                查詢
+              </button>
+              <Link href="/purchasing" className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">
+                前往採購模組 →
+              </Link>
+            </div>
+            {supplierLoading ? <Loading text="分析供應商資料中..." /> :
+              supplierRisk ? <ProcurementTab data={supplierRisk} /> :
+              <div className="text-center py-12 text-gray-400">無採購資料</div>
+            }
+          </div>
+        )}
+
+        {/* ══ 應付帳齡 ═══════════════════════════════════════════ */}
+        {activeTab === 'payables' && (
+          payablesLoading ? <Loading text="分析應付帳齡中..." /> :
+          payables ? <PayablesTab data={payables} /> :
+          <div className="text-center py-12 text-gray-400">無資料</div>
+        )}
+
+        {/* ══ 月度報告 ═══════════════════════════════════════════ */}
+        {activeTab === 'report' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-end gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
+                <input type="text" value={reportMonth} onChange={e => setReportMonth(e.target.value)}
+                  placeholder="202506" maxLength={6}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+              </div>
+              <button onClick={fetchReport} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                載入報告
+              </button>
+            </div>
+            {reportLoading ? <Loading text="載入月度報告中..." /> :
+              report ? <ReportTab data={report} onApprove={approveReport} approving={reportApproving} /> :
+              <div className="text-center py-12 text-gray-400">無資料</div>
+            }
           </div>
         )}
       </main>
 
-      {/* 館別損益表：追溯明細 */}
-      {pnlTraceOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setPnlTraceOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-            onClick={e => e.stopPropagation()}
-            role="dialog"
-            aria-labelledby="pnl-trace-title"
-          >
-            <div className="px-4 py-3 border-b flex justify-between items-center bg-gray-50">
+      {/* P&L Drilldown Modal */}
+      {pnlTraceCtx && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setPnlTraceCtx(null); setPnlTrace(null); }}>
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 id="pnl-trace-title" className="font-semibold text-gray-800">
-                  追溯明細 — {pnlTraceCtx?.subjectName || pnlTraceCtx?.subjectKey}
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  館別：{pnlTraceCtx?.warehouseLabel} ／ {pnlTraceCtx?.flowType === 'income' ? '收入' : '支出'} ／{' '}
-                  {pnlStartDate}～{pnlEndDate}
-                </p>
+                <h4 className="font-semibold text-gray-900">
+                  {pnlTraceCtx.flowType === 'income' ? '收入' : '支出'}明細 — {pnlTraceCtx.subjectKey}
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">館別：{pnlTraceCtx.warehouseLabel}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setPnlTraceOpen(false)}
-                className="text-gray-500 hover:text-gray-800 px-2 py-1 rounded"
-              >
-                關閉
-              </button>
+              <button onClick={() => { setPnlTraceCtx(null); setPnlTrace(null); }} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">×</button>
             </div>
-            <div className="p-3 text-xs text-gray-600 border-b bg-cyan-50/50">
-              {pnlTraceData?.traceNote ||
-                '載入後將顯示與報表儲存格相符的現金流交易；來源類型可連結至相關模組（若系統有對應頁面）。'}
-            </div>
-            <div className="overflow-auto flex-1 p-4">
-              {pnlTraceLoading && <p className="text-gray-500 text-center py-8">載入中…</p>}
-              {pnlTraceError && <p className="text-red-600 text-center py-8">{pnlTraceError}</p>}
-              {!pnlTraceLoading && pnlTraceData && (
-                <>
-                  <p className="text-sm text-gray-600 mb-2">
-                    共 <strong>{pnlTraceData.matchedCount}</strong> 筆，加總 NT${' '}
-                    <strong>{Number(pnlTraceData.totalAmount || 0).toLocaleString()}</strong>
-                    {pnlTraceData.hasMore ? '（僅顯示前若干筆，可之後加分頁）' : ''}
-                  </p>
-                  <table className="w-full text-sm border-collapse">
-                    <thead>
-                      <tr className="border-b text-left bg-gray-50">
-                        <th className="py-2 px-2">日期</th>
-                        <th className="py-2 px-2">交易編號</th>
-                        <th className="py-2 px-2">帳戶</th>
-                        <th className="py-2 px-2 text-right">金額</th>
-                        <th className="py-2 px-2">來源／說明</th>
+            {pnlTraceLoading ? <Loading text="載入明細中..." /> :
+              pnlTrace ? (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs text-gray-500">日期</th>
+                      <th className="px-3 py-2 text-left text-xs text-gray-500">說明</th>
+                      <th className="px-3 py-2 text-right text-xs text-gray-500">金額</th>
+                      <th className="px-3 py-2 text-left text-xs text-gray-500">科目</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(pnlTrace.transactions || []).map((tx, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-500">{tx.transactionDate?.slice(0, 10)}</td>
+                        <td className="px-3 py-2">{tx.description || tx.note || '—'}</td>
+                        <td className="px-3 py-2 text-right font-medium">{NT(tx.amount)}</td>
+                        <td className="px-3 py-2 text-gray-400 text-xs">{tx.accountingSubject || '—'}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {(pnlTraceData.rows || []).map(r => (
-                        <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-2 px-2 whitespace-nowrap">{r.transactionDate}</td>
-                          <td className="py-2 px-2 font-mono text-xs">{r.transactionNo}</td>
-                          <td className="py-2 px-2">{r.accountName || '—'}</td>
-                          <td className="py-2 px-2 text-right">NT$ {Number(r.amount || 0).toLocaleString()}</td>
-                          <td className="py-2 px-2">
-                            <div className="text-xs text-gray-700">{r.description || '—'}</div>
-                            <div className="text-xs mt-0.5">
-                              {r.source?.path ? (
-                                <Link href={r.source.path} className="text-cyan-600 hover:underline">
-                                  {r.source.label}
-                                </Link>
-                              ) : (
-                                <span className="text-gray-600">{r.source?.label}</span>
-                              )}
-                              {r.source?.hint && (
-                                <span className="text-gray-400 ml-1">（{r.source.hint}）</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {(!pnlTraceData.rows || pnlTraceData.rows.length === 0) && (
-                    <p className="text-gray-500 text-center py-6">無符合交易</p>
-                  )}
-                </>
-              )}
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 font-semibold">
+                    <tr>
+                      <td colSpan={2} className="px-3 py-2 text-right text-xs text-gray-600">小計</td>
+                      <td className="px-3 py-2 text-right">{NT((pnlTrace.transactions || []).reduce((s, t) => s + Number(t.amount || 0), 0))}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              ) : <div className="text-center py-8 text-gray-400">無明細</div>
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ Sub-components ══════════════════════════════════════════════
+
+function OverviewTab({ data, onTabSwitch }) {
+  const rep = data.rep?.report || data.rep?.generated;
+  const cash = data.cash;
+  const pay = data.pay;
+
+  const profit = rep?.profitAnalysis;
+  const cashFlow = rep?.cashFlowAnalysis || cash;
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard
+          label="現金餘額"
+          value={NT(cash?.currentCash ?? cashFlow?.currentBalance)}
+          sub={cash?.riskLevel ? `風險：${cash.riskLevel}` : undefined}
+          color={cash?.riskLevel === 'critical' ? 'text-red-600' : cash?.riskLevel === 'high' ? 'text-orange-600' : 'text-emerald-600'}
+          icon="💰"
+        />
+        <KpiCard
+          label="本月銷貨額"
+          value={NT(profit?.totalSales)}
+          sub="（採購 + PMS 收入）"
+          color="text-blue-600"
+          icon="📈"
+        />
+        <KpiCard
+          label="本月採購額"
+          value={NT(profit?.totalPurchase)}
+          sub="（進貨支出）"
+          color="text-gray-700"
+          icon="🛒"
+        />
+        <KpiCard
+          label="毛利率"
+          value={pct(profit?.grossMargin)}
+          sub={`目標 ${profit?.targetGrossMargin ?? 36}% | ${profit?.status === 'achieved' ? '✓ 達標' : '⚠ 未達標'}`}
+          color={profit?.status === 'achieved' ? 'text-emerald-600' : 'text-red-500'}
+          icon="📊"
+        />
+      </div>
+
+      {/* Cash Flow Forecast quick view */}
+      {cash && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <SectionTitle>30 天現金流預測</SectionTitle>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">當前現金</p>
+              <p className="font-bold text-blue-700">{NT(cash.currentCash)}</p>
             </div>
-            <div className="px-4 py-2 border-t bg-gray-50 text-right">
-              <Link
-                href="/cashflow"
-                className="text-sm text-cyan-600 hover:underline mr-4"
-                onClick={() => setPnlTraceOpen(false)}
-              >
-                開啟現金流
-              </Link>
-              <button
-                type="button"
-                onClick={() => setPnlTraceOpen(false)}
-                className="px-3 py-1.5 bg-gray-200 rounded text-sm hover:bg-gray-300"
-              >
-                關閉
-              </button>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">預計流入</p>
+              <p className="font-bold text-green-700">+{NT(cash.totalExpectedInflow)}</p>
             </div>
+            <div className="text-center p-3 bg-red-50 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">預計流出</p>
+              <p className="font-bold text-red-700">-{NT(cash.totalExpectedOutflow)}</p>
+            </div>
+            <div className={`text-center p-3 rounded-lg ${cash.predictedBalance >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+              <p className="text-xs text-gray-500 mb-1">預測餘額</p>
+              <p className={`font-bold ${cash.predictedBalance >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{NT(cash.predictedBalance)}</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            {riskBadge(cash.riskLevel)}
+            <button onClick={() => onTabSwitch('cashflow')} className="text-xs text-cyan-600 hover:underline">
+              查看詳細預測 →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Payables quick view */}
+      {pay && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <SectionTitle>應付帳齡概況</SectionTitle>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {(pay.buckets || []).map(b => (
+              <div key={b.range} className={`p-3 rounded-lg border ${b.range === '90+' ? 'border-red-200 bg-red-50' : b.range === '60-90' ? 'border-orange-200 bg-orange-50' : 'border-gray-200 bg-gray-50'}`}>
+                <p className="text-xs text-gray-500">{b.range} 天</p>
+                <p className={`font-bold text-sm mt-1 ${b.range === '90+' ? 'text-red-700' : b.range === '60-90' ? 'text-orange-700' : 'text-gray-800'}`}>{NT(b.total)}</p>
+                <p className="text-xs text-gray-400">{b.count} 筆 ({b.percentage}%)</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600">應付總額：<strong>{NT(pay.totalUnpaid)}</strong></span>
+            <button onClick={() => onTabSwitch('payables')} className="text-xs text-cyan-600 hover:underline">
+              查看帳齡明細 →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {rep?.recommendations?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <SectionTitle>優先行動建議</SectionTitle>
+          <div className="space-y-3">
+            {rep.recommendations.map((r, i) => (
+              <div key={i} className="flex gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+                <span className="flex-shrink-0 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">{r.priority}</span>
+                <div>
+                  <p className="font-semibold text-sm text-gray-800">{r.action}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">{r.description}</p>
+                  <p className="text-xs text-amber-700 mt-1">預期影響：{r.expectedImpact}｜時程：{r.timeline}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Executive summary */}
+      {rep?.executiveSummary && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-700 leading-relaxed">
+          <span className="font-semibold text-gray-900 mr-2">執行摘要</span>
+          {rep.executiveSummary}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PnlTab({ data, onTrace }) {
+  const warehouses = data.byWarehouse || [];
+  const totals = warehouses.reduce((acc, w) => ({
+    income: acc.income + w.totalIncome,
+    expense: acc.expense + w.totalExpense,
+    net: acc.net + w.netProfit,
+  }), { income: 0, expense: 0, net: 0 });
+
+  return (
+    <div className="space-y-5">
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <KpiCard label="總收入" value={NT(totals.income)} color="text-blue-600" icon="📥" />
+        <KpiCard label="總支出" value={NT(totals.expense)} color="text-red-500" icon="📤" />
+        <KpiCard label="淨損益" value={NT(totals.net)} color={totals.net >= 0 ? 'text-emerald-600' : 'text-red-600'} icon="⚖️" />
+      </div>
+
+      {warehouses.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">此期間無現金流資料</div>
+      ) : warehouses.map(w => (
+        <div key={w.warehouse} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          {/* Warehouse header */}
+          <div className="px-5 py-3 bg-gradient-to-r from-cyan-50 to-blue-50 border-b border-gray-100 flex items-center justify-between">
+            <h4 className="font-semibold text-gray-800">{w.warehouse}</h4>
+            <div className="flex gap-6 text-sm">
+              <span className="text-blue-600">收入 {NT(w.totalIncome)}</span>
+              <span className="text-red-500">支出 {NT(w.totalExpense)}</span>
+              <span className={`font-bold ${w.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                淨損益 {NT(w.netProfit)}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+            {/* Income */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-blue-600 mb-2">收入明細</p>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-gray-50">
+                  {w.incomeBySubject.map((item, i) => (
+                    <tr key={i} className="hover:bg-blue-50/40 cursor-pointer" onClick={() => onTrace({ warehouseLabel: w.warehouse, flowType: 'income', subjectKey: item.subjectKey, subjectName: item.subject?.name })}>
+                      <td className="py-1.5 text-gray-600">{item.subject?.name || item.subjectKey}</td>
+                      <td className="py-1.5 text-right font-medium text-blue-700">{NT(item.amount)}</td>
+                      <td className="py-1.5 pl-2 w-24">
+                        <Bar value={item.amount} max={w.totalIncome} color="bg-blue-400" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-gray-200 font-semibold">
+                    <td className="py-1.5 text-gray-700">合計</td>
+                    <td className="py-1.5 text-right text-blue-700">{NT(w.totalIncome)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Expense */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-red-500 mb-2">支出明細</p>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-gray-50">
+                  {w.expenseBySubject.map((item, i) => (
+                    <tr key={i} className="hover:bg-red-50/40 cursor-pointer" onClick={() => onTrace({ warehouseLabel: w.warehouse, flowType: 'expense', subjectKey: item.subjectKey, subjectName: item.subject?.name })}>
+                      <td className="py-1.5 text-gray-600">{item.subject?.name || item.subjectKey}</td>
+                      <td className="py-1.5 text-right font-medium text-red-600">{NT(item.amount)}</td>
+                      <td className="py-1.5 pl-2 w-24">
+                        <Bar value={item.amount} max={w.totalExpense} color="bg-red-400" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-gray-200 font-semibold">
+                    <td className="py-1.5 text-gray-700">合計</td>
+                    <td className="py-1.5 text-right text-red-600">{NT(w.totalExpense)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      ))}
+      <p className="text-xs text-gray-400 text-right">點擊各科目列可查看現金流明細</p>
+    </div>
+  );
+}
+
+function CashflowTab({ data }) {
+  const riskColor = { low: 'text-emerald-600', medium: 'text-amber-600', high: 'text-orange-600', critical: 'text-red-600' };
+  const scenarioBg = { optimistic: 'bg-green-50 border-green-200', risk: 'bg-amber-50 border-amber-200', crisis: 'bg-red-50 border-red-200' };
+  const scenarioColor = { optimistic: 'text-green-700', risk: 'text-amber-700', crisis: 'text-red-700' };
+
+  return (
+    <div className="space-y-5">
+      {/* Main KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="當前現金餘額" value={NT(data.currentCash)} color="text-blue-600" icon="💰" />
+        <KpiCard label="預計流入" value={NT(data.totalExpectedInflow)} color="text-emerald-600" icon="⬇️"
+          sub={`${(data.inflows?.checks?.length || 0)} 張支票 + ${(data.inflows?.rentals?.length || 0)} 筆租金`} />
+        <KpiCard label="預計流出" value={NT(data.totalExpectedOutflow)} color="text-red-500" icon="⬆️"
+          sub={`${(data.outflows?.checks?.length || 0)} 張支票 + ${(data.outflows?.loans?.length || 0)} 筆貸款`} />
+        <KpiCard label="預測餘額" value={NT(data.predictedBalance)}
+          color={data.predictedBalance >= 0 ? 'text-emerald-600' : 'text-red-600'} icon="📊"
+          sub={<span className={riskColor[data.riskLevel]}>{riskBadge(data.riskLevel)}</span>} />
+      </div>
+
+      {/* Scenarios */}
+      <div>
+        <SectionTitle>情境模擬</SectionTitle>
+        <div className="grid md:grid-cols-3 gap-4">
+          {Object.entries(data.scenarios || {}).map(([key, s]) => (
+            <div key={key} className={`rounded-xl border p-4 ${scenarioBg[key]}`}>
+              <p className={`font-semibold text-sm mb-1 ${scenarioColor[key]}`}>{s.label}</p>
+              <p className={`text-xl font-bold ${scenarioColor[key]}`}>{NT(s.predictedBalance)}</p>
+              <p className="text-xs text-gray-500 mt-1">{s.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Outflows detail */}
+      {data.outflows?.checks?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-red-50">
+            <p className="font-semibold text-sm text-red-700">到期支票（應付）— {data.outflows.checks.length} 張</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">到期日</th>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">收款人</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.outflows.checks.slice(0, 10).map((c, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-gray-500">{c.dueDate}</td>
+                  <td className="px-4 py-2">{c.payeeName || '—'}</td>
+                  <td className="px-4 py-2 text-right text-red-600 font-medium">{NT(c.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.outflows.checks.length > 10 && (
+            <div className="px-4 py-2 text-xs text-gray-400 bg-gray-50">僅顯示前 10 筆，共 {data.outflows.checks.length} 筆</div>
+          )}
+        </div>
+      )}
+
+      {/* Inflows detail */}
+      {data.inflows?.rentals?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-green-50">
+            <p className="font-semibold text-sm text-green-700">待收租金 — {data.inflows.rentals.length} 筆</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">到期日</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.inflows.rentals.slice(0, 10).map((r, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 text-gray-500">{r.dueDate}</td>
+                  <td className="px-4 py-2 text-right text-green-600 font-medium">{NT(r.expectedAmount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Loan repayments */}
+      {data.outflows?.loans?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-orange-50">
+            <p className="font-semibold text-sm text-orange-700">貸款月繳 — {data.outflows.loans.length} 筆</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">貸款名稱</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">月繳金額</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.outflows.loans.map((l, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-2">{l.loanName}</td>
+                  <td className="px-4 py-2 text-right text-orange-600 font-medium">{NT(l.monthlyPayment)}</td>
+                </tr>
+              ))}
+              <tr className="bg-orange-50 font-semibold">
+                <td className="px-4 py-2 text-right text-xs text-gray-600">合計</td>
+                <td className="px-4 py-2 text-right text-orange-700">
+                  {NT(data.outflows.loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0))}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProcurementTab({ data }) {
+  const maxAmt = data.suppliers?.[0]?.amount || 1;
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="採購總額" value={NT(data.totalAmount)} color="text-gray-800" icon="🛒" />
+        <KpiCard label="供應商數量" value={data.supplierCount ?? 0} color="text-blue-600" icon="🏢"
+          sub={`建議 ≥ 15 家`} />
+        <KpiCard label="Top 1 集中度" value={pct(data.top1Concentration)}
+          color={(data.top1Concentration || 0) > 20 ? 'text-red-600' : 'text-emerald-600'} icon="⚠️"
+          sub="門檻 20%" />
+        <KpiCard label="Top 3 集中度" value={pct(data.top3Concentration)}
+          color={(data.top3Concentration || 0) > 50 ? 'text-orange-600' : 'text-emerald-600'} icon="📋"
+          sub={`HHI: ${(data.hhiIndex || 0).toFixed(4)}`} />
+      </div>
+
+      {/* Risk alerts */}
+      {data.risks?.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+          <p className="text-sm font-semibold text-amber-800 mb-2">風險警示</p>
+          {data.risks.map((r, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0 ${r.severity === 'high' ? 'bg-red-100 text-red-700' : r.severity === 'medium' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>{r.severity}</span>
+              <p className="text-sm text-amber-700">{r.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Supplier breakdown */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <p className="font-semibold text-sm text-gray-700">供應商採購佔比</p>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">排名</th>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">供應商</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">採購金額</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">佔比</th>
+              <th className="px-4 py-2 w-32 text-xs text-gray-500">分布</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {(data.suppliers || []).map((s, i) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                <td className="px-4 py-2 font-medium">{s.supplierName}</td>
+                <td className="px-4 py-2 text-right">{NT(s.amount)}</td>
+                <td className={`px-4 py-2 text-right font-medium ${Number(s.percentage) > 20 ? 'text-red-600' : Number(s.percentage) > 10 ? 'text-amber-600' : 'text-gray-700'}`}>
+                  {pct(s.percentage)}
+                </td>
+                <td className="px-4 py-2">
+                  <Bar value={s.amount} max={maxAmt} color={Number(s.percentage) > 20 ? 'bg-red-400' : 'bg-cyan-400'} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PayablesTab({ data }) {
+  const AGING_COLORS = { '0-30': 'text-gray-700 bg-gray-50', '30-60': 'text-amber-700 bg-amber-50', '60-90': 'text-orange-700 bg-orange-50', '90+': 'text-red-700 bg-red-50' };
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <KpiCard label="未核銷總額" value={NT(data.totalUnpaid)} color="text-gray-800" icon="📋" />
+        <KpiCard label="當前現金餘額" value={NT(data.currentCash)} color="text-blue-600" icon="💰" />
+        <KpiCard label="風險等級" value={data.riskLevel === 'high' ? '高風險' : data.riskLevel === 'medium' ? '中風險' : '低風險'}
+          color={data.riskLevel === 'high' ? 'text-red-600' : data.riskLevel === 'medium' ? 'text-amber-600' : 'text-green-600'} icon="⚠️" />
+      </div>
+
+      {/* Aging buckets */}
+      <div>
+        <SectionTitle>帳齡分佈</SectionTitle>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {(data.buckets || []).map(b => (
+            <div key={b.range} className={`rounded-xl border p-4 ${AGING_COLORS[b.range] || 'bg-gray-50'}`}>
+              <p className="text-xs font-medium opacity-70 mb-1">{b.range} 天</p>
+              <p className="text-xl font-bold">{NT(b.total)}</p>
+              <p className="text-xs opacity-60 mt-1">{b.count} 筆 — {b.percentage}%</p>
+              <div className="mt-2 bg-white/60 rounded-full h-1.5">
+                <div className="h-1.5 rounded-full bg-current opacity-40" style={{ width: `${Math.min(100, b.percentage)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Cash pressure */}
+      {data.cashPressure?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <SectionTitle>資金壓力預測</SectionTitle>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">期間</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">到期支出</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">預測餘額</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">資金充足率</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.cashPressure.map((p, i) => (
+                <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium">{p.days} 天內</td>
+                  <td className="px-4 py-2 text-right text-red-500">{NT(p.pendingOutflow)}</td>
+                  <td className={`px-4 py-2 text-right font-medium ${p.predictedBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{NT(p.predictedBalance)}</td>
+                  <td className={`px-4 py-2 text-right ${p.sufficiency < 50 ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>{p.sufficiency}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* High risk overdue */}
+      {data.overdueHighRisk?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-red-50">
+            <p className="font-semibold text-sm text-red-700">高風險逾期項目（超過 60 天 & 金額 &gt; 50,000）</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">客戶</th>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">發票日</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">逾期天數</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.overdueHighRisk.map((r, i) => (
+                <tr key={i} className="hover:bg-red-50/30">
+                  <td className="px-4 py-2 font-medium">{r.supplierName || '—'}</td>
+                  <td className="px-4 py-2 text-gray-500">{r.invoiceDate}</td>
+                  <td className="px-4 py-2 text-right text-red-600 font-semibold">{r.daysOutstanding} 天</td>
+                  <td className="px-4 py-2 text-right text-red-600 font-bold">{NT(r.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportTab({ data, onApprove, approving }) {
+  const r = data.report || data.generated;
+  if (!r) return <div className="text-center py-12 text-gray-400">此月份尚無報告資料</div>;
+
+  const isLive = !data.report;
+  const profit = r.profitAnalysis || {};
+  const risk = r.riskAnalysis || {};
+  const cashFlow = r.cashFlowAnalysis || {};
+
+  return (
+    <div className="space-y-5">
+      {/* Status */}
+      <div className={`rounded-xl border p-4 flex items-center justify-between ${isLive ? 'bg-blue-50 border-blue-200' : r.status === 'approved' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div>
+          <p className="font-semibold text-gray-800">{r.reportYear} 年 {r.reportMonth} 月 月度報告</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {isLive ? '即時預覽（月結後可正式核准）' : r.status === 'approved' ? `已核准 — ${r.approvedBy} 於 ${new Date(r.approvedAt).toLocaleDateString('zh-TW')}` : '待核准'}
+          </p>
+        </div>
+        {!isLive && r.status !== 'approved' && (
+          <button onClick={onApprove} disabled={approving}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+            {approving ? '核准中...' : '核准報告'}
+          </button>
+        )}
+      </div>
+
+      {/* Executive summary */}
+      {r.executiveSummary && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <SectionTitle>執行摘要</SectionTitle>
+          <p className="text-sm text-gray-700 leading-relaxed">{r.executiveSummary}</p>
+        </div>
+      )}
+
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="銷貨額" value={NT(profit.totalSales)} color="text-blue-600" icon="📈" />
+        <KpiCard label="採購額" value={NT(profit.totalPurchase)} color="text-gray-700" icon="🛒" />
+        <KpiCard label="毛利率" value={pct(profit.grossMargin)}
+          color={profit.status === 'achieved' ? 'text-emerald-600' : 'text-red-500'} icon="📊"
+          sub={`目標 ${profit.targetGrossMargin}%`} />
+        <KpiCard label="現金餘額" value={NT(cashFlow.currentBalance)}
+          color={cashFlow.currentBalance > 100000 ? 'text-emerald-600' : 'text-orange-600'} icon="💰" />
+      </div>
+
+      {/* Risk analysis */}
+      {risk.supplierConcentration && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <SectionTitle>風險分析</SectionTitle>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-3">供應商集中度</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Top 1 供應商佔比</span><span className={`font-medium ${risk.supplierConcentration.top1Percentage > 20 ? 'text-red-600' : 'text-gray-700'}`}>{pct(risk.supplierConcentration.top1Percentage)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Top 3 供應商佔比</span><span className={`font-medium ${risk.supplierConcentration.top3Percentage > 50 ? 'text-orange-600' : 'text-gray-700'}`}>{pct(risk.supplierConcentration.top3Percentage)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">供應商數量</span><span className="font-medium">{risk.supplierConcentration.supplierCount}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">集中度風險</span>{riskBadge(risk.supplierConcentration.riskLevel)}</div>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-3">現金風險</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">當前現金</span><span className="font-medium">{NT(risk.cashShortage?.currentCash)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">風險等級</span>{riskBadge(risk.cashShortage?.riskLevel)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {r.recommendations?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <SectionTitle>改善建議</SectionTitle>
+          <div className="space-y-3">
+            {r.recommendations.map((rec, i) => (
+              <div key={i} className="flex gap-3 p-3 border border-amber-100 bg-amber-50 rounded-lg">
+                <span className="flex-shrink-0 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold">{rec.priority}</span>
+                <div>
+                  <p className="font-semibold text-sm text-gray-800">{rec.action}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">{rec.description}</p>
+                  <p className="text-xs text-amber-700 mt-1">預期影響：{rec.expectedImpact}｜時程：{rec.timeline}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
