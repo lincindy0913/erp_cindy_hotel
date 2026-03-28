@@ -65,6 +65,57 @@ export async function POST(request) {
 
     const makerName = auth.session?.user?.name || auth.session?.user?.email?.split('@')[0] || '';
 
+    // ── Batch fetch related purchases via SalesDetail.purchaseId ──
+    const allSalesDetailPurchaseIds = [];
+    for (const inv of allInvoices) {
+      if (inv.details) {
+        for (const d of inv.details) {
+          if (d.purchaseId) allSalesDetailPurchaseIds.push(d.purchaseId);
+        }
+      }
+    }
+    const uniquePurchaseIds = [...new Set(allSalesDetailPurchaseIds)];
+    const allPurchases = uniquePurchaseIds.length > 0
+      ? await prisma.purchaseMaster.findMany({
+          where: { id: { in: uniquePurchaseIds } },
+          include: { details: { include: { product: { select: { id: true, name: true, unit: true } } } } },
+          orderBy: { purchaseDate: 'asc' },
+        })
+      : [];
+    const purchaseMap = new Map(allPurchases.map(p => [p.id, p]));
+
+    // Build a map: invoiceId → [purchaseId] for linking
+    const invoiceToPurchaseIds = new Map();
+    for (const inv of allInvoices) {
+      const pIds = new Set();
+      if (inv.details) {
+        for (const d of inv.details) {
+          if (d.purchaseId) pIds.add(d.purchaseId);
+        }
+      }
+      invoiceToPurchaseIds.set(inv.id, [...pIds]);
+    }
+
+    // Batch fetch price history for all products across all purchases
+    const allProdIds = new Set();
+    for (const p of allPurchases) {
+      for (const d of p.details) {
+        allProdIds.add(d.productId);
+      }
+    }
+    const allSupplierIds = [...new Set(orders.map(o => o.supplierId).filter(Boolean))];
+    const allPriceHistory = (allProdIds.size > 0 && allSupplierIds.length > 0)
+      ? await prisma.priceHistory.findMany({
+          where: {
+            productId: { in: [...allProdIds] },
+            supplierId: { in: allSupplierIds },
+            isSuperseded: false,
+          },
+          orderBy: { purchaseDate: 'desc' },
+          select: { productId: true, supplierId: true, unitPrice: true, purchaseDate: true },
+        })
+      : [];
+
     // Setup jsPDF
     const jspdfModule = await import('jspdf');
     const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
@@ -72,9 +123,11 @@ export async function POST(request) {
     applyPlugin(jsPDF);
     const pdfFontsModule = await import('@/lib/pdf-fonts');
     const addCJKFontToDoc = pdfFontsModule.addCJKFontToDoc || pdfFontsModule.default?.addCJKFontToDoc;
+    const getCJKFontFamily = pdfFontsModule.getCJKFontFamily || pdfFontsModule.default?.getCJKFontFamily;
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     addCJKFontToDoc(doc);
+    const cjkFont = getCJKFontFamily?.() || undefined;
 
     for (let idx = 0; idx < orders.length; idx++) {
       const order = orders[idx];
@@ -96,10 +149,79 @@ export async function POST(request) {
         }
       }
 
+      // Build product matrix for this order's purchases
+      let productMapForOrder = null;
+      let sortedDatesForOrder = [];
+      let priceNoteItemsForOrder = [];
+
+      const orderPurchaseIds = new Set();
+      for (const invId of invoiceIds) {
+        const pIds = invoiceToPurchaseIds.get(invId) || [];
+        pIds.forEach(id => orderPurchaseIds.add(id));
+      }
+
+      if (orderPurchaseIds.size > 0) {
+        const orderPurchases = [...orderPurchaseIds].map(id => purchaseMap.get(id)).filter(Boolean);
+        if (orderPurchases.length > 0) {
+          const dateSet = new Set(orderPurchases.map(p => p.purchaseDate));
+          sortedDatesForOrder = Array.from(dateSet).sort();
+          productMapForOrder = new Map();
+          for (const purchase of orderPurchases) {
+            for (const detail of purchase.details) {
+              const pid = detail.productId;
+              const pname = detail.product?.name || `Product#${pid}`;
+              const punit = detail.product?.unit || '';
+              const unitPrice = Number(detail.unitPrice);
+              const qty = detail.quantity;
+              const date = purchase.purchaseDate;
+              const wh = purchase.warehouse || '';
+              if (!productMapForOrder.has(pid)) {
+                productMapForOrder.set(pid, { name: pname, unit: punit, unitPrice, warehouse: wh, dateQty: new Map(), totalQty: 0, totalAmount: 0 });
+              }
+              const entry = productMapForOrder.get(pid);
+              entry.dateQty.set(date, (entry.dateQty.get(date) || 0) + qty);
+              entry.totalQty += qty;
+              entry.totalAmount += unitPrice * qty;
+              entry.unitPrice = unitPrice;
+            }
+          }
+
+          // Price notes for this order
+          if (productMapForOrder.size > 0 && order.supplierId) {
+            const earliestDate = sortedDatesForOrder[0] || '';
+            const relevantHistory = allPriceHistory.filter(h => h.supplierId === order.supplierId && h.purchaseDate < earliestDate);
+            const historyByProduct = new Map();
+            for (const h of relevantHistory) {
+              if (!historyByProduct.has(h.productId)) historyByProduct.set(h.productId, []);
+              const arr = historyByProduct.get(h.productId);
+              if (arr.length < 3) arr.push(h);
+            }
+            for (const [pid, entry] of productMapForOrder) {
+              const recentHistory = historyByProduct.get(pid) || [];
+              if (recentHistory.length === 0) continue;
+              const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
+              const currentPrice = entry.unitPrice;
+              if (currentPrice > recentMin) {
+                const cheapestRecord = recentHistory.find(h => Number(h.unitPrice) === recentMin);
+                const priceDiff = currentPrice - recentMin;
+                const diffRate = ((priceDiff / recentMin) * 100).toFixed(1);
+                priceNoteItemsForOrder.push({
+                  productName: entry.name, currentPrice, recentMin,
+                  priceDiff: `+${priceDiff.toFixed(0)}`, diffRate: `+${diffRate}%`,
+                  cheapestDate: cheapestRecord?.purchaseDate || '', historyCount: recentHistory.length,
+                });
+              }
+            }
+          }
+        }
+      }
+
       renderVoucherTablePage(doc, {
         order, invoices, supplierName, accountName,
         executionNo, executionDate, cashTransactionNo, makerName,
         pageNum: idx + 1, totalPages: orders.length,
+        productMap: productMapForOrder, sortedDates: sortedDatesForOrder,
+        priceNoteItems: priceNoteItemsForOrder, cjkFont,
       });
     }
 

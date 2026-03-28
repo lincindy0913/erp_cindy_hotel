@@ -67,6 +67,95 @@ export async function GET(request, { params }) {
 
     const makerName = auth.session?.user?.name || auth.session?.user?.email?.split('@')[0] || '';
 
+    // ── Fetch related purchases via SalesDetail.purchaseId ──
+    const allPurchaseIds = [];
+    for (const inv of invoices) {
+      if (inv.details) {
+        for (const d of inv.details) {
+          if (d.purchaseId) allPurchaseIds.push(d.purchaseId);
+        }
+      }
+    }
+    const uniquePurchaseIds = [...new Set(allPurchaseIds)];
+
+    let productMap = null;
+    let sortedDates = [];
+    let priceNoteItems = [];
+
+    if (uniquePurchaseIds.length > 0) {
+      const purchases = await prisma.purchaseMaster.findMany({
+        where: { id: { in: uniquePurchaseIds } },
+        include: {
+          details: { include: { product: { select: { id: true, name: true, unit: true } } } },
+        },
+        orderBy: { purchaseDate: 'asc' },
+      });
+
+      if (purchases.length > 0) {
+        // Build product date matrix
+        const dateSet = new Set(purchases.map(p => p.purchaseDate));
+        sortedDates = Array.from(dateSet).sort();
+        productMap = new Map();
+        for (const purchase of purchases) {
+          for (const detail of purchase.details) {
+            const pid = detail.productId;
+            const pname = detail.product?.name || `Product#${pid}`;
+            const punit = detail.product?.unit || '';
+            const unitPrice = Number(detail.unitPrice);
+            const qty = detail.quantity;
+            const date = purchase.purchaseDate;
+            const wh = purchase.warehouse || '';
+            if (!productMap.has(pid)) {
+              productMap.set(pid, { name: pname, unit: punit, unitPrice, warehouse: wh, dateQty: new Map(), totalQty: 0, totalAmount: 0 });
+            }
+            const entry = productMap.get(pid);
+            entry.dateQty.set(date, (entry.dateQty.get(date) || 0) + qty);
+            entry.totalQty += qty;
+            entry.totalAmount += unitPrice * qty;
+            entry.unitPrice = unitPrice;
+          }
+        }
+
+        // Price history comparison
+        if (productMap.size > 0 && order.supplierId) {
+          const allProductIds = [...productMap.keys()];
+          const earliestDate = sortedDates[0] || '';
+          const allHistory = await prisma.priceHistory.findMany({
+            where: {
+              productId: { in: allProductIds },
+              supplierId: order.supplierId,
+              isSuperseded: false,
+              purchaseDate: { lt: earliestDate },
+            },
+            orderBy: { purchaseDate: 'desc' },
+            select: { productId: true, unitPrice: true, purchaseDate: true },
+          });
+          const historyByProduct = new Map();
+          for (const h of allHistory) {
+            if (!historyByProduct.has(h.productId)) historyByProduct.set(h.productId, []);
+            const arr = historyByProduct.get(h.productId);
+            if (arr.length < 3) arr.push(h);
+          }
+          for (const [pid, entry] of productMap) {
+            const recentHistory = historyByProduct.get(pid) || [];
+            if (recentHistory.length === 0) continue;
+            const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
+            const currentPrice = entry.unitPrice;
+            if (currentPrice > recentMin) {
+              const cheapestRecord = recentHistory.find(h => Number(h.unitPrice) === recentMin);
+              const priceDiff = currentPrice - recentMin;
+              const diffRate = ((priceDiff / recentMin) * 100).toFixed(1);
+              priceNoteItems.push({
+                productName: entry.name, currentPrice, recentMin,
+                priceDiff: `+${priceDiff.toFixed(0)}`, diffRate: `+${diffRate}%`,
+                cheapestDate: cheapestRecord?.purchaseDate || '', historyCount: recentHistory.length,
+              });
+            }
+          }
+        }
+      }
+    }
+
     // Setup jsPDF
     const jspdfModule = await import('jspdf');
     const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
@@ -74,13 +163,16 @@ export async function GET(request, { params }) {
     applyPlugin(jsPDF);
     const pdfFontsModule = await import('@/lib/pdf-fonts');
     const addCJKFontToDoc = pdfFontsModule.addCJKFontToDoc || pdfFontsModule.default?.addCJKFontToDoc;
+    const getCJKFontFamily = pdfFontsModule.getCJKFontFamily || pdfFontsModule.default?.getCJKFontFamily;
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     addCJKFontToDoc(doc);
+    const cjkFont = getCJKFontFamily?.() || undefined;
 
     renderVoucherTablePage(doc, {
       order, invoices, supplierName, accountName,
       executionNo, executionDate, cashTransactionNo, makerName,
+      productMap, sortedDates, priceNoteItems, cjkFont,
     });
 
     // Audit
