@@ -169,13 +169,13 @@ export const authOptions = {
 
       // Invalidate session if password was changed after token was issued
       if (token.issuedAt && token.passwordChangedAt && token.passwordChangedAt > token.issuedAt) {
-        return null; // Forces re-login
+        return { expired: true };
       }
 
       // Idle timeout: if no activity for 2 hours, force re-login (#14)
       const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
       if (token.lastActivity && (Date.now() - token.lastActivity) > IDLE_TIMEOUT_MS) {
-        return null; // Forces re-login
+        return { expired: true };
       }
 
       // Sliding window token rotation: refresh permissions from DB every 1 hour (#11)
@@ -188,7 +188,7 @@ export const authOptions = {
             include: { userRoles: { include: { role: true } } },
           });
           if (!freshUser || !freshUser.isActive) {
-            return null; // User deactivated — force logout
+            return { expired: true };
           }
           // Refresh token data from DB
           const roleCodes = freshUser.userRoles.map(ur => ur.role.code);
@@ -215,7 +215,7 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (!token) return session;
+      if (!token || token.expired) return session;
       if (session.user) {
         session.user.id = token.id;
         session.user.role = token.role;
