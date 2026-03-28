@@ -25,10 +25,10 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { month, warehouse = '', supplierIds = [], showPriceNote = true } = body;
+    const { month, startDate, endDate, warehouse = '', supplierIds = [], showPriceNote = true } = body;
 
-    if (!month || !Array.isArray(supplierIds) || supplierIds.length === 0) {
-      return createErrorResponse('VALIDATION_FAILED', '缺少必要參數 month / supplierIds', 400);
+    if ((!month && (!startDate || !endDate)) || !Array.isArray(supplierIds) || supplierIds.length === 0) {
+      return createErrorResponse('VALIDATION_FAILED', '缺少必要參數 month(或 startDate+endDate) / supplierIds', 400);
     }
     if (supplierIds.length > 30) {
       return createErrorResponse('VALIDATION_FAILED', '一次最多列印 30 家廠商', 400);
@@ -46,11 +46,19 @@ export async function POST(request) {
       return createErrorResponse('NOT_FOUND', '找不到廠商', 404);
     }
 
-    const monthStart = `${month}-01`;
-    const [year, mon] = month.split('-');
-    const nextMonth = parseInt(mon) === 12
-      ? `${parseInt(year) + 1}-01-01`
-      : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
+    let monthStart, nextMonth;
+    if (startDate && endDate) {
+      monthStart = startDate;
+      const ed = new Date(endDate);
+      ed.setDate(ed.getDate() + 1);
+      nextMonth = ed.toISOString().slice(0, 10);
+    } else {
+      monthStart = `${month}-01`;
+      const [year, mon] = month.split('-');
+      nextMonth = parseInt(mon) === 12
+        ? `${parseInt(year) + 1}-01-01`
+        : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
+    }
 
     // Setup jsPDF
     const jspdfModule = await import('jspdf');

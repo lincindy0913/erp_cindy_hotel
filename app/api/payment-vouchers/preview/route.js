@@ -19,9 +19,11 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const supplierId = parseInt(searchParams.get('supplierId'));
     const month = searchParams.get('month');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
     const warehouse = searchParams.get('warehouse') || '';
 
-    if (!supplierId || isNaN(supplierId) || !month) {
+    if (!supplierId || isNaN(supplierId) || (!month && (!startDate || !endDate))) {
       return createErrorResponse('VALIDATION_FAILED', '缺少必要參數', 400);
     }
 
@@ -33,11 +35,19 @@ export async function GET(request) {
     });
     if (!supplier) return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
 
-    const monthStart = `${month}-01`;
-    const [year, mon] = month.split('-');
-    const nextMonth = parseInt(mon) === 12
-      ? `${parseInt(year) + 1}-01-01`
-      : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
+    let monthStart, nextMonth;
+    if (startDate && endDate) {
+      monthStart = startDate;
+      const ed = new Date(endDate);
+      ed.setDate(ed.getDate() + 1);
+      nextMonth = ed.toISOString().slice(0, 10);
+    } else {
+      monthStart = `${month}-01`;
+      const [year, mon] = month.split('-');
+      nextMonth = parseInt(mon) === 12
+        ? `${parseInt(year) + 1}-01-01`
+        : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
+    }
 
     const whereClause = {
       supplierId,

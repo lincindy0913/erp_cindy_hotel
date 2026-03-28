@@ -25,11 +25,16 @@ export default function PaymentVoucherListPage() {
   const [batchPrinting, setBatchPrinting] = useState(false);
 
   // Monthly voucher state (spec23 v3)
+  const today = new Date();
+  const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+  const todayStr = today.toISOString().slice(0, 10);
   const [voucherFilter, setVoucherFilter] = useState({
     supplierId: '',
-    month: new Date().toISOString().slice(0, 7),
+    startDate: firstOfMonth,
+    endDate: todayStr,
     warehouse: ''
   });
+  const [searchExecuted, setSearchExecuted] = useState(false);
   const [voucherPreview, setVoucherPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -136,13 +141,14 @@ export default function PaymentVoucherListPage() {
 
   // ---- Monthly Voucher (spec23 v3) ----
   async function fetchVoucherPreview() {
-    if (!voucherFilter.supplierId || !voucherFilter.month) return;
+    if (!voucherFilter.supplierId || !voucherFilter.startDate || !voucherFilter.endDate) return;
     setPreviewLoading(true);
     setVoucherPreview(null);
     try {
       const params = new URLSearchParams({
         supplierId: voucherFilter.supplierId,
-        month: voucherFilter.month,
+        startDate: voucherFilter.startDate,
+        endDate: voucherFilter.endDate,
         warehouse: voucherFilter.warehouse,
       });
       const res = await fetch(`/api/payment-vouchers/preview?${params}`);
@@ -176,10 +182,11 @@ export default function PaymentVoucherListPage() {
   }
 
   async function printMonthlyVoucher(showPriceNote = true) {
-    if (!voucherFilter.supplierId || !voucherFilter.month) return;
+    if (!voucherFilter.supplierId || !voucherFilter.startDate || !voucherFilter.endDate) return;
     const params = new URLSearchParams({
       supplierId: voucherFilter.supplierId,
-      month: voucherFilter.month,
+      startDate: voucherFilter.startDate,
+      endDate: voucherFilter.endDate,
       warehouse: voucherFilter.warehouse,
       showPriceNote: showPriceNote ? 'true' : 'false',
     });
@@ -201,10 +208,14 @@ export default function PaymentVoucherListPage() {
 
   // Monthly supplier list fetch
   async function fetchSuppliersWithData() {
-    if (!voucherFilter.month) return;
+    if (!voucherFilter.startDate || !voucherFilter.endDate) return;
     setSuppliersLoading(true);
+    setSearchExecuted(true);
     try {
-      const params = new URLSearchParams({ month: voucherFilter.month });
+      const params = new URLSearchParams({
+        startDate: voucherFilter.startDate,
+        endDate: voucherFilter.endDate,
+      });
       if (voucherFilter.warehouse) params.set('warehouse', voucherFilter.warehouse);
       const res = await fetch(`/api/payment-vouchers/suppliers-with-data?${params}`);
       const data = await res.json();
@@ -215,12 +226,11 @@ export default function PaymentVoucherListPage() {
     setSuppliersLoading(false);
   }
 
-  useEffect(() => {
-    if (voucherFilter.month && activeView === 'monthly') {
-      fetchSuppliersWithData();
-      setSelectedSupplierIds(new Set());
-    }
-  }, [voucherFilter.month, voucherFilter.warehouse, activeView]);
+  function handleSearch() {
+    setVoucherPreview(null);
+    setSelectedSupplierIds(new Set());
+    fetchSuppliersWithData();
+  }
 
   function toggleSelectSupplier(supplierId) {
     setSelectedSupplierIds(prev => {
@@ -240,7 +250,7 @@ export default function PaymentVoucherListPage() {
   }
 
   async function batchPrintMonthlyVouchers() {
-    if (selectedSupplierIds.size === 0 || !voucherFilter.month) return;
+    if (selectedSupplierIds.size === 0 || !voucherFilter.startDate || !voucherFilter.endDate) return;
     setMonthlyBatchPrinting(true);
     try {
       const res = await fetch('/api/export/voucher-monthly/batch', {
@@ -248,7 +258,8 @@ export default function PaymentVoucherListPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          month: voucherFilter.month,
+          startDate: voucherFilter.startDate,
+          endDate: voucherFilter.endDate,
           warehouse: voucherFilter.warehouse,
           supplierIds: Array.from(selectedSupplierIds),
           showPriceNote: true,
@@ -353,10 +364,53 @@ export default function PaymentVoucherListPage() {
           <div className="space-y-4">
             {/* Filter Panel */}
             <div className="bg-white rounded-lg shadow-sm p-6 border">
-              <h3 className="text-base font-semibold text-gray-700 mb-4">月度廠商傳票</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <h3 className="text-base font-semibold text-gray-700 mb-4">廠商傳票</h3>
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">進貨起始日 *</label>
+                  <input
+                    type="date"
+                    value={voucherFilter.startDate}
+                    onChange={e => { setVoucherFilter(v => ({ ...v, startDate: e.target.value })); setSearchExecuted(false); }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">進貨結束日 *</label>
+                  <input
+                    type="date"
+                    value={voucherFilter.endDate}
+                    onChange={e => { setVoucherFilter(v => ({ ...v, endDate: e.target.value })); setSearchExecuted(false); }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select
+                    value={voucherFilter.warehouse}
+                    onChange={e => { setVoucherFilter(v => ({ ...v, warehouse: e.target.value })); setSearchExecuted(false); }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">全館</option>
+                    <option value="麗格">麗格</option>
+                    <option value="麗軒">麗軒</option>
+                    <option value="民宿">民宿</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSearch}
+                    disabled={!voucherFilter.startDate || !voucherFilter.endDate || suppliersLoading}
+                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    {suppliersLoading ? '搜尋中...' : '搜尋'}
+                  </button>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商（選填，用於單筆預覽/列印）</label>
                   <select
                     value={voucherFilter.supplierId}
                     onChange={e => { setVoucherFilter(v => ({ ...v, supplierId: e.target.value })); setVoucherPreview(null); }}
@@ -368,38 +422,25 @@ export default function PaymentVoucherListPage() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">月份 *</label>
-                  <input
-                    type="month"
-                    value={voucherFilter.month}
-                    onChange={e => { setVoucherFilter(v => ({ ...v, month: e.target.value })); setVoucherPreview(null); }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select
-                    value={voucherFilter.warehouse}
-                    onChange={e => { setVoucherFilter(v => ({ ...v, warehouse: e.target.value })); setVoucherPreview(null); }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">全館</option>
-                    <option value="麗格">麗格</option>
-                    <option value="麗軒">麗軒</option>
-                    <option value="民宿">民宿</option>
-                  </select>
-                </div>
-                <div className="flex items-end">
+              </div>
+              {/* Single supplier preview/print buttons */}
+              {voucherFilter.supplierId && voucherFilter.startDate && voucherFilter.endDate && (
+                <div className="mt-4 flex items-center gap-3 pt-3 border-t">
                   <button
                     onClick={fetchVoucherPreview}
-                    disabled={!voucherFilter.supplierId || !voucherFilter.month || previewLoading}
-                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    disabled={previewLoading}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
                   >
                     {previewLoading ? '載入中...' : '預覽資訊'}
                   </button>
+                  <button
+                    onClick={() => printMonthlyVoucher(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors"
+                  >
+                    列印傳票
+                  </button>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Preview Info + Print (spec23 v3) */}
@@ -413,7 +454,7 @@ export default function PaymentVoucherListPage() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
                       <span className="text-base font-semibold text-gray-800">{preview.supplier?.name}</span>
-                      <span className="text-sm text-gray-500">{preview.month} · {preview.warehouse || '全館'}</span>
+                      <span className="text-sm text-gray-500">{voucherFilter.startDate} ~ {voucherFilter.endDate} · {voucherFilter.warehouse || '全館'}</span>
                     </div>
                     {/* Orientation hint */}
                     {dateColumns > 0 && (
@@ -507,11 +548,12 @@ export default function PaymentVoucherListPage() {
             )}
 
             {/* Supplier list with checkboxes for batch print */}
+            {searchExecuted && (
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="p-4 border-b flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <h3 className="text-base font-semibold text-gray-700">
-                    {voucherFilter.month} 有進貨資料的廠商
+                    {voucherFilter.startDate} ~ {voucherFilter.endDate} 有進貨資料的廠商
                   </h3>
                   {suppliersWithData.length > 0 && (
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -569,6 +611,7 @@ export default function PaymentVoucherListPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 

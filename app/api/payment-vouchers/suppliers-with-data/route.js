@@ -6,26 +6,36 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/payment-vouchers/suppliers-with-data?month=2026-03&warehouse=
- * Returns suppliers that have purchase data for the given month
+ * Also supports: ?startDate=2026-03-01&endDate=2026-03-31&warehouse=
+ * Returns suppliers that have purchase data for the given period
  */
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
     const warehouse = searchParams.get('warehouse') || '';
 
-    if (!month) {
+    let dateGte, dateLt;
+    if (startDate && endDate) {
+      dateGte = startDate;
+      // endDate is inclusive, so add one day for lt comparison
+      const ed = new Date(endDate);
+      ed.setDate(ed.getDate() + 1);
+      dateLt = ed.toISOString().slice(0, 10);
+    } else if (month) {
+      dateGte = `${month}-01`;
+      const [year, mon] = month.split('-');
+      dateLt = parseInt(mon) === 12
+        ? `${parseInt(year) + 1}-01-01`
+        : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
+    } else {
       return NextResponse.json([]);
     }
 
-    const monthStart = `${month}-01`;
-    const [year, mon] = month.split('-');
-    const nextMonth = parseInt(mon) === 12
-      ? `${parseInt(year) + 1}-01-01`
-      : `${year}-${String(parseInt(mon) + 1).padStart(2, '0')}-01`;
-
     const whereClause = {
-      purchaseDate: { gte: monthStart, lt: nextMonth },
+      purchaseDate: { gte: dateGte, lt: dateLt },
     };
     if (warehouse) whereClause.warehouse = warehouse;
 
