@@ -169,6 +169,23 @@ export async function GET(request) {
       }
     }
 
+    // Query related PaymentOrders for this supplier/month
+    const paymentOrders = await prisma.paymentOrder.findMany({
+      where: {
+        supplierId,
+        createdAt: { gte: new Date(monthStart), lt: new Date(nextMonth) },
+      },
+      include: { executions: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Fetch account names for payment orders
+    const payAcctIds = [...new Set(paymentOrders.map(o => o.accountId).filter(Boolean))];
+    const payAccounts = payAcctIds.length > 0
+      ? await prisma.cashAccount.findMany({ where: { id: { in: payAcctIds } }, select: { id: true, name: true } })
+      : [];
+    const payAcctMap = new Map(payAccounts.map(a => [a.id, a.name]));
+
     // ====== Generate PDF ======
     const jspdfModule = await import('jspdf');
     const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
@@ -262,30 +279,75 @@ export async function GET(request) {
     }
     y += payRowH;
 
-    // Data row (invoice total, rest empty — to be filled by hand)
-    doc.rect(margin, y, contentWidth, payRowH);
+    // Data rows — fill from PaymentOrders if available, otherwise one empty row
+    const payRows = paymentOrders.length > 0
+      ? paymentOrders.map(po => {
+          const exec = po.executions?.[0];
+          return {
+            date: exec?.executionDate || (po.createdAt ? new Date(po.createdAt).toISOString().slice(0, 10) : ''),
+            account: po.accountId ? (payAcctMap.get(po.accountId) || '') : '',
+            check: po.checkNo || '',
+            invoiceAmt: Number(po.amount || 0),
+            discount: Number(po.discount || 0),
+            payAmt: Number(po.netAmount || 0),
+            note: po.paymentMethod || '',
+          };
+        })
+      : [{ date: '', account: '', check: '', invoiceAmt: invoiceGrandTotal, discount: 0, payAmt: 0, note: '' }];
+
     doc.setFont(undefined, 'normal');
-    cx = margin;
-    for (let i = 0; i < payHeaders.length; i++) {
-      if (i > 0) doc.line(cx, y, cx, y + payRowH);
-      if (i === 3) {
-        // 發票$ = 含稅總額
-        doc.text(invoiceGrandTotal.toLocaleString(), cx + payColWidths[i] - 2, y + payRowH / 2 + 1, { align: 'right' });
+    let totalPayAmt = 0;
+    let totalDiscount = 0;
+    for (const row of payRows) {
+      doc.rect(margin, y, contentWidth, payRowH);
+      cx = margin;
+      const rowValues = [
+        row.date,
+        row.account,
+        row.check,
+        row.invoiceAmt ? row.invoiceAmt.toLocaleString() : '',
+        row.discount ? row.discount.toLocaleString() : '',
+        row.payAmt ? row.payAmt.toLocaleString() : '',
+        row.note,
+      ];
+      for (let i = 0; i < payHeaders.length; i++) {
+        if (i > 0) doc.line(cx, y, cx, y + payRowH);
+        if (rowValues[i]) {
+          const align = (i >= 3 && i <= 5) ? 'right' : 'left';
+          const tx = align === 'right' ? cx + payColWidths[i] - 2 : cx + 2;
+          doc.text(rowValues[i], tx, y + payRowH / 2 + 1, { align });
+        }
+        cx += payColWidths[i];
       }
-      cx += payColWidths[i];
+      totalPayAmt += row.payAmt;
+      totalDiscount += row.discount;
+      y += payRowH;
     }
-    y += payRowH;
 
     // 合計 row
     doc.rect(margin, y, contentWidth, payRowH);
     doc.setFont(undefined, 'bold');
-    // Draw "合計" in the middle-right area
     const totalLabelX = margin + payColWidths[0] + payColWidths[1] + payColWidths[2];
     doc.line(totalLabelX, y, totalLabelX, y + payRowH);
-    doc.text('合計', totalLabelX + payColWidths[3] / 2, y + payRowH / 2 + 1, { align: 'center' });
-    // Show total in 付款金額 column
-    const payAmtX = totalLabelX + payColWidths[3] + payColWidths[4];
+    doc.text('合計', totalLabelX + 2, y + payRowH / 2 + 1);
+    // 發票$ total
+    const invTotalX = totalLabelX + payColWidths[3] - 2;
+    doc.text(invoiceGrandTotal.toLocaleString(), invTotalX, y + payRowH / 2 + 1, { align: 'right' });
+    // 折讓 total
+    const discX = totalLabelX + payColWidths[3];
+    doc.line(discX, y, discX, y + payRowH);
+    if (totalDiscount > 0) {
+      doc.text(totalDiscount.toLocaleString(), discX + payColWidths[4] - 2, y + payRowH / 2 + 1, { align: 'right' });
+    }
+    // 付款金額 total
+    const payAmtX = discX + payColWidths[4];
     doc.line(payAmtX, y, payAmtX, y + payRowH);
+    if (totalPayAmt > 0) {
+      doc.text(totalPayAmt.toLocaleString(), payAmtX + payColWidths[5] - 2, y + payRowH / 2 + 1, { align: 'right' });
+    }
+    // 備註
+    const noteX = payAmtX + payColWidths[5];
+    doc.line(noteX, y, noteX, y + payRowH);
     y += payRowH;
 
     // ---- Invoice details section ----

@@ -67,6 +67,13 @@ export async function POST(request) {
       : [];
     const cashTxMap = new Map(cashTxs.map(tx => [tx.id, tx]));
 
+    // Batch fetch account names
+    const accountIds = [...new Set(orders.map(o => o.accountId).filter(Boolean))];
+    const accounts = accountIds.length > 0
+      ? await prisma.cashAccount.findMany({ where: { id: { in: accountIds } }, select: { id: true, name: true, type: true } })
+      : [];
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+
     // Setup jsPDF
     const jspdfModule = await import('jspdf');
     const jsPDF = jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default;
@@ -104,8 +111,12 @@ export async function POST(request) {
         }
       }
 
+      // Account name
+      const account = order.accountId ? accountMap.get(order.accountId) : null;
+      const accountName = account ? account.name : '';
+
       // === Render single voucher page ===
-      renderVoucherPage(doc, order, invoices, supplierName, executionNo, executionDate, cashTransactionNo, pageWidth, margin, idx + 1, orders.length);
+      renderVoucherPage(doc, order, invoices, supplierName, executionNo, executionDate, cashTransactionNo, accountName, pageWidth, margin, idx + 1, orders.length);
     }
 
     // Audit
@@ -130,7 +141,7 @@ export async function POST(request) {
   }
 }
 
-function renderVoucherPage(doc, order, invoices, supplierName, executionNo, executionDate, cashTransactionNo, pageWidth, margin, pageNum, totalPages) {
+function renderVoucherPage(doc, order, invoices, supplierName, executionNo, executionDate, cashTransactionNo, accountName, pageWidth, margin, pageNum, totalPages) {
   // Header
   doc.setFontSize(20);
   doc.setTextColor(50, 50, 50);
@@ -180,6 +191,19 @@ function renderVoucherPage(doc, order, invoices, supplierName, executionNo, exec
 
   y += 7;
   doc.setFont(undefined, 'bold');
+  doc.text('付款帳戶:', leftCol, y);
+  doc.setFont(undefined, 'normal');
+  doc.text(accountName || '-', leftCol + 25, y);
+
+  if (order.dueDate) {
+    doc.setFont(undefined, 'bold');
+    doc.text('到期日:', rightCol, y);
+    doc.setFont(undefined, 'normal');
+    doc.text(order.dueDate, rightCol + 25, y);
+  }
+
+  y += 7;
+  doc.setFont(undefined, 'bold');
   doc.text('應付淨額:', leftCol, y);
   doc.setFont(undefined, 'normal');
   doc.text(`NT$ ${Number(order.netAmount).toLocaleString()}`, leftCol + 25, y);
@@ -189,6 +213,11 @@ function renderVoucherPage(doc, order, invoices, supplierName, executionNo, exec
     doc.text('折讓金額:', rightCol, y);
     doc.setFont(undefined, 'normal');
     doc.text(`NT$ ${Number(order.discount).toLocaleString()}`, rightCol + 25, y);
+  } else {
+    doc.setFont(undefined, 'bold');
+    doc.text('發票金額:', rightCol, y);
+    doc.setFont(undefined, 'normal');
+    doc.text(`NT$ ${Number(order.amount).toLocaleString()}`, rightCol + 25, y);
   }
 
   y += 7;
@@ -204,6 +233,7 @@ function renderVoucherPage(doc, order, invoices, supplierName, executionNo, exec
     doc.text(order.warehouse, rightCol + 25, y);
   }
 
+  // Check info
   if (order.checkNo) {
     y += 7;
     doc.setFont(undefined, 'bold');
@@ -215,6 +245,31 @@ function renderVoucherPage(doc, order, invoices, supplierName, executionNo, exec
     doc.text('支票到期日:', rightCol, y);
     doc.setFont(undefined, 'normal');
     doc.text(order.checkDueDate || '-', rightCol + 28, y);
+  }
+
+  if (order.checkAccount) {
+    y += 7;
+    doc.setFont(undefined, 'bold');
+    doc.text('支票帳戶:', leftCol, y);
+    doc.setFont(undefined, 'normal');
+    doc.text(order.checkAccount || '-', leftCol + 25, y);
+
+    if (order.checkIssueDate) {
+      doc.setFont(undefined, 'bold');
+      doc.text('開票日期:', rightCol, y);
+      doc.setFont(undefined, 'normal');
+      doc.text(order.checkIssueDate, rightCol + 25, y);
+    }
+  }
+
+  // Summary
+  if (order.summary) {
+    y += 7;
+    doc.setFont(undefined, 'bold');
+    doc.text('摘要:', leftCol, y);
+    doc.setFont(undefined, 'normal');
+    const summaryText = order.summary.length > 60 ? order.summary.substring(0, 60) + '...' : order.summary;
+    doc.text(summaryText, leftCol + 25, y);
   }
 
   if (order.note) {

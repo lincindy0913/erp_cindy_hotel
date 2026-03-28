@@ -33,6 +33,12 @@ export default function PaymentVoucherListPage() {
   const [voucherPreview, setVoucherPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Monthly batch state
+  const [suppliersWithData, setSuppliersWithData] = useState([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [selectedSupplierIds, setSelectedSupplierIds] = useState(new Set());
+  const [monthlyBatchPrinting, setMonthlyBatchPrinting] = useState(false);
+
   useEffect(() => {
     fetchAll();
   }, []);
@@ -190,6 +196,76 @@ export default function PaymentVoucherListPage() {
       window.open(blobUrl, '_blank');
     } catch (e) {
       alert('列印失敗：' + (e.message || '網路錯誤'));
+    }
+  }
+
+  // Monthly supplier list fetch
+  async function fetchSuppliersWithData() {
+    if (!voucherFilter.month) return;
+    setSuppliersLoading(true);
+    try {
+      const params = new URLSearchParams({ month: voucherFilter.month });
+      if (voucherFilter.warehouse) params.set('warehouse', voucherFilter.warehouse);
+      const res = await fetch(`/api/payment-vouchers/suppliers-with-data?${params}`);
+      const data = await res.json();
+      setSuppliersWithData(Array.isArray(data) ? data : []);
+    } catch {
+      setSuppliersWithData([]);
+    }
+    setSuppliersLoading(false);
+  }
+
+  useEffect(() => {
+    if (voucherFilter.month && activeView === 'monthly') {
+      fetchSuppliersWithData();
+      setSelectedSupplierIds(new Set());
+    }
+  }, [voucherFilter.month, voucherFilter.warehouse, activeView]);
+
+  function toggleSelectSupplier(supplierId) {
+    setSelectedSupplierIds(prev => {
+      const next = new Set(prev);
+      if (next.has(supplierId)) next.delete(supplierId);
+      else next.add(supplierId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllSuppliers() {
+    if (selectedSupplierIds.size === suppliersWithData.length) {
+      setSelectedSupplierIds(new Set());
+    } else {
+      setSelectedSupplierIds(new Set(suppliersWithData.map(s => s.id)));
+    }
+  }
+
+  async function batchPrintMonthlyVouchers() {
+    if (selectedSupplierIds.size === 0 || !voucherFilter.month) return;
+    setMonthlyBatchPrinting(true);
+    try {
+      const res = await fetch('/api/export/voucher-monthly/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          month: voucherFilter.month,
+          warehouse: voucherFilter.warehouse,
+          supplierIds: Array.from(selectedSupplierIds),
+          showPriceNote: true,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
+        alert('批量列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (e) {
+      alert('批量列印失敗：' + (e.message || '網路錯誤'));
+    } finally {
+      setMonthlyBatchPrinting(false);
     }
   }
 
@@ -429,6 +505,70 @@ export default function PaymentVoucherListPage() {
                 {preview.error}
               </div>
             )}
+
+            {/* Supplier list with checkboxes for batch print */}
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="p-4 border-b flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-base font-semibold text-gray-700">
+                    {voucherFilter.month} 有進貨資料的廠商
+                  </h3>
+                  {suppliersWithData.length > 0 && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={suppliersWithData.length > 0 && selectedSupplierIds.size === suppliersWithData.length}
+                        onChange={toggleSelectAllSuppliers}
+                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-sm text-gray-600">全選</span>
+                    </label>
+                  )}
+                  <span className="text-sm text-gray-500">
+                    已選擇 <strong className="text-indigo-600">{selectedSupplierIds.size}</strong> 家
+                  </span>
+                </div>
+                <button
+                  onClick={batchPrintMonthlyVouchers}
+                  disabled={selectedSupplierIds.size === 0 || monthlyBatchPrinting}
+                  className="px-5 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                >
+                  {monthlyBatchPrinting ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      產生 PDF 中...
+                    </>
+                  ) : (
+                    <>批量列印傳票 ({selectedSupplierIds.size})</>
+                  )}
+                </button>
+              </div>
+              {suppliersLoading ? (
+                <div className="p-8 text-center text-gray-400">載入廠商列表中...</div>
+              ) : suppliersWithData.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">該月份無進貨資料</div>
+              ) : (
+                <div className="divide-y divide-gray-100 max-h-[400px] overflow-auto">
+                  {suppliersWithData.map((s, idx) => (
+                    <label
+                      key={s.id}
+                      className={`flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-indigo-50 transition-colors ${
+                        selectedSupplierIds.has(s.id) ? 'bg-indigo-50/50' : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSupplierIds.has(s.id)}
+                        onChange={() => toggleSelectSupplier(s.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-sm font-medium text-gray-800 flex-1">{s.name}</span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{s.count} 筆進貨</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
