@@ -692,7 +692,7 @@ ${projectRows.map(p => `<tr>
           <p className="text-sm text-gray-500 mt-1">營造工程案、廠商合約期數付款、材料使用追蹤（一般人事／廠商請款請至「付款」「費用」）</p>
         </div>
 
-        <div className="flex gap-1 mb-6 bg-white rounded-lg shadow p-1">
+        <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow p-1">
           {TABS.map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={`flex-1 py-2.5 rounded-md text-sm font-medium ${activeTab === tab.key ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>

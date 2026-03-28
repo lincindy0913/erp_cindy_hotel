@@ -37,7 +37,7 @@ const STATUS_MAP = {
 function StatusBadge({ status }) {
   const info = STATUS_MAP[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${info.color}`}>
+    <span className={`px-2 py-0.5 rounded-full text-sm font-medium ${info.color}`}>
       {info.label}
     </span>
   );
@@ -558,45 +558,45 @@ export default function ChecksPage() {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">支票類型 *</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">支票類型 *</label>
           <select value={addForm.checkType} onChange={e => setAddForm(f => ({ ...f, checkType: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" disabled={isEdit}>
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" disabled={isEdit}>
             <option value="payable">應付支票</option>
             <option value="receivable">應收支票</option>
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">支票號碼 *</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">支票號碼 *</label>
           <input type="text" value={addForm.checkNumber}
             onChange={e => setAddForm(f => ({ ...f, checkNumber: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="輸入支票號碼" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="輸入支票號碼" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">金額 *</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">金額 *</label>
           <input type="number" value={addForm.amount}
             onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="0" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">到期日 *</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">到期日 *</label>
           <input type="date" value={addForm.dueDate}
             onChange={e => setAddForm(f => ({ ...f, dueDate: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">開票日</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">開票日</label>
           <input type="date" value={addForm.issueDate}
             onChange={e => setAddForm(f => ({ ...f, issueDate: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">館別</label>
           <select value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
             <option value="">全部</option>
             <option value="麗格">麗格</option>
             <option value="麗軒">麗軒</option>
@@ -607,10 +607,10 @@ export default function ChecksPage() {
       {addForm.checkType === 'payable' && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">來源帳戶 *</label>
+            <label className="block text-base font-medium text-gray-700 mb-1">來源帳戶 *</label>
             <select value={addForm.sourceAccountId}
               onChange={e => setAddForm(f => ({ ...f, sourceAccountId: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
               <option value="">選擇帳戶</option>
               {accounts.map(a => (
                 <option key={a.id} value={a.id}>{a.name} ({a.accountCode})</option>
@@ -618,20 +618,20 @@ export default function ChecksPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">收款人</label>
+            <label className="block text-base font-medium text-gray-700 mb-1">收款人</label>
             <input type="text" value={addForm.payeeName}
               onChange={e => setAddForm(f => ({ ...f, payeeName: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
           </div>
         </div>
       )}
       {addForm.checkType === 'receivable' && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">目的帳戶 *</label>
+            <label className="block text-base font-medium text-gray-700 mb-1">目的帳戶 *</label>
             <select value={addForm.destinationAccountId}
               onChange={e => setAddForm(f => ({ ...f, destinationAccountId: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
               <option value="">選擇帳戶</option>
               {accounts.map(a => (
                 <option key={a.id} value={a.id}>{a.name} ({a.accountCode})</option>
@@ -639,19 +639,19 @@ export default function ChecksPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">開票人</label>
+            <label className="block text-base font-medium text-gray-700 mb-1">開票人</label>
             <input type="text" value={addForm.drawerName}
               onChange={e => setAddForm(f => ({ ...f, drawerName: e.target.value }))}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
           </div>
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">供應商</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">供應商</label>
           <select value={addForm.supplierId}
             onChange={e => setAddForm(f => ({ ...f, supplierId: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
             <option value="">無</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
@@ -659,22 +659,22 @@ export default function ChecksPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">銀行名稱</label>
+          <label className="block text-base font-medium text-gray-700 mb-1">銀行名稱</label>
           <input type="text" value={addForm.bankName}
             onChange={e => setAddForm(f => ({ ...f, bankName: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+        <label className="block text-base font-medium text-gray-700 mb-1">備註</label>
         <textarea value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={2} />
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={2} />
       </div>
       <div className="flex justify-end gap-3 pt-2">
         <button onClick={() => { isEdit ? setShowEditModal(false) : setShowAddModal(false); resetAddForm(); }}
-          className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+          className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
         <button onClick={isEdit ? handleUpdate : handleAdd}
-          className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700">
+          className="px-4 py-2 text-base bg-violet-600 text-white rounded-lg hover:bg-violet-700">
           {isEdit ? '更新' : '新增'}
         </button>
       </div>
@@ -684,7 +684,7 @@ export default function ChecksPage() {
   // ============== CHECK TABLE ==============
   const renderCheckTable = (data, showActions = true, showSelect = false, sortKey, sortDir, toggleSort) => (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-base">
         <thead>
           <tr className="bg-gray-50">
             {showSelect && <th className="px-3 py-2 text-left w-10"><input type="checkbox"
@@ -700,7 +700,7 @@ export default function ChecksPage() {
             <SortableTh label="到期日" colKey="dueDate" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
             <SortableTh label="帳戶" colKey="account" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
             <SortableTh label="館別" colKey="warehouse" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
-            {showActions && <th className="px-3 py-2 text-center text-sm font-medium text-gray-700">操作</th>}
+            {showActions && <th className="px-3 py-2 text-center text-base font-medium text-gray-700">操作</th>}
           </tr>
         </thead>
         <tbody>
@@ -716,18 +716,18 @@ export default function ChecksPage() {
               </td>}
               <td className="px-3 py-2"><StatusBadge status={c.status} /></td>
               <td className="px-3 py-2">
-                <span className="font-mono text-xs">{c.checkNumber}</span>
+                <span className="font-mono text-sm">{c.checkNumber}</span>
                 {c.reissueOfCheck && (
-                  <span className="block text-xs text-amber-600 mt-0.5">重新開票（原退票 {c.reissueOfCheck.checkNo}）</span>
+                  <span className="block text-sm text-amber-600 mt-0.5">重新開票（原退票 {c.reissueOfCheck.checkNo}）</span>
                 )}
               </td>
               <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
               <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
               <td className={`px-3 py-2 ${getDueDateColor(c.dueDate)}`}>
                 {c.dueDate}
-                <span className="text-xs ml-1">{(c.status === 'pending' || c.status === 'due') ? getDueDateLabel(c.dueDate) : ''}</span>
+                <span className="text-sm ml-1">{(c.status === 'pending' || c.status === 'due') ? getDueDateLabel(c.dueDate) : ''}</span>
               </td>
-              <td className="px-3 py-2 text-xs">
+              <td className="px-3 py-2 text-sm">
                 {c.checkType === 'payable' ? c.sourceAccount?.name : c.destinationAccount?.name}
               </td>
               <td className="px-3 py-2">{c.warehouse || '-'}</td>
@@ -737,22 +737,22 @@ export default function ChecksPage() {
                     {(c.status === 'pending' || c.status === 'due') && (
                       <>
                         <button onClick={() => openClear(c)}
-                          className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">兌現</button>
+                          className="px-2 py-1 text-sm bg-green-50 text-green-700 rounded hover:bg-green-100">兌現</button>
                         <button onClick={() => openVoid(c)}
-                          className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200">作廢</button>
+                          className="px-2 py-1 text-sm bg-gray-100 text-gray-600 rounded hover:bg-gray-200">作廢</button>
                         <button onClick={() => openEdit(c)}
-                          className="px-2 py-1 text-xs bg-violet-50 text-violet-700 rounded hover:bg-violet-100">編輯</button>
+                          className="px-2 py-1 text-sm bg-violet-50 text-violet-700 rounded hover:bg-violet-100">編輯</button>
                       </>
                     )}
                     {c.status === 'bounced' && c.checkType === 'payable' && (
                       <>
                         {(c.reissuedByChecks || []).length > 0 ? (
-                          <span className="text-xs text-green-600">已重新開票 → {c.reissuedByChecks[0].checkNo}</span>
+                          <span className="text-sm text-green-600">已重新開票 → {c.reissuedByChecks[0].checkNo}</span>
                         ) : (
                           <button
                             onClick={() => handleReissue(c)}
                             disabled={reissueLoading === c.id}
-                            className="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50">
+                            className="px-2 py-1 text-sm bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50">
                             {reissueLoading === c.id ? '處理中…' : '重新開票'}
                           </button>
                         )}
@@ -760,7 +760,7 @@ export default function ChecksPage() {
                     )}
                     {c.status === 'pending' && (
                       <button onClick={() => handleDelete(c)}
-                        className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">刪除</button>
+                        className="px-2 py-1 text-sm bg-red-50 text-red-600 rounded hover:bg-red-100">刪除</button>
                     )}
                   </div>
                 </td>
@@ -779,24 +779,24 @@ export default function ChecksPage() {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-            <div className="text-xs text-red-600 font-medium">逾期應付</div>
+            <div className="text-sm text-red-600 font-medium">逾期應付</div>
             <div className="text-2xl font-bold text-red-700 mt-1">{summary.overduePayable?.count || 0}</div>
-            <div className="text-sm text-red-500">${formatAmount(summary.overduePayable?.total)}</div>
+            <div className="text-base text-red-500">${formatAmount(summary.overduePayable?.total)}</div>
           </div>
           <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
-            <div className="text-xs text-orange-600 font-medium">逾期應收</div>
+            <div className="text-sm text-orange-600 font-medium">逾期應收</div>
             <div className="text-2xl font-bold text-orange-700 mt-1">{summary.overdueReceivable?.count || 0}</div>
-            <div className="text-sm text-orange-500">${formatAmount(summary.overdueReceivable?.total)}</div>
+            <div className="text-base text-orange-500">${formatAmount(summary.overdueReceivable?.total)}</div>
           </div>
           <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
-            <div className="text-xs text-yellow-700 font-medium">7日內到期</div>
+            <div className="text-sm text-yellow-700 font-medium">7日內到期</div>
             <div className="text-2xl font-bold text-yellow-800 mt-1">{summary.dueSoon7?.count || 0}</div>
-            <div className="text-sm text-yellow-600">${formatAmount(summary.dueSoon7?.total)}</div>
+            <div className="text-base text-yellow-600">${formatAmount(summary.dueSoon7?.total)}</div>
           </div>
           <div className="bg-violet-50 rounded-xl p-4 border border-violet-200">
-            <div className="text-xs text-violet-600 font-medium">30日內到期</div>
+            <div className="text-sm text-violet-600 font-medium">30日內到期</div>
             <div className="text-2xl font-bold text-violet-700 mt-1">{summary.dueSoon30?.count || 0}</div>
-            <div className="text-sm text-violet-500">${formatAmount(summary.dueSoon30?.total)}</div>
+            <div className="text-base text-violet-500">${formatAmount(summary.dueSoon30?.total)}</div>
           </div>
         </div>
       )}
@@ -804,13 +804,13 @@ export default function ChecksPage() {
       {/* Batch clear button */}
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 bg-violet-50 px-4 py-3 rounded-lg border border-violet-200">
-          <span className="text-sm text-violet-700">已選擇 {selectedIds.length} 張支票</span>
+          <span className="text-base text-violet-700">已選擇 {selectedIds.length} 張支票</span>
           <button onClick={openBatchClearModal}
-            className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700">
+            className="px-4 py-1.5 text-base bg-violet-600 text-white rounded-lg hover:bg-violet-700">
             批次兌現
           </button>
           <button onClick={() => setSelectedIds([])}
-            className="px-3 py-1.5 text-sm border border-violet-300 text-violet-600 rounded-lg hover:bg-violet-100">
+            className="px-3 py-1.5 text-base border border-violet-300 text-violet-600 rounded-lg hover:bg-violet-100">
             取消選擇
           </button>
         </div>
@@ -818,7 +818,7 @@ export default function ChecksPage() {
 
       {/* Payable section */}
       <div>
-        <h3 className="text-base font-bold text-gray-700 mb-2 flex items-center gap-2">
+        <h3 className="text-lg font-bold text-gray-700 mb-2 flex items-center gap-2">
           <span className="w-3 h-3 rounded-full bg-red-400"></span>
           應付支票 ({pendingPayable.length})
         </h3>
@@ -827,7 +827,7 @@ export default function ChecksPage() {
 
       {/* Receivable section */}
       <div>
-        <h3 className="text-base font-bold text-gray-700 mb-2 flex items-center gap-2">
+        <h3 className="text-lg font-bold text-gray-700 mb-2 flex items-center gap-2">
           <span className="w-3 h-3 rounded-full bg-green-400"></span>
           應收支票 ({pendingReceivable.length})
         </h3>
@@ -847,9 +847,9 @@ export default function ChecksPage() {
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3 bg-gray-50 p-4 rounded-lg">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">狀態</label>
+            <label className="block text-sm text-gray-500 mb-1">狀態</label>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
               <option value="">全部</option>
               <option value="pending">待處理</option>
               <option value="due">到期</option>
@@ -859,20 +859,20 @@ export default function ChecksPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">到期日起</label>
+            <label className="block text-sm text-gray-500 mb-1">到期日起</label>
             <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">到期日迄</label>
+            <label className="block text-sm text-gray-500 mb-1">到期日迄</label>
             <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
           </div>
           {type === 'payable' && (
             <div>
-              <label className="block text-xs text-gray-500 mb-1">供應商</label>
+              <label className="block text-sm text-gray-500 mb-1">供應商</label>
               <select value={filterSupplierId} onChange={e => setFilterSupplierId(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
                 <option value="">全部</option>
                 {suppliers.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
@@ -881,18 +881,18 @@ export default function ChecksPage() {
             </div>
           )}
           <button onClick={() => { setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterSupplierId(''); }}
-            className="px-3 py-1.5 text-sm text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-100">
+            className="px-3 py-1.5 text-base text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-100">
             清除篩選
           </button>
           <div className="flex-1"></div>
           <button onClick={() => { resetAddForm(); setAddForm(f => ({ ...f, checkType: type })); setShowAddModal(true); }}
-            className="px-4 py-1.5 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700">
+            className="px-4 py-1.5 text-base bg-violet-600 text-white rounded-lg hover:bg-violet-700">
             + 新增{type === 'payable' ? '應付' : '應收'}支票
           </button>
         </div>
 
         {/* Summary row */}
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-base">
           <span className="text-gray-500">共 {filtered.length} 筆</span>
           <span className="text-gray-500">
             總金額: <span className="font-bold text-gray-800">${formatAmount(filtered.reduce((s, c) => s + Number(c.amount), 0))}</span>
@@ -933,17 +933,17 @@ export default function ChecksPage() {
         {/* Controls and legend */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600">顯示範圍:</span>
+            <span className="text-base text-gray-600">顯示範圍:</span>
             <button onClick={() => setScheduleRange(7)}
-              className={`px-3 py-1 text-sm rounded-lg ${scheduleRange === 7 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              className={`px-3 py-1 text-base rounded-lg ${scheduleRange === 7 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               7 天
             </button>
             <button onClick={() => setScheduleRange(30)}
-              className={`px-3 py-1 text-sm rounded-lg ${scheduleRange === 30 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              className={`px-3 py-1 text-base rounded-lg ${scheduleRange === 30 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               30 天
             </button>
           </div>
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded bg-red-500"></span><span className="text-gray-500">逾期</span></div>
             <div className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded bg-orange-500"></span><span className="text-gray-500">今日</span></div>
             <div className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded bg-yellow-400"></span><span className="text-gray-500">1-3 天</span></div>
@@ -953,7 +953,7 @@ export default function ChecksPage() {
         </div>
 
         {/* Quick summary */}
-        <div className="flex items-center gap-4 text-sm bg-gray-50 rounded-lg px-4 py-2">
+        <div className="flex items-center gap-4 text-base bg-gray-50 rounded-lg px-4 py-2">
           {overdueCount && overdueCount.payable.length + overdueCount.receivable.length > 0 && (
             <span className="text-red-600 font-medium">逾期 {overdueCount.payable.length + overdueCount.receivable.length} 筆</span>
           )}
@@ -986,16 +986,16 @@ export default function ChecksPage() {
                   <div className="flex items-center px-4 py-2 gap-4">
                     <div className="w-32 flex-shrink-0">
                       {isOverdue ? (
-                        <div className="text-sm font-bold text-red-600">{day.label}</div>
+                        <div className="text-base font-bold text-red-600">{day.label}</div>
                       ) : (
                         <>
-                          <div className={`text-sm font-medium ${style.text}`}>{day.date}</div>
-                          <div className="text-xs text-gray-400">({weekDays[day.dayOfWeek]}){day.urgency === 'today' ? ' 今日' : ''}</div>
+                          <div className={`text-base font-medium ${style.text}`}>{day.date}</div>
+                          <div className="text-sm text-gray-400">({weekDays[day.dayOfWeek]}){day.urgency === 'today' ? ' 今日' : ''}</div>
                         </>
                       )}
                     </div>
                     {hasData ? (
-                      <div className="flex-1 flex items-center gap-6 text-sm">
+                      <div className="flex-1 flex items-center gap-6 text-base">
                         {day.payable.length > 0 && (
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-red-400"></span>
@@ -1015,14 +1015,14 @@ export default function ChecksPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex-1 text-xs text-gray-300">-- 無到期支票 --</div>
+                      <div className="flex-1 text-sm text-gray-300">-- 無到期支票 --</div>
                     )}
                   </div>
                   {hasData && (
                     <div className="border-t border-gray-100 px-4 py-2">
                       <div className="space-y-1">
                         {[...day.payable, ...day.receivable].map(c => (
-                          <div key={c.id} className="flex items-center gap-3 text-xs">
+                          <div key={c.id} className="flex items-center gap-3 text-sm">
                             <span className={`w-1.5 h-1.5 rounded-full ${c.checkType === 'payable' ? 'bg-red-400' : 'bg-green-400'}`}></span>
                             <span className="font-mono">{c.checkNumber}</span>
                             <span className={c.checkType === 'payable' ? 'text-red-600' : 'text-green-600'}>
@@ -1032,7 +1032,7 @@ export default function ChecksPage() {
                             <span className="text-gray-400">{c.drawerName || c.payeeName || ''}</span>
                             <span className="text-gray-300">{c.checkType === 'payable' ? c.sourceAccount?.name : c.destinationAccount?.name}</span>
                             {isOverdue && c.dueDate && (
-                              <span className="text-red-500 text-xs">{getDueDateLabel(c.dueDate)}</span>
+                              <span className="text-red-500 text-sm">{getDueDateLabel(c.dueDate)}</span>
                             )}
                             {(c.status === 'pending' || c.status === 'due') && (
                               <button onClick={() => openClear(c)}
@@ -1064,15 +1064,15 @@ export default function ChecksPage() {
       <div className="space-y-6">
         {/* Month selector */}
         <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-lg">
-          <label className="text-sm text-gray-600">統計月份:</label>
+          <label className="text-base text-gray-600">統計月份:</label>
           <select value={statsYear} onChange={e => setStatsYear(parseInt(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
             {[2024, 2025, 2026, 2027].map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
           <select value={statsMonth} onChange={e => setStatsMonth(parseInt(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
             {Array.from({ length: 12 }, (_, i) => (
               <option key={i + 1} value={i + 1}>{i + 1} 月</option>
             ))}
@@ -1082,27 +1082,27 @@ export default function ChecksPage() {
         {/* Monthly summary */}
         {monthlyStats && (
           <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <h3 className="text-base font-bold text-gray-700 mb-4">{statsYear} 年 {statsMonth} 月 統計</h3>
+            <h3 className="text-lg font-bold text-gray-700 mb-4">{statsYear} 年 {statsMonth} 月 統計</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-violet-50 p-4 rounded-lg">
-                <div className="text-xs text-violet-500">總支票數</div>
+                <div className="text-sm text-violet-500">總支票數</div>
                 <div className="text-xl font-bold text-violet-700">{monthlyStats.total}</div>
-                <div className="text-sm text-violet-500">${formatAmount(monthlyStats.totalAmount)}</div>
+                <div className="text-base text-violet-500">${formatAmount(monthlyStats.totalAmount)}</div>
               </div>
               <div className="bg-red-50 p-4 rounded-lg">
-                <div className="text-xs text-red-500">應付</div>
+                <div className="text-sm text-red-500">應付</div>
                 <div className="text-xl font-bold text-red-700">{monthlyStats.payable?.count || 0}</div>
-                <div className="text-sm text-red-500">${formatAmount(monthlyStats.payable?.total)}</div>
+                <div className="text-base text-red-500">${formatAmount(monthlyStats.payable?.total)}</div>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
-                <div className="text-xs text-green-500">應收</div>
+                <div className="text-sm text-green-500">應收</div>
                 <div className="text-xl font-bold text-green-700">{monthlyStats.receivable?.count || 0}</div>
-                <div className="text-sm text-green-500">${formatAmount(monthlyStats.receivable?.total)}</div>
+                <div className="text-base text-green-500">${formatAmount(monthlyStats.receivable?.total)}</div>
               </div>
               <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="text-xs text-blue-500">已兌現</div>
+                <div className="text-sm text-blue-500">已兌現</div>
                 <div className="text-xl font-bold text-blue-700">{monthlyStats.cleared?.count || 0}</div>
-                <div className="text-sm text-blue-500">${formatAmount(monthlyStats.cleared?.total)}</div>
+                <div className="text-base text-blue-500">${formatAmount(monthlyStats.cleared?.total)}</div>
               </div>
             </div>
           </div>
@@ -1110,17 +1110,17 @@ export default function ChecksPage() {
 
         {/* Abnormal checks */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h3 className="text-base font-bold text-gray-700 mb-4">異常支票</h3>
+          <h3 className="text-lg font-bold text-gray-700 mb-4">異常支票</h3>
 
           {/* Bounced */}
           <div className="mb-4">
-            <h4 className="text-sm font-semibold text-red-600 mb-2 flex items-center gap-2">
+            <h4 className="text-base font-semibold text-red-600 mb-2 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-red-400"></span>
               退票 ({bouncedChecks.length})
             </h4>
             {bouncedChecks.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="bg-red-50">
                       <th className="px-3 py-2 text-left">支票號碼</th>
@@ -1134,20 +1134,20 @@ export default function ChecksPage() {
                   <tbody>
                     {bouncedChecks.map(c => (
                       <tr key={c.id} className="border-t border-red-100">
-                        <td className="px-3 py-2 font-mono text-xs">{c.checkNumber}</td>
+                        <td className="px-3 py-2 font-mono text-sm">{c.checkNumber}</td>
                         <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
                         <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
                         <td className="px-3 py-2">{c.dueDate}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500">{c.bouncedReason || '-'}</td>
+                        <td className="px-3 py-2 text-sm text-gray-500">{c.bouncedReason || '-'}</td>
                         <td className="px-3 py-2 text-center">
                           {c.checkType === 'payable' ? (
                             (c.reissuedByChecks || []).length > 0 ? (
-                              <span className="text-xs text-green-600">已重新開票 → {c.reissuedByChecks[0].checkNo}</span>
+                              <span className="text-sm text-green-600">已重新開票 → {c.reissuedByChecks[0].checkNo}</span>
                             ) : (
                               <button
                                 onClick={() => handleReissue(c)}
                                 disabled={reissueLoading === c.id}
-                                className="px-2 py-1 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50">
+                                className="px-2 py-1 text-sm bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50">
                                 {reissueLoading === c.id ? '處理中…' : '重新開票'}
                               </button>
                             )
@@ -1161,19 +1161,19 @@ export default function ChecksPage() {
                 </table>
               </div>
             ) : (
-              <div className="text-sm text-gray-400 py-2">無退票記錄</div>
+              <div className="text-base text-gray-400 py-2">無退票記錄</div>
             )}
           </div>
 
           {/* Overdue */}
           <div>
-            <h4 className="text-sm font-semibold text-orange-600 mb-2 flex items-center gap-2">
+            <h4 className="text-base font-semibold text-orange-600 mb-2 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-orange-400"></span>
               逾期未兌現 ({overdueChecks.length})
             </h4>
             {overdueChecks.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="bg-orange-50">
                       <th className="px-3 py-2 text-left">支票號碼</th>
@@ -1189,14 +1189,14 @@ export default function ChecksPage() {
                       const diffDays = Math.ceil((new Date() - new Date(c.dueDate + 'T00:00:00')) / (1000 * 60 * 60 * 24));
                       return (
                         <tr key={c.id} className="border-t border-orange-100">
-                          <td className="px-3 py-2 font-mono text-xs">{c.checkNumber}</td>
+                          <td className="px-3 py-2 font-mono text-sm">{c.checkNumber}</td>
                           <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
                           <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
                           <td className="px-3 py-2 text-red-600">{c.dueDate}</td>
                           <td className="px-3 py-2 text-red-600 font-bold">{diffDays} 天</td>
                           <td className="px-3 py-2 text-center">
                             <button onClick={() => openClear(c)}
-                              className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">兌現</button>
+                              className="px-2 py-1 text-sm bg-green-50 text-green-700 rounded hover:bg-green-100">兌現</button>
                           </td>
                         </tr>
                       );
@@ -1205,7 +1205,7 @@ export default function ChecksPage() {
                 </table>
               </div>
             ) : (
-              <div className="text-sm text-gray-400 py-2">無逾期記錄</div>
+              <div className="text-base text-gray-400 py-2">無逾期記錄</div>
             )}
           </div>
         </div>
@@ -1267,27 +1267,27 @@ export default function ChecksPage() {
         <div className="flex items-center justify-between mb-6 no-print">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">支票管理</h2>
-            <p className="text-sm text-gray-500 mt-1">管理應付及應收支票，追蹤兌現狀態與到期日程</p>
+            <p className="text-base text-gray-500 mt-1">管理應付及應收支票，追蹤兌現狀態與到期日程</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <button
               type="button"
               onClick={() => setShowPrintSheetModal(true)}
-              className="px-4 py-2 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100"
+              className="px-4 py-2 text-base font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-lg hover:bg-violet-100"
             >
               支票列印表（領取簽名）
             </button>
             <button
               type="button"
               onClick={() => { resetPrintSearch(); setShowPrintByPOModal(true); }}
-              className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
+              className="px-4 py-2 text-base font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100"
             >
               按付款單的館別列印
             </button>
             <button
               type="button"
               onClick={() => { resetPrintSearch(); setShowPrintByPurchaseModal(true); }}
-              className="px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100"
+              className="px-4 py-2 text-base font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100"
             >
               按進貨單的館別列印
             </button>
@@ -1305,7 +1305,7 @@ export default function ChecksPage() {
         <div className="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1">
           {TABS.map(tab => (
             <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSelectedIds([]); }}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
+              className={`flex-1 py-2.5 text-base font-medium rounded-lg transition-all ${
                 activeTab === tab.key
                   ? 'bg-violet-600 text-white shadow-md'
                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
@@ -1354,7 +1354,7 @@ export default function ChecksPage() {
         {selectedCheck && (
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-2 gap-2 text-base">
                 <div>支票號碼: <span className="font-mono font-medium">{selectedCheck.checkNumber}</span></div>
                 <div>類型: {selectedCheck.checkType === 'payable' ? '應付' : '應收'}</div>
                 <div>金額: <span className="font-bold">${formatAmount(selectedCheck.amount)}</span></div>
@@ -1362,28 +1362,28 @@ export default function ChecksPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">兌現日期</label>
+              <label className="block text-base font-medium text-gray-700 mb-1">兌現日期</label>
               <input type="date" value={clearForm.clearDate}
                 onChange={e => setClearForm(f => ({ ...f, clearDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">實際金額</label>
+              <label className="block text-base font-medium text-gray-700 mb-1">實際金額</label>
               <input type="number" value={clearForm.actualAmount}
                 onChange={e => setClearForm(f => ({ ...f, actualAmount: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">兌現人</label>
+              <label className="block text-base font-medium text-gray-700 mb-1">兌現人</label>
               <input type="text" value={clearForm.clearedBy}
                 onChange={e => setClearForm(f => ({ ...f, clearedBy: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="選填" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="選填" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => { setShowClearModal(false); setSelectedCheck(null); }}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+                className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
               <button onClick={handleClear}
-                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">確認兌現</button>
+                className="px-4 py-2 text-base bg-green-600 text-white rounded-lg hover:bg-green-700">確認兌現</button>
             </div>
           </div>
         )}
@@ -1395,7 +1395,7 @@ export default function ChecksPage() {
         {selectedCheck && (
           <div className="space-y-4">
             <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-              <div className="text-sm text-red-700">
+              <div className="text-base text-red-700">
                 確定要將支票 <span className="font-mono font-bold">{selectedCheck.checkNumber}</span> 標記為退票？
                 {selectedCheck.status === 'cleared' && (
                   <span className="block mt-1 text-red-600 font-medium">此支票已兌現，退票將產生沖回交易</span>
@@ -1403,16 +1403,16 @@ export default function ChecksPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">退票原因</label>
+              <label className="block text-base font-medium text-gray-700 mb-1">退票原因</label>
               <textarea value={actionReason} onChange={e => setActionReason(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={3}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={3}
                 placeholder="輸入退票原因..." />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => { setShowBounceModal(false); setSelectedCheck(null); }}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+                className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
               <button onClick={handleBounce}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">確認退票</button>
+                className="px-4 py-2 text-base bg-red-600 text-white rounded-lg hover:bg-red-700">確認退票</button>
             </div>
           </div>
         )}
@@ -1422,17 +1422,17 @@ export default function ChecksPage() {
       <Modal isOpen={showBatchClearModal} onClose={() => setShowBatchClearModal(false)}
         title="批次兌現">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">已選擇 <strong>{selectedIds.length}</strong> 張支票，請填寫兌現日後存檔，所有勾選的支票將一併記錄該兌現日。</p>
+          <p className="text-base text-gray-600">已選擇 <strong>{selectedIds.length}</strong> 張支票，請填寫兌現日後存檔，所有勾選的支票將一併記錄該兌現日。</p>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">兌現日 <span className="text-red-500">*</span></label>
+            <label className="block text-base font-medium text-gray-700 mb-1">兌現日 <span className="text-red-500">*</span></label>
             <input type="date" value={batchClearDate} onChange={e => setBatchClearDate(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button onClick={() => setShowBatchClearModal(false)}
-              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+              className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
             <button onClick={handleBatchClear}
-              className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">存檔</button>
+              className="px-4 py-2 text-base bg-green-600 text-white rounded-lg hover:bg-green-700">存檔</button>
           </div>
         </div>
       </Modal>
@@ -1443,21 +1443,21 @@ export default function ChecksPage() {
         {selectedCheck && (
           <div className="space-y-4">
             <div className="bg-gray-100 rounded-lg p-4">
-              <div className="text-sm text-gray-700">
+              <div className="text-base text-gray-700">
                 確定要將支票 <span className="font-mono font-bold">{selectedCheck.checkNumber}</span> 作廢？
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">作廢原因</label>
+              <label className="block text-base font-medium text-gray-700 mb-1">作廢原因</label>
               <textarea value={actionReason} onChange={e => setActionReason(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={3}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={3}
                 placeholder="輸入作廢原因..." />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => { setShowVoidModal(false); setSelectedCheck(null); }}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
+                className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
               <button onClick={handleVoid}
-                className="px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800">確認作廢</button>
+                className="px-4 py-2 text-base bg-gray-700 text-white rounded-lg hover:bg-gray-800">確認作廢</button>
             </div>
           </div>
         )}
@@ -1467,11 +1467,11 @@ export default function ChecksPage() {
       <Modal isOpen={showPrintSheetModal} onClose={() => { setShowPrintSheetModal(false); setPrintWarehouse(''); }} title="支票領取簽名表" width="max-w-4xl">
         <div className="space-y-4 no-print">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <p className="text-sm text-gray-500">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="text-base text-gray-500">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">館別：</label>
+              <label className="text-base font-medium text-gray-700">館別：</label>
               <select value={printWarehouse} onChange={e => setPrintWarehouse(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base min-w-[120px]">
                 <option value="">全部</option>
                 <option value="麗格">麗格</option>
                 <option value="麗軒">麗軒</option>
@@ -1479,9 +1479,9 @@ export default function ChecksPage() {
               </select>
             </div>
           </div>
-          <p className="text-sm text-gray-600">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
+          <p className="text-base text-gray-600">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
           <div className="overflow-x-auto border border-gray-200 rounded-lg">
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead>
                 <tr className="bg-gray-100">
                   <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
@@ -1513,8 +1513,8 @@ export default function ChecksPage() {
             </table>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowPrintSheetModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
-            <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700">列印</button>
+            <button type="button" onClick={() => setShowPrintSheetModal(false)} className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+            <button type="button" onClick={() => window.print()} className="px-4 py-2 text-base bg-violet-600 text-white rounded-lg hover:bg-violet-700">列印</button>
           </div>
         </div>
       </Modal>
@@ -1523,9 +1523,9 @@ export default function ChecksPage() {
       {showPrintSheetModal && (
         <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
           <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表{printWarehouse ? `（${printWarehouse}）` : ''}</h1>
-          <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-          <p className="text-sm text-gray-600 mb-4">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
-          <table className="w-full text-sm border border-gray-300">
+          <p className="text-base text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-base text-gray-600 mb-4">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
+          <table className="w-full text-base border border-gray-300">
             <thead>
               <tr className="bg-gray-100">
                 <th className="px-3 py-2 text-left border border-gray-300 w-12">序號</th>
@@ -1563,9 +1563,9 @@ export default function ChecksPage() {
         <div className="space-y-4 no-print">
           <div className="flex flex-wrap items-end gap-3 bg-gray-50 p-4 rounded-lg">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">館別 <span className="text-red-500">*</span></label>
+              <label className="block text-sm text-gray-500 mb-1">館別 <span className="text-red-500">*</span></label>
               <select value={printSearchWarehouse} onChange={e => setPrintSearchWarehouse(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base min-w-[120px]">
                 <option value="">請選擇</option>
                 <option value="麗格">麗格</option>
                 <option value="麗軒">麗軒</option>
@@ -1573,25 +1573,25 @@ export default function ChecksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">日期起</label>
+              <label className="block text-sm text-gray-500 mb-1">日期起</label>
               <input type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">日期迄</label>
+              <label className="block text-sm text-gray-500 mb-1">日期迄</label>
               <input type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <button onClick={() => handlePrintSearch('payment')} disabled={printSearchLoading}
-              className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              className="px-4 py-1.5 text-base bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {printSearchLoading ? '查詢中...' : '查詢'}
             </button>
           </div>
           {printSearchResults.length > 0 && (
             <>
-              <p className="text-sm text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（付款單館別：{printSearchWarehouse}）</p>
+              <p className="text-base text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（付款單館別：{printSearchWarehouse}）</p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
@@ -1619,8 +1619,8 @@ export default function ChecksPage() {
                 </table>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowPrintByPOModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
-                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">列印</button>
+                <button type="button" onClick={() => setShowPrintByPOModal(false)} className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-base bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">列印</button>
               </div>
             </>
           )}
@@ -1631,14 +1631,14 @@ export default function ChecksPage() {
       {showPrintByPOModal && printSearchResults.length > 0 && (
         <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
           <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表（付款單館別：{printSearchWarehouse}）</h1>
-          <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-base text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-base text-gray-600 mb-4">
             付款單館別：{printSearchWarehouse}
             {printSearchDateFrom && `　日期起：${printSearchDateFrom}`}
             {printSearchDateTo && `　日期迄：${printSearchDateTo}`}
             ，共 {printSearchResults.length} 張。廠商領取時請於簽收欄簽名。
           </p>
-          <table className="w-full text-sm border border-gray-300">
+          <table className="w-full text-base border border-gray-300">
             <thead>
               <tr className="bg-gray-100">
                 <th className="px-3 py-2 text-left border border-gray-300 w-12">序號</th>
@@ -1672,9 +1672,9 @@ export default function ChecksPage() {
         <div className="space-y-4 no-print">
           <div className="flex flex-wrap items-end gap-3 bg-gray-50 p-4 rounded-lg">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">館別 <span className="text-red-500">*</span></label>
+              <label className="block text-sm text-gray-500 mb-1">館別 <span className="text-red-500">*</span></label>
               <select value={printSearchWarehouse} onChange={e => setPrintSearchWarehouse(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base min-w-[120px]">
                 <option value="">請選擇</option>
                 <option value="麗格">麗格</option>
                 <option value="麗軒">麗軒</option>
@@ -1682,25 +1682,25 @@ export default function ChecksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">日期起</label>
+              <label className="block text-sm text-gray-500 mb-1">日期起</label>
               <input type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">日期迄</label>
+              <label className="block text-sm text-gray-500 mb-1">日期迄</label>
               <input type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <button onClick={() => handlePrintSearch('purchase')} disabled={printSearchLoading}
-              className="px-4 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50">
+              className="px-4 py-1.5 text-base bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50">
               {printSearchLoading ? '查詢中...' : '查詢'}
             </button>
           </div>
           {printSearchResults.length > 0 && (
             <>
-              <p className="text-sm text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（進貨單館別：{printSearchWarehouse}）</p>
+              <p className="text-base text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（進貨單館別：{printSearchWarehouse}）</p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
@@ -1728,8 +1728,8 @@ export default function ChecksPage() {
                 </table>
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowPrintByPurchaseModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
-                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700">列印</button>
+                <button type="button" onClick={() => setShowPrintByPurchaseModal(false)} className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">關閉</button>
+                <button type="button" onClick={() => window.print()} className="px-4 py-2 text-base bg-teal-600 text-white rounded-lg hover:bg-teal-700">列印</button>
               </div>
             </>
           )}
@@ -1740,14 +1740,14 @@ export default function ChecksPage() {
       {showPrintByPurchaseModal && printSearchResults.length > 0 && (
         <div id="check-pickup-print-root" className="fixed -left-[9999px] top-0 w-screen bg-white p-8" aria-hidden="true">
           <h1 className="text-xl font-bold text-gray-800 mb-2">支票領取簽名表（進貨單館別：{printSearchWarehouse}）</h1>
-          <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-base text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+          <p className="text-base text-gray-600 mb-4">
             進貨單館別：{printSearchWarehouse}
             {printSearchDateFrom && `　日期起：${printSearchDateFrom}`}
             {printSearchDateTo && `　日期迄：${printSearchDateTo}`}
             ，共 {printSearchResults.length} 張。廠商領取時請於簽收欄簽名。
           </p>
-          <table className="w-full text-sm border border-gray-300">
+          <table className="w-full text-base border border-gray-300">
             <thead>
               <tr className="bg-gray-100">
                 <th className="px-3 py-2 text-left border border-gray-300 w-12">序號</th>

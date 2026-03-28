@@ -111,6 +111,17 @@ body {
   color: var(--text-primary);
   background: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 1.1rem;
+}
+
+/* Ensure form elements inherit the larger base font */
+input, select, textarea, button {
+  font-size: inherit;
+}
+
+/* Table cells: minimum readable size */
+table th, table td {
+  font-size: max(0.85rem, inherit);
 }
 
 /* Section-specific navigation styles */

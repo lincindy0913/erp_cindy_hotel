@@ -215,6 +215,7 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }) {
+      if (!token) return session;
       if (session.user) {
         session.user.id = token.id;
         session.user.role = token.role;

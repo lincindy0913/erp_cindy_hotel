@@ -139,7 +139,7 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
 
   return (
     <nav className={`bg-white shadow-lg border-b-4 ${borderColor}`}>
-      <div className="max-w-7xl mx-auto px-4 py-4">
+      <div className="max-w-[100rem] mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800">進銷存系統</h1>
           <div className="flex items-center gap-4">

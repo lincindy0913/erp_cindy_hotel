@@ -265,8 +265,8 @@ export default function EmployeeAdvancesPage() {
   const privateAmount = billTotal ? Math.max(0, parseFloat(billTotal) - selectedTotal) : 0;
   const [privateAccountId, setPrivateAccountId] = useState('');
 
-  const thStyle = { padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: 15, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
-  const tdStyle = { padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 15 };
+  const thStyle = { padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: 18, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
+  const tdStyle = { padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 18 };
 
   // Print current tab
   function handlePrint() {
@@ -277,7 +277,7 @@ export default function EmployeeAdvancesPage() {
     const w = window.open('', '_blank');
     w.document.write(`<html><head><title>代墊款 — ${tabLabel}</title>
       <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
-      table{width:100%;border-collapse:collapse;font-size:12px}
+      table{width:100%;border-collapse:collapse;font-size:15px}
       th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
       th{background:#f5f5f5;font-weight:600}
       .right{text-align:right} .center{text-align:center}
@@ -301,7 +301,7 @@ export default function EmployeeAdvancesPage() {
         <td class="right" style="font-weight:700">NT$ ${rows.reduce((s, a) => s + Number(a.amount), 0).toLocaleString()}</td>
         <td colspan="${activeTab === 'settled' ? 2 : 1}"></td>
       </tr></tfoot></table>
-      <button onclick="window.print()" style="margin-top:16px;padding:8px 24px;font-size:14px;cursor:pointer">列印</button>
+      <button onclick="window.print()" style="margin-top:16px;padding:8px 24px;font-size:17px;cursor:pointer">列印</button>
       </body></html>`);
     w.document.close();
   }
@@ -348,8 +348,8 @@ export default function EmployeeAdvancesPage() {
       <Navigation borderColor="border-green-500" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700 }}>員工代墊款管理</h2>
-          <button onClick={() => setShowAddForm(v => !v)} style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>
+          <h2 style={{ fontSize: 26, fontWeight: 700 }}>員工代墊款管理</h2>
+          <button onClick={() => setShowAddForm(v => !v)} style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 17 }}>
             + 手動新增代墊款
           </button>
         </div>
@@ -357,73 +357,73 @@ export default function EmployeeAdvancesPage() {
         {/* KPI Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
           <div style={{ background: '#fef3c7', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 12, color: '#92400e' }}>待結算筆數</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#92400e' }}>{pendingAdvances.length}</div>
+            <div style={{ fontSize: 15, color: '#92400e' }}>待結算筆數</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#92400e' }}>{pendingAdvances.length}</div>
           </div>
           <div style={{ background: '#fee2e2', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 12, color: '#991b1b' }}>待結算金額</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#991b1b' }}>NT$ {pendingAdvances.reduce((s, a) => s + Number(a.amount), 0).toLocaleString()}</div>
+            <div style={{ fontSize: 15, color: '#991b1b' }}>待結算金額</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#991b1b' }}>NT$ {pendingAdvances.reduce((s, a) => s + Number(a.amount), 0).toLocaleString()}</div>
           </div>
           <div style={{ background: '#d1fae5', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 12, color: '#065f46' }}>已結算筆數</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#065f46' }}>{settledAdvances.length}</div>
+            <div style={{ fontSize: 15, color: '#065f46' }}>已結算筆數</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#065f46' }}>{settledAdvances.length}</div>
           </div>
           <div style={{ background: '#e0e7ff', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 12, color: '#3730a3' }}>代墊員工數</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#3730a3' }}>{employeeSummaryList.length}</div>
+            <div style={{ fontSize: 15, color: '#3730a3' }}>代墊員工數</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#3730a3' }}>{employeeSummaryList.length}</div>
           </div>
         </div>
 
         {/* Add form */}
         {showAddForm && (
           <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 20, marginBottom: 20 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>手動新增代墊款</h3>
+            <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>手動新增代墊款</h3>
             <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>代墊員工 *</label>
-                <input value={addForm.employeeName} onChange={e => setAddForm(f => ({ ...f, employeeName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <label style={{ fontSize: 15, color: '#6b7280' }}>代墊員工 *</label>
+                <input value={addForm.employeeName} onChange={e => setAddForm(f => ({ ...f, employeeName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>代墊方式</label>
-                <select value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}>
+                <label style={{ fontSize: 15, color: '#6b7280' }}>代墊方式</label>
+                <select value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
                   <option value="現金">現金</option>
                   <option value="信用卡">信用卡</option>
                   <option value="其他">其他</option>
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>金額 *</label>
-                <input type="number" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <label style={{ fontSize: 15, color: '#6b7280' }}>金額 *</label>
+                <input type="number" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>費用名稱</label>
-                <select value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}>
+                <label style={{ fontSize: 15, color: '#6b7280' }}>費用名稱</label>
+                <select value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
                   <option value="">選填</option>
                   {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>摘要</label>
-                <input value={addForm.summary} onChange={e => setAddForm(f => ({ ...f, summary: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <label style={{ fontSize: 15, color: '#6b7280' }}>摘要</label>
+                <input value={addForm.summary} onChange={e => setAddForm(f => ({ ...f, summary: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>說明</label>
-                <input value={addForm.sourceDescription} onChange={e => setAddForm(f => ({ ...f, sourceDescription: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <label style={{ fontSize: 15, color: '#6b7280' }}>說明</label>
+                <input value={addForm.sourceDescription} onChange={e => setAddForm(f => ({ ...f, sourceDescription: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>館別</label>
-                <select value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}>
+                <label style={{ fontSize: 15, color: '#6b7280' }}>館別</label>
+                <select value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
                   <option value="">選填</option>
                   {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280' }}>備註</label>
-                <input value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                <label style={{ fontSize: 15, color: '#6b7280' }}>備註</label>
+                <input value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
-                <button type="submit" style={{ padding: '8px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>新增</button>
-                <button type="button" onClick={() => setShowAddForm(false)} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>取消</button>
+                <button type="submit" style={{ padding: '8px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 16 }}>新增</button>
+                <button type="button" onClick={() => setShowAddForm(false)} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 16 }}>取消</button>
               </div>
             </form>
           </div>
@@ -435,7 +435,7 @@ export default function EmployeeAdvancesPage() {
             {TABS.map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                 padding: '10px 20px', border: 'none', borderBottom: activeTab === tab.key ? '3px solid #2563eb' : '3px solid transparent',
-                background: 'none', fontSize: 14, fontWeight: activeTab === tab.key ? 600 : 400,
+                background: 'none', fontSize: 17, fontWeight: activeTab === tab.key ? 600 : 400,
                 color: activeTab === tab.key ? '#2563eb' : '#6b7280', cursor: 'pointer',
               }}>
                 {tab.label}
@@ -443,8 +443,8 @@ export default function EmployeeAdvancesPage() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>列印</button>
-            <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>匯出 Excel</button>
+            <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 16, color: '#374151' }}>列印</button>
+            <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 16, color: '#374151' }}>匯出 Excel</button>
           </div>
         </div>
 
@@ -454,8 +454,8 @@ export default function EmployeeAdvancesPage() {
             {/* Filter bar */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <label style={{ fontSize: 13, color: '#6b7280', marginRight: 4 }}>篩選員工：</label>
-                <select value={filterEmployee} onChange={e => { setFilterEmployee(e.target.value); setSelectedIds(new Set()); }} style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14 }}>
+                <label style={{ fontSize: 16, color: '#6b7280', marginRight: 4 }}>篩選員工：</label>
+                <select value={filterEmployee} onChange={e => { setFilterEmployee(e.target.value); setSelectedIds(new Set()); }} style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17 }}>
                   <option value="">全部</option>
                   {employeeNames.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
@@ -465,38 +465,38 @@ export default function EmployeeAdvancesPage() {
             {/* Settlement Panel - shows when items selected */}
             {selectedIds.size > 0 && (
               <div style={{ background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#065f46', marginBottom: 12 }}>結算明細 — 已選 {selectedIds.size} 筆</h3>
+                <h3 style={{ fontSize: 19, fontWeight: 700, color: '#065f46', marginBottom: 12 }}>結算明細 — 已選 {selectedIds.size} 筆</h3>
 
                 {/* Selected items detail table */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
                   <thead>
                     <tr style={{ background: '#ecfdf5' }}>
-                      <th style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊單號</th>
-                      <th style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊員工</th>
-                      <th style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>費用名稱</th>
-                      <th style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>摘要</th>
-                      <th style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #d1fae5' }}>金額</th>
-                      <th style={{ padding: '8px 12px', fontSize: 13, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #d1fae5' }}>取消</th>
+                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊單號</th>
+                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊員工</th>
+                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>費用名稱</th>
+                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>摘要</th>
+                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #d1fae5' }}>金額</th>
+                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #d1fae5' }}>取消</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedAdvances.map(a => (
                       <tr key={a.id}>
-                        <td style={{ padding: '6px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace' }}>{a.advanceNo}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{a.employeeName}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}>{a.expenseName || '-'}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6' }}>{a.summary || a.sourceDescription || '-'}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6', textAlign: 'right', fontWeight: 600 }}>NT$ {Number(a.amount).toLocaleString()}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 13, borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
-                          <button onClick={() => toggleSelect(a.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace' }}>{a.advanceNo}</td>
+                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{a.employeeName}</td>
+                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6' }}>{a.expenseName || '-'}</td>
+                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6' }}>{a.summary || a.sourceDescription || '-'}</td>
+                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', textAlign: 'right', fontWeight: 600 }}>NT$ {Number(a.amount).toLocaleString()}</td>
+                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
+                          <button onClick={() => toggleSelect(a.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 17 }}>✕</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#ecfdf5' }}>
-                      <td colSpan={4} style={{ padding: '8px 12px', fontSize: 14, fontWeight: 700 }}>代墊公費合計</td>
-                      <td style={{ padding: '8px 12px', fontSize: 15, fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>NT$ {selectedTotal.toLocaleString()}</td>
+                      <td colSpan={4} style={{ padding: '8px 12px', fontSize: 17, fontWeight: 700 }}>代墊公費合計</td>
+                      <td style={{ padding: '8px 12px', fontSize: 18, fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>NT$ {selectedTotal.toLocaleString()}</td>
                       <td></td>
                     </tr>
                   </tfoot>
@@ -505,54 +505,54 @@ export default function EmployeeAdvancesPage() {
                 {/* Settlement form */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
                   <div>
-                    <label style={{ fontSize: 13, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>付款帳戶 *</label>
-                    <select value={settleAccountId} onChange={e => setSettleAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 14 }}>
+                    <label style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>付款帳戶 *</label>
+                    <select value={settleAccountId} onChange={e => setSettleAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17 }}>
                       <option value="">選擇帳戶</option>
                       {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: 13, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>結算日期 *</label>
-                    <input type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 14, boxSizing: 'border-box' }} />
+                    <label style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>結算日期 *</label>
+                    <input type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 13, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>備註</label>
-                    <input value={settleNote} onChange={e => setSettleNote(e.target.value)} placeholder="選填" style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 14, boxSizing: 'border-box' }} />
+                    <label style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>備註</label>
+                    <input value={settleNote} onChange={e => setSettleNote(e.target.value)} placeholder="選填" style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
                   </div>
                 </div>
 
                 {/* Credit card bill section */}
                 <div style={{ background: '#faf5ff', border: '1px solid #d8b4fe', borderRadius: 8, padding: 16, marginBottom: 12 }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#7c3aed', marginBottom: 8 }}>信用卡帳單拆帳（選填）</h4>
-                  <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+                  <h4 style={{ fontSize: 17, fontWeight: 700, color: '#7c3aed', marginBottom: 8 }}>信用卡帳單拆帳（選填）</h4>
+                  <p style={{ fontSize: 15, color: '#6b7280', marginBottom: 12 }}>
                     若信用卡帳單包含老闆私帳，請輸入帳單總額，系統會自動計算私帳金額並建立「股東往來」交易記錄。
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, alignItems: 'end' }}>
                     <div>
-                      <label style={{ fontSize: 13, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>信用卡帳單總額</label>
-                      <input type="number" value={billTotal} onChange={e => setBillTotal(e.target.value)} placeholder="留空則不拆帳" style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 14, boxSizing: 'border-box' }} />
+                      <label style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>信用卡帳單總額</label>
+                      <input type="number" value={billTotal} onChange={e => setBillTotal(e.target.value)} placeholder="留空則不拆帳" style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: 13, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>老闆私帳金額（自動計算）</label>
-                      <div style={{ padding: '8px 10px', background: '#ede9fe', borderRadius: 6, fontSize: 15, fontWeight: 700, color: billTotal && privateAmount > 0 ? '#7c3aed' : '#9ca3af' }}>
+                      <label style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>老闆私帳金額（自動計算）</label>
+                      <div style={{ padding: '8px 10px', background: '#ede9fe', borderRadius: 6, fontSize: 18, fontWeight: 700, color: billTotal && privateAmount > 0 ? '#7c3aed' : '#9ca3af' }}>
                         {billTotal ? `NT$ ${privateAmount.toLocaleString()}` : '—'}
                       </div>
                     </div>
                     <div>
-                      <label style={{ fontSize: 13, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>私帳入帳科目</label>
-                      <select value={privateAccountId} onChange={e => setPrivateAccountId(e.target.value)} disabled={!billTotal || privateAmount <= 0} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 14, opacity: billTotal && privateAmount > 0 ? 1 : 0.5 }}>
+                      <label style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>私帳入帳科目</label>
+                      <select value={privateAccountId} onChange={e => setPrivateAccountId(e.target.value)} disabled={!billTotal || privateAmount <= 0} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 17, opacity: billTotal && privateAmount > 0 ? 1 : 0.5 }}>
                         <option value="">股東往來（預設）</option>
                         {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                       </select>
                     </div>
                   </div>
                   {billTotal && parseFloat(billTotal) < selectedTotal && (
-                    <div style={{ marginTop: 8, padding: 8, background: '#fef2f2', borderRadius: 6, fontSize: 13, color: '#dc2626' }}>
+                    <div style={{ marginTop: 8, padding: 8, background: '#fef2f2', borderRadius: 6, fontSize: 16, color: '#dc2626' }}>
                       帳單總額不能小於代墊公費合計 NT$ {selectedTotal.toLocaleString()}
                     </div>
                   )}
                   {billTotal && privateAmount > 0 && (
-                    <div style={{ marginTop: 8, padding: 8, background: '#f5f3ff', borderRadius: 6, fontSize: 13, color: '#5b21b6' }}>
+                    <div style={{ marginTop: 8, padding: 8, background: '#f5f3ff', borderRadius: 6, fontSize: 16, color: '#5b21b6' }}>
                       帳單總額 NT$ {parseFloat(billTotal).toLocaleString()} = 代墊公費 NT$ {selectedTotal.toLocaleString()} + 老闆私帳 NT$ {privateAmount.toLocaleString()}
                     </div>
                   )}
@@ -560,16 +560,16 @@ export default function EmployeeAdvancesPage() {
 
                 {/* Summary and settle button */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: '1px solid #86efac' }}>
-                  <div style={{ fontSize: 14, color: '#065f46' }}>
+                  <div style={{ fontSize: 17, color: '#065f46' }}>
                     <span style={{ fontWeight: 600 }}>付款總額：</span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#dc2626' }}>NT$ {(billTotal && privateAmount > 0 ? parseFloat(billTotal) : selectedTotal).toLocaleString()}</span>
+                    <span style={{ fontSize: 22, fontWeight: 700, color: '#dc2626' }}>NT$ {(billTotal && privateAmount > 0 ? parseFloat(billTotal) : selectedTotal).toLocaleString()}</span>
                     {billTotal && privateAmount > 0 && (
-                      <span style={{ fontSize: 13, color: '#6b7280', marginLeft: 8 }}>
+                      <span style={{ fontSize: 16, color: '#6b7280', marginLeft: 8 }}>
                         （公費 {selectedTotal.toLocaleString()} + 私帳 {privateAmount.toLocaleString()}）
                       </span>
                     )}
                   </div>
-                  <button onClick={handleSettle} disabled={settling} style={{ padding: '10px 28px', background: '#059669', color: '#fff', border: 'none', borderRadius: 8, cursor: settling ? 'not-allowed' : 'pointer', fontSize: 15, fontWeight: 700, opacity: settling ? 0.6 : 1 }}>
+                  <button onClick={handleSettle} disabled={settling} style={{ padding: '10px 28px', background: '#059669', color: '#fff', border: 'none', borderRadius: 8, cursor: settling ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700, opacity: settling ? 0.6 : 1 }}>
                     {settling ? '結算中...' : '確認結算'}
                   </button>
                 </div>
@@ -602,22 +602,22 @@ export default function EmployeeAdvancesPage() {
                       <td style={tdStyle}>
                         <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} />
                       </td>
-                      <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 14 }}>{a.advanceNo}</span></td>
+                      <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 17 }}>{a.advanceNo}</span></td>
                       <td style={tdStyle}><span style={{ fontWeight: 600 }}>{a.employeeName}</span></td>
                       <td style={tdStyle}>
-                        <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 13, background: a.paymentMethod === '信用卡' ? '#dbeafe' : '#f3f4f6', color: a.paymentMethod === '信用卡' ? '#1d4ed8' : '#374151' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 16, background: a.paymentMethod === '信用卡' ? '#dbeafe' : '#f3f4f6', color: a.paymentMethod === '信用卡' ? '#1d4ed8' : '#374151' }}>
                           {a.paymentMethod}
                         </span>
                       </td>
-                      <td style={tdStyle}><span style={{ fontSize: 14, color: '#6b7280' }}>{a.sourceType === 'maintenance' ? '維護費' : a.sourceType === 'expense' ? '費用' : '其他'}</span></td>
-                      <td style={tdStyle}><span style={{ fontSize: 14 }}>{a.expenseName || '-'}</span></td>
-                      <td style={tdStyle}><span style={{ fontSize: 14 }}>{a.summary || a.sourceDescription || '-'}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 17, color: '#6b7280' }}>{a.sourceType === 'maintenance' ? '維護費' : a.sourceType === 'expense' ? '費用' : '其他'}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 17 }}>{a.expenseName || '-'}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 17 }}>{a.summary || a.sourceDescription || '-'}</span></td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>NT$ {Number(a.amount).toLocaleString()}</td>
-                      <td style={tdStyle}><span style={{ fontSize: 14, color: '#6b7280' }}>{a.createdAt?.substring(0, 10)}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 17, color: '#6b7280' }}>{a.createdAt?.substring(0, 10)}</span></td>
                       <td style={tdStyle}>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => openEditAdvance(a)} style={{ padding: '4px 10px', fontSize: 13, color: '#2563eb', background: 'none', border: '1px solid #2563eb', borderRadius: 4, cursor: 'pointer' }}>編輯</button>
-                          <button onClick={() => handleDeleteAdvance(a)} style={{ padding: '4px 10px', fontSize: 13, color: '#dc2626', background: 'none', border: '1px solid #dc2626', borderRadius: 4, cursor: 'pointer' }}>刪除</button>
+                          <button onClick={() => openEditAdvance(a)} style={{ padding: '4px 10px', fontSize: 16, color: '#2563eb', background: 'none', border: '1px solid #2563eb', borderRadius: 4, cursor: 'pointer' }}>編輯</button>
+                          <button onClick={() => handleDeleteAdvance(a)} style={{ padding: '4px 10px', fontSize: 16, color: '#dc2626', background: 'none', border: '1px solid #dc2626', borderRadius: 4, cursor: 'pointer' }}>刪除</button>
                         </div>
                       </td>
                     </tr>
@@ -656,17 +656,17 @@ export default function EmployeeAdvancesPage() {
                 <tbody>
                   {sortedSettledAdvances.map(a => (
                     <tr key={a.id}>
-                      <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 14 }}>{a.advanceNo}</span></td>
+                      <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 17 }}>{a.advanceNo}</span></td>
                       <td style={tdStyle}><span style={{ fontWeight: 600 }}>{a.employeeName}</span></td>
                       <td style={tdStyle}>
-                        <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 13, background: a.paymentMethod === '信用卡' ? '#dbeafe' : '#f3f4f6', color: a.paymentMethod === '信用卡' ? '#1d4ed8' : '#374151' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 12, fontSize: 16, background: a.paymentMethod === '信用卡' ? '#dbeafe' : '#f3f4f6', color: a.paymentMethod === '信用卡' ? '#1d4ed8' : '#374151' }}>
                           {a.paymentMethod}
                         </span>
                       </td>
-                      <td style={tdStyle}><span style={{ fontSize: 14 }}>{a.sourceDescription || '-'}</span></td>
+                      <td style={tdStyle}><span style={{ fontSize: 17 }}>{a.sourceDescription || '-'}</span></td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>NT$ {Number(a.amount).toLocaleString()}</td>
                       <td style={tdStyle}>{a.settledDate || '-'}</td>
-                      <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 14, color: '#059669' }}>{a.settlementTxNo || '-'}</span></td>
+                      <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 17, color: '#059669' }}>{a.settlementTxNo || '-'}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -696,9 +696,9 @@ export default function EmployeeAdvancesPage() {
                 <tbody>
                   {sortedEmployeeSummary.map(emp => (
                     <tr key={emp.name}>
-                      <td style={tdStyle}><span style={{ fontWeight: 600, fontSize: 14 }}>{emp.name}</span></td>
+                      <td style={tdStyle}><span style={{ fontWeight: 600, fontSize: 17 }}>{emp.name}</span></td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
-                        {emp.pending > 0 ? <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 12px', borderRadius: 12, fontSize: 14, fontWeight: 600 }}>{emp.pending}</span> : <span style={{ color: '#9ca3af' }}>0</span>}
+                        {emp.pending > 0 ? <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 12px', borderRadius: 12, fontSize: 17, fontWeight: 600 }}>{emp.pending}</span> : <span style={{ color: '#9ca3af' }}>0</span>}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontWeight: emp.pendingAmount > 0 ? 700 : 400, color: emp.pendingAmount > 0 ? '#dc2626' : '#9ca3af' }}>
                         NT$ {emp.pendingAmount.toLocaleString()}
@@ -708,7 +708,7 @@ export default function EmployeeAdvancesPage() {
                       <td style={{ ...tdStyle, textAlign: 'center' }}>{emp.total}</td>
                       <td style={tdStyle}>
                         {emp.pending > 0 && (
-                          <button onClick={() => { setActiveTab('pending'); setFilterEmployee(emp.name); }} style={{ padding: '4px 12px', background: '#059669', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                          <button onClick={() => { setActiveTab('pending'); setFilterEmployee(emp.name); }} style={{ padding: '4px 12px', background: '#059669', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 15 }}>
                             去結算
                           </button>
                         )}
@@ -726,69 +726,69 @@ export default function EmployeeAdvancesPage() {
       {editingAdvance && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: 24, borderRadius: 12, width: 500, maxHeight: '80vh', overflow: 'auto' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>編輯代墊款 — {editingAdvance.advanceNo}</h3>
+            <h3 style={{ fontSize: 19, fontWeight: 700, marginBottom: 16 }}>編輯代墊款 — {editingAdvance.advanceNo}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>代墊員工 *</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>代墊員工 *</label>
                 <input value={editForm.employeeName} onChange={e => setEditForm(f => ({ ...f, employeeName: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>付款方式</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>付款方式</label>
                 <select value={editForm.paymentMethod} onChange={e => setEditForm(f => ({ ...f, paymentMethod: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }}>
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }}>
                   <option value="現金">現金</option>
                   <option value="信用卡">信用卡</option>
                   <option value="其他">其他</option>
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>金額 *</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>金額 *</label>
                 <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box', textAlign: 'right' }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box', textAlign: 'right' }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>費用名稱</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>費用名稱</label>
                 <select value={editForm.expenseName} onChange={e => setEditForm(f => ({ ...f, expenseName: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }}>
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }}>
                   <option value="">選填</option>
                   {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   {editForm.expenseName && !expenseCategories.some(c => c.name === editForm.expenseName) && <option value={editForm.expenseName}>{editForm.expenseName} (舊值)</option>}
                 </select>
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>摘要</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>摘要</label>
                 <input value={editForm.summary} onChange={e => setEditForm(f => ({ ...f, summary: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>來源說明</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>來源說明</label>
                 <input value={editForm.sourceDescription} onChange={e => setEditForm(f => ({ ...f, sourceDescription: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>館別</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>館別</label>
                 <select value={editForm.warehouse} onChange={e => setEditForm(f => ({ ...f, warehouse: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }}>
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }}>
                   <option value="">選填</option>
                   {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                   {editForm.warehouse && !warehousesList.some(w => w.name === editForm.warehouse) && <option value={editForm.warehouse}>{editForm.warehouse} (舊值)</option>}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>備註</label>
+                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>備註</label>
                 <input value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 14, boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
             </div>
             {editingAdvance.paymentOrderNo && (
-              <div style={{ marginTop: 12, padding: 8, background: '#f3f4f6', borderRadius: 6, fontSize: 12, color: '#6b7280' }}>
+              <div style={{ marginTop: 12, padding: 8, background: '#f3f4f6', borderRadius: 6, fontSize: 15, color: '#6b7280' }}>
                 關聯付款單：{editingAdvance.paymentOrderNo}（修改金額會同步更新付款單和費用記錄）
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-              <button onClick={() => setEditingAdvance(null)} style={{ padding: '8px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>取消</button>
-              <button onClick={handleEditSave} style={{ padding: '8px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>儲存</button>
+              <button onClick={() => setEditingAdvance(null)} style={{ padding: '8px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 16 }}>取消</button>
+              <button onClick={handleEditSave} style={{ padding: '8px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 16, fontWeight: 600 }}>儲存</button>
             </div>
           </div>
         </div>

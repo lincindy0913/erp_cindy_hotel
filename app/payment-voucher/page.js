@@ -20,6 +20,10 @@ export default function PaymentVoucherListPage() {
   });
   const [filteredInvoices, setFilteredInvoices] = useState([]);
 
+  // Batch print state
+  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
+  const [batchPrinting, setBatchPrinting] = useState(false);
+
   // Monthly voucher state (spec23 v3)
   const [voucherFilter, setVoucherFilter] = useState({
     supplierId: '',
@@ -186,6 +190,49 @@ export default function PaymentVoucherListPage() {
       window.open(blobUrl, '_blank');
     } catch (e) {
       alert('列印失敗：' + (e.message || '網路錯誤'));
+    }
+  }
+
+  // Batch select helpers
+  function toggleSelectOrder(orderId) {
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(orders) {
+    if (selectedOrderIds.size === orders.length) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(orders.map(o => o.id)));
+    }
+  }
+
+  async function batchPrintVouchers() {
+    if (selectedOrderIds.size === 0) return;
+    setBatchPrinting(true);
+    try {
+      const res = await fetch('/api/export/payment-voucher/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids: Array.from(selectedOrderIds) }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
+        alert('批量列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (e) {
+      alert('批量列印失敗：' + (e.message || '網路錯誤'));
+    } finally {
+      setBatchPrinting(false);
     }
   }
 
@@ -431,10 +478,53 @@ export default function PaymentVoucherListPage() {
 
         {/* ======== Payment Orders ======== */}
         {activeView === 'orders' && (
+          <div className="space-y-6">
+          {/* Batch print toolbar */}
+          {filteredOrders.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4 border flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filteredOrders.length > 0 && selectedOrderIds.size === filteredOrders.length}
+                    onChange={() => toggleSelectAll(filteredOrders)}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700">全選</span>
+                </label>
+                <span className="text-sm text-gray-500">
+                  已選擇 <strong className="text-indigo-600">{selectedOrderIds.size}</strong> 張傳票
+                </span>
+              </div>
+              <button
+                onClick={batchPrintVouchers}
+                disabled={selectedOrderIds.size === 0 || batchPrinting}
+                className="px-5 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                {batchPrinting ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    產生 PDF 中...
+                  </>
+                ) : (
+                  <>批量列印 ({selectedOrderIds.size})</>
+                )}
+              </button>
+            </div>
+          )}
+
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-3 py-3 text-center w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredOrders.length > 0 && selectedOrderIds.size === filteredOrders.length}
+                      onChange={() => toggleSelectAll(filteredOrders)}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">付款單號</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">廠商</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
@@ -446,9 +536,9 @@ export default function PaymentVoucherListPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loading ? (
-                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
+                  <tr><td colSpan="8" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
                 ) : filteredOrders.length === 0 ? (
-                  <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-500">沒有找到付款單資料</td></tr>
+                  <tr><td colSpan="8" className="px-4 py-8 text-center text-gray-500">沒有找到付款單資料</td></tr>
                 ) : (
                   filteredOrders.map((order, index) => {
                     const isExpanded = expandedOrderId === order.id;
@@ -458,6 +548,14 @@ export default function PaymentVoucherListPage() {
                     return (
                       <Fragment key={order.id}>
                         <tr className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}>
+                          <td className="px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedOrderIds.has(order.id)}
+                              onChange={() => toggleSelectOrder(order.id)}
+                              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                          </td>
                           <td className="px-4 py-3 text-sm font-medium text-indigo-700">{order.orderNo}</td>
                           <td className="px-4 py-3 text-sm">{order.supplierName || '-'}</td>
                           <td className="px-4 py-3 text-sm">{order.warehouse || '-'}</td>
@@ -503,7 +601,7 @@ export default function PaymentVoucherListPage() {
 
                         {isExpanded && (
                           <tr className="bg-indigo-50/50">
-                            <td colSpan="7" className="px-4 py-4">
+                            <td colSpan="8" className="px-4 py-4">
                               <div className="space-y-4">
                                 <div className="bg-white border border-indigo-200 rounded-lg p-4">
                                   <div className="text-sm font-semibold text-indigo-700 mb-3">完整追蹤鏈</div>
@@ -558,6 +656,7 @@ export default function PaymentVoucherListPage() {
                 )}
               </tbody>
             </table>
+          </div>
           </div>
         )}
 

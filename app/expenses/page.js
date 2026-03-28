@@ -973,7 +973,7 @@ export default function ExpensesPage() {
     <div style={{ minHeight: '100vh', background: '#f4f6f9' }}>
       <Navigation />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>費用管理</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 16 }}>費用管理</h1>
 
         {/* Main Tabs: 進銷存每月費用 / 固定費用 */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 0, borderBottom: '2px solid #dee2e6' }}>
@@ -988,7 +988,7 @@ export default function ExpensesPage() {
                 borderBottom: mainTab === tab.key ? '2px solid #fff' : 'none',
                 borderRadius: '8px 8px 0 0',
                 fontWeight: mainTab === tab.key ? 700 : 500,
-                fontSize: 15,
+                fontSize: 18,
                 cursor: 'pointer',
                 marginBottom: mainTab === tab.key ? -2 : 0,
                 position: 'relative'
@@ -1010,7 +1010,7 @@ export default function ExpensesPage() {
                 border: subTab === tab.key ? 'none' : '1px solid #dee2e6',
                 borderRadius: 6,
                 fontWeight: 500,
-                fontSize: 14,
+                fontSize: 17,
                 cursor: 'pointer'
               }}>
               {tab.label}
@@ -1023,7 +1023,7 @@ export default function ExpensesPage() {
           {subTab === 'templates' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h2 style={{ fontSize: 17, fontWeight: 600 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 600 }}>
                   {mainTab === 'purchase' ? '進銷存費用範本' : '固定費用範本'}
                 </h2>
                 <button onClick={() => { resetTemplateForm(); setShowTemplateForm(true); }}
@@ -1035,7 +1035,7 @@ export default function ExpensesPage() {
               {/* Template Form */}
               {showTemplateForm && (
                 <div style={{ border: '1px solid #dee2e6', borderRadius: 8, padding: 20, marginBottom: 20, background: '#fafbfc' }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
                     {editingTemplate ? '編輯範本' : '新增範本'}
                   </h3>
 
@@ -1099,7 +1099,7 @@ export default function ExpensesPage() {
                         </div>
                       </div>
 
-                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>預設進貨品項</h4>
+                      <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>預設進貨品項</h4>
                       <table style={tableStyle}>
                         <thead>
                           <tr>
@@ -1142,7 +1142,7 @@ export default function ExpensesPage() {
                               </td>
                               <td style={tdStyle}>
                                 <button onClick={() => removePurchaseItem(idx)}
-                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 19 }}>✕</button>
                               </td>
                             </tr>
                           ))}
@@ -1156,7 +1156,7 @@ export default function ExpensesPage() {
                         </tfoot>
                       </table>
                       <button onClick={addPurchaseItem}
-                        style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                        style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>
                         + 新增品項
                       </button>
                     </div>
@@ -1165,7 +1165,7 @@ export default function ExpensesPage() {
                   {/* Fixed-type: 費用項目（每筆自選館別、付款方式、轉帳存簿）*/}
                   {mainTab === 'fixed' && (
                     <div style={{ marginBottom: 16 }}>
-                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>費用項目（每筆需選擇館別、付款方式）</h4>
+                      <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>費用項目（每筆需選擇館別、付款方式）</h4>
                       <table style={tableStyle}>
                         <thead>
                           <tr>
@@ -1244,7 +1244,7 @@ export default function ExpensesPage() {
                                   <input value={line.advancedBy || ''}
                                     onChange={e => updateEntryLine(idx, 'advancedBy', e.target.value)}
                                     style={{ ...inputStyle, marginBottom: 0 }} placeholder="代墊員工" />
-                                ) : <span style={{ fontSize: 12, color: '#999' }}>—</span>}
+                                ) : <span style={{ fontSize: 15, color: '#999' }}>—</span>}
                               </td>
                               <td style={tdStyle}>
                                 <input value={line.note}
@@ -1258,7 +1258,7 @@ export default function ExpensesPage() {
                               </td>
                               <td style={tdStyle}>
                                 <button onClick={() => removeEntryLine(idx)}
-                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 19 }}>✕</button>
                               </td>
                             </tr>
                           ))}
@@ -1266,7 +1266,7 @@ export default function ExpensesPage() {
                       </table>
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                         <button type="button" onClick={addEntryLineSingle}
-                          style={{ padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                          style={{ padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>
                           + 新增費用
                         </button>
                       </div>
@@ -1318,7 +1318,7 @@ export default function ExpensesPage() {
                         <tr key={tmpl.id} style={{ opacity: tmpl.isActive ? 1 : 0.5 }}>
                           <td style={tdStyle}>
                             <div style={{ fontWeight: 500 }}>{tmpl.name}</div>
-                            {tmpl.description && <div style={{ fontSize: 12, color: '#888' }}>{tmpl.description}</div>}
+                            {tmpl.description && <div style={{ fontSize: 15, color: '#888' }}>{tmpl.description}</div>}
                           </td>
                           <td style={tdStyle}>{tmpl.summary || '-'}</td>
                           <td style={tdStyle}>{tmpl.category?.name || '-'}</td>
@@ -1332,7 +1332,7 @@ export default function ExpensesPage() {
                           <td style={{ ...tdStyle, textAlign: 'right' }}>{totalAmt > 0 ? totalAmt.toLocaleString() : '-'}</td>
                           <td style={tdStyle}>
                             <span style={{
-                              padding: '2px 8px', borderRadius: 4, fontSize: 12,
+                              padding: '2px 8px', borderRadius: 4, fontSize: 15,
                               background: tmpl.isActive ? '#d4edda' : '#f8d7da',
                               color: tmpl.isActive ? '#155724' : '#721c24'
                             }}>
@@ -1363,7 +1363,7 @@ export default function ExpensesPage() {
           {/* ====== EXECUTE TAB ====== */}
           {subTab === 'execute' && (
             <div>
-              <h2 style={{ fontSize: 17, fontWeight: 600, marginBottom: 16 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
                 快速執行 - {mainTab === 'purchase' ? '進銷存每月費用' : '固定費用'}
               </h2>
 
@@ -1440,7 +1440,7 @@ export default function ExpensesPage() {
                         </div>
                       </div>
 
-                      <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>進貨品項</h4>
+                      <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>進貨品項</h4>
                       <table style={tableStyle}>
                         <thead>
                           <tr>
@@ -1483,7 +1483,7 @@ export default function ExpensesPage() {
                               </td>
                               <td style={tdStyle}>
                                 <button onClick={() => removeExecuteItem(idx)}
-                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                                  style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 19 }}>✕</button>
                               </td>
                             </tr>
                           ))}
@@ -1491,7 +1491,7 @@ export default function ExpensesPage() {
                         <tfoot>
                           <tr>
                             <td colSpan={3} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
-                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 18 }}>
                               {getExecutePurchaseTotal().toLocaleString()}
                             </td>
                             <td colSpan={2} style={tdStyle}></td>
@@ -1499,13 +1499,13 @@ export default function ExpensesPage() {
                         </tfoot>
                       </table>
                       <button onClick={addExecuteItem}
-                        style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                        style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>
                         + 新增品項
                       </button>
 
                       {/* Invoice section */}
                       <div style={{ marginTop: 20, padding: 16, background: '#f0f7ff', borderRadius: 8, border: '1px solid #bee5eb' }}>
-                        <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#0c5460' }}>
+                        <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 12, color: '#0c5460' }}>
                           發票資訊 (選填 - 填寫後會同時建立發票記錄)
                         </h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
@@ -1574,7 +1574,7 @@ export default function ExpensesPage() {
                       </div>
                       {/* 老闆信用卡代墊模式 */}
                       <div style={{ background: executeForm.creditCardAdvanceMode ? '#f3e8ff' : '#f8f9fa', border: `1px solid ${executeForm.creditCardAdvanceMode ? '#8b5cf6' : '#dee2e6'}`, borderRadius: 8, padding: 12, marginBottom: 12, transition: 'all 0.2s' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, color: executeForm.creditCardAdvanceMode ? '#6d28d9' : '#495057' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 17, fontWeight: 600, color: executeForm.creditCardAdvanceMode ? '#6d28d9' : '#495057' }}>
                           <input type="checkbox" checked={!!executeForm.creditCardAdvanceMode}
                             onChange={e => {
                               const checked = e.target.checked;
@@ -1596,12 +1596,12 @@ export default function ExpensesPage() {
                         </label>
                         {executeForm.creditCardAdvanceMode && (
                           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #c4b5fd' }}>
-                            <div style={{ fontSize: 12, color: '#6d28d9', marginBottom: 8, lineHeight: 1.6 }}>
+                            <div style={{ fontSize: 15, color: '#6d28d9', marginBottom: 8, lineHeight: 1.6 }}>
                               開啟後，所有費用項目將自動建立<strong>員工代墊記錄</strong>（不會進入出納待付清單）。<br/>
                               出納繳信用卡帳單時，到「員工預支」頁面勾選結算即可。
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <label style={{ fontSize: 12, color: '#6d28d9', fontWeight: 500, whiteSpace: 'nowrap' }}>代墊人</label>
+                              <label style={{ fontSize: 15, color: '#6d28d9', fontWeight: 500, whiteSpace: 'nowrap' }}>代墊人</label>
                               <input value={executeForm.creditCardAdvanceName || ''}
                                 onChange={e => {
                                   const name = e.target.value;
@@ -1621,9 +1621,9 @@ export default function ExpensesPage() {
                       {!executeForm.creditCardAdvanceMode && (!executeForm.entryLines || executeForm.entryLines.length === 0) &&
                         (executeForm.paymentMethod === '信用卡' || executeForm.paymentMethod === '員工代付') && (
                         <div style={{ background: '#f3e8ff', border: '1px solid #c4b5fd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#6d28d9', marginBottom: 8 }}>員工代墊資訊（存檔後自動連動代墊款管理）</div>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: '#6d28d9', marginBottom: 8 }}>員工代墊資訊（存檔後自動連動代墊款管理）</div>
                           <div>
-                            <label style={{ fontSize: 11, color: '#6d28d9' }}>代墊員工 *</label>
+                            <label style={{ fontSize: 14, color: '#6d28d9' }}>代墊員工 *</label>
                             <input value={executeForm.advancedBy || ''}
                               onChange={e => setExecuteForm(prev => ({ ...prev, advancedBy: e.target.value }))}
                               placeholder="員工姓名" style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }} />
@@ -1634,28 +1634,28 @@ export default function ExpensesPage() {
                       {/* 付款方式為支票時，顯示支票資訊（存檔後連動支票管理） */}
                       {executeForm.paymentMethod === '支票' && (
                         <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#b45309', marginBottom: 8 }}>支票資訊（存檔後連動支票管理）</div>
+                          <div style={{ fontSize: 16, fontWeight: 600, color: '#b45309', marginBottom: 8 }}>支票資訊（存檔後連動支票管理）</div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                             <div>
-                              <label style={{ fontSize: 11, color: '#b45309' }}>付款(開票)日期 *</label>
+                              <label style={{ fontSize: 14, color: '#b45309' }}>付款(開票)日期 *</label>
                               <input type="date" value={executeForm.checkIssueDate || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkIssueDate: e.target.value }))}
                                 style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
                             <div>
-                              <label style={{ fontSize: 11, color: '#b45309' }}>支票日期(到期日) *</label>
+                              <label style={{ fontSize: 14, color: '#b45309' }}>支票日期(到期日) *</label>
                               <input type="date" value={executeForm.checkDate || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkDate: e.target.value }))}
                                 style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
                             <div>
-                              <label style={{ fontSize: 11, color: '#b45309' }}>支票號碼 *</label>
+                              <label style={{ fontSize: 14, color: '#b45309' }}>支票號碼 *</label>
                               <input type="text" value={executeForm.checkNo || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkNo: e.target.value }))}
                                 placeholder="請輸入支票號碼" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
                             <div>
-                              <label style={{ fontSize: 11, color: '#b45309' }}>開票帳戶 *</label>
+                              <label style={{ fontSize: 14, color: '#b45309' }}>開票帳戶 *</label>
                               <select value={executeForm.checkAccountId || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkAccountId: e.target.value }))}
                                 style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }}>
@@ -1666,7 +1666,7 @@ export default function ExpensesPage() {
                               </select>
                             </div>
                             <div style={{ gridColumn: '1 / -1' }}>
-                              <label style={{ fontSize: 11, color: '#b45309' }}>備註</label>
+                              <label style={{ fontSize: 14, color: '#b45309' }}>備註</label>
                               <input type="text" value={executeForm.checkNote || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkNote: e.target.value }))}
                                 placeholder="選填" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
@@ -1677,7 +1677,7 @@ export default function ExpensesPage() {
 
                       {/* 固定費用：依範本列出費用項目，可新增/刪除/編輯 */}
                       <div style={{ marginBottom: 20 }}>
-                          <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>費用項目（請填入本月金額）</h4>
+                          <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>費用項目（請填入本月金額）</h4>
                           <table style={tableStyle}>
                             <thead>
                               <tr>
@@ -1743,7 +1743,7 @@ export default function ExpensesPage() {
                                             <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
                                           ))}
                                         </select>
-                                      ) : <span style={{ fontSize: 12, color: '#999' }}>—</span>}
+                                      ) : <span style={{ fontSize: 15, color: '#999' }}>—</span>}
                                     </td>
                                     <td style={tdStyle}>
                                       <input value={line.summary || ''}
@@ -1762,7 +1762,7 @@ export default function ExpensesPage() {
                                           entryLines: prev.entryLines.filter((_, i) => i !== realIdx)
                                         }));
                                       }}
-                                        style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                                        style={{ color: '#dc3545', border: 'none', background: 'none', cursor: 'pointer', fontSize: 19 }}>✕</button>
                                     </td>
                                   </tr>
                                 );
@@ -1771,7 +1771,7 @@ export default function ExpensesPage() {
                             <tfoot>
                               <tr>
                                 <td colSpan={6} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
-                                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 15 }}>
+                                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 18 }}>
                                   {executeForm.entryLines
                                     .filter(l => l.entryType === 'debit')
                                     .reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
@@ -1800,7 +1800,7 @@ export default function ExpensesPage() {
                               }]
                             }));
                           }}
-                            style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>
+                            style={{ marginTop: 8, padding: '4px 12px', background: '#e8f0fe', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>
                             + 新增費用項目
                           </button>
                         </div>
@@ -1836,14 +1836,14 @@ export default function ExpensesPage() {
                         borderRadius: 6,
                         cursor: submitting ? 'not-allowed' : 'pointer',
                         fontWeight: 600,
-                        fontSize: 15
+                        fontSize: 18
                       }}>
                       {submitting ? '執行中...' : '執行'}
                     </button>
                   </div>
 
                   {/* Data flow info */}
-                  <div style={{ marginTop: 16, padding: 12, background: '#f8f9fa', borderRadius: 6, fontSize: 13, color: '#666' }}>
+                  <div style={{ marginTop: 16, padding: 12, background: '#f8f9fa', borderRadius: 6, fontSize: 16, color: '#666' }}>
                     {mainTab === 'purchase' ? (
                       <div>
                         <strong>執行後資料流向：</strong>
@@ -1871,7 +1871,7 @@ export default function ExpensesPage() {
           {subTab === 'records' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h2 style={{ fontSize: 17, fontWeight: 600 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 600 }}>
                   {mainTab === 'purchase' ? '進銷存費用記錄' : '固定費用記錄'}
                 </h2>
               </div>
@@ -1879,13 +1879,13 @@ export default function ExpensesPage() {
               {/* Filters */}
               <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 12 }}>月份</label>
+                  <label style={{ ...labelStyle, fontSize: 15 }}>月份</label>
                   <input type="month" value={recordFilter.month}
                     onChange={e => setRecordFilter(prev => ({ ...prev, month: e.target.value }))}
                     style={{ ...inputStyle, width: 160 }} />
                 </div>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 12 }}>館別</label>
+                  <label style={{ ...labelStyle, fontSize: 15 }}>館別</label>
                   <select value={recordFilter.warehouse}
                     onChange={e => setRecordFilter(prev => ({ ...prev, warehouse: e.target.value }))}
                     style={{ ...inputStyle, width: 120 }}>
@@ -1894,7 +1894,7 @@ export default function ExpensesPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 12 }}>付款狀態</label>
+                  <label style={{ ...labelStyle, fontSize: 15 }}>付款狀態</label>
                   <select value={recordFilter.status}
                     onChange={e => setRecordFilter(prev => ({ ...prev, status: e.target.value }))}
                     style={{ ...inputStyle, width: 120 }}>
@@ -1932,7 +1932,7 @@ export default function ExpensesPage() {
                       return (
                       <tr key={r.id} style={{ background: '#fff' }}>
                         <td style={tdStyle}>
-                          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{r.recordNo}</span>
+                          <span style={{ fontFamily: 'monospace', fontSize: 16 }}>{r.recordNo}</span>
                         </td>
                         <td style={tdStyle}>{r.template?.name || '-'}</td>
                         <td style={tdStyle}>{r.expenseMonth}</td>
@@ -1941,7 +1941,7 @@ export default function ExpensesPage() {
                           {Number(r.totalDebit).toLocaleString()}
                         </td>
                         <td style={tdStyle}>
-                          <div style={{ fontSize: 12 }}>
+                          <div style={{ fontSize: 15 }}>
                             {r.purchaseNo && <div>進貨: <span style={{ color: '#1a73e8' }}>{r.purchaseNo}</span></div>}
                             {r.salesNo && <div>發票: <span style={{ color: '#1a73e8' }}>{r.salesNo}</span></div>}
                             {r.paymentOrderNo && <div>付款: <span style={{ color: '#1a73e8' }}>{r.paymentOrderNo}</span></div>}
@@ -1950,7 +1950,7 @@ export default function ExpensesPage() {
                         </td>
                         <td style={tdStyle}>
                           <span style={{
-                            padding: '2px 8px', borderRadius: 4, fontSize: 12,
+                            padding: '2px 8px', borderRadius: 4, fontSize: 15,
                             background: ps === '已付款' ? '#d4edda' : ps === '待出納' ? '#fff3cd' : ps === '已代墊' ? '#f3e8ff' : '#e2e3e5',
                             color: ps === '已付款' ? '#155724' : ps === '待出納' ? '#856404' : ps === '已代墊' ? '#6d28d9' : '#383d41'
                           }}>
@@ -1979,14 +1979,14 @@ export default function ExpensesPage() {
                     {sortedExpenseRecords.map(r => expandedRecord === r.id && (
                       <tr key={`detail-${r.id}`}>
                         <td colSpan={8} style={{ padding: 16, background: '#fafbfc' }}>
-                          <div style={{ fontSize: 13 }}>
+                          <div style={{ fontSize: 16 }}>
                             <div style={{ marginBottom: 8 }}>
                               <strong>建立者:</strong> {r.createdBy} | <strong>建立時間:</strong> {r.createdAt?.split('T')[0]}
                               {r.confirmedBy && <> | <strong>確認者:</strong> {r.confirmedBy}</>}
                               {r.note && <> | <strong>備註:</strong> {r.note}</>}
                             </div>
                             {r.entryLines && r.entryLines.length > 0 && (
-                              <table style={{ ...tableStyle, fontSize: 12 }}>
+                              <table style={{ ...tableStyle, fontSize: 15 }}>
                                 <thead>
                                   <tr>
                                     <th style={{ ...thStyle, padding: '4px 8px' }}>費用名稱</th>
@@ -2013,7 +2013,7 @@ export default function ExpensesPage() {
                 </table>
               )}
 
-              <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
+              <div style={{ marginTop: 8, fontSize: 16, color: '#888' }}>
                 共 {recordsTotal} 筆記錄
               </div>
             </div>
@@ -2028,8 +2028,8 @@ export default function ExpensesPage() {
           background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{ background: '#fff', padding: 24, borderRadius: 8, width: 560, maxHeight: '80vh', overflow: 'auto' }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>編輯費用記錄</h3>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 19, fontWeight: 600, marginBottom: 4 }}>編輯費用記錄</h3>
+            <div style={{ fontSize: 15, color: '#888', marginBottom: 16 }}>
               {editingRecord.recordNo} | {editingRecord.warehouse} | {editingRecord.expenseMonth}
               {editingRecord.paymentOrderNo && <> | 付款單: {editingRecord.paymentOrderNo}</>}
             </div>
@@ -2063,7 +2063,7 @@ export default function ExpensesPage() {
                           lines[i] = { ...lines[i], accountingName: e.target.value };
                           setEditForm(prev => ({ ...prev, entryLines: lines }));
                         }}
-                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13 }} />
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 16 }} />
                     </td>
                     <td style={{ ...tdStyle, padding: '4px 6px' }}>
                       <input value={line.accountingCode}
@@ -2072,7 +2072,7 @@ export default function ExpensesPage() {
                           lines[i] = { ...lines[i], accountingCode: e.target.value };
                           setEditForm(prev => ({ ...prev, entryLines: lines }));
                         }}
-                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13, width: 80 }} />
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 16, width: 80 }} />
                     </td>
                     <td style={{ ...tdStyle, padding: '4px 6px' }}>
                       <input value={line.summary}
@@ -2081,7 +2081,7 @@ export default function ExpensesPage() {
                           lines[i] = { ...lines[i], summary: e.target.value };
                           setEditForm(prev => ({ ...prev, entryLines: lines }));
                         }}
-                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13 }} />
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 16 }} />
                     </td>
                     <td style={{ ...tdStyle, padding: '4px 6px' }}>
                       <input type="number" value={line.amount}
@@ -2090,7 +2090,7 @@ export default function ExpensesPage() {
                           lines[i] = { ...lines[i], amount: e.target.value };
                           setEditForm(prev => ({ ...prev, entryLines: lines }));
                         }}
-                        style={{ ...inputStyle, marginBottom: 0, fontSize: 13, textAlign: 'right' }} />
+                        style={{ ...inputStyle, marginBottom: 0, fontSize: 16, textAlign: 'right' }} />
                     </td>
                     <td style={{ ...tdStyle, padding: '4px 6px', textAlign: 'center' }}>
                       {editForm.entryLines.length > 1 && (
@@ -2111,7 +2111,7 @@ export default function ExpensesPage() {
             }))}
               style={{ ...smallBtnStyle, marginBottom: 12 }}>+ 新增明細</button>
 
-            <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
+            <div style={{ textAlign: 'right', fontSize: 17, fontWeight: 600, marginBottom: 12 }}>
               合計: NT$ {editForm.entryLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0).toLocaleString()}
             </div>
 
@@ -2139,18 +2139,18 @@ export default function ExpensesPage() {
 }
 
 // ====== Styles ======
-const labelStyle = { display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 4, color: '#555' };
+const labelStyle = { display: 'block', fontSize: 16, fontWeight: 500, marginBottom: 4, color: '#555' };
 const inputStyle = {
   width: '100%', padding: '6px 10px', border: '1px solid #dee2e6', borderRadius: 4,
-  fontSize: 14, boxSizing: 'border-box', marginBottom: 4
+  fontSize: 17, boxSizing: 'border-box', marginBottom: 4
 };
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 14 };
+const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: 17 };
 const thStyle = {
   textAlign: 'left', padding: '8px 10px', background: '#f8f9fa',
-  borderBottom: '2px solid #dee2e6', fontWeight: 600, fontSize: 13
+  borderBottom: '2px solid #dee2e6', fontWeight: 600, fontSize: 16
 };
 const tdStyle = { padding: '8px 10px', borderBottom: '1px solid #eee', verticalAlign: 'middle' };
 const smallBtnStyle = {
   padding: '3px 8px', background: 'none', border: '1px solid #dee2e6',
-  borderRadius: 4, cursor: 'pointer', fontSize: 12, color: '#1a73e8'
+  borderRadius: 4, cursor: 'pointer', fontSize: 15, color: '#1a73e8'
 };

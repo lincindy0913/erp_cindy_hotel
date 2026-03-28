@@ -325,18 +325,18 @@ export default function AnalyticsPage() {
     <div className="min-h-screen page-bg-analytics">
       <Navigation borderColor="border-cyan-500" />
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-[100rem] mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">決策分析</h2>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-1 mb-6 bg-white rounded-lg shadow-sm p-1">
+        <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow-sm p-1">
           {ANALYTICS_TABS.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'bg-cyan-600 text-white'
                   : 'text-gray-600 hover:bg-gray-100'

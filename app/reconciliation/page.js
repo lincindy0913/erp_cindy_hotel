@@ -1445,7 +1445,7 @@ export default function ReconciliationPage() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-white rounded-lg p-1 shadow-sm border">
+        <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg p-1 shadow-sm border">
           {TABS.map(tab => (
             <button
               key={tab.key}

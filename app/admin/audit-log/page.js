@@ -239,7 +239,7 @@ export default function AuditLogPage() {
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex gap-1 mb-6 bg-white rounded-lg shadow p-1">
+        <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow p-1">
           {TABS.map(tab => (
             <button
               key={tab.key}
