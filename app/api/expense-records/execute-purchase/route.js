@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +49,7 @@ async function generateNo(tx, model, prefix) {
 // POST: Execute purchase-type template
 // Creates: PurchaseMaster + optional SalesMaster + CommonExpenseRecord
 // Invoice validation: invoiceAmount = purchaseAmount + taxAmount - supplierDiscount
+// 登入即可執行（採購頁快速執行）
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
   if (!auth.ok) return auth.response;
@@ -70,9 +73,7 @@ export async function POST(request) {
     if (!data.items || data.items.length === 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請至少新增一筆進貨品項', 400);
     }
-    if (!data.createdBy?.trim()) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少建立者資訊', 400);
-    }
+    const createdBy = (data.createdBy && String(data.createdBy).trim()) || auth.session?.user?.name || auth.session?.user?.email || '系統';
 
     // Calculate purchase totals
     const purchaseAmount = data.items.reduce((sum, item) => {
@@ -103,28 +104,27 @@ export async function POST(request) {
       }
     }
 
-    // Check for duplicate
-    const duplicate = await prisma.commonExpenseRecord.findFirst({
-      where: {
-        templateId: parseInt(data.templateId),
-        warehouse: data.warehouse.trim(),
-        expenseMonth: data.expenseMonth.trim(),
-        executionType: 'purchase',
-        status: { not: '已作廢' }
-      }
-    });
-
-    if (duplicate && !data.allowDuplicate) {
-      return createErrorResponse('CONFLICT_UNIQUE',
-        `此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`,
-        409, { duplicate: true });
-    }
-
     const result = await prisma.$transaction(async (tx) => {
+      // Duplicate check INSIDE transaction
+      const duplicate = await tx.commonExpenseRecord.findFirst({
+        where: {
+          templateId: parseInt(data.templateId),
+          warehouse: data.warehouse.trim(),
+          expenseMonth: data.expenseMonth.trim(),
+          executionType: 'purchase',
+          status: { not: '已作廢' }
+        }
+      });
+      if (duplicate && !data.allowDuplicate) {
+        throw new Error(`DUPLICATE:此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`);
+      }
+      // Enforce period lock
+      await assertPeriodOpen(tx, `${data.expenseMonth}-01`, data.warehouse?.trim());
+
       const purchaseDate = data.purchaseDate || `${data.expenseMonth}-01`;
       const supplierId = parseInt(data.supplierId);
 
-      // 1. Create PurchaseMaster + PurchaseDetail
+      // 1. Create PurchaseMaster + PurchaseDetail（需入庫品項連動庫存分頁，status=待入庫 + inventoryWarehouse）
       const purchaseNo = await generateNo(tx, 'purchaseMaster', 'PUR');
       const purchaseMaster = await tx.purchaseMaster.create({
         data: {
@@ -140,14 +140,17 @@ export async function POST(request) {
           totalAmount: purchaseAmount + taxAmount,
           status: '待入庫',
           details: {
-            create: data.items.map(item => ({
-              productId: parseInt(item.productId),
-              quantity: parseInt(item.quantity),
-              unitPrice: parseFloat(item.unitPrice),
-              note: item.note || '',
-              status: '待入庫',
-              inventoryWarehouse: item.inventoryWarehouse || null
-            }))
+            create: data.items.map(item => {
+              const putInInventory = item.putInInventory === true;
+              return {
+                productId: parseInt(item.productId),
+                quantity: parseInt(item.quantity),
+                unitPrice: parseFloat(item.unitPrice),
+                note: item.note || '',
+                status: putInInventory ? '待入庫' : '不需入庫',
+                inventoryWarehouse: putInInventory ? (item.inventoryWarehouse || null) : null
+              };
+            })
           }
         },
         include: { details: true }
@@ -223,10 +226,10 @@ export async function POST(request) {
           purchaseNo: purchaseNo,
           salesNo: salesMaster?.salesNo || null,
           status: '已確認',
-          confirmedBy: data.createdBy.trim(),
+          confirmedBy: createdBy,
           confirmedAt: new Date(),
           note: data.note || null,
-          createdBy: data.createdBy.trim(),
+          createdBy: createdBy,
           entryLines: {
             create: [
               {
@@ -263,6 +266,14 @@ export async function POST(request) {
         taxAmount: hasInvoice ? taxAmount : null,
         supplierDiscount: hasInvoice ? supplierDiscount : null
       };
+    }, { timeout: 30000 });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.EXPENSE_CREATE,
+      targetModule: 'expense-records',
+      targetRecordNo: result.record.recordNo,
+      afterState: { recordNo: result.record.recordNo, purchaseNo: result.purchaseNo, salesNo: result.salesNo, purchaseAmount: result.purchaseAmount, invoiceAmount: result.invoiceAmount },
+      note: `進貨費用執行 ${result.record.recordNo} → 進貨單 ${result.purchaseNo}`,
     });
 
     return NextResponse.json({
@@ -282,6 +293,9 @@ export async function POST(request) {
       message: `執行成功！進貨單: ${result.purchaseNo}${result.salesNo ? `, 發票: ${result.salesNo}` : ''}`
     }, { status: 201 });
   } catch (error) {
+    if (error.message?.startsWith('DUPLICATE:')) {
+      return createErrorResponse('CONFLICT_UNIQUE', error.message.replace('DUPLICATE:', ''), 409, { duplicate: true });
+    }
     return handleApiError(error);
   }
 }

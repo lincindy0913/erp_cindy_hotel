@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +42,10 @@ export async function GET(request) {
     if (warehouse) where.warehouse = warehouse;
     if (status) where.status = status;
     if (ownerType) where.ownerType = ownerType;
+
+    // Warehouse-level access control
+    const wf = applyWarehouseFilter(auth.session, where);
+    if (!wf.ok) return wf.response;
 
     const loans = await prisma.loanMaster.findMany({
       where,
@@ -99,7 +105,7 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫有效的貸款金額', 400);
     }
     const annualRate = parseFloat(data.annualRate);
-    if (isNaN(annualRate) && data.annualRate !== '' && data.annualRate !== null) {
+    if (data.annualRate !== '' && data.annualRate !== null && data.annualRate !== undefined && isNaN(annualRate)) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫有效的年利率', 400);
     }
     if (!data.startDate) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇起日', 400);
@@ -114,6 +120,8 @@ export async function POST(request) {
     const repaymentDayNum = parseInt(data.repaymentDay, 10) || 1;
 
     const result = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, data.startDate, data.warehouse || undefined);
+
       const loan = await tx.loanMaster.create({
         data: {
           loanCode,
@@ -138,17 +146,22 @@ export async function POST(request) {
           autoDebit: data.autoDebit !== undefined ? data.autoDebit : true,
           contactPerson: data.contactPerson || null,
           contactPhone: data.contactPhone || null,
+          collateral: data.collateral || null,
+          guarantor: data.guarantor || null,
+          guarantorPhone: data.guarantorPhone || null,
+          guarantorIdNo: data.guarantorIdNo || null,
           remark: data.remark || null,
           status: '使用中',
-          sortOrder: data.sortOrder || 0
+          sortOrder: parseInt(data.sortOrder) || 0
         }
       });
 
       // Create initial rate history record
+      const rateForHistory = parseFloat(data.annualRate);
       await tx.loanRateHistory.create({
         data: {
           loanId: loan.id,
-          annualRate: parseFloat(data.annualRate),
+          annualRate: isNaN(rateForHistory) ? 0 : rateForHistory,
           effectiveDate: data.startDate,
           note: '初始利率'
         }
