@@ -39,21 +39,19 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const isLoggedIn = status === 'authenticated';
 
+  // Public summary (always fetched, no auth)
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
+  // Authenticated-only data
   const [dashboardData, setDashboardData] = useState({
     kpis: {
-      thisMonthPurchase: 0,
-      thisMonthSales: 0,
-      grossProfit: 0,
-      grossProfitMargin: 0,
-      lowInventoryCount: 0,
-      totalCashBalance: 0,
-      pendingPayments: 0,
-      thisMonthExpense: 0,
+      thisMonthPurchase: 0, thisMonthSales: 0, grossProfit: 0, grossProfitMargin: 0,
+      lowInventoryCount: 0, totalCashBalance: 0, pendingPayments: 0, thisMonthExpense: 0,
     },
     recentTransactions: [],
     thisMonthTrend: { purchases: 0, sales: 0 },
     cashAccounts: [],
-    pendingPayments: 0,
     riskAlerts: { overdueChecks: 0, expiringLoans: 0 },
   });
   const [loading, setLoading] = useState(true);
@@ -64,6 +62,15 @@ export default function Dashboard() {
   const [ntfSummary, setNtfSummary] = useState({ total: 0, critical: 0, urgent: 0, warning: 0 });
   const [ntfLoading, setNtfLoading] = useState(true);
   const [ntfWarningExpanded, setNtfWarningExpanded] = useState(false);
+
+  // Always fetch public summary
+  useEffect(() => {
+    fetch('/api/dashboard/summary')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setSummary(data); })
+      .catch(() => {})
+      .finally(() => setSummaryLoading(false));
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -112,10 +119,7 @@ export default function Dashboard() {
   async function fetchExecutiveData() {
     try {
       const response = await fetch('/api/dashboard/executive');
-      if (response.ok) {
-        const data = await response.json();
-        setExecutiveData(data);
-      }
+      if (response.ok) setExecutiveData(await response.json());
     } catch (error) {
       console.error('取得決策儀表板資料失敗:', error);
     }
@@ -135,13 +139,188 @@ export default function Dashboard() {
     }
   }
 
-  // Convenience aliases — pull from nested kpis
   const kpis = dashboardData.kpis || {};
   const totalCashBalance = kpis.totalCashBalance ?? 0;
-  const pendingPayments = kpis.pendingPayments ?? dashboardData.pendingPayments ?? 0;
+  const pendingPayments = kpis.pendingPayments ?? 0;
 
   const now = new Date();
   const dateStr = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日`;
+
+  // ---------- Public (read-only) view ----------
+  const renderPublicView = () => {
+    if (summaryLoading) {
+      return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl shadow-sm p-5 h-28 animate-pulse">
+              <div className="h-3 bg-gray-200 rounded w-1/2 mb-3"></div>
+              <div className="h-7 bg-gray-200 rounded w-3/4"></div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (!summary) {
+      return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+          <p className="text-gray-400 text-sm">無法取得資料，請稍後再試</p>
+        </div>
+      );
+    }
+
+    const sk = summary.kpis || {};
+    const sa = summary.alerts || {};
+    const purchase = sk.thisMonthPurchase || 0;
+    const sales = sk.thisMonthSales || 0;
+    const expense = sk.thisMonthExpense || 0;
+    const pms = sk.pmsIncome || 0;
+    const cash = sk.totalCashBalance || 0;
+    const barMax = Math.max(purchase, sales, expense, pms, 1);
+    const totalAlerts = (sa.overdueChecks || 0) + (sa.expiringLoans || 0) + (sa.pendingPayments || 0) + (sa.lowInventoryCount || 0);
+
+    return (
+      <>
+        {/* Login banner */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🔒</span>
+            <div>
+              <p className="text-sm font-medium text-blue-800">目前為唯讀模式</p>
+              <p className="text-xs text-blue-600">登入後可檢視完整資料、操作及管理功能</p>
+            </div>
+          </div>
+          <Link href="/login" className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap">
+            前往登入
+          </Link>
+        </div>
+
+        {/* KPI row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <KpiCard
+            label="本月進貨金額"
+            value={NT(purchase)}
+            sub={`${sk.purchaseCount || 0} 筆`}
+            icon="📦"
+            borderClass="border-l-4 border-l-blue-400"
+          />
+          <KpiCard
+            label="本月銷貨金額"
+            value={NT(sales)}
+            sub={`${sk.salesCount || 0} 筆`}
+            icon="🧾"
+            borderClass="border-l-4 border-l-indigo-400"
+          />
+          <KpiCard
+            label="現金餘額合計"
+            value={NT(cash)}
+            sub={`${summary.cashAccounts?.length || 0} 個帳戶`}
+            icon="💰"
+            colorClass="text-emerald-700"
+            borderClass="border-l-4 border-l-emerald-400"
+          />
+          <KpiCard
+            label="PMS 營業收入"
+            value={NT(pms)}
+            sub={`${sk.pmsIncomeCount || 0} 筆`}
+            icon="🏨"
+            colorClass="text-teal-700"
+            borderClass="border-l-4 border-l-teal-400"
+          />
+        </div>
+
+        {/* Financial overview + Alerts side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {/* Financial bar chart */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h2 className="text-base font-semibold text-gray-800 mb-4">本月財務概況（{summary.month}）</h2>
+            <div className="space-y-4">
+              <MiniBar label="進貨" value={purchase} max={barMax} color="bg-blue-500" />
+              <MiniBar label="銷貨" value={sales} max={barMax} color="bg-indigo-500" />
+              <MiniBar label="費用" value={expense} max={barMax} color="bg-amber-500" />
+              <MiniBar label="PMS" value={pms} max={barMax} color="bg-teal-500" />
+            </div>
+            {summary.cashAccounts?.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-gray-100 space-y-1.5">
+                <p className="text-xs text-gray-400 font-medium mb-2">現金帳戶餘額</p>
+                {summary.cashAccounts.slice(0, 5).map((acc, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-600 truncate max-w-[160px]">
+                      {acc.warehouse ? `[${acc.warehouse}] ` : ''}{acc.name}
+                    </span>
+                    <span className={`font-medium ${acc.balance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                      {NT(acc.balance)}
+                    </span>
+                  </div>
+                ))}
+                {summary.cashAccounts.length > 5 && (
+                  <p className="text-xs text-gray-400">…還有 {summary.cashAccounts.length - 5} 個帳戶</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Alerts summary */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-800">待處理事項</h2>
+              {totalAlerts > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                  {totalAlerts} 項
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                sa.pendingPayments > 0 ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50'
+              }`}>
+                <span className="text-2xl">💳</span>
+                <div>
+                  <p className={`text-lg font-bold ${sa.pendingPayments > 0 ? 'text-orange-600' : 'text-gray-300'}`}>{sa.pendingPayments || 0}</p>
+                  <p className="text-xs text-gray-500">待付款單</p>
+                </div>
+              </div>
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                sa.overdueChecks > 0 ? 'bg-red-50 border border-red-200' : 'bg-gray-50'
+              }`}>
+                <span className="text-2xl">📋</span>
+                <div>
+                  <p className={`text-lg font-bold ${sa.overdueChecks > 0 ? 'text-red-600' : 'text-gray-300'}`}>{sa.overdueChecks || 0}</p>
+                  <p className="text-xs text-gray-500">逾期支票</p>
+                </div>
+              </div>
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                sa.expiringLoans > 0 ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50'
+              }`}>
+                <span className="text-2xl">🏦</span>
+                <div>
+                  <p className={`text-lg font-bold ${sa.expiringLoans > 0 ? 'text-purple-600' : 'text-gray-300'}`}>{sa.expiringLoans || 0}</p>
+                  <p className="text-xs text-gray-500">即將到期貸款</p>
+                </div>
+              </div>
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                sa.lowInventoryCount > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'
+              }`}>
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <p className={`text-lg font-bold ${sa.lowInventoryCount > 0 ? 'text-amber-600' : 'text-gray-300'}`}>{sa.lowInventoryCount || 0}</p>
+                  <p className="text-xs text-gray-500">庫存警示</p>
+                </div>
+              </div>
+            </div>
+            {summary.utilityBillCount > 0 && (
+              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500">水電費帳單紀錄</span>
+                <span className="text-sm font-medium text-teal-700">{summary.utilityBillCount} 筆</span>
+              </div>
+            )}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400 text-center">登入後可查看詳細資料與處理待辦事項</p>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen page-bg-dashboard">
@@ -167,21 +346,9 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Not logged in */}
-        {status === 'unauthenticated' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center mb-6">
-            <div className="text-5xl mb-4">🔒</div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">請先登入以檢視儀錶板資料</h3>
-            <p className="text-sm text-gray-400 mb-6">儀錶板顯示財務、庫存、現金流等即時資料，需要登入後才能存取。</p>
-            <Link href="/login" className="inline-block bg-blue-600 text-white px-8 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium">
-              前往登入
-            </Link>
-          </div>
-        )}
-
         {/* Loading skeleton */}
         {status === 'loading' && (
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="bg-white rounded-xl shadow-sm p-5 h-28 animate-pulse">
                 <div className="h-3 bg-gray-200 rounded w-1/2 mb-3"></div>
@@ -191,6 +358,10 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Public read-only view (not logged in) */}
+        {status === 'unauthenticated' && renderPublicView()}
+
+        {/* Full authenticated view */}
         {isLoggedIn && (
           <>
             {/* Row 1: Core KPIs */}
@@ -262,7 +433,7 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Row 3: 本日待辦 + 進銷貨概況 */}
+            {/* Row 3: 本日待辦 + 財務概況 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               {/* 本日待辦 */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -345,7 +516,7 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* 本月進銷費概況 */}
+              {/* 本月財務概況 */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
                 <h2 className="text-base font-semibold text-gray-800 mb-4">本月財務概況</h2>
                 {loading ? (
@@ -398,7 +569,6 @@ export default function Dashboard() {
 
             {/* Row 4: 決策建議 + 月度報告 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* 決策建議 */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-gray-800">決策建議</h2>
@@ -450,7 +620,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* 月度報告 */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-gray-800">
@@ -468,30 +637,22 @@ export default function Dashboard() {
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       <div className="text-center p-3 bg-gray-50 rounded-lg">
                         <p className="text-xs text-gray-500">銷貨額</p>
-                        <p className="text-sm font-bold text-gray-800 mt-1">
-                          {NT(latestReport.profitAnalysis?.totalSales)}
-                        </p>
+                        <p className="text-sm font-bold text-gray-800 mt-1">{NT(latestReport.profitAnalysis?.totalSales)}</p>
                       </div>
                       <div className="text-center p-3 bg-gray-50 rounded-lg">
                         <p className="text-xs text-gray-500">毛利率</p>
-                        <p className={`text-sm font-bold mt-1 ${
-                          (latestReport.profitAnalysis?.grossMargin || 0) >= 36 ? 'text-green-700' : 'text-amber-600'
-                        }`}>
+                        <p className={`text-sm font-bold mt-1 ${(latestReport.profitAnalysis?.grossMargin || 0) >= 36 ? 'text-green-700' : 'text-amber-600'}`}>
                           {latestReport.profitAnalysis?.grossMargin || 0}%
                         </p>
                         <p className="text-xs text-gray-400">目標 36%</p>
                       </div>
                       <div className="text-center p-3 bg-gray-50 rounded-lg">
                         <p className="text-xs text-gray-500">現金餘額</p>
-                        <p className="text-sm font-bold text-gray-800 mt-1">
-                          {NT(latestReport.cashFlowAnalysis?.currentBalance)}
-                        </p>
+                        <p className="text-sm font-bold text-gray-800 mt-1">{NT(latestReport.cashFlowAnalysis?.currentBalance)}</p>
                       </div>
                       <div className="text-center p-3 bg-gray-50 rounded-lg">
                         <p className="text-xs text-gray-500">廠商集中度</p>
-                        <p className={`text-sm font-bold mt-1 ${
-                          (latestReport.riskAnalysis?.supplierConcentration?.top1Percentage || 0) > 20 ? 'text-red-600' : 'text-green-700'
-                        }`}>
+                        <p className={`text-sm font-bold mt-1 ${(latestReport.riskAnalysis?.supplierConcentration?.top1Percentage || 0) > 20 ? 'text-red-600' : 'text-green-700'}`}>
                           {latestReport.riskAnalysis?.supplierConcentration?.top1Percentage || 0}%
                         </p>
                         <p className="text-xs text-gray-400">門檻 20%</p>
@@ -538,13 +699,9 @@ export default function Dashboard() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
-                      <tr>
-                        <td colSpan="5" className="py-8 text-center text-gray-400 text-xs">載入中...</td>
-                      </tr>
+                      <tr><td colSpan="5" className="py-8 text-center text-gray-400 text-xs">載入中...</td></tr>
                     ) : dashboardData.recentTransactions.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="py-8 text-center text-gray-400 text-xs">尚無交易資料</td>
-                      </tr>
+                      <tr><td colSpan="5" className="py-8 text-center text-gray-400 text-xs">尚無交易資料</td></tr>
                     ) : (
                       dashboardData.recentTransactions.map((t, index) => (
                         <tr key={index} className="hover:bg-gray-50 transition-colors">
@@ -554,21 +711,15 @@ export default function Dashboard() {
                               t.type === '進貨' ? 'bg-blue-50 text-blue-700' :
                               t.type === '銷貨' ? 'bg-green-50 text-green-700' :
                               'bg-amber-50 text-amber-700'
-                            }`}>
-                              {t.type}
-                            </span>
+                            }`}>{t.type}</span>
                           </td>
                           <td className="py-2.5 text-xs text-gray-600 font-mono">{t.no}</td>
-                          <td className="py-2.5 text-xs text-right font-medium text-gray-800">
-                            {NT(t.amount)}
-                          </td>
+                          <td className="py-2.5 text-xs text-right font-medium text-gray-800">{NT(t.amount)}</td>
                           <td className="py-2.5 pl-4">
                             <span className={`text-xs ${
                               t.status === '已完成' || t.status === '已出貨' || t.status === '已確認'
                                 ? 'text-green-600' : t.status ? 'text-amber-600' : 'text-gray-400'
-                            }`}>
-                              {t.status || '—'}
-                            </span>
+                            }`}>{t.status || '—'}</span>
                           </td>
                         </tr>
                       ))
