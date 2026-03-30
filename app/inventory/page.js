@@ -19,10 +19,45 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Grouped warehouse dropdown: buildings (館別) with their storage children (倉庫) as optgroups
+function WarehouseSelect({ value, onChange, warehouseList, placeholder = '全部', className = '', required = false }) {
+  const buildings = warehouseList.filter(w => w.type === 'building');
+  const childIds = new Set(warehouseList.filter(w => w.parentId).map(w => w.id));
+  // Standalone storage locations (not under any building)
+  const standalone = warehouseList.filter(w => w.type !== 'building' && !w.parentId);
+
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} className={className} required={required}>
+      <option value="">{placeholder}</option>
+      {buildings.map(b => {
+        const children = warehouseList.filter(w => w.parentId === b.id);
+        return (
+          <optgroup key={b.id} label={`🏢 ${b.name}`}>
+            <option value={b.name}>全部 {b.name}（館別）</option>
+            {children.map(c => (
+              <option key={c.id} value={c.name}>&nbsp;&nbsp;{c.name}</option>
+            ))}
+          </optgroup>
+        );
+      })}
+      {standalone.length > 0 && (
+        <optgroup label="其他倉庫">
+          {standalone.map(s => (
+            <option key={s.id} value={s.name}>{s.name}</option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+
 export default function InventoryPage() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const [activeTab, setActiveTab] = useState('query');
+  // warehouseList: full structured list { id, name, type, parentId, children }
+  const [warehouseList, setWarehouseList] = useState([]);
+  // warehouses: flat list of all selectable names (for simple selects in forms)
   const [warehouses, setWarehouses] = useState([]);
   const [warehouse, setWarehouse] = useState('');
 
@@ -138,7 +173,10 @@ export default function InventoryPage() {
       const res = await fetch('/api/warehouse-departments');
       if (res.ok) {
         const data = await res.json();
-        const names = data && data.byName ? Object.keys(data.byName) : Object.keys(typeof data === 'object' ? data : {});
+        const list = data?.list || [];
+        setWarehouseList(list);
+        // Flat list of all names for simple selects
+        const names = list.map(w => w.name);
         setWarehouses(names);
         if (names.length > 0 && !warehouse) setWarehouse(names[0]);
       }
@@ -381,14 +419,13 @@ export default function InventoryPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <select
+            <WarehouseSelect
               value={warehouse}
-              onChange={e => setWarehouse(e.target.value)}
+              onChange={setWarehouse}
+              warehouseList={warehouseList}
+              placeholder="全部館別/倉庫"
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500"
-            >
-              <option value="">全部倉庫</option>
-              {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-            </select>
+            />
             <Link href="/settings#warehouses" className="text-sm text-amber-600 hover:underline">倉庫設定</Link>
           </div>
         </div>
@@ -481,15 +518,15 @@ export default function InventoryPage() {
               <h3 className="text-lg font-semibold mb-4">新增領用單（簡化）</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">倉庫 *</label>
-                  <select
+                  <label className="block text-sm text-gray-600 mb-1">倉庫 / 館別 *</label>
+                  <WarehouseSelect
                     value={reqForm.warehouse}
-                    onChange={e => setReqForm(prev => ({ ...prev, warehouse: e.target.value }))}
+                    onChange={v => setReqForm(prev => ({ ...prev, warehouse: v }))}
+                    warehouseList={warehouseList}
+                    placeholder="選擇館別/倉庫"
                     className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="">選擇倉庫</option>
-                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                    required
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">部門</label>
@@ -578,26 +615,26 @@ export default function InventoryPage() {
               <h3 className="text-lg font-semibold mb-4">新增調撥單（簡化）</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">來源倉庫 *</label>
-                  <select
+                  <label className="block text-sm text-gray-600 mb-1">來源館別/倉庫 *</label>
+                  <WarehouseSelect
                     value={trfForm.fromWarehouse}
-                    onChange={e => setTrfForm(prev => ({ ...prev, fromWarehouse: e.target.value }))}
+                    onChange={v => setTrfForm(prev => ({ ...prev, fromWarehouse: v }))}
+                    warehouseList={warehouseList}
+                    placeholder="選擇來源"
                     className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="">選擇</option>
-                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                    required
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">目標倉庫 *</label>
-                  <select
+                  <label className="block text-sm text-gray-600 mb-1">目標館別/倉庫 *</label>
+                  <WarehouseSelect
                     value={trfForm.toWarehouse}
-                    onChange={e => setTrfForm(prev => ({ ...prev, toWarehouse: e.target.value }))}
+                    onChange={v => setTrfForm(prev => ({ ...prev, toWarehouse: v }))}
+                    warehouseList={warehouseList}
+                    placeholder="選擇目標"
                     className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="">選擇</option>
-                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                    required
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">產品 *</label>
@@ -680,19 +717,18 @@ export default function InventoryPage() {
               <p className="text-sm text-gray-500 mb-4">請先選擇倉庫，再從庫存中選產品並輸入實盤數量，系統會計算差異並更新庫存。</p>
               <div className="flex gap-4 mb-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">倉庫 *</label>
-                  <select
+                  <label className="block text-sm text-gray-600 mb-1">館別 / 倉庫 *</label>
+                  <WarehouseSelect
                     value={countForm.warehouse}
-                    onChange={e => {
-                      const v = e.target.value;
+                    onChange={v => {
                       setCountForm(prev => ({ ...prev, warehouse: v }));
                       setWarehouse(v);
                     }}
+                    warehouseList={warehouseList}
+                    placeholder="選擇館別/倉庫"
                     className="px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="">選擇倉庫</option>
-                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-                  </select>
+                    required
+                  />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">盤點日期</label>

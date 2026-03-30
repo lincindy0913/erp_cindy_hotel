@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,10 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse');
     const status = searchParams.get('status');
+
+    // Expand building → [building, ...children] so filtering works at both levels
+    const whNames = await expandWarehouseNames(prisma, warehouse);
+    const whValue = warehouseWhereValue(whNames);
 
     // 只取得「列入庫存」的產品
     const products = await prisma.product.findMany({
@@ -116,10 +121,8 @@ export async function GET(request) {
       });
     } else {
       // Fallback: v2 full calculation (含領用、調撥、盤點)
-      const wh = warehouse || null;
-      const baseWhere = wh ? undefined : {};
-      const purchaseWhere = wh
-        ? { OR: [{ inventoryWarehouse: wh }, { purchaseMaster: { warehouse: wh } }] }
+      const purchaseWhere = whValue
+        ? { OR: [{ inventoryWarehouse: whValue }, { purchaseMaster: { warehouse: whValue } }] }
         : {};
       const purchaseDetails = await prisma.purchaseDetail.findMany({
         where: Object.keys(purchaseWhere).length ? purchaseWhere : {},
@@ -128,16 +131,16 @@ export async function GET(request) {
       const purchaseQtyMap = new Map();
       purchaseDetails.forEach(d => {
         const w = d.inventoryWarehouse || d.purchaseMaster?.warehouse || 'default';
-        if (!wh || w === wh) {
-          const key = d.productId;
-          purchaseQtyMap.set(key, (purchaseQtyMap.get(key) || 0) + (d.quantity || 0));
+        const matchesFilter = !whNames || whNames.includes(w);
+        if (matchesFilter) {
+          purchaseQtyMap.set(d.productId, (purchaseQtyMap.get(d.productId) || 0) + (d.quantity || 0));
         }
       });
 
       // 不扣銷貨：進貨入庫後僅以領用、調撥扣數量
 
       // 領用：減庫存
-      const reqWhere = wh ? { warehouse: wh } : {};
+      const reqWhere = whValue ? { warehouse: whValue } : {};
       const requisitions = await prisma.inventoryRequisition.findMany({ where: reqWhere }).catch(() => []);
       const reqQtyMap = new Map();
       requisitions.forEach(r => {
@@ -145,8 +148,8 @@ export async function GET(request) {
       });
 
       // 調撥：轉出減、轉入加
-      const transferOutWhere = wh ? { fromWarehouse: wh } : {};
-      const transferInWhere = wh ? { toWarehouse: wh } : {};
+      const transferOutWhere = whValue ? { fromWarehouse: whValue } : {};
+      const transferInWhere = whValue ? { toWarehouse: whValue } : {};
       const [transfersOut, transfersIn] = await Promise.all([
         prisma.inventoryTransfer.findMany({ where: transferOutWhere, include: { items: true } }).catch(() => []),
         prisma.inventoryTransfer.findMany({ where: transferInWhere, include: { items: true } }).catch(() => []),
@@ -158,12 +161,11 @@ export async function GET(request) {
 
       // 盤點差異
       const countItems = await prisma.stockCountItem.findMany({
-        where: wh ? { stockCount: { warehouse: wh } } : {},
+        where: whValue ? { stockCount: { warehouse: whValue } } : {},
         include: { stockCount: true },
       }).catch(() => []);
-      const countItemsFiltered = countItems;
       const countDiffMap = new Map();
-      countItemsFiltered.forEach(ci => {
+      countItems.forEach(ci => {
         countDiffMap.set(ci.productId, (countDiffMap.get(ci.productId) || 0) + (ci.diff || 0));
       });
 
@@ -198,7 +200,7 @@ export async function GET(request) {
         };
       });
 
-      if (wh) {
+      if (whNames) {
         inventory = inventory.filter(item => item.currentQty !== 0 || item.purchaseQty || item.requisitionQty || item.transferInQty || item.transferOutQty || item.countAdjustQty);
       }
     }

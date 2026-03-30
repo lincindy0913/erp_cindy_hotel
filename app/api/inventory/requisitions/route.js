@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,10 @@ export async function GET(request) {
     const warehouse = searchParams.get('warehouse');
 
     const where = {};
-    if (warehouse) where.warehouse = warehouse;
+    if (warehouse) {
+      const whNames = await expandWarehouseNames(prisma, warehouse);
+      where.warehouse = warehouseWhereValue(whNames);
+    }
 
     const list = await prisma.inventoryRequisition.findMany({
       where,
