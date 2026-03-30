@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
@@ -17,6 +17,67 @@ const TABS = [
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Combobox: text input with styled suggestion dropdown
+function ComboInput({ value, onChange, options, placeholder, className }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = options.filter(o => o.toLowerCase().includes(value.toLowerCase()));
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <input
+        type="text"
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className={className}
+        autoComplete="off"
+      />
+      {open && options.length > 0 && (
+        <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-md max-h-48 overflow-y-auto text-sm">
+          {filtered.length > 0 ? filtered.map(o => (
+            <li
+              key={o}
+              onMouseDown={() => { onChange(o); setOpen(false); }}
+              className={`px-3 py-2 cursor-pointer hover:bg-amber-50 hover:text-amber-800 ${value === o ? 'bg-amber-50 text-amber-800 font-medium' : 'text-gray-700'}`}
+            >
+              {o}
+            </li>
+          )) : (
+            <li className="px-3 py-2 text-gray-400">無符合選項，可直接輸入</li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Get departments for a selected warehouse name (handles both building-level and storage-child selection)
+function getDepartmentsForWarehouse(warehouseList, selectedName) {
+  if (!selectedName) return [];
+  // Find exact match
+  const match = warehouseList.find(w => w.name === selectedName);
+  if (!match) return [];
+  // If it's a building, return its departments
+  if (match.type === 'building') return match.departments || [];
+  // If it's a storage child, find parent building and return its departments
+  if (match.parentId) {
+    const parent = warehouseList.find(w => w.id === match.parentId);
+    return parent?.departments || [];
+  }
+  return [];
 }
 
 // Grouped warehouse dropdown: buildings (館別) with their storage children (倉庫) as optgroups
@@ -521,7 +582,7 @@ export default function InventoryPage() {
                   <label className="block text-sm text-gray-600 mb-1">倉庫 / 館別 *</label>
                   <WarehouseSelect
                     value={reqForm.warehouse}
-                    onChange={v => setReqForm(prev => ({ ...prev, warehouse: v }))}
+                    onChange={v => setReqForm(prev => ({ ...prev, warehouse: v, department: '' }))}
                     warehouseList={warehouseList}
                     placeholder="選擇館別/倉庫"
                     className="w-full px-3 py-2 border rounded-lg text-sm"
@@ -530,11 +591,11 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">部門</label>
-                  <input
-                    type="text"
+                  <ComboInput
                     value={reqForm.department}
-                    onChange={e => setReqForm(prev => ({ ...prev, department: e.target.value }))}
-                    placeholder="例：總務部"
+                    onChange={v => setReqForm(prev => ({ ...prev, department: v }))}
+                    options={getDepartmentsForWarehouse(warehouseList, reqForm.warehouse).map(d => d.name)}
+                    placeholder="選擇或輸入部門"
                     className="w-full px-3 py-2 border rounded-lg text-sm"
                   />
                 </div>
