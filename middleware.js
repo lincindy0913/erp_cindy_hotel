@@ -16,6 +16,7 @@ const CSRF_EXEMPT_PREFIXES = [
   '/api/pms-income',     // file upload (Excel parse)
   '/api/export',         // PDF export endpoints — auth via JWT session
   '/api/inventory',      // protected by JWT session auth
+  '/api/checks',         // protected by JWT session auth
 ];
 
 function validateCsrf(req) {
