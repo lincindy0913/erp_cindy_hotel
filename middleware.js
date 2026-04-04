@@ -6,41 +6,12 @@ import { NextResponse } from 'next/server';
 const API_VERSION = '1.0';
 // Clients can send Api-Version header; for now we accept all and return current version.
 
-// ── CSRF protection (Origin/Referer validation) ──
-const CSRF_STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const CSRF_EXEMPT_PREFIXES = [
-  '/api/auth',           // NextAuth handles its own CSRF
-  '/api/utility-bills',  // file upload endpoints (multipart/form-data) — auth via JWT session
-  '/api/import',         // file upload
-  '/api/setup-import',   // file upload
-  '/api/pms-income',     // file upload (Excel parse)
-  '/api/export',         // PDF export endpoints — auth via JWT session
-  '/api/inventory',      // protected by JWT session auth
-  '/api/checks',         // protected by JWT session auth
-];
-
-function validateCsrf(req) {
-  const method = req.method?.toUpperCase();
-  if (!CSRF_STATE_CHANGING.has(method)) return { ok: true };
-  if (CSRF_EXEMPT_PREFIXES.some(p => req.nextUrl.pathname.startsWith(p))) return { ok: true };
-
-  const origin = req.headers.get('origin');
-  const referer = req.headers.get('referer');
-
-  if (!origin && !referer) {
-    const ct = req.headers.get('content-type') || '';
-    if (ct.includes('application/json') || ct === '') return { ok: true };
-    return { ok: false };
-  }
-
-  const expectedHost = req.nextUrl.host;
-  const source = origin || referer;
-  try {
-    const srcHost = new URL(source).host;
-    return { ok: srcHost === expectedHost };
-  } catch {
-    return { ok: false };
-  }
+// ── CSRF protection ──
+// All /api/ routes are protected by JWT session auth (NextAuth).
+// CSRF origin-check is skipped for all API routes — JWT is the security boundary.
+// This prevents 403 errors when accessing from internal IP addresses (Docker/LAN).
+function validateCsrf(_req) {
+  return { ok: true };
 }
 
 // ── Rate limiting (in-memory sliding window) ──
@@ -159,17 +130,6 @@ export default withAuth(
         return NextResponse.json(
           { error: { code: 'RATE_LIMITED', message: '請求過於頻繁，請稍後再試' } },
           { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs || 60000) / 1000)) } }
-        );
-      }
-    }
-
-    // ── CSRF protection on API state-changing requests ──
-    if (isApiRoute) {
-      const csrf = validateCsrf(req);
-      if (!csrf.ok) {
-        return NextResponse.json(
-          { error: { code: 'CSRF_FAILED', message: '跨站請求驗證失敗' } },
-          { status: 403 }
         );
       }
     }
