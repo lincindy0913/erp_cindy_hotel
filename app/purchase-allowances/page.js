@@ -248,8 +248,8 @@ export default function PurchaseAllowancesPage() {
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!form.allowanceDate) return showToast('請選擇折讓日期', 'error');
-    if (!form.totalAmount || parseFloat(form.totalAmount) <= 0) return showToast('折讓金額必須大於 0', 'error');
+    if (!form.allowanceDate) return showToast('請選擇退貨日期', 'error');
+    if (!form.totalAmount || parseFloat(form.totalAmount) <= 0) return showToast('退貨金額必須大於 0', 'error');
 
     const payload = { ...form, createdBy: session?.user?.email || '' };
 
@@ -259,7 +259,7 @@ export default function PurchaseAllowancesPage() {
       const method = editingId ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) {
-        showToast(editingId ? '折讓單已更新' : '折讓單已建立', 'success');
+        showToast(editingId ? '退貨單已更新' : '退貨單已建立', 'success');
         setShowForm(false);
         resetForm();
         fetchAll();
@@ -272,7 +272,7 @@ export default function PurchaseAllowancesPage() {
   }
 
   async function handleDelete(rec) {
-    if (!confirm(`確定刪除折讓單「${rec.allowanceNo}」？`)) return;
+    if (!confirm(`確定刪除退貨單「${rec.allowanceNo}」？`)) return;
     try {
       const res = await fetch(`/api/purchase-allowances/${rec.id}`, { method: 'DELETE' });
       if (res.ok) { showToast('已刪除', 'success'); fetchAll(); }
@@ -285,7 +285,7 @@ export default function PurchaseAllowancesPage() {
     const rec = records.find(r => r.id === confirmingId);
     if (!rec) return;
 
-    if (!confirm(`確認折讓單「${rec.allowanceNo}」，退款 NT$ ${Number(rec.totalAmount).toLocaleString()} 至帳戶？`)) return;
+    if (!confirm(`確認退貨單「${rec.allowanceNo}」，退款 NT$ ${Number(rec.totalAmount).toLocaleString()} 至帳戶？`)) return;
 
     setConfirmSaving(true);
     try {
@@ -311,7 +311,7 @@ export default function PurchaseAllowancesPage() {
   function handlePrint() {
     const rows = activeTab === 'draft' ? filteredDraft : filteredConfirmed;
     if (rows.length === 0) return showToast('沒有資料可列印', 'error');
-    const title = activeTab === 'draft' ? '進貨折讓 — 草稿' : '進貨折讓 — 已確認';
+    const title = activeTab === 'draft' ? '進貨退貨 — 草稿' : '進貨退貨 — 已確認';
     const isDraft = activeTab === 'draft';
     const headers = isDraft
       ? ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','金額']
@@ -369,7 +369,7 @@ export default function PurchaseAllowancesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `進貨折讓_${activeTab === 'draft' ? '草稿' : '已確認'}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `進貨退貨_${activeTab === 'draft' ? '草稿' : '已確認'}_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -393,11 +393,11 @@ export default function PurchaseAllowancesPage() {
       <Navigation borderColor="border-orange-500" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700 }}>進貨折讓管理</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 700 }}>進貨退貨管理</h2>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => { setFormMode('折讓'); resetForm(); setShowForm(v => formMode !== '折讓' ? true : !v); }}
               style={{ padding: '8px 16px', background: '#ea580c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>
-              + 新增折讓單
+              + 新增退貨單
             </button>
             <button onClick={() => { setFormMode('全額退貨'); resetForm(); setShowForm(v => formMode !== '全額退貨' ? true : !v); }}
               style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>
@@ -427,14 +427,14 @@ export default function PurchaseAllowancesPage() {
           <div style={{ background: formMode === '全額退貨' ? '#fef2f2' : '#fffbeb', border: `1px solid ${formMode === '全額退貨' ? '#fca5a5' : '#fbbf24'}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
-                {editingId ? '編輯' : '新增'}{formMode === '全額退貨' ? '全額退貨退款單' : '折讓單'}
+                {editingId ? '編輯' : '新增'}{formMode === '全額退貨' ? '全額退貨退款單' : '退貨單'}
               </h3>
               <span style={{
                 padding: '2px 10px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                 background: formMode === '全額退貨' ? '#fee2e2' : '#fef3c7',
                 color: formMode === '全額退貨' ? '#dc2626' : '#92400e',
               }}>
-                {formMode === '全額退貨' ? '全額退貨 — 將作廢原發票/付款單/進貨單' : '部分折讓'}
+                {formMode === '全額退貨' ? '全額退貨 — 將作廢原發票/付款單/進貨單' : '部分退貨'}
               </span>
             </div>
 
@@ -513,7 +513,7 @@ export default function PurchaseAllowancesPage() {
 
                 {!selectedPurchase && !purchaseSearch && (
                   <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af' }}>
-                    也可以跳過搜尋，直接手動填寫折讓資料
+                    也可以跳過搜尋，直接手動填寫退貨資料
                   </div>
                 )}
               </div>
@@ -522,7 +522,7 @@ export default function PurchaseAllowancesPage() {
             <form onSubmit={handleSave}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
                 <div>
-                  <label style={labelStyle}>折讓日期 *</label>
+                  <label style={labelStyle}>退貨日期 *</label>
                   <input type="date" value={form.allowanceDate} onChange={e => setForm(f => ({ ...f, allowanceDate: e.target.value }))} style={inputStyle} />
                 </div>
                 <div>
@@ -560,7 +560,7 @@ export default function PurchaseAllowancesPage() {
               {/* Detail lines */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <label style={{ fontSize: 14, fontWeight: 600 }}>折讓明細</label>
+                  <label style={{ fontSize: 14, fontWeight: 600 }}>退貨明細</label>
                   <button type="button" onClick={addDetailLine} style={{ padding: '4px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>+ 新增項目</button>
                 </div>
                 {form.details.length > 0 && (
@@ -610,7 +610,7 @@ export default function PurchaseAllowancesPage() {
                   </div>
                 )}
                 <div>
-                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨金額（未稅）' : '折讓金額（未稅）*'}</label>
+                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨金額（未稅）' : '退貨金額（未稅）*'}</label>
                   <input type="number" value={form.amount}
                     onChange={e => updateAmountField('amount', e.target.value)}
                     readOnly={formMode === '全額退貨' && !!selectedPurchase}
@@ -624,7 +624,7 @@ export default function PurchaseAllowancesPage() {
                     style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedPurchase ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨總額（含稅）' : '折讓總額（含稅）*'}</label>
+                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨總額（含稅）' : '退貨總額（含稅）*'}</label>
                   <input type="number" value={form.totalAmount}
                     onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))}
                     readOnly={formMode === '全額退貨' && !!selectedPurchase}
@@ -637,7 +637,7 @@ export default function PurchaseAllowancesPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div>
-                  <label style={labelStyle}>折讓原因 *</label>
+                  <label style={labelStyle}>退貨原因 *</label>
                   <textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} placeholder="產品瑕疵 / 數量不符 / 價格錯誤..." style={{ ...inputStyle, resize: 'vertical' }} />
                 </div>
                 <div>
@@ -665,7 +665,7 @@ export default function PurchaseAllowancesPage() {
                   padding: '8px 24px', color: '#fff', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600,
                   background: formMode === '全額退貨' ? '#dc2626' : '#ea580c', opacity: formSaving ? 0.7 : 1,
                 }}>
-                  {formSaving ? '儲存中...' : `${editingId ? '更新' : '建立'}${formMode === '全額退貨' ? '退貨單（草稿）' : '折讓單（草稿）'}`}
+                  {formSaving ? '儲存中...' : `${editingId ? '更新' : '建立'}${formMode === '全額退貨' ? '退貨單（草稿）' : '退貨單（草稿）'}`}
                 </button>
                 <button type="button" onClick={() => { setShowForm(false); resetForm(); }} disabled={formSaving} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: 14 }}>取消</button>
               </div>
@@ -692,7 +692,7 @@ export default function PurchaseAllowancesPage() {
             <input
               value={filterKeyword}
               onChange={e => setFilterKeyword(e.target.value)}
-              placeholder="篩選折讓單..."
+              placeholder="篩選退貨單..."
               style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, width: 200 }}
             />
           </div>
@@ -701,7 +701,7 @@ export default function PurchaseAllowancesPage() {
         {/* Draft Tab */}
         {activeTab === 'draft' && (
           filteredDraft.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>目前沒有草稿折讓單</div>
+            <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>目前沒有草稿退貨單</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -727,7 +727,7 @@ export default function PurchaseAllowancesPage() {
                         background: r.allowanceType === '全額退貨' ? '#fee2e2' : '#fef3c7',
                         color: r.allowanceType === '全額退貨' ? '#dc2626' : '#92400e',
                       }}>
-                        {r.allowanceType || '折讓'}
+                        {r.allowanceType === '折讓' ? '退貨' : (r.allowanceType || '退貨')}
                       </span>
                     </td>
                     <td style={tdStyle}>{r.allowanceDate}</td>
@@ -766,7 +766,7 @@ export default function PurchaseAllowancesPage() {
         {/* Confirmed Tab */}
         {activeTab === 'confirmed' && (
           filteredConfirmed.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無已確認折讓紀錄</div>
+            <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無已確認退貨紀錄</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -793,7 +793,7 @@ export default function PurchaseAllowancesPage() {
                         background: r.allowanceType === '全額退貨' ? '#fee2e2' : '#d1fae5',
                         color: r.allowanceType === '全額退貨' ? '#dc2626' : '#065f46',
                       }}>
-                        {r.allowanceType || '折讓'}
+                        {r.allowanceType === '折讓' ? '退貨' : (r.allowanceType || '退貨')}
                       </span>
                     </td>
                     <td style={tdStyle}>{r.allowanceDate}</td>
@@ -836,17 +836,17 @@ export default function PurchaseAllowancesPage() {
               return (
                 <>
                   <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: isFullReturn ? '#dc2626' : '#374151' }}>
-                    {isFullReturn ? '確認全額退貨退款' : '確認折讓退款'}
+                    {isFullReturn ? '確認全額退貨退款' : '確認退貨退款'}
                   </h3>
 
                   <div style={{ background: isFullReturn ? '#fef2f2' : '#f0fdf4', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div><strong>{isFullReturn ? '退貨單' : '折讓單'}：</strong>{rec.allowanceNo}</div>
+                      <div><strong>{isFullReturn ? '退貨單' : '退貨單'}：</strong>{rec.allowanceNo}</div>
                       <span style={{
                         padding: '2px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
                         background: isFullReturn ? '#fee2e2' : '#fef3c7',
                         color: isFullReturn ? '#dc2626' : '#92400e',
-                      }}>{rec.allowanceType || '折讓'}</span>
+                      }}>{rec.allowanceType === '折讓' ? '退貨' : (rec.allowanceType || '退貨')}</span>
                     </div>
                     <div><strong>供應商：</strong>{rec.supplierName || '-'}</div>
                     {rec.invoiceNo && <div><strong>原發票：</strong>{rec.invoiceNo}</div>}

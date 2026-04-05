@@ -8,6 +8,7 @@ import Navigation from '@/components/Navigation';
 const TABS = [
   { key: 'overview',       label: '經營總覽' },
   { key: 'pnl-warehouse',  label: '館別損益' },
+  { key: 'pnl-supplier',   label: '廠商損益' },
   { key: 'cashflow',       label: '現金流預測' },
   { key: 'procurement',    label: '採購分析' },
   { key: 'payables',       label: '應付帳齡' },
@@ -80,6 +81,16 @@ export default function AnalyticsPage() {
   const [pnlTraceCtx, setPnlTraceCtx] = useState(null);
   const [pnlTraceLoading, setPnlTraceLoading] = useState(false);
 
+  // ── P&L by Supplier ───────────────────────────────────────────
+  const [supplierPnl, setSupplierPnl] = useState(null);
+  const [supplierPnlLoading, setSupplierPnlLoading] = useState(false);
+  const [supplierPnlStart, setSupplierPnlStart] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [supplierPnlEnd, setSupplierPnlEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [supplierPnlWarehouse, setSupplierPnlWarehouse] = useState('');
+  const [supplierPnlSearch, setSupplierPnlSearch] = useState('');
+
   // ── Cash Flow ─────────────────────────────────────────────────
   const [cashflow, setCashflow] = useState(null);
   const [cashflowLoading, setCashflowLoading] = useState(false);
@@ -135,6 +146,17 @@ export default function AnalyticsPage() {
     } catch (e) { console.error(e); }
     setPnlLoading(false);
   }, [pnlStart, pnlEnd, pnlWarehouse]);
+
+  const fetchSupplierPnl = useCallback(async () => {
+    setSupplierPnlLoading(true); setSupplierPnl(null);
+    try {
+      const p = new URLSearchParams({ startDate: supplierPnlStart, endDate: supplierPnlEnd });
+      if (supplierPnlWarehouse.trim()) p.set('warehouse', supplierPnlWarehouse.trim());
+      const res = await fetch(`/api/analytics/pnl-by-supplier?${p}`);
+      if (res.ok) setSupplierPnl(await res.json());
+    } catch (e) { console.error(e); }
+    setSupplierPnlLoading(false);
+  }, [supplierPnlStart, supplierPnlEnd, supplierPnlWarehouse]);
 
   const fetchPnlTrace = useCallback(async ({ warehouseLabel, flowType, subjectKey }) => {
     setPnlTraceCtx({ warehouseLabel, flowType, subjectKey }); setPnlTrace(null); setPnlTraceLoading(true);
@@ -196,6 +218,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (activeTab === 'overview') fetchOverview();
     if (activeTab === 'pnl-warehouse') fetchPnl();
+    if (activeTab === 'pnl-supplier') fetchSupplierPnl();
     if (activeTab === 'cashflow') fetchCashflow();
     if (activeTab === 'procurement') fetchSupplierRisk();
     if (activeTab === 'payables') fetchPayables();
@@ -262,6 +285,44 @@ export default function AnalyticsPage() {
 
             {pnlLoading ? <Loading text="計算損益中..." /> :
               pnl ? <PnlTab data={pnl} onTrace={fetchPnlTrace} /> :
+              <div className="text-center py-12 text-gray-400">請設定日期範圍後查詢</div>
+            }
+          </div>
+        )}
+
+        {/* ══ 廠商損益 ═══════════════════════════════════════════ */}
+        {activeTab === 'pnl-supplier' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input type="date" value={supplierPnlStart} onChange={e => setSupplierPnlStart(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input type="date" value={supplierPnlEnd} onChange={e => setSupplierPnlEnd(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <input type="text" value={supplierPnlWarehouse} onChange={e => setSupplierPnlWarehouse(e.target.value)}
+                    placeholder="全部館別" className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">搜尋廠商</label>
+                  <input type="text" value={supplierPnlSearch} onChange={e => setSupplierPnlSearch(e.target.value)}
+                    placeholder="廠商名稱..." className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <button onClick={fetchSupplierPnl} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                  查詢
+                </button>
+              </div>
+            </div>
+
+            {supplierPnlLoading ? <Loading text="計算廠商損益中..." /> :
+              supplierPnl ? <SupplierPnlTab data={supplierPnl} search={supplierPnlSearch} /> :
               <div className="text-center py-12 text-gray-400">請設定日期範圍後查詢</div>
             }
           </div>
@@ -981,6 +1042,97 @@ function ReportTab({ data, onApprove, approving }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ══ SupplierPnlTab ═══════════════════════════════════════════════
+function SupplierPnlTab({ data, search }) {
+  const { rows = [], summary = {} } = data;
+  const maxCost = rows[0]?.totalCost || 1;
+
+  const filtered = search.trim()
+    ? rows.filter(r => r.supplierName.toLowerCase().includes(search.toLowerCase()))
+    : rows;
+
+  return (
+    <div className="space-y-5">
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <KpiCard label="廠商數量"   value={summary.supplierCount ?? 0} icon="🏢" color="text-blue-600" />
+        <KpiCard label="採購總額"   value={NT(summary.totalPurchases)}  icon="🛒" color="text-gray-700" />
+        <KpiCard label="退貨總額"   value={NT(summary.totalAllowances)} icon="↩" color="text-orange-600" />
+        <KpiCard label="淨採購額"   value={NT(summary.totalNetPurchases)} icon="📦" color="text-cyan-700" />
+        <KpiCard label="費用總額"   value={NT(summary.totalExpenses)}   icon="💸" color="text-red-600" />
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-700">
+            廠商損益明細（共 {filtered.length} 筆{search.trim() ? '，已篩選' : ''}）
+          </p>
+          <p className="text-xs text-gray-400">依總支出降序排列</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-8">#</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">廠商名稱</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">採購金額</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">退貨金額</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">淨採購額</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">費用</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 w-32">總支出</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-40">佔比</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filtered.map((r, i) => (
+                <tr key={r.supplierId} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-2 text-xs text-gray-400">{i + 1}</td>
+                  <td className="px-4 py-2 font-medium text-gray-800">{r.supplierName}</td>
+                  <td className="px-4 py-2 text-right font-mono text-gray-600">{NT(r.purchases)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-orange-600">
+                    {r.allowances > 0 ? `-${NT(r.allowances)}` : '-'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-cyan-700">{NT(r.netPurchases)}</td>
+                  <td className="px-4 py-2 text-right font-mono text-red-600">
+                    {r.expenses > 0 ? NT(r.expenses) : '-'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono font-bold text-gray-900">{NT(r.totalCost)}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className="bg-cyan-500 h-2 rounded-full" style={{ width: `${Math.min(100, (r.totalCost / maxCost) * 100)}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-500 w-10 text-right">
+                        {summary.totalCost > 0 ? `${((r.totalCost / summary.totalCost) * 100).toFixed(1)}%` : '-'}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">無符合條件的廠商資料</td></tr>
+              )}
+            </tbody>
+            <tfoot className="bg-gray-50 border-t font-semibold text-sm">
+              <tr>
+                <td className="px-4 py-2" />
+                <td className="px-4 py-2 text-gray-700">合計</td>
+                <td className="px-4 py-2 text-right font-mono">{NT(filtered.reduce((s,r)=>s+r.purchases,0))}</td>
+                <td className="px-4 py-2 text-right font-mono text-orange-600">{NT(filtered.reduce((s,r)=>s+r.allowances,0))}</td>
+                <td className="px-4 py-2 text-right font-mono text-cyan-700">{NT(filtered.reduce((s,r)=>s+r.netPurchases,0))}</td>
+                <td className="px-4 py-2 text-right font-mono text-red-600">{NT(filtered.reduce((s,r)=>s+r.expenses,0))}</td>
+                <td className="px-4 py-2 text-right font-mono font-bold text-gray-900">{NT(filtered.reduce((s,r)=>s+r.totalCost,0))}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
