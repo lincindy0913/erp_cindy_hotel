@@ -971,19 +971,37 @@ export default function CashierPage() {
                                         <label className="block text-xs font-medium text-gray-700 mb-1">
                                           付款帳戶 *
                                           {order.accountId != null && order.accountId !== '' && (
-                                            <span className="text-amber-600 font-normal ml-1">（已從付款單帶入）</span>
+                                            <span className="ml-1 inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                                              ✓ 已從付款單帶入
+                                              {String(executeData.accountId) !== String(order.accountId) && (
+                                                <span className="text-amber-600 font-normal">（已手動更改）</span>
+                                              )}
+                                            </span>
                                           )}
                                         </label>
                                         <select value={String(executeData.accountId || '')}
                                           onChange={e => setExecuteData({...executeData, accountId: e.target.value})}
-                                          className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
+                                          className={`w-full border-2 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none ${
+                                            executeData.accountId && String(executeData.accountId) === String(order.accountId)
+                                              ? 'border-emerald-400 bg-emerald-50'
+                                              : executeData.accountId
+                                                ? 'border-amber-400 bg-amber-50'
+                                                : 'border-gray-300'
+                                          }`} required>
                                           <option value="">-- 選擇帳戶 --</option>
                                           {accounts.filter(a => a.isActive).map(a => (
                                             <option key={a.id} value={String(a.id)}>
-                                              {a.name} ({a.type}) - NT$ {Number(a.currentBalance).toLocaleString()}
+                                              {String(a.id) === String(order.accountId) ? '✓ ' : ''}{a.name} ({a.type}) - NT$ {Number(a.currentBalance).toLocaleString()}
                                             </option>
                                           ))}
                                         </select>
+                                        {order.accountId != null && order.accountId !== '' && String(executeData.accountId) !== String(order.accountId) && executeData.accountId && (
+                                          <button type="button"
+                                            onClick={() => setExecuteData(prev => ({...prev, accountId: String(order.accountId)}))}
+                                            className="mt-1 text-xs text-emerald-700 hover:underline">
+                                            ↩ 恢復付款單原帳戶
+                                          </button>
+                                        )}
                                       </div>
                                       <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">執行付款方式</label>
