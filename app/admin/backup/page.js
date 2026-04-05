@@ -185,7 +185,7 @@ export default function BackupPage() {
         showToast('備份設定已儲存', 'success');
       } else {
         const err = await res.json();
-        showToast(err.error?.message || '儲存失敗', 'error');
+        showToast((typeof err.error === 'string' ? err.error : err.error?.message) || '儲存失敗', 'error');
       }
     } catch {
       showToast('系統錯誤', 'error');

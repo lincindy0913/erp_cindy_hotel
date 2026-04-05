@@ -144,7 +144,7 @@ function NotificationChannelsSection({ showToast }) {
         showToast(`${channel} 測試通知已發送`);
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data.error?.message || '測試失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '測試失敗', 'error');
       }
     } catch {
       showToast('測試失敗', 'error');
@@ -259,7 +259,7 @@ function CashCountConfigSection({ showToast }) {
         showToast('盤點設定已更新');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '更新失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '更新失敗', 'error');
       }
     } catch {
       showToast('更新失敗', 'error');
@@ -347,7 +347,7 @@ function DataImportSection({ showToast }) {
         setDryRunResult(result);
         showToast(`驗證完成：${result.validCount || 0} 筆有效，${result.errorCount || 0} 筆錯誤`);
       } else {
-        showToast(result.error?.message || '驗證失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '驗證失敗', 'error');
       }
     } catch { showToast('驗證失敗', 'error'); }
     setImporting(false);
@@ -370,7 +370,7 @@ function DataImportSection({ showToast }) {
         setDryRunResult(null);
         showToast(`匯入完成：${result.importedCount || 0} 筆成功`);
       } else {
-        showToast(result.error?.message || '匯入失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '匯入失敗', 'error');
       }
     } catch { showToast('匯入失敗', 'error'); }
     setImporting(false);
@@ -764,7 +764,7 @@ export default function SettingsPage() {
         showToast('稅率已儲存');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '儲存稅率失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '儲存稅率失敗', 'error');
       }
     } catch (err) {
       showToast('儲存稅率失敗', 'error');
@@ -787,7 +787,7 @@ export default function SettingsPage() {
         showToast('發票抬頭已新增');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '新增發票抬頭失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '新增發票抬頭失敗', 'error');
       }
     } catch (err) {
       showToast('新增發票抬頭失敗', 'error');
@@ -803,7 +803,7 @@ export default function SettingsPage() {
         showToast('發票抬頭已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '刪除失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '刪除失敗', 'error');
       }
     } catch (err) {
       showToast('刪除失敗', 'error');
@@ -824,7 +824,7 @@ export default function SettingsPage() {
         showToast('付款方式已新增');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '新增付款方式失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '新增付款方式失敗', 'error');
       }
     } catch (err) {
       showToast('新增付款方式失敗', 'error');
@@ -840,7 +840,7 @@ export default function SettingsPage() {
         showToast('付款方式已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '刪除失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '刪除失敗', 'error');
       }
     } catch (err) {
       showToast('刪除失敗', 'error');
@@ -883,7 +883,7 @@ export default function SettingsPage() {
         showToast(editingCategoryId ? '分類已更新' : '分類已新增');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '儲存分類失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '儲存分類失敗', 'error');
       }
     } catch (err) {
       showToast('儲存分類失敗', 'error');
@@ -914,7 +914,7 @@ export default function SettingsPage() {
         showToast('分類已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '刪除失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '刪除失敗', 'error');
       }
     } catch (err) {
       showToast('刪除失敗', 'error');
@@ -939,7 +939,7 @@ export default function SettingsPage() {
       } else {
         const failed = results.find(r => !r.ok);
         const data = failed ? await failed.json().catch(() => ({})) : {};
-        showToast(data?.error?.message || '部分設定儲存失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '部分設定儲存失敗', 'error');
       }
     } catch (err) {
       showToast('儲存通知設定失敗', 'error');
@@ -980,7 +980,7 @@ export default function SettingsPage() {
         showToast('對應規則已更新');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '更新失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '更新失敗', 'error');
       }
     } catch {
       showToast('更新失敗', 'error');
@@ -1010,7 +1010,7 @@ export default function SettingsPage() {
         showToast('對應規則已新增');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '新增失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '新增失敗', 'error');
       }
     } catch {
       showToast('新增失敗', 'error');
@@ -1027,7 +1027,7 @@ export default function SettingsPage() {
         showToast('對應規則已刪除');
       } else {
         const data = await res.json().catch(() => ({}));
-        showToast(data?.error?.message || '刪除失敗', 'error');
+        showToast((typeof data?.error === 'string' ? data.error : data?.error?.message) || '刪除失敗', 'error');
       }
     } catch {
       showToast('刪除失敗', 'error');
@@ -1093,7 +1093,7 @@ export default function SettingsPage() {
         setNewWarehouse('');
         showToast(`倉庫「${newWarehouse.trim()}」已新增`);
       } else {
-        showToast(result.error?.message || '新增失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '新增失敗', 'error');
       }
     } catch { showToast('新增失敗', 'error'); }
     setSaving(false);
@@ -1112,7 +1112,7 @@ export default function SettingsPage() {
         setWarehouseData({ list: result.list, byName: result.byName || {} });
         showToast(`倉庫「${name}」已刪除`);
       } else {
-        showToast(result.error?.message || '刪除失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '刪除失敗', 'error');
       }
     } catch { showToast('刪除失敗', 'error'); }
   }
@@ -1136,7 +1136,7 @@ export default function SettingsPage() {
         setNewBuilding('');
         showToast(`館別「${newBuilding.trim()}」已新增`);
       } else {
-        showToast(result.error?.message || '新增失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '新增失敗', 'error');
       }
     } catch { showToast('新增失敗', 'error'); }
     setSaving(false);
@@ -1161,7 +1161,7 @@ export default function SettingsPage() {
         setNewDeptName('');
         showToast(`部門「${newDeptName.trim()}」已新增`);
       } else {
-        showToast(result.error?.message || '新增失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '新增失敗', 'error');
       }
     } catch { showToast('新增失敗', 'error'); }
     setSaving(false);
@@ -1183,7 +1183,7 @@ export default function SettingsPage() {
         fetchWarehouses();
         showToast(`已刪除「${name}」`);
       } else {
-        showToast(result.error?.message || '刪除失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '刪除失敗', 'error');
       }
     } catch { showToast('刪除失敗', 'error'); }
   }
@@ -1204,7 +1204,7 @@ export default function SettingsPage() {
         fetchWarehouses();
         showToast(`部門「${deptName}」已刪除`);
       } else {
-        showToast(result.error?.message || '刪除失敗', 'error');
+        showToast((typeof result?.error === 'string' ? result.error : result?.error?.message) || '刪除失敗', 'error');
       }
     } catch { showToast('刪除失敗', 'error'); }
   }

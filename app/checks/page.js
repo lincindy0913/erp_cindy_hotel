@@ -147,6 +147,8 @@ export default function ChecksPage() {
 
   // Reissue (重新開票) loading
   const [reissueLoading, setReissueLoading] = useState(null);
+  const [checkSaving, setCheckSaving] = useState(false);
+  const [clearSaving, setClearSaving] = useState(false);
 
   // Schedule view
   const [scheduleRange, setScheduleRange] = useState(30);
@@ -245,6 +247,13 @@ export default function ChecksPage() {
   };
 
   const handleAdd = async () => {
+    if (!addForm.checkNumber?.trim()) { showToast('請填寫支票號碼', 'error'); return; }
+    if (!addForm.amount || parseFloat(addForm.amount) <= 0) { showToast('請填寫有效金額', 'error'); return; }
+    if (!addForm.dueDate) { showToast('請填寫到期日', 'error'); return; }
+    if (addForm.checkType === 'payable' && !addForm.sourceAccountId) { showToast('應付支票必須選擇來源帳戶', 'error'); return; }
+    if (addForm.checkType === 'receivable' && !addForm.destinationAccountId) { showToast('應收支票必須選擇目的帳戶', 'error'); return; }
+
+    setCheckSaving(true);
     try {
       const res = await fetch('/api/checks', {
         method: 'POST',
@@ -261,10 +270,12 @@ export default function ChecksPage() {
       fetchChecks(activeTab === 'payable' ? { checkType: 'payable' } : activeTab === 'receivable' ? { checkType: 'receivable' } : {});
       fetchSummary();
     } catch (e) { showToast('新增失敗: ' + e.message, 'error'); }
+    finally { setCheckSaving(false); }
   };
 
   const handleClear = async () => {
     if (!selectedCheck) return;
+    setClearSaving(true);
     try {
       const res = await fetch(`/api/checks/${selectedCheck.id}`, {
         method: 'PUT',
@@ -287,6 +298,7 @@ export default function ChecksPage() {
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
       fetchSummary();
     } catch (e) { showToast('兌現失敗: ' + e.message, 'error'); }
+    finally { setClearSaving(false); }
   };
 
   const handleBounce = async () => {
@@ -358,6 +370,11 @@ export default function ChecksPage() {
 
   const handleUpdate = async () => {
     if (!selectedCheck) return;
+    if (!addForm.checkNumber?.trim()) { showToast('請填寫支票號碼', 'error'); return; }
+    if (!addForm.amount || parseFloat(addForm.amount) <= 0) { showToast('請填寫有效金額', 'error'); return; }
+    if (!addForm.dueDate) { showToast('請填寫到期日', 'error'); return; }
+
+    setCheckSaving(true);
     try {
       const res = await fetch(`/api/checks/${selectedCheck.id}`, {
         method: 'PUT',
@@ -374,6 +391,7 @@ export default function ChecksPage() {
       resetAddForm();
       fetchChecks(activeTab === 'pending' ? {} : { checkType: activeTab });
     } catch (e) { showToast('更新失敗: ' + e.message, 'error'); }
+    finally { setCheckSaving(false); }
   };
 
   const handleDelete = async (check) => {
@@ -671,11 +689,12 @@ export default function ChecksPage() {
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={2} />
       </div>
       <div className="flex justify-end gap-3 pt-2">
-        <button onClick={() => { isEdit ? setShowEditModal(false) : setShowAddModal(false); resetAddForm(); }}
+        <button onClick={() => { isEdit ? setShowEditModal(false) : setShowAddModal(false); resetAddForm(); setCheckSaving(false); }}
           className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
         <button onClick={isEdit ? handleUpdate : handleAdd}
-          className="px-4 py-2 text-base bg-violet-600 text-white rounded-lg hover:bg-violet-700">
-          {isEdit ? '更新' : '新增'}
+          disabled={checkSaving}
+          className={`px-4 py-2 text-base rounded-lg ${checkSaving ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-violet-600 text-white hover:bg-violet-700'}`}>
+          {checkSaving ? '儲存中…' : (isEdit ? '更新' : '新增')}
         </button>
       </div>
     </div>
@@ -1380,10 +1399,12 @@ export default function ChecksPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="選填" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => { setShowClearModal(false); setSelectedCheck(null); }}
+              <button onClick={() => { setShowClearModal(false); setSelectedCheck(null); setClearSaving(false); }}
                 className="px-4 py-2 text-base border border-gray-300 rounded-lg hover:bg-gray-50">取消</button>
-              <button onClick={handleClear}
-                className="px-4 py-2 text-base bg-green-600 text-white rounded-lg hover:bg-green-700">確認兌現</button>
+              <button onClick={handleClear} disabled={clearSaving}
+                className={`px-4 py-2 text-base rounded-lg ${clearSaving ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                {clearSaving ? '儲存中…' : '確認兌現'}
+              </button>
             </div>
           </div>
         )}

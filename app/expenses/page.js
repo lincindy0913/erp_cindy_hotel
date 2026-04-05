@@ -129,6 +129,7 @@ export default function ExpensesPage() {
   });
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -487,6 +488,7 @@ export default function ExpensesPage() {
       delete body.entryLines;
     }
 
+    setTemplateSaving(true);
     try {
       const url = editingTemplate
         ? `/api/expense-templates/${editingTemplate.id}`
@@ -507,6 +509,8 @@ export default function ExpensesPage() {
       }
     } catch (err) {
       showToast('儲存範本失敗: ' + err.message, 'error');
+    } finally {
+      setTemplateSaving(false);
     }
   }
 
@@ -849,14 +853,14 @@ export default function ExpensesPage() {
           let msg = `執行成功！\n進貨單號: ${result.linkedPurchaseNo}`;
           if (result.linkedSalesNo) msg += `\n發票單號: ${result.linkedSalesNo}`;
           msg += `\n費用記錄: ${result.recordNo}`;
-          showToast(msg, 'error');
+          showToast(msg, 'success');
           setSelectedTemplateId('');
           setExecuteForm(prev => ({ ...prev, items: [], invoiceNo: '', invoiceDate: '', invoiceTitle: '' }));
           if (subTab === 'records') fetchRecords();
         } else if (res.status === 409) {
           const err = await res.json();
-          if (err.duplicate) {
-            setDuplicateWarning(err.error);
+          if (err.code === 'CONFLICT_UNIQUE') {
+            setDuplicateWarning(typeof err.error === 'string' ? err.error : '此月份已有記錄');
           } else {
             showToast(err.error || '執行失敗', 'error');
           }
@@ -929,7 +933,7 @@ export default function ExpensesPage() {
           let msg = result.message || `執行成功！已建立 ${result.created?.length || 0} 筆記錄`;
           if (executeForm.creditCardAdvanceMode) msg += `\n\n已建立「老闆信用卡代墊」記錄，可至「員工預支」頁面結算。\n（付款單狀態為「已代墊」，不會出現在出納待付清單）`;
           else if (executeForm.paymentMethod === '支票') msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
-          showToast(msg, 'error');
+          showToast(msg, 'success');
           setSelectedTemplateId('');
           setExecuteForm(prev => ({
             ...prev,
@@ -943,8 +947,8 @@ export default function ExpensesPage() {
           if (subTab === 'records') fetchRecords();
         } else if (res.status === 409) {
           const err = await res.json();
-          if (err.duplicate) {
-            setDuplicateWarning(err.error);
+          if (err.code === 'CONFLICT_UNIQUE') {
+            setDuplicateWarning(typeof err.error === 'string' ? err.error : '此月份已有記錄');
           } else {
             showToast(err.error || '執行失敗', 'error');
           }
@@ -1278,9 +1282,9 @@ export default function ExpensesPage() {
                       style={{ padding: '8px 16px', background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: 6, cursor: 'pointer' }}>
                       取消
                     </button>
-                    <button onClick={handleSaveTemplate}
-                      style={{ padding: '8px 16px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
-                      {editingTemplate ? '更新' : '儲存'}
+                    <button onClick={handleSaveTemplate} disabled={templateSaving}
+                      style={{ padding: '8px 16px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: 6, cursor: templateSaving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: templateSaving ? 0.7 : 1 }}>
+                      {templateSaving ? '儲存中...' : (editingTemplate ? '更新' : '儲存')}
                     </button>
                   </div>
                 </div>

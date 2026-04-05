@@ -203,6 +203,8 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('操作失敗:', error);
       showToast('操作失敗，請稍後再試', 'error');
+    } finally {
+      setProductSaving(false);
     }
   }
 

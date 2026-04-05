@@ -22,6 +22,7 @@ export default function AccountingSubjectsPage() {
   const [customSubcategory, setCustomSubcategory] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [formSaving, setFormSaving] = useState(false);
 
   useEffect(() => {
     fetchSubjects();
@@ -69,6 +70,7 @@ export default function AccountingSubjectsPage() {
       setError('請輸入分類與類別');
       return;
     }
+    setFormSaving(true);
     try {
       const res = await fetch('/api/accounting-subjects', {
         method: 'POST',
@@ -77,7 +79,7 @@ export default function AccountingSubjectsPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        const msg = data?.error?.message || (typeof data?.error === 'string' ? data.error : '新增失敗');
+        const msg = (typeof data?.error === 'string' ? data.error : data?.error?.message) || '新增失敗';
         setError(msg);
         return;
       }
@@ -89,6 +91,8 @@ export default function AccountingSubjectsPage() {
       fetchSubjects();
     } catch (err) {
       setError('新增失敗，請稍後再試');
+    } finally {
+      setFormSaving(false);
     }
   };
 
@@ -255,9 +259,10 @@ export default function AccountingSubjectsPage() {
                   />
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+                    disabled={formSaving}
+                    className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
                   >
-                    新增
+                    {formSaving ? '新增中...' : '新增'}
                   </button>
                 </div>
               </div>

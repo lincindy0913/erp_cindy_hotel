@@ -15,11 +15,11 @@ export default function PurchaseAllowancesPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Invoice search
-  const [invoiceSearch, setInvoiceSearch] = useState('');
-  const [invoiceResults, setInvoiceResults] = useState([]);
-  const [searchingInvoice, setSearchingInvoice] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  // Purchase search
+  const [purchaseSearch, setPurchaseSearch] = useState('');
+  const [purchaseResults, setPurchaseResults] = useState([]);
+  const [searchingPurchase, setSearchingPurchase] = useState(false);
+  const [selectedPurchase, setSelectedPurchase] = useState(null);
 
   // Form state
   const [showForm, setShowForm] = useState(false);
@@ -33,6 +33,10 @@ export default function PurchaseAllowancesPage() {
     amount: '', tax: '0', totalAmount: '', reason: '', note: '',
     details: [],
   });
+
+  // Saving states
+  const [formSaving, setFormSaving] = useState(false);
+  const [confirmSaving, setConfirmSaving] = useState(false);
 
   // Confirm modal
   const [confirmingId, setConfirmingId] = useState(null);
@@ -59,52 +63,52 @@ export default function PurchaseAllowancesPage() {
     setLoading(false);
   }
 
-  // Debounced invoice search
-  const searchInvoices = useCallback(async (keyword) => {
+  // Debounced purchase search
+  const searchPurchases = useCallback(async (keyword) => {
     if (!keyword || keyword.length < 1) {
-      setInvoiceResults([]);
+      setPurchaseResults([]);
       return;
     }
-    setSearchingInvoice(true);
+    setSearchingPurchase(true);
     try {
-      const res = await fetch(`/api/purchase-allowances/search-invoices?keyword=${encodeURIComponent(keyword)}`);
+      const res = await fetch(`/api/purchase-allowances/search-purchases?keyword=${encodeURIComponent(keyword)}`);
       const data = await res.json();
-      setInvoiceResults(Array.isArray(data) ? data : []);
+      setPurchaseResults(Array.isArray(data) ? data : []);
     } catch {
-      setInvoiceResults([]);
+      setPurchaseResults([]);
     }
-    setSearchingInvoice(false);
+    setSearchingPurchase(false);
   }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (invoiceSearch.length >= 1) searchInvoices(invoiceSearch);
-      else setInvoiceResults([]);
+      if (purchaseSearch.length >= 1) searchPurchases(purchaseSearch);
+      else setPurchaseResults([]);
     }, 400);
     return () => clearTimeout(timer);
-  }, [invoiceSearch, searchInvoices]);
+  }, [purchaseSearch, searchPurchases]);
 
-  // Select invoice and auto-populate form
-  function selectInvoice(inv) {
-    setSelectedInvoice(inv);
-    setInvoiceResults([]);
-    setInvoiceSearch('');
+  // Select purchase and auto-populate form (連動發票單號、付款單號)
+  function selectPurchase(p) {
+    setSelectedPurchase(p);
+    setPurchaseResults([]);
+    setPurchaseSearch('');
     setForm(f => ({
       ...f,
       allowanceType: formMode,
-      invoiceNo: inv.invoiceNo || '',
-      invoiceId: inv.invoiceId,
-      paymentOrderNo: inv.paymentOrderNo || '',
-      paymentOrderId: inv.paymentOrderId,
-      supplierName: inv.supplierName || '',
-      supplierId: inv.supplierId,
-      warehouse: inv.warehouse || '',
-      purchaseNo: inv.details?.[0]?.purchaseNo || '',
-      purchaseId: inv.details?.[0]?.purchaseId || null,
-      amount: String(inv.amount || inv.totalAmount || ''),
-      tax: String(inv.tax || 0),
-      totalAmount: String(inv.totalAmount || ''),
-      details: inv.details?.length > 0 ? inv.details.map(d => ({
+      purchaseNo: p.purchaseNo || '',
+      purchaseId: p.purchaseId || null,
+      invoiceNo: p.invoiceNo || '',
+      invoiceId: p.invoiceId || null,
+      paymentOrderNo: p.paymentOrderNo || '',
+      paymentOrderId: p.paymentOrderId || null,
+      supplierName: p.supplierName || '',
+      supplierId: p.supplierId || null,
+      warehouse: p.warehouse || '',
+      amount: String(p.amount || ''),
+      tax: String(p.tax || 0),
+      totalAmount: String(p.totalAmount || ''),
+      details: p.details?.length > 0 ? p.details.map(d => ({
         productName: d.productName || '',
         quantity: String(d.quantity || ''),
         unitPrice: String(d.unitPrice || ''),
@@ -156,9 +160,9 @@ export default function PurchaseAllowancesPage() {
       details: [],
     });
     setEditingId(null);
-    setSelectedInvoice(null);
-    setInvoiceSearch('');
-    setInvoiceResults([]);
+    setSelectedPurchase(null);
+    setPurchaseSearch('');
+    setPurchaseResults([]);
   }
 
   function openEdit(rec) {
@@ -189,7 +193,7 @@ export default function PurchaseAllowancesPage() {
     });
     setEditingId(rec.id);
     setShowForm(true);
-    setSelectedInvoice(null);
+    setSelectedPurchase(null);
   }
 
   function addDetailLine() {
@@ -249,6 +253,7 @@ export default function PurchaseAllowancesPage() {
 
     const payload = { ...form, createdBy: session?.user?.email || '' };
 
+    setFormSaving(true);
     try {
       const url = editingId ? `/api/purchase-allowances/${editingId}` : '/api/purchase-allowances';
       const method = editingId ? 'PUT' : 'POST';
@@ -260,9 +265,10 @@ export default function PurchaseAllowancesPage() {
         fetchAll();
       } else {
         const err = await res.json();
-        showToast(err.error?.message || '儲存失敗', 'error');
+        showToast((typeof err.error === 'string' ? err.error : err.error?.message) || '儲存失敗', 'error');
       }
     } catch { showToast('儲存失敗', 'error'); }
+    finally { setFormSaving(false); }
   }
 
   async function handleDelete(rec) {
@@ -281,6 +287,7 @@ export default function PurchaseAllowancesPage() {
 
     if (!confirm(`確認折讓單「${rec.allowanceNo}」，退款 NT$ ${Number(rec.totalAmount).toLocaleString()} 至帳戶？`)) return;
 
+    setConfirmSaving(true);
     try {
       const res = await fetch(`/api/purchase-allowances/${confirmingId}/confirm`, {
         method: 'POST',
@@ -295,9 +302,10 @@ export default function PurchaseAllowancesPage() {
         setConfirmAccountId('');
         fetchAll();
       } else {
-        showToast(result.error?.message || result.message || '確認失敗', 'error');
+        showToast((typeof result.error === 'string' ? result.error : result.error?.message) || result.message || '確認失敗', 'error');
       }
     } catch (err) { showToast('確認失敗: ' + err.message, 'error'); }
+    finally { setConfirmSaving(false); }
   }
 
   function handlePrint() {
@@ -430,39 +438,44 @@ export default function PurchaseAllowancesPage() {
               </span>
             </div>
 
-            {/* Invoice Search Section */}
+            {/* Purchase Search Section */}
             {!editingId && (
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
                 <label style={{ fontSize: 14, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>
-                  Step 1: 搜尋已付款的發票（輸入廠商名稱、發票號碼、付款單號）
+                  Step 1: 搜尋進貨單（輸入廠商名稱、進貨單號、館別）
                   {formMode === '全額退貨' && <span style={{ color: '#dc2626', marginLeft: 8 }}>— 確認後將全額退款並作廢原單據</span>}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
-                    value={invoiceSearch}
-                    onChange={e => setInvoiceSearch(e.target.value)}
-                    placeholder="輸入關鍵字搜尋已付款發票..."
+                    value={purchaseSearch}
+                    onChange={e => setPurchaseSearch(e.target.value)}
+                    placeholder="輸入廠商名稱、進貨單號或館別搜尋..."
                     style={{ ...inputStyle, fontSize: 15, padding: '10px 14px', border: '2px solid #f59e0b' }}
                   />
-                  {searchingInvoice && <div style={{ position: 'absolute', right: 12, top: 12, fontSize: 13, color: '#9ca3af' }}>搜尋中...</div>}
+                  {searchingPurchase && <div style={{ position: 'absolute', right: 12, top: 12, fontSize: 13, color: '#9ca3af' }}>搜尋中...</div>}
 
                   {/* Search Results Dropdown */}
-                  {invoiceResults.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1px solid #d1d5db', borderRadius: '0 0 8px 8px', maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                      {invoiceResults.map((inv, idx) => (
-                        <div key={idx} onClick={() => selectInvoice(inv)} style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', fontSize: 14 }}
+                  {purchaseResults.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1px solid #d1d5db', borderRadius: '0 0 8px 8px', maxHeight: 360, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                      {purchaseResults.map((p, idx) => (
+                        <div key={idx} onClick={() => selectPurchase(p)}
+                          style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', fontSize: 14 }}
                           onMouseEnter={e => e.currentTarget.style.background = '#fef3c7'}
                           onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
-                              <span style={{ fontWeight: 700, color: '#ea580c' }}>{inv.supplierName}</span>
-                              {inv.invoiceNo && <span style={{ marginLeft: 12, color: '#6b7280' }}>發票: {inv.invoiceNo}</span>}
+                              <span style={{ fontWeight: 700, color: '#ea580c' }}>{p.supplierName}</span>
+                              <span style={{ marginLeft: 10, fontWeight: 600, color: '#1d4ed8', fontSize: 13 }}>{p.purchaseNo}</span>
+                              {p.status && <span style={{ marginLeft: 8, fontSize: 12, padding: '1px 6px', borderRadius: 8, background: '#e0f2fe', color: '#0369a1' }}>{p.status}</span>}
                             </div>
-                            <span style={{ fontWeight: 700, color: '#059669' }}>NT$ {inv.totalAmount?.toLocaleString()}</span>
+                            <span style={{ fontWeight: 700, color: '#059669' }}>NT$ {Number(p.totalAmount).toLocaleString()}</span>
                           </div>
-                          <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 4 }}>
-                            付款單: {inv.paymentOrderNo || '-'} | 館別: {inv.warehouse || '-'} | 付款日: {inv.paidDate || '-'}
-                            {inv.details?.length > 0 && ` | 品項: ${inv.details.map(d => d.productName).filter(Boolean).join(', ').substring(0, 40)}`}
+                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                            <span>進貨日: {p.purchaseDate || '-'}</span>
+                            <span>館別: {p.warehouse || '-'}</span>
+                            {p.invoiceNo && <span style={{ color: '#7c3aed' }}>發票: {p.invoiceNo}</span>}
+                            {p.paymentOrderNo && <span style={{ color: '#b45309' }}>付款單: {p.paymentOrderNo}</span>}
+                            {p.details?.length > 0 && <span>品項: {p.details.map(d => d.productName).filter(Boolean).join(', ').substring(0, 40)}</span>}
                           </div>
                         </div>
                       ))}
@@ -470,25 +483,35 @@ export default function PurchaseAllowancesPage() {
                   )}
                 </div>
 
-                {/* Selected invoice info */}
-                {selectedInvoice && (
+                {/* Selected purchase info */}
+                {selectedPurchase && (
                   <div style={{ marginTop: 12, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: 14 }}>
-                        <span style={{ fontWeight: 700 }}>已選擇：</span>
-                        <span style={{ color: '#ea580c', fontWeight: 600 }}>{selectedInvoice.supplierName}</span>
-                        {selectedInvoice.invoiceNo && <span style={{ marginLeft: 8 }}>發票 {selectedInvoice.invoiceNo}</span>}
-                        <span style={{ marginLeft: 8, fontWeight: 700, color: '#059669' }}>原金額 NT$ {selectedInvoice.totalAmount?.toLocaleString()}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: 14, lineHeight: 1.8 }}>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>已選擇進貨單：</span>
+                          <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{selectedPurchase.purchaseNo}</span>
+                          <span style={{ marginLeft: 10, color: '#ea580c', fontWeight: 600 }}>{selectedPurchase.supplierName}</span>
+                          <span style={{ marginLeft: 10, fontWeight: 700, color: '#059669' }}>NT$ {Number(selectedPurchase.totalAmount).toLocaleString()}</span>
+                        </div>
+                        <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                          {selectedPurchase.invoiceNo
+                            ? <span>✓ 已連動發票: <strong style={{ color: '#7c3aed' }}>{selectedPurchase.invoiceNo}</strong></span>
+                            : <span style={{ color: '#9ca3af' }}>尚無對應發票</span>}
+                          {selectedPurchase.paymentOrderNo
+                            ? <span>✓ 已連動付款單: <strong style={{ color: '#b45309' }}>{selectedPurchase.paymentOrderNo}</strong></span>
+                            : <span style={{ color: '#9ca3af' }}>尚無對應付款單</span>}
+                        </div>
                       </div>
-                      <button onClick={() => { setSelectedInvoice(null); resetForm(); setShowForm(true); }}
-                        style={{ padding: '2px 10px', fontSize: 13, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
+                      <button onClick={() => { setSelectedPurchase(null); resetForm(); setShowForm(true); }}
+                        style={{ padding: '2px 10px', fontSize: 13, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 12 }}>
                         清除
                       </button>
                     </div>
                   </div>
                 )}
 
-                {!selectedInvoice && !invoiceSearch && (
+                {!selectedPurchase && !purchaseSearch && (
                   <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af' }}>
                     也可以跳過搜尋，直接手動填寫折讓資料
                   </div>
@@ -518,16 +541,19 @@ export default function PurchaseAllowancesPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>原進貨單號</label>
-                  <input value={form.purchaseNo} onChange={e => setForm(f => ({ ...f, purchaseNo: e.target.value }))} placeholder="選填" style={inputStyle} />
+                  <label style={labelStyle}>原進貨單號 {selectedPurchase && form.purchaseNo && <span style={{ color: '#059669', fontSize: 11 }}>✓ 已連動</span>}</label>
+                  <input value={form.purchaseNo} onChange={e => setForm(f => ({ ...f, purchaseNo: e.target.value }))} placeholder="選填"
+                    style={{ ...inputStyle, ...(selectedPurchase && form.purchaseNo ? { background: '#f0fdf4', borderColor: '#86efac' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>原發票號碼</label>
-                  <input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="選填" style={inputStyle} />
+                  <label style={labelStyle}>原發票號碼 {selectedPurchase && form.invoiceNo && <span style={{ color: '#059669', fontSize: 11 }}>✓ 已連動</span>}</label>
+                  <input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="選填"
+                    style={{ ...inputStyle, ...(selectedPurchase && form.invoiceNo ? { background: '#f0fdf4', borderColor: '#86efac' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>原付款單號</label>
-                  <input value={form.paymentOrderNo} onChange={e => setForm(f => ({ ...f, paymentOrderNo: e.target.value }))} placeholder="選填" style={inputStyle} />
+                  <label style={labelStyle}>原付款單號 {selectedPurchase && form.paymentOrderNo && <span style={{ color: '#059669', fontSize: 11 }}>✓ 已連動</span>}</label>
+                  <input value={form.paymentOrderNo} onChange={e => setForm(f => ({ ...f, paymentOrderNo: e.target.value }))} placeholder="選填"
+                    style={{ ...inputStyle, ...(selectedPurchase && form.paymentOrderNo ? { background: '#f0fdf4', borderColor: '#86efac' } : {}) }} />
                 </div>
               </div>
 
@@ -578,33 +604,33 @@ export default function PurchaseAllowancesPage() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
-                {formMode === '全額退貨' && selectedInvoice && (
+                {formMode === '全額退貨' && selectedPurchase && (
                   <div style={{ gridColumn: '1 / -1', background: '#fee2e2', padding: '6px 12px', borderRadius: 6, fontSize: 13, color: '#991b1b', marginBottom: 4 }}>
-                    全額退貨模式：金額已鎖定為原發票全額，不可修改
+                    全額退貨模式：金額已鎖定為原進貨單全額，不可修改
                   </div>
                 )}
                 <div>
                   <label style={labelStyle}>{formMode === '全額退貨' ? '退貨金額（未稅）' : '折讓金額（未稅）*'}</label>
                   <input type="number" value={form.amount}
                     onChange={e => updateAmountField('amount', e.target.value)}
-                    readOnly={formMode === '全額退貨' && !!selectedInvoice}
-                    style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedInvoice ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
+                    readOnly={formMode === '全額退貨' && !!selectedPurchase}
+                    style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedPurchase ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
                   <label style={labelStyle}>稅額</label>
                   <input type="number" value={form.tax}
                     onChange={e => updateAmountField('tax', e.target.value)}
-                    readOnly={formMode === '全額退貨' && !!selectedInvoice}
-                    style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedInvoice ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
+                    readOnly={formMode === '全額退貨' && !!selectedPurchase}
+                    style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedPurchase ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
                   <label style={labelStyle}>{formMode === '全額退貨' ? '退貨總額（含稅）' : '折讓總額（含稅）*'}</label>
                   <input type="number" value={form.totalAmount}
                     onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))}
-                    readOnly={formMode === '全額退貨' && !!selectedInvoice}
+                    readOnly={formMode === '全額退貨' && !!selectedPurchase}
                     style={{ ...inputStyle, border: `2px solid ${formMode === '全額退貨' ? '#dc2626' : '#f59e0b'}`, fontSize: 15, fontWeight: 700, textAlign: 'right',
-                      background: formMode === '全額退貨' && selectedInvoice ? '#fee2e2' : '#fffbeb',
-                      ...(formMode === '全額退貨' && selectedInvoice ? { cursor: 'not-allowed' } : {}),
+                      background: formMode === '全額退貨' && selectedPurchase ? '#fee2e2' : '#fffbeb',
+                      ...(formMode === '全額退貨' && selectedPurchase ? { cursor: 'not-allowed' } : {}),
                     }} />
                 </div>
               </div>
@@ -620,14 +646,14 @@ export default function PurchaseAllowancesPage() {
                 </div>
               </div>
 
-              {formMode === '全額退貨' && selectedInvoice && (
+              {formMode === '全額退貨' && selectedPurchase && (
                 <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 14, color: '#991b1b' }}>
                   <strong>全額退貨確認後將執行：</strong>
                   <ul style={{ margin: '4px 0 0 16px', padding: 0, lineHeight: 1.8 }}>
                     <li>建立退款收入交易 NT$ {form.totalAmount ? Number(form.totalAmount).toLocaleString() : '0'}</li>
-                    {form.paymentOrderNo && <li>原付款單 {form.paymentOrderNo} 標記為「已退貨」</li>}
-                    {form.invoiceNo && <li>原發票 {form.invoiceNo} 標記為「已退貨」</li>}
                     {form.purchaseNo && <li>原進貨單 {form.purchaseNo} 標記為「已退貨」</li>}
+                    {form.invoiceNo && <li>原發票 {form.invoiceNo} 標記為「已退貨」</li>}
+                    {form.paymentOrderNo && <li>原付款單 {form.paymentOrderNo} 標記為「已退貨」</li>}
                     <li>沖銷原出納付款交易</li>
                     <li>回沖損益表及月度彙總</li>
                   </ul>
@@ -635,13 +661,13 @@ export default function PurchaseAllowancesPage() {
               )}
 
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="submit" style={{
-                  padding: '8px 24px', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 600,
-                  background: formMode === '全額退貨' ? '#dc2626' : '#ea580c',
+                <button type="submit" disabled={formSaving} style={{
+                  padding: '8px 24px', color: '#fff', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600,
+                  background: formMode === '全額退貨' ? '#dc2626' : '#ea580c', opacity: formSaving ? 0.7 : 1,
                 }}>
-                  {editingId ? '更新' : '建立'}{formMode === '全額退貨' ? '退貨單（草稿）' : '折讓單（草稿）'}
+                  {formSaving ? '儲存中...' : `${editingId ? '更新' : '建立'}${formMode === '全額退貨' ? '退貨單（草稿）' : '折讓單（草稿）'}`}
                 </button>
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); }} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>取消</button>
+                <button type="button" onClick={() => { setShowForm(false); resetForm(); }} disabled={formSaving} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: 14 }}>取消</button>
               </div>
             </form>
           </div>
@@ -860,8 +886,8 @@ export default function PurchaseAllowancesPage() {
               );
             })()}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => { setConfirmingId(null); setConfirmAccountId(''); }} style={{ padding: '8px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>取消</button>
-              <button onClick={handleConfirm} style={{ padding: '8px 20px', background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>確認退款入帳</button>
+              <button onClick={() => { setConfirmingId(null); setConfirmAccountId(''); }} disabled={confirmSaving} style={{ padding: '8px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: confirmSaving ? 'not-allowed' : 'pointer', fontSize: 14 }}>取消</button>
+              <button onClick={handleConfirm} disabled={confirmSaving} style={{ padding: '8px 20px', background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: confirmSaving ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600, opacity: confirmSaving ? 0.7 : 1 }}>{confirmSaving ? '處理中...' : '確認退款入帳'}</button>
             </div>
           </div>
         </div>

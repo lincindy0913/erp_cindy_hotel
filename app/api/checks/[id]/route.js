@@ -91,7 +91,7 @@ export async function PUT(request, { params }) {
 
       if (!fromPaymentOrder) {
         // 非付款單支票：建立 CashTransaction 並連動現金流
-        const transactionNo = await nextCashTransactionNo(tx, clearDate);
+        const transactionNo = await nextCashTransactionNo(prisma, clearDate);
         let accountId, txType, sourceType;
         if (check.checkType === 'payable') {
           accountId = check.sourceAccountId;
@@ -170,7 +170,7 @@ export async function PUT(request, { params }) {
       // If was cleared, create reverse transaction
       if (check.status === 'cleared' && check.cashTransactionId) {
         const reverseDate = new Date().toISOString().split('T')[0];
-        const reverseTransactionNo = await nextCashTransactionNo(tx, reverseDate);
+        const reverseTransactionNo = await nextCashTransactionNo(prisma, reverseDate);
 
         let accountId, txType;
         if (check.checkType === 'payable') {

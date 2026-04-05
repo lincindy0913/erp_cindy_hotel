@@ -323,29 +323,29 @@ function InvoicePageInner() {
       return;
     }
 
+    // 前端驗證（在 setSalesSaving 之前）
+    const totals = calculateTotal();
+    const invoiceAmountVal = parseFloat(formData.invoiceAmount) || 0;
+    const discountVal = parseFloat(formData.supplierDiscount) || 0;
+    const salesTotalVal = parseFloat(totals.subtotal) || 0;
+
+    const expectedInvoiceAmount = salesTotalVal + taxAmount - discountVal;
+    if (Math.abs(expectedInvoiceAmount - invoiceAmountVal) > 0.01) {
+      showToast(
+        `金額驗證不通過！\n\n` +
+        `銷售金額合計：NT$ ${salesTotalVal.toFixed(2)}\n` +
+        `+ 營業稅金額：NT$ ${taxAmount.toFixed(2)}\n` +
+        `- 廠商折讓金額：NT$ ${discountVal.toFixed(2)}\n` +
+        `= NT$ ${expectedInvoiceAmount.toFixed(2)}\n\n` +
+        `但發票金額為：NT$ ${invoiceAmountVal.toFixed(2)}\n\n` +
+        `兩者不相等，請確認金額後再儲存。`,
+        'error'
+      );
+      return;
+    }
+
     setSalesSaving(true);
     try {
-      const totals = calculateTotal();
-      const invoiceAmountVal = parseFloat(formData.invoiceAmount) || 0;
-      const discountVal = parseFloat(formData.supplierDiscount) || 0;
-      const salesTotalVal = parseFloat(totals.subtotal) || 0;
-
-      // 驗證：銷售金額 + 營業稅金額 - 廠商折讓金額 是否等於 發票金額
-      const expectedInvoiceAmount = salesTotalVal + taxAmount - discountVal;
-      if (Math.abs(expectedInvoiceAmount - invoiceAmountVal) > 0.01) {
-        showToast(
-          `金額驗證不通過！\n\n` +
-          `銷售金額合計：NT$ ${salesTotalVal.toFixed(2)}\n` +
-          `+ 營業稅金額：NT$ ${taxAmount.toFixed(2)}\n` +
-          `- 廠商折讓金額：NT$ ${discountVal.toFixed(2)}\n` +
-          `= NT$ ${expectedInvoiceAmount.toFixed(2)}\n\n` +
-          `但發票金額為：NT$ ${invoiceAmountVal.toFixed(2)}\n\n` +
-          `兩者不相等，請確認金額後再儲存。`,
-          'error'
-        );
-        return;
-      }
-
       const invoiceData = {
         ...formData,
         items: selectedItems.map(item => ({
@@ -1075,6 +1075,7 @@ function InvoicePageInner() {
                     setEditingInvoice(null);
                     setSelectedItems([]);
                     setAvailableItems([]);
+                    setSalesSaving(false);
                     setFilterData({
                       yearMonth: '',
                       supplierId: '',

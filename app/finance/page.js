@@ -80,6 +80,7 @@ export default function PaymentPage() {
   const [purchaseReportLoading, setPurchaseReportLoading] = useState(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [submittingOrderId, setSubmittingOrderId] = useState(null);
+  const [formSaving, setFormSaving] = useState(false);
 
   // 表單資料
   const [formData, setFormData] = useState({
@@ -273,6 +274,12 @@ export default function PaymentPage() {
     }
   }
 
+  function updatePaymentAmountForSet(newSelected) {
+    const newTotal = calculateTotalForSet(newSelected);
+    const discountNum = parseFloat(formData.discount) || 0;
+    setFormData(prev => ({ ...prev, paymentAmount: Math.max(0, newTotal - discountNum).toFixed(2) }));
+  }
+
   function handleInvoiceToggle(invoiceId) {
     const newSelected = new Set(selectedInvoiceIds);
     if (newSelected.has(invoiceId)) {
@@ -282,27 +289,34 @@ export default function PaymentPage() {
     }
     setSelectedInvoiceIds(newSelected);
     autoFillPaymentMethod(newSelected);
+    updatePaymentAmountForSet(newSelected);
   }
 
   function handleSelectAll() {
     if (selectedInvoiceIds.size === unpaidInvoices.length && unpaidInvoices.length > 0) {
       setSelectedInvoiceIds(new Set());
+      setFormData(prev => ({ ...prev, paymentAmount: '0.00' }));
     } else {
       const newSelected = new Set(unpaidInvoices.map(inv => inv.id));
       setSelectedInvoiceIds(newSelected);
       autoFillPaymentMethod(newSelected);
+      updatePaymentAmountForSet(newSelected);
     }
   }
 
-  function calculateTotal() {
+  function calculateTotalForSet(selectedSet) {
     let total = 0;
-    selectedInvoiceIds.forEach(invoiceId => {
+    selectedSet.forEach(invoiceId => {
       const invoice = unpaidInvoices.find(inv => inv.id === invoiceId);
       if (invoice) {
         total += parseFloat(invoice.totalAmount || (invoice.amount || 0) + (invoice.tax || 0));
       }
     });
-    return total.toFixed(2);
+    return total;
+  }
+
+  function calculateTotal() {
+    return calculateTotalForSet(selectedInvoiceIds).toFixed(2);
   }
 
   async function handleSubmit(e) {
@@ -355,6 +369,7 @@ export default function PaymentPage() {
       }
     }
 
+    setFormSaving(true);
     try {
       const orderData = {
         invoiceIds: Array.from(selectedInvoiceIds),
@@ -412,6 +427,8 @@ export default function PaymentPage() {
     } catch (error) {
       console.error('建立付款單失敗:', error);
       showToast('建立付款單失敗，請稍後再試', 'error');
+    } finally {
+      setFormSaving(false);
     }
   }
 
@@ -1492,6 +1509,7 @@ export default function PaymentPage() {
                     setShowAddForm(false);
                     setSelectedInvoiceIds(new Set());
                     setUnpaidInvoices([]);
+                    setFormSaving(false);
                     resetFilterAndForm();
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1500,14 +1518,14 @@ export default function PaymentPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={selectedInvoiceIds.size === 0}
+                  disabled={selectedInvoiceIds.size === 0 || formSaving}
                   className={`px-6 py-2 rounded-lg ${
-                    selectedInvoiceIds.size === 0
+                    selectedInvoiceIds.size === 0 || formSaving
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-indigo-600 text-white hover:bg-indigo-700'
                   }`}
                 >
-                  儲存草稿
+                  {formSaving ? '儲存中…' : '儲存草稿'}
                 </button>
               </div>
             </form>

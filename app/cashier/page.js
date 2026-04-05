@@ -289,7 +289,7 @@ export default function CashierPage() {
         fetchOrders();
         fetchAccounts();
       } else {
-        const msg = result?.error?.message || result?.error?.details?.message || result?.message || JSON.stringify(result);
+        const msg = (typeof result?.error === 'string' ? result.error : result?.error?.message) || result?.message || JSON.stringify(result);
         showToast(`批次執行失敗：${msg}`, 'error');
       }
     } catch (err) {

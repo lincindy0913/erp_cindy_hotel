@@ -273,6 +273,7 @@ export default function SuppliersPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setSupplierSaving(true);
     try {
       const isEditing = !!editingSupplier;
       const url = isEditing ? `/api/suppliers/${editingSupplier.id}` : '/api/suppliers';

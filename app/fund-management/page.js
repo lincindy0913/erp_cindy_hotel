@@ -26,6 +26,7 @@ export default function FundManagementPage() {
   });
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [formSaving, setFormSaving] = useState(false);
   const [warehouses, setWarehouses] = useState([]);
 
   useEffect(() => {
@@ -87,6 +88,7 @@ export default function FundManagementPage() {
   async function handleAdd(e) {
     e.preventDefault();
     setError('');
+    setFormSaving(true);
     try {
       const res = await fetch('/api/cashflow/accounts', {
         method: 'POST',
@@ -95,7 +97,7 @@ export default function FundManagementPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || '新增失敗');
+        setError((typeof data.error === 'string' ? data.error : data.error?.message) || '新增失敗');
         return;
       }
       setSuccessMsg('新增成功');
@@ -104,6 +106,8 @@ export default function FundManagementPage() {
       fetchAccounts();
     } catch (err) {
       setError('新增失敗');
+    } finally {
+      setFormSaving(false);
     }
   }
 
@@ -269,9 +273,10 @@ export default function FundManagementPage() {
                   />
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700"
+                    disabled={formSaving}
+                    className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    新增
+                    {formSaving ? '新增中...' : '新增'}
                   </button>
                 </div>
               </div>
