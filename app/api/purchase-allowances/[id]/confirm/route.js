@@ -43,11 +43,11 @@ export async function POST(request, { params }) {
         where: { id },
         include: { details: true },
       });
-      if (!allowance) throw new Error('NOT_FOUND:找不到折讓單');
+      if (!allowance) throw new Error('NOT_FOUND:找不到退貨單');
       if (allowance.status !== '草稿') throw new Error(`IDEMPOTENT:無法確認：目前狀態為「${allowance.status}」`);
 
       const totalAmount = Number(allowance.totalAmount);
-      if (totalAmount <= 0) throw new Error('折讓金額必須大於 0');
+      if (totalAmount <= 0) throw new Error('退貨金額必須大於 0');
 
       const isFullReturn = allowance.allowanceType === '全額退貨';
 
@@ -65,7 +65,7 @@ export async function POST(request, { params }) {
       // Get category
       const categoryId = await getCategoryId(tx, 'purchase_allowance');
 
-      const descPrefix = isFullReturn ? '全額退貨退款' : '進貨折讓退款';
+      const descPrefix = isFullReturn ? '全額退貨退款' : '進貨退貨退款';
 
       // Create CashTransaction (收入 = refund from supplier)
       const cashTx = await tx.cashTransaction.create({
@@ -280,11 +280,11 @@ export async function POST(request, { params }) {
         targetModule: 'purchase_allowance',
         targetRecordNo: result.allowanceNo,
         afterState: { allowanceType: result.allowanceType, totalAmount: result.totalAmount, txNo: result.txNo },
-        note: `折讓/退貨確認 ${result.allowanceNo}`,
+        note: `退貨確認 ${result.allowanceNo}`,
       });
     }
 
-    const typeLabel = result.allowanceType === '全額退貨' ? '全額退貨' : '折讓';
+    const typeLabel = result.allowanceType === '全額退貨' ? '全額退貨' : '退貨';
     let message = `${typeLabel}單 ${result.allowanceNo} 已確認，退款 NT$ ${result.totalAmount.toLocaleString()} 已入帳 (${result.txNo})`;
     if (result.extraActions?.length > 0) {
       message += '\n' + result.extraActions.join('\n');

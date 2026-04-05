@@ -99,6 +99,7 @@ export default function ReconciliationPage() {
   const [ccPmsWarehouse, setCcPmsWarehouse] = useState('');
   const [ccShowConfigModal, setCcShowConfigModal] = useState(false);
   const [ccConfigForm, setCcConfigForm] = useState({ warehouseId: '', bankName: '國泰世華', merchantId: '', merchantName: '', accountNo: '', domesticFeeRate: '1.70', foreignFeeRate: '2.30', selfFeeRate: '1.70' });
+  const [ccBankType, setCcBankType] = useState('國泰世華');
 
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
@@ -790,12 +791,12 @@ export default function ReconciliationPage() {
         }
         fullText += '\n';
       }
-      const parsed = parseCathayPdf(fullText);
+      const parsed = parsePdfByBank(fullText, ccBankType);
       if (parsed) {
         setCcParsedData(parsed);
         showMessage(`解析成功：${parsed.merchantName || '(未識別名稱)'}，請款金額 ${formatMoney(parsed.totalAmount)}`);
       } else {
-        showMessage('無法解析 PDF 內容，請確認格式是否為國泰世華信用卡對帳單', 'error');
+        showMessage(`無法解析 PDF 內容，請確認格式是否符合 ${ccBankType} 信用卡對帳單`, 'error');
       }
     } catch (err) {
       console.error('PDF parse error:', err);
@@ -811,6 +812,121 @@ export default function ReconciliationPage() {
       .replace(/\uff0f/g, '/')   // ／ → /
       .replace(/\u3000/g, ' ')   // ideographic space
       .replace(/[ \t]+/g, ' ');
+  }
+
+  // Dispatch PDF parsing by bank type
+  function parsePdfByBank(fullText, bankType) {
+    switch (bankType) {
+      case '國泰世華': return parseCathayPdf(fullText);
+      default:         return parseGenericCcPdf(fullText, bankType);
+    }
+  }
+
+  // Generic Taiwan bank credit card merchant statement parser
+  // Handles 玉山、台新、中信、合庫、第一、土銀 etc. using common label patterns
+  function parseGenericCcPdf(rawText, bankName) {
+    try {
+      if (rawText.length > 500000) throw new Error('輸入文字過長');
+      const text = normalizePdfText(rawText);
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const flatText = lines.join(' ');
+      const toNum = s => parseFloat((s || '').replace(/,/g, '')) || 0;
+
+      let merchantId = '', merchantName = '', billingDate = '', paymentDate = '', accountNo = '';
+      let totalCount = 0, totalAmount = 0, totalFee = 0, netAmount = 0;
+
+      for (const line of lines) {
+        // Merchant ID — various labels
+        if (!merchantId) {
+          const m = line.match(/(?:特店|商店|店家)代號\s*[:\s:]\s*(\d{5,})/);
+          if (m) merchantId = m[1];
+        }
+        // Merchant Name
+        if (!merchantName) {
+          const m = line.match(/(?:特店|商店|店家)名稱\s*[:\s:]\s*(.+)/);
+          if (m) merchantName = m[1].trim().replace(/\s+/g, '');
+        }
+        // Billing / billing date labels
+        if (!billingDate) {
+          const m = line.match(/(?:請款|帳單|交易截止)\s*日[期]?\s*[:\s:]\s*(\d{3,4}[\/\-年]\d{1,2}[\/\-月]\d{1,2})/);
+          if (m) {
+            billingDate = m[1].replace(/[年月]/g, '/').replace(/-/g, '/');
+            // ROC year conversion: if 3-digit year
+            const parts = billingDate.split('/');
+            if (parts[0] && parseInt(parts[0]) < 200) {
+              billingDate = `${parseInt(parts[0]) + 1911}/${parts.slice(1).join('/')}`;
+            }
+          }
+        }
+        // Payment / disbursement date
+        if (!paymentDate) {
+          const m = line.match(/(?:撥款|入帳|付款)\s*日[期]?\s*[:\s:]\s*(\d{3,4}[\/\-年]\d{1,2}[\/\-月]\d{1,2})/);
+          if (m) {
+            paymentDate = m[1].replace(/[年月]/g, '/').replace(/-/g, '/');
+            const parts = paymentDate.split('/');
+            if (parts[0] && parseInt(parts[0]) < 200) {
+              paymentDate = `${parseInt(parts[0]) + 1911}/${parts.slice(1).join('/')}`;
+            }
+          }
+        }
+        // Account number
+        if (!accountNo) {
+          const m = line.match(/(?:入帳|撥款|匯款)\s*帳號\s*[:\s:]\s*(\S+)/);
+          if (m) accountNo = m[1];
+        }
+        // Transaction count
+        if (!totalCount) {
+          const m = line.match(/(?:總筆數|交易筆數|刷卡筆數)\s*[:\s:]\s*(\d+)/);
+          if (m) totalCount = parseInt(m[1]) || 0;
+        }
+        // Total amount
+        if (!totalAmount) {
+          const m = line.match(/(?:請款金額|刷卡總金額|交易金額|請款總金額|刷卡金額合計)\s*[:\s:]\s*([\d,]+)/);
+          if (m) totalAmount = toNum(m[1]);
+        }
+        // Fee
+        if (!totalFee) {
+          const m = line.match(/(?:手續費合計|手續費總計|手續費)\s*[:\s:]\s*([\d,]+)/);
+          if (m) totalFee = toNum(m[1]);
+        }
+        // Net payout
+        if (!netAmount) {
+          const m = line.match(/(?:撥款淨額|撥款金額|實際撥款|實撥金額)\s*[:\s:]\s*([\d,]+)/);
+          if (m) netAmount = toNum(m[1]);
+        }
+      }
+
+      // Fallback: search flat text for unlabeled numbers if critical fields still missing
+      if (!totalAmount) {
+        const m = flatText.match(/(?:請款|刷卡).*?([\d,]{4,})/);
+        if (m) totalAmount = toNum(m[1]);
+      }
+      if (!netAmount && totalAmount && totalFee) {
+        netAmount = totalAmount - totalFee;
+      }
+
+      if (!totalAmount && !merchantId && !merchantName) return null;
+
+      return {
+        bankName,
+        merchantId,
+        merchantName,
+        billingDate,
+        paymentDate,
+        accountNo,
+        totalCount,
+        totalAmount,
+        adjustment: 0,
+        totalFee,
+        serviceFee: 0,
+        otherFee: 0,
+        netAmount,
+        batchLines: [],
+        feeDetails: [],
+      };
+    } catch {
+      return null;
+    }
   }
 
   // Parse Cathay United Bank credit card merchant statement
@@ -1621,10 +1737,27 @@ export default function ReconciliationPage() {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">銀行 *</label>
+                <select value={ccBankType} onChange={e => { setCcBankType(e.target.value); setCcParsedData(null); }}
+                  className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="國泰世華">國泰世華</option>
+                  <option value="玉山">玉山銀行</option>
+                  <option value="台新">台新銀行</option>
+                  <option value="中信">中國信託</option>
+                  <option value="合庫">合作金庫</option>
+                  <option value="第一">第一銀行</option>
+                  <option value="土銀">土地銀行</option>
+                  <option value="台灣銀行">台灣銀行</option>
+                  <option value="郵局">中華郵政</option>
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">選擇 PDF 檔案</label>
                 <input type="file" accept=".pdf,.txt" onChange={handleCcPdfUpload}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
-                <p className="text-xs text-gray-400 mt-1">支援國泰世華信用卡特約商店撥款對帳單 PDF</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {ccBankType === '國泰世華' ? '支援國泰世華信用卡特約商店撥款對帳單 PDF' : `支援 ${ccBankType} 信用卡特約商店對帳單 PDF（通用解析）`}
+                </p>
               </div>
 
               {ccParsedData && (
@@ -1647,7 +1780,7 @@ export default function ReconciliationPage() {
               )}
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => { setCcShowUpload(false); setCcParsedData(null); }}
+              <button onClick={() => { setCcShowUpload(false); setCcParsedData(null); setCcBankType('國泰世華'); }}
                 className="px-4 py-2 border text-gray-600 text-sm rounded-lg hover:bg-gray-50">取消</button>
               <button onClick={saveParsedCcStatement} disabled={!ccParsedData || !ccUploadWarehouse}
                 className="px-6 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50">

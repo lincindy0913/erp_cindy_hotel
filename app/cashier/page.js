@@ -169,6 +169,17 @@ export default function CashierPage() {
   }
 
   // Batch selection handlers
+  // Auto-fill batch account when all selected orders share the same accountId
+  function syncBatchAccountFromOrders(orderSet) {
+    const sel = pendingOrders.filter(o => orderSet.has(o.id));
+    if (sel.length === 0) return;
+    const ids = [...new Set(sel.map(o => o.accountId).filter(id => id != null && id !== ''))];
+    if (ids.length === 1) {
+      const total = sel.reduce((s, o) => s + Number(o.netAmount), 0);
+      setBatchAccounts([{ accountId: String(ids[0]), amount: String(total) }]);
+    }
+  }
+
   function handleToggleSelect(orderId) {
     const newSelected = new Set(selectedOrderIds);
     if (newSelected.has(orderId)) {
@@ -177,13 +188,17 @@ export default function CashierPage() {
       newSelected.add(orderId);
     }
     setSelectedOrderIds(newSelected);
+    syncBatchAccountFromOrders(newSelected);
   }
 
   function handleSelectAll() {
     if (selectedOrderIds.size === pendingOrders.length && pendingOrders.length > 0) {
       setSelectedOrderIds(new Set());
+      setBatchAccounts([{ accountId: '', amount: '' }]);
     } else {
-      setSelectedOrderIds(new Set(pendingOrders.map(o => o.id)));
+      const newSelected = new Set(pendingOrders.map(o => o.id));
+      setSelectedOrderIds(newSelected);
+      syncBatchAccountFromOrders(newSelected);
     }
   }
 

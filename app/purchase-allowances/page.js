@@ -318,7 +318,7 @@ export default function PurchaseAllowancesPage() {
       : ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','退款金額','退款交易','確認者'];
     const bodyRows = rows.map(r => {
       const base = [
-        r.allowanceNo || '', r.allowanceType || '折讓', r.allowanceDate || '',
+        r.allowanceNo || '', r.allowanceType || '退貨', r.allowanceDate || '',
         r.supplierName || '-', r.warehouse || '-', r.invoiceNo || '-',
         r.paymentOrderNo || '-', (r.reason || '-').substring(0, 30),
         `NT$ ${Number(r.totalAmount).toLocaleString()}`,
@@ -354,7 +354,7 @@ export default function PurchaseAllowancesPage() {
       : ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','退款金額','退款交易','確認者'];
     const csvRows = rows.map(r => {
       const base = [
-        r.allowanceNo || '', r.allowanceType || '折讓', r.allowanceDate || '',
+        r.allowanceNo || '', r.allowanceType || '退貨', r.allowanceDate || '',
         r.supplierName || '', r.warehouse || '', r.invoiceNo || '',
         r.paymentOrderNo || '', r.reason || '', Number(r.totalAmount),
       ];
