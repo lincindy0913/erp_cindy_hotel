@@ -23,10 +23,13 @@ export async function GET(request) {
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 50;
 
+    const pmsColumnName = searchParams.get('pmsColumnName');
+
     const where = {};
     if (warehouse) where.warehouse = warehouse;
     if (entryType) where.entryType = entryType;
     if (accountingCode) where.accountingCode = accountingCode;
+    if (pmsColumnName) where.pmsColumnName = { contains: pmsColumnName };
 
     // Warehouse-level access control
     const wf = applyWarehouseFilter(auth.session, where);

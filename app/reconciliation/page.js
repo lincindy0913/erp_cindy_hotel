@@ -86,6 +86,17 @@ export default function ReconciliationPage() {
   const [ccShowUpload, setCcShowUpload] = useState(false);
   const [ccUploadWarehouse, setCcUploadWarehouse] = useState('');
   const [ccParsedData, setCcParsedData] = useState(null);
+  const [ccMatchResults, setCcMatchResults] = useState({});
+  const [ccMatchLoading, setCcMatchLoading] = useState({});
+  const [ccInnerTab, setCcInnerTab] = useState('statements');
+  const [ccPmsRecords, setCcPmsRecords] = useState([]);
+  const [ccPmsLoading, setCcPmsLoading] = useState(false);
+  const [ccPmsStartDate, setCcPmsStartDate] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`);
+  const [ccPmsEndDate, setCcPmsEndDate] = useState(() => {
+    const last = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    return `${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')}`;
+  });
+  const [ccPmsWarehouse, setCcPmsWarehouse] = useState('');
   const [ccShowConfigModal, setCcShowConfigModal] = useState(false);
   const [ccConfigForm, setCcConfigForm] = useState({ warehouseId: '', bankName: '國泰世華', merchantId: '', merchantName: '', accountNo: '', domesticFeeRate: '1.70', foreignFeeRate: '2.30', selfFeeRate: '1.70' });
 
@@ -200,6 +211,29 @@ export default function ReconciliationPage() {
   useEffect(() => {
     if (activeTab === 'credit-card') fetchCcData();
   }, [activeTab, fetchCcData]);
+
+  // ---- Credit Card: PMS records ----
+  const fetchCcPmsData = useCallback(async () => {
+    setCcPmsLoading(true);
+    try {
+      const params = new URLSearchParams({ pmsColumnName: '信用卡', limit: '500' });
+      if (ccPmsStartDate) params.set('startDate', ccPmsStartDate);
+      if (ccPmsEndDate) params.set('endDate', ccPmsEndDate);
+      if (ccPmsWarehouse) params.set('warehouse', ccPmsWarehouse);
+      const res = await fetch(`/api/pms-income?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCcPmsRecords(data.records || []);
+      }
+    } catch (e) {
+      console.error('載入PMS信用卡收入失敗:', e);
+    }
+    setCcPmsLoading(false);
+  }, [ccPmsStartDate, ccPmsEndDate, ccPmsWarehouse]);
+
+  useEffect(() => {
+    if (activeTab === 'credit-card' && ccInnerTab === 'pms') fetchCcPmsData();
+  }, [activeTab, ccInnerTab, fetchCcPmsData]);
 
   // ---- Load reconciliation for selected account ----
   const loadReconciliation = useCallback(async () => {
@@ -724,91 +758,151 @@ export default function ReconciliationPage() {
     }
   };
 
-  // ---- Credit Card: PDF parse (client-side text extraction) ----
+  // ---- Credit Card: PDF parse (client-side text extraction via pdfjs-dist) ----
   const handleCcPdfUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
-      const text = await file.text();
-      const parsed = parseCathayPdf(text);
+      const pdfjsLib = await import('pdfjs-dist');
+      // Always set worker src for pdfjs-dist v5
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
+
+      const arrayBuffer = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: arrayBuffer, useSystemFonts: true }).promise;
+      let fullText = '';
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        // Sort by Y (desc) then X (asc) to preserve reading order
+        const items = [...(content?.items || [])].sort((a, b) => {
+          const y1 = a.transform?.[5] ?? 0;
+          const y2 = b.transform?.[5] ?? 0;
+          if (Math.abs(y1 - y2) > 5) return y2 - y1;
+          return (a.transform?.[4] ?? 0) - (b.transform?.[4] ?? 0);
+        });
+        // Group items on the same line and join with space, separate lines with newline
+        let lastY = null;
+        for (const it of items) {
+          const y = it.transform?.[5] ?? 0;
+          if (lastY !== null && Math.abs(y - lastY) > 5) fullText += '\n';
+          fullText += (it.str ?? '');
+          lastY = y;
+        }
+        fullText += '\n';
+      }
+      const parsed = parseCathayPdf(fullText);
       if (parsed) {
         setCcParsedData(parsed);
-        showMessage(`解析成功：${parsed.merchantName}，請款金額 ${formatMoney(parsed.totalAmount)}`);
+        showMessage(`解析成功：${parsed.merchantName || '(未識別名稱)'}，請款金額 ${formatMoney(parsed.totalAmount)}`);
       } else {
-        showMessage('無法解析 PDF 內容，請確認格式', 'error');
+        showMessage('無法解析 PDF 內容，請確認格式是否為國泰世華信用卡對帳單', 'error');
       }
     } catch (err) {
-      // If text() fails (binary PDF), show manual entry hint
-      showMessage('PDF 為二進位格式，請使用手動輸入或轉換為文字 PDF', 'error');
+      console.error('PDF parse error:', err);
+      showMessage('PDF 解析失敗：' + (err.message || '未知錯誤'), 'error');
     }
     e.target.value = '';
   };
 
+  // Normalize PDF-extracted text: unify full-width chars, collapse whitespace
+  function normalizePdfText(t) {
+    return t
+      .replace(/\uff1a/g, ':')   // ： → :
+      .replace(/\uff0f/g, '/')   // ／ → /
+      .replace(/\u3000/g, ' ')   // ideographic space
+      .replace(/[ \t]+/g, ' ');
+  }
+
   // Parse Cathay United Bank credit card merchant statement
-  function parseCathayPdf(text) {
+  function parseCathayPdf(rawText) {
     try {
       // Guard against extremely large input (prevent regex DoS / UI freeze)
-      if (text.length > 500000) {
+      if (rawText.length > 500000) {
         throw new Error('輸入文字過長，請縮短後再試 (上限 500KB)');
       }
+      const text = normalizePdfText(rawText);
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const flatText = lines.join(' ');
 
-      // Extract merchant info
+      // ---- Merchant info ----
       let merchantId = '', merchantName = '', billingDate = '', paymentDate = '', accountNo = '';
       for (const line of lines) {
-        const mid = line.match(/商店代號[：:]\s*(\d+)/);
-        if (mid) merchantId = mid[1];
-        const mn = line.match(/商店名稱[：:]\s*(.+)/);
-        if (mn) merchantName = mn[1].trim();
-        const bd = line.match(/請款日[期]?[：:]\s*(\d{4}\/\d{2}\/\d{2})/);
-        if (bd) billingDate = bd[1];
-        const pd = line.match(/撥款日[期]?[：:]\s*(\d{4}\/\d{2}\/\d{2})/);
-        if (pd) paymentDate = pd[1];
-        const an = line.match(/入帳帳號[：:]\s*(\S+)/);
-        if (an) accountNo = an[1];
+        if (!merchantId) {
+          const m = line.match(/(?:特店|商店)代號\s*[:\s]\s*(\d{5,})/);
+          if (m) merchantId = m[1];
+        }
+        if (!merchantName) {
+          const m = line.match(/(?:特店|商店)名稱\s*[:\s]\s*(.+)/);
+          if (m) merchantName = m[1].trim().replace(/\s+/g, '');
+        }
+        if (!billingDate) {
+          const m = line.match(/請款日[期]?\s*[:\s]\s*(\d{4}[/\-]\d{1,2}[/\-]\d{1,2})/);
+          if (m) billingDate = m[1].replace(/-/g, '/').replace(/\/(\d)(?=\/|$)/g, '/0$1');
+        }
+        if (!paymentDate) {
+          const m = line.match(/撥款日[期]?\s*[:\s]\s*(\d{4}[/\-]\d{1,2}[/\-]\d{1,2})/);
+          if (m) paymentDate = m[1].replace(/-/g, '/').replace(/\/(\d)(?=\/|$)/g, '/0$1');
+        }
+        if (!accountNo) {
+          const m = line.match(/入帳帳號\s*[:\s]\s*(\S+)/);
+          if (m) accountNo = m[1];
+        }
       }
 
-      // Extract summary: 筆數, 請款金額, 調整, 手續費, 服務費, 費用, 撥款淨額
+      // ---- Summary totals ----
       let totalCount = 0, totalAmount = 0, adjustment = 0, totalFee = 0, serviceFee = 0, otherFee = 0, netAmount = 0;
-      const summaryMatch = text.match(/總計\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/);
-      if (summaryMatch) {
-        totalCount = parseInt(summaryMatch[1]);
-        totalAmount = parseFloat(summaryMatch[2].replace(/,/g, ''));
-        adjustment = parseFloat(summaryMatch[3].replace(/,/g, ''));
-        totalFee = parseFloat(summaryMatch[4].replace(/,/g, ''));
-        serviceFee = parseFloat(summaryMatch[5].replace(/,/g, ''));
-        otherFee = parseFloat(summaryMatch[6].replace(/,/g, ''));
-        netAmount = parseFloat(summaryMatch[7].replace(/,/g, ''));
+      const toNum = s => parseFloat((s || '').replace(/,/g, '')) || 0;
+      const N = '([\\d,]+)';
+      const S = '\\s+';
+      // Try: 總計 count amount adjustment fee serviceFee otherFee netAmount (all on one flat line)
+      let sm = flatText.match(new RegExp(`總計${S}${N}${S}${N}${S}${N}${S}${N}${S}${N}${S}${N}${S}${N}`));
+      if (sm) {
+        totalCount = parseInt(sm[1]) || 0;
+        totalAmount = toNum(sm[2]);
+        adjustment  = toNum(sm[3]);
+        totalFee    = toNum(sm[4]);
+        serviceFee  = toNum(sm[5]);
+        otherFee    = toNum(sm[6]);
+        netAmount   = toNum(sm[7]);
+      } else {
+        // Fallback: extract individual labelled fields
+        for (const line of lines) {
+          if (!totalAmount) { const m = line.match(/請款金額\s*[:\s]\s*([\d,]+)/); if (m) totalAmount = toNum(m[1]); }
+          if (!netAmount)   { const m = line.match(/撥款淨額\s*[:\s]\s*([\d,]+)/); if (m) netAmount   = toNum(m[1]); }
+          if (!totalFee)    { const m = line.match(/手續費\s*[:\s]\s*([\d,]+)/);   if (m) totalFee    = toNum(m[1]); }
+          if (!totalCount)  { const m = line.match(/總筆數\s*[:\s]\s*(\d+)/);      if (m) totalCount  = parseInt(m[1]) || 0; }
+        }
       }
 
-      // Extract batch lines
+      // ---- Batch lines ----
       const batchLines = [];
-      const batchRegex = /(\d{4}\/\d{2}\/\d{2})\s+(\d{4}\/\d{2}\/\d{2})\s+(\d+)\s+(\d+)\s+(VISA|MASTER|JCB|CUP)\s+(\d+)\s+([\d,]+)/g;
+      const dateP = '(\\d{4}/\\d{2}/\\d{2})';
+      const batchRegex = new RegExp(`${dateP}\\s+${dateP}\\s+(\\d+)\\s+(\\d+)\\s+(VISA|MASTER|MasterCard|JCB|CUP|UnionPay)\\s+(\\d+)\\s+([\\d,]+)`, 'gi');
       let m;
-      while ((m = batchRegex.exec(text)) !== null) {
+      while ((m = batchRegex.exec(flatText)) !== null) {
         batchLines.push({
           billingDate: m[1],
           settlementDate: m[2],
           terminalId: m[3],
           batchNo: m[4],
-          cardType: m[5],
+          cardType: m[5].toUpperCase().replace('MASTERCARD', 'MASTER').replace('UNIONPAY', 'CUP'),
           count: parseInt(m[6]),
-          amount: parseFloat(m[7].replace(/,/g, '')),
+          amount: toNum(m[7]),
         });
       }
 
-      // Extract fee details
+      // ---- Fee details ----
       const feeDetails = [];
-      const feeRegex = /(國內|國外|自行)\((VISA|MASTER|JCB|CUP)\)\s+筆數／請款金額／手續費[：:]\s*(\d+)\s*／\s*([\d,]+)\s*／\s*([\d,.]+)/g;
-      while ((m = feeRegex.exec(text)) !== null) {
+      // Support both full-width (/) and half-width (/) slash already normalized above
+      const feeRegex = /(國內|國外|自行)\s*[(（](VISA|MASTER|JCB|CUP)[)）]\s+筆數\/請款金額\/手續費\s*[:\s]\s*(\d+)\s*\/\s*([\d,]+)\s*\/\s*([\d,.]+)/gi;
+      while ((m = feeRegex.exec(flatText)) !== null) {
         const cnt = parseInt(m[3]);
-        const amt = parseFloat(m[4].replace(/,/g, ''));
-        const fee = parseFloat(m[5].replace(/,/g, ''));
+        const amt = toNum(m[4]);
+        const fee = toNum(m[5]);
         if (cnt > 0 || amt > 0) {
           feeDetails.push({
             origin: m[1],
-            cardType: m[2],
+            cardType: m[2].toUpperCase(),
             count: cnt,
             amount: amt,
             fee,
@@ -853,18 +947,28 @@ export default function ReconciliationPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...ccParsedData,
-          warehouseId: parseInt(ccUploadWarehouse),
-          warehouse: bld?.name || '',
+          action: 'upload_parsed',
+          statements: [{
+            ...ccParsedData,
+            warehouseId: parseInt(ccUploadWarehouse),
+            warehouse: bld?.name || '',
+          }],
         }),
       });
       const data = await res.json();
       if (data.error) {
         showMessage(data.error, 'error');
       } else {
-        showMessage('對帳單已匯入');
+        const skipped = data.skipped > 0 ? `（${data.skipped} 筆重複略過）` : '';
+        showMessage(`對帳單已匯入${skipped}，正在比對PMS...`);
         setCcParsedData(null);
         setCcShowUpload(false);
+        // Auto-match with PMS for each newly created statement
+        if (data.created > 0 && Array.isArray(data.results)) {
+          for (const r of data.results) {
+            if (r.id && !r.skipped) await matchCcPms(r.id);
+          }
+        }
         fetchCcData();
       }
     } catch {
@@ -872,8 +976,9 @@ export default function ReconciliationPage() {
     }
   };
 
-  // CC: match PMS
+  // CC: match PMS for a single statement
   const matchCcPms = async (id) => {
+    setCcMatchLoading(prev => ({ ...prev, [id]: true }));
     try {
       const res = await fetch('/api/reconciliation/credit-card-statements', {
         method: 'PUT',
@@ -884,9 +989,35 @@ export default function ReconciliationPage() {
       if (data.error) showMessage(data.error, 'error');
       else {
         showMessage(`PMS 比對完成，差異 ${formatMoney(data.difference)}`);
+        setCcMatchResults(prev => ({ ...prev, [id]: { pmsRecords: data.pmsRecords || [], matchedDates: data.matchedDates || [] } }));
         fetchCcData();
       }
     } catch { showMessage('比對失敗', 'error'); }
+    finally { setCcMatchLoading(prev => ({ ...prev, [id]: false })); }
+  };
+
+  // CC: batch match all pending statements against PMS
+  const matchAllCcPms = async () => {
+    const pendingStmts = ccStatements.filter(s => s.status !== 'confirmed');
+    if (pendingStmts.length === 0) {
+      showMessage('沒有待比對的對帳單', 'error');
+      return;
+    }
+    let matched = 0, failed = 0;
+    for (const stmt of pendingStmts) {
+      try {
+        const res = await fetch('/api/reconciliation/credit-card-statements', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: stmt.id, action: 'match_pms' }),
+        });
+        const data = await res.json();
+        if (!data.error) matched++;
+        else failed++;
+      } catch { failed++; }
+    }
+    showMessage(`批次比對完成：${matched} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`);
+    fetchCcData();
   };
 
   // CC: confirm / unconfirm
@@ -951,8 +1082,184 @@ export default function ReconciliationPage() {
     const summaryRows = ccSummary?.summary || [];
     const grandTotal = ccSummary?.grandTotal || {};
 
+    // PMS records grouped by date for comparison
+    const pmsByDate = {};
+    for (const r of ccPmsRecords) {
+      if (!pmsByDate[r.businessDate]) pmsByDate[r.businessDate] = { records: [], total: 0 };
+      pmsByDate[r.businessDate].records.push(r);
+      pmsByDate[r.businessDate].total += Number(r.amount);
+    }
+    const pmsTotalAmount = ccPmsRecords.reduce((s, r) => s + Number(r.amount), 0);
+    const pmsGroupedByWarehouse = {};
+    for (const r of ccPmsRecords) {
+      if (!pmsGroupedByWarehouse[r.warehouse]) pmsGroupedByWarehouse[r.warehouse] = 0;
+      pmsGroupedByWarehouse[r.warehouse] += Number(r.amount);
+    }
+
     return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Inner sub-tabs */}
+      <div className="flex border-b">
+        <button
+          onClick={() => setCcInnerTab('statements')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${ccInnerTab === 'statements' ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >信用卡對帳單</button>
+        <button
+          onClick={() => setCcInnerTab('pms')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${ccInnerTab === 'pms' ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >PMS信用卡收入</button>
+      </div>
+
+      {/* ===== PMS sub-tab ===== */}
+      {ccInnerTab === 'pms' && (
+        <div className="space-y-4">
+          {/* Search filters */}
+          <div className="bg-white rounded-xl shadow-sm border p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">開始日期</label>
+                <input type="date" value={ccPmsStartDate} onChange={e => setCcPmsStartDate(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                <input type="date" value={ccPmsEndDate} onChange={e => setCcPmsEndDate(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select value={ccPmsWarehouse} onChange={e => setCcPmsWarehouse(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm">
+                  <option value="">全部</option>
+                  {ccBuildings.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                </select>
+              </div>
+              <button onClick={fetchCcPmsData} disabled={ccPmsLoading}
+                className="px-4 py-1.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50">
+                {ccPmsLoading ? '查詢中...' : '查詢'}
+              </button>
+            </div>
+          </div>
+
+          {/* Summary cards */}
+          {ccPmsRecords.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white rounded-xl border shadow-sm p-4">
+                <p className="text-xs text-gray-500">PMS信用卡總筆數</p>
+                <p className="text-2xl font-bold text-violet-700 mt-1">{ccPmsRecords.length}</p>
+              </div>
+              <div className="bg-white rounded-xl border shadow-sm p-4">
+                <p className="text-xs text-gray-500">PMS信用卡總金額</p>
+                <p className="text-2xl font-bold text-violet-700 mt-1">{formatMoney(pmsTotalAmount)}</p>
+              </div>
+              {Object.entries(pmsGroupedByWarehouse).map(([w, amt]) => (
+                <div key={w} className="bg-white rounded-xl border shadow-sm p-4">
+                  <p className="text-xs text-gray-500">{w}</p>
+                  <p className="text-xl font-bold text-gray-800 mt-1">{formatMoney(amt)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PMS vs Statement comparison */}
+          {ccPmsRecords.length > 0 && ccStatements.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div className="px-4 py-3 bg-violet-50 border-b">
+                <h4 className="text-sm font-semibold text-violet-800">PMS 信用卡 vs 銀行對帳單 比對</h4>
+                <p className="text-xs text-gray-500 mt-0.5">以館別為單位，比較 PMS 匯入金額與信用卡請款金額</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">PMS信用卡金額</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">銀行請款金額</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差異</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">狀態</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {Object.entries(pmsGroupedByWarehouse).map(([w, pmsAmt]) => {
+                      const stmts = ccStatements.filter(s => s.warehouse === w);
+                      const stmtAmt = stmts.reduce((sum, s) => sum + Number(s.totalAmount), 0);
+                      const diff = pmsAmt - stmtAmt;
+                      const matched = stmts.length > 0 && Math.abs(diff) < 1;
+                      return (
+                        <tr key={w} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium text-gray-800">{w}</td>
+                          <td className="px-3 py-2 text-right font-mono text-violet-700">{formatMoney(pmsAmt)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-700">{stmts.length > 0 ? formatMoney(stmtAmt) : <span className="text-gray-400">尚無對帳單</span>}</td>
+                          <td className={`px-3 py-2 text-right font-mono font-medium ${Math.abs(diff) < 1 ? 'text-green-600' : 'text-red-600'}`}>
+                            {stmts.length > 0 ? (diff >= 0 ? '+' : '') + formatMoney(diff) : '-'}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {stmts.length === 0
+                              ? <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500">無對帳單</span>
+                              : matched
+                                ? <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">金額相符</span>
+                                : <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">有差異</span>
+                            }
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* PMS detail records */}
+          {ccPmsLoading ? (
+            <div className="text-center py-12 text-gray-500">載入中...</div>
+          ) : ccPmsRecords.length === 0 ? (
+            <div className="bg-white rounded-xl border shadow-sm p-8 text-center text-gray-500">
+              <p className="text-sm">尚無資料，請選擇日期範圍後點擊查詢</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-gray-700">每日信用卡收入明細（共 {ccPmsRecords.length} 筆）</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">PMS科目</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">金額</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">批次</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {ccPmsRecords.map(r => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono text-gray-700">{r.businessDate}</td>
+                        <td className="px-3 py-2 text-gray-700">{r.warehouse}</td>
+                        <td className="px-3 py-2 text-gray-600">{r.pmsColumnName}</td>
+                        <td className="px-3 py-2 text-right font-mono font-medium text-violet-700">{formatMoney(r.amount)}</td>
+                        <td className="px-3 py-2 text-xs text-gray-400">{r.importBatch?.batchNo || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t">
+                    <tr>
+                      <td colSpan={3} className="px-3 py-2 text-sm font-semibold text-gray-700">合計</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-violet-800">{formatMoney(pmsTotalAmount)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== Statements sub-tab ===== */}
+      {ccInnerTab === 'statements' && <div className="space-y-6">
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border p-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -983,6 +1290,11 @@ export default function ReconciliationPage() {
             <button onClick={() => setCcShowConfigModal(true)}
               className="px-4 py-1.5 border border-violet-300 text-violet-700 text-sm rounded-lg hover:bg-violet-50">
               特約商店設定
+            </button>
+            <button onClick={matchAllCcPms}
+              disabled={ccStatements.filter(s => s.status !== 'confirmed').length === 0}
+              className="px-4 py-1.5 border border-blue-300 text-blue-700 text-sm rounded-lg hover:bg-blue-50 disabled:opacity-50">
+              批次比對 PMS
             </button>
             <button onClick={() => { setCcShowUpload(true); setCcParsedData(null); }}
               className="px-4 py-1.5 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700">
@@ -1202,24 +1514,70 @@ export default function ReconciliationPage() {
 
                               {/* PMS comparison */}
                               <div className="bg-white rounded-lg border p-4">
-                                <h5 className="text-sm font-semibold text-gray-700 mb-2">PMS 信用卡收入比對</h5>
-                                <div className="grid grid-cols-3 gap-3 text-sm">
-                                  <div>
-                                    <div className="text-xs text-gray-500">銀行請款金額</div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h5 className="text-sm font-semibold text-gray-700">PMS 信用卡收入比對</h5>
+                                  <button
+                                    onClick={() => matchCcPms(stmt.id)}
+                                    disabled={ccMatchLoading[stmt.id] || stmt.status === 'confirmed'}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {ccMatchLoading[stmt.id] ? (
+                                      <><span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />比對中…</>
+                                    ) : '比對 PMS'}
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-gray-500 mb-1">銀行請款金額</div>
                                     <div className="font-bold text-lg">{formatMoney(stmt.totalAmount)}</div>
                                   </div>
-                                  <div>
-                                    <div className="text-xs text-gray-500">PMS 信用卡收入</div>
-                                    <div className="font-bold text-lg">{stmt.pmsAmount != null ? formatMoney(stmt.pmsAmount) : '未比對'}</div>
+                                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-gray-500 mb-1">PMS 信用卡收入</div>
+                                    <div className="font-bold text-lg text-blue-700">{stmt.pmsAmount != null ? formatMoney(stmt.pmsAmount) : <span className="text-gray-400 text-sm">未比對</span>}</div>
                                   </div>
-                                  <div>
-                                    <div className="text-xs text-gray-500">差異</div>
-                                    <div className={`font-bold text-lg ${stmt.difference > 0 ? 'text-green-600' : stmt.difference < 0 ? 'text-red-600' : ''}`}>
-                                      {stmt.difference != null ? (stmt.difference > 0 ? '+' : '') + formatMoney(stmt.difference) : '-'}
+                                  <div className={`rounded-lg p-3 text-center ${stmt.difference == null ? 'bg-gray-50' : Math.abs(stmt.difference) < 1 ? 'bg-green-50' : 'bg-red-50'}`}>
+                                    <div className="text-xs text-gray-500 mb-1">差異</div>
+                                    <div className={`font-bold text-lg ${stmt.difference > 0 ? 'text-green-700' : stmt.difference < 0 ? 'text-red-700' : 'text-green-700'}`}>
+                                      {stmt.difference != null ? (stmt.difference > 0 ? '+' : '') + formatMoney(stmt.difference) : <span className="text-gray-400 text-sm">-</span>}
                                     </div>
+                                    {stmt.difference != null && Math.abs(stmt.difference) < 1 && (
+                                      <div className="text-xs text-green-600 mt-0.5">✓ 吻合</div>
+                                    )}
                                   </div>
                                 </div>
-                                {stmt.note && <p className="text-xs text-gray-500 mt-2">備註：{stmt.note}</p>}
+
+                                {/* Matched PMS records detail */}
+                                {ccMatchResults[stmt.id] && (
+                                  <div className="mt-2 border-t pt-2">
+                                    <div className="text-xs text-gray-500 mb-1.5">
+                                      比對日期：{ccMatchResults[stmt.id].matchedDates?.join('、')}
+                                    </div>
+                                    {ccMatchResults[stmt.id].pmsRecords?.length > 0 ? (
+                                      <table className="w-full text-xs">
+                                        <thead className="bg-gray-50">
+                                          <tr>
+                                            <th className="px-2 py-1 text-left text-gray-500">日期</th>
+                                            <th className="px-2 py-1 text-left text-gray-500">項目</th>
+                                            <th className="px-2 py-1 text-right text-gray-500">金額</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                          {ccMatchResults[stmt.id].pmsRecords.map((r, i) => (
+                                            <tr key={i} className="hover:bg-gray-50">
+                                              <td className="px-2 py-1 text-gray-600">{r.businessDate}</td>
+                                              <td className="px-2 py-1 text-gray-700">{r.pmsColumnName}</td>
+                                              <td className="px-2 py-1 text-right font-medium">{formatMoney(r.amount)}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    ) : (
+                                      <p className="text-xs text-orange-600">未找到對應 PMS 信用卡收入紀錄</p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {stmt.note && <p className="text-xs text-gray-500 mt-2 pt-2 border-t">備註：{stmt.note}</p>}
                               </div>
 
                               {/* Summary info */}
@@ -1247,6 +1605,7 @@ export default function ReconciliationPage() {
         </div>
       )}
 
+      </div>}
       {/* Upload PDF Modal */}
       {ccShowUpload && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
