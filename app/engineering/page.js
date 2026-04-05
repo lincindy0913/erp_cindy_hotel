@@ -128,6 +128,7 @@ export default function EngineeringPage() {
   const [paySearchDateTo, setPaySearchDateTo] = useState('');
   const [paySearchSupplierId, setPaySearchSupplierId] = useState('');
   const [paySearchWarehouse, setPaySearchWarehouse] = useState('');
+  const [payTab, setPayTab] = useState('draft'); // 草稿 / pending / executed / rejected
 
   // 付款單依狀態分組
   const draftPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '草稿'), [paymentOrders]);
@@ -293,7 +294,6 @@ export default function EngineeringPage() {
   const [termSaving, setTermSaving] = useState(false);
   const [materialSaving, setMaterialSaving] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
-  const [payTab, setPayTab] = useState('draft'); // 草稿 / pending / executed / rejected
   const { data: session } = useSession();
   const { showToast } = useToast();
 
