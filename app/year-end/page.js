@@ -435,7 +435,8 @@ export default function YearEndPage() {
             </div>
 
             {/* Activities detail */}
-            <table className="w-full text-sm border-collapse">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse min-w-[400px]">
               <thead>
                 <tr className="bg-violet-50">
                   <th className="text-left p-2 border border-violet-200">項目</th>
@@ -471,6 +472,7 @@ export default function YearEndPage() {
                 </tr>
               </tbody>
             </table>
+            </div>
 
             {/* Monthly breakdown */}
             {data.monthlyBreakdown && data.monthlyBreakdown.length > 0 && (
@@ -748,7 +750,7 @@ export default function YearEndPage() {
                                     {/* Tab content: Financial statements */}
                                     {detailData.financialStatements.map(statement => (
                                       detailTab === `statement-${statement.id}` && (
-                                        <div key={statement.id}>
+                                        <div key={statement.id} className="overflow-x-auto">
                                           {renderStatementContent(statement)}
                                         </div>
                                       )

@@ -584,9 +584,10 @@ export default function MonthEndPage() {
                     {isOpen && (
                       <button
                         onClick={() => handleStartClose(md.month)}
-                        className="flex-1 text-xs bg-slate-600 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors font-medium"
+                        disabled={preCheckLoading}
+                        className="flex-1 text-xs bg-slate-600 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        開始月結
+                        {preCheckLoading ? '執行中...' : '開始月結'}
                       </button>
                     )}
                     {isClosed && (
@@ -643,8 +644,9 @@ export default function MonthEndPage() {
                 月結作業 - {selectedYear}/{String(preCheckMonth).padStart(2, '0')}
               </h3>
               <button
-                onClick={() => setShowPreCheck(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+                onClick={() => { if (!preCheckLoading) setShowPreCheck(false); }}
+                disabled={preCheckLoading}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 &times;
               </button>
@@ -871,7 +873,7 @@ export default function MonthEndPage() {
                               {new Date(report.generatedAt).toLocaleString('zh-TW')}
                             </span>
                           </div>
-                          <div className="p-4">
+                          <div className="p-4 overflow-x-auto">
                             {renderReportTable(report.reportType, report.reportData)}
                           </div>
                         </div>
@@ -920,7 +922,9 @@ export default function MonthEndPage() {
                     {reportData.warehouse && <span>館別: {reportData.warehouse}</span>}
                     <span>產生時間: {new Date(reportData.generatedAt).toLocaleString('zh-TW')}</span>
                   </div>
-                  {renderReportTable(reportData.reportType, reportData.reportData)}
+                  <div className="overflow-x-auto">
+                    {renderReportTable(reportData.reportType, reportData.reportData)}
+                  </div>
                 </div>
               )}
             </div>

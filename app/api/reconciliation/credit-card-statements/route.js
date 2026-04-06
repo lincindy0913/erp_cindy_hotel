@@ -255,15 +255,25 @@ export async function PUT(request) {
 
     if (action === 'match_pms') {
       // 比對 PMS 信用卡收入
-      const stmt = await prisma.creditCardStatement.findUnique({ where: { id: parseInt(id) } });
+      const stmt = await prisma.creditCardStatement.findUnique({
+        where: { id: parseInt(id) },
+        include: { batchLines: true },
+      });
       if (!stmt) return NextResponse.json({ error: '找不到對帳單' }, { status: 404 });
 
-      // Find PMS credit card income for this warehouse on billing date
+      // Collect all unique dates: billing date + all batch settlement dates
+      // (a card swiped on 03/09 can appear in the 03/10 billing)
+      const billingDateStr = stmt.billingDate.replace(/\//g, '-');
+      const allDates = new Set([billingDateStr]);
+      for (const line of stmt.batchLines) {
+        if (line.settlementDate) allDates.add(line.settlementDate.replace(/\//g, '-'));
+      }
+
       const pmsRecords = await prisma.pmsIncomeRecord.findMany({
         where: {
           warehouse: stmt.warehouse,
-          businessDate: stmt.billingDate.replace(/\//g, '-'),
-          pmsColumnName: { contains: '信用卡' },
+          businessDate: { in: [...allDates] },
+          pmsColumnName: { in: ['信用卡', '信用卡收入', '刷卡收入', '信用卡收款', '刷卡'] },
         },
       });
 
@@ -285,19 +295,46 @@ export async function PUT(request) {
         pmsAmount: Number(updated.pmsAmount),
         difference: Number(updated.difference),
         pmsRecords: pmsRecords.map(r => ({ ...r, amount: Number(r.amount) })),
+        matchedDates: [...allDates],
       });
     }
 
     if (action === 'confirm') {
-      const updated = await prisma.creditCardStatement.update({
-        where: { id: parseInt(id) },
-        data: {
-          status: 'confirmed',
-          confirmedBy: auth.session?.user?.name || 'system',
-          confirmedAt: new Date(),
-        },
+      const stmt = await prisma.creditCardStatement.findUnique({ where: { id: parseInt(id) } });
+      if (!stmt) return NextResponse.json({ error: '找不到對帳單' }, { status: 404 });
+
+      const result = await prisma.$transaction(async (tx) => {
+        const updated = await tx.creditCardStatement.update({
+          where: { id: parseInt(id) },
+          data: {
+            status: 'confirmed',
+            confirmedBy: auth.session?.user?.name || 'system',
+            confirmedAt: new Date(),
+          },
+        });
+
+        // Auto-create/update PmsCreditCardFeeEntry so push-to-cashflow deducts correctly
+        if (Number(stmt.totalFee) > 0 && stmt.paymentDate) {
+          const settlementDate = stmt.paymentDate.replace(/\//g, '-');
+          await tx.pmsCreditCardFeeEntry.upsert({
+            where: { warehouse_settlementDate: { warehouse: stmt.warehouse, settlementDate } },
+            create: {
+              warehouse: stmt.warehouse,
+              settlementDate,
+              feeAmount: Number(stmt.totalFee),
+              note: `自動建立 — ${stmt.bankName} 請款日 ${stmt.billingDate}`,
+            },
+            update: {
+              feeAmount: Number(stmt.totalFee),
+              note: `自動更新 — ${stmt.bankName} 請款日 ${stmt.billingDate}`,
+            },
+          });
+        }
+
+        return updated;
       });
-      return NextResponse.json(updated);
+
+      return NextResponse.json(result);
     }
 
     if (action === 'unconfirm') {
