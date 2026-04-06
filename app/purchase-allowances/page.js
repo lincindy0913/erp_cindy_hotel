@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
@@ -17,8 +17,13 @@ export default function PurchaseAllowancesPage() {
 
   // Purchase search
   const [purchaseSearch, setPurchaseSearch] = useState('');
-  const [purchaseResults, setPurchaseResults] = useState([]);
-  const [searchingPurchase, setSearchingPurchase] = useState(false);
+  const [purchaseFilterDateFrom, setPurchaseFilterDateFrom] = useState('');
+  const [purchaseFilterDateTo, setPurchaseFilterDateTo] = useState('');
+  const [purchaseFilterSupplierId, setPurchaseFilterSupplierId] = useState('');
+  const [purchaseFilterWarehouse, setPurchaseFilterWarehouse] = useState('');
+  const [purchaseListResults, setPurchaseListResults] = useState([]);
+  const [purchaseListLoading, setPurchaseListLoading] = useState(false);
+  const [purchaseListSearched, setPurchaseListSearched] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
 
   // Form state
@@ -63,30 +68,29 @@ export default function PurchaseAllowancesPage() {
     setLoading(false);
   }
 
-  // Debounced purchase search
-  const searchPurchases = useCallback(async (keyword) => {
-    if (!keyword || keyword.length < 1) {
-      setPurchaseResults([]);
+  async function searchPurchaseList() {
+    if (!purchaseSearch && !purchaseFilterDateFrom && !purchaseFilterDateTo && !purchaseFilterSupplierId && !purchaseFilterWarehouse) {
+      showToast('請至少輸入一個搜尋條件', 'error');
       return;
     }
-    setSearchingPurchase(true);
+    setPurchaseListLoading(true);
+    setPurchaseListSearched(true);
     try {
-      const res = await fetch(`/api/purchase-allowances/search-purchases?keyword=${encodeURIComponent(keyword)}`);
+      const params = new URLSearchParams();
+      if (purchaseSearch) params.set('keyword', purchaseSearch);
+      if (purchaseFilterDateFrom) params.set('dateFrom', purchaseFilterDateFrom);
+      if (purchaseFilterDateTo) params.set('dateTo', purchaseFilterDateTo);
+      if (purchaseFilterSupplierId) params.set('supplierId', purchaseFilterSupplierId);
+      if (purchaseFilterWarehouse) params.set('warehouse', purchaseFilterWarehouse);
+      params.set('onlyPaid', 'true');
+      const res = await fetch(`/api/purchase-allowances/search-purchases?${params}`);
       const data = await res.json();
-      setPurchaseResults(Array.isArray(data) ? data : []);
+      setPurchaseListResults(Array.isArray(data) ? data : []);
     } catch {
-      setPurchaseResults([]);
+      setPurchaseListResults([]);
     }
-    setSearchingPurchase(false);
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (purchaseSearch.length >= 1) searchPurchases(purchaseSearch);
-      else setPurchaseResults([]);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [purchaseSearch, searchPurchases]);
+    setPurchaseListLoading(false);
+  }
 
   // Select purchase and auto-populate form (連動發票單號、付款單號)
   function selectPurchase(p) {
@@ -162,7 +166,8 @@ export default function PurchaseAllowancesPage() {
     setEditingId(null);
     setSelectedPurchase(null);
     setPurchaseSearch('');
-    setPurchaseResults([]);
+    setPurchaseListResults([]);
+    setPurchaseListSearched(false);
   }
 
   function openEdit(rec) {
@@ -441,79 +446,129 @@ export default function PurchaseAllowancesPage() {
             {/* Purchase Search Section */}
             {!editingId && (
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-                <label style={{ fontSize: 14, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>
-                  Step 1: 搜尋進貨單（輸入廠商名稱、進貨單號、館別）
-                  {formMode === '全額退貨' && <span style={{ color: '#dc2626', marginLeft: 8 }}>— 確認後將全額退款並作廢原單據</span>}
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    value={purchaseSearch}
-                    onChange={e => setPurchaseSearch(e.target.value)}
-                    placeholder="輸入廠商名稱、進貨單號或館別搜尋..."
-                    style={{ ...inputStyle, fontSize: 15, padding: '10px 14px', border: '2px solid #f59e0b' }}
-                  />
-                  {searchingPurchase && <div style={{ position: 'absolute', right: 12, top: 12, fontSize: 13, color: '#9ca3af' }}>搜尋中...</div>}
-
-                  {/* Search Results Dropdown */}
-                  {purchaseResults.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1px solid #d1d5db', borderRadius: '0 0 8px 8px', maxHeight: 360, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                      {purchaseResults.map((p, idx) => (
-                        <div key={idx} onClick={() => selectPurchase(p)}
-                          style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', fontSize: 14 }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#fef3c7'}
-                          onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <span style={{ fontWeight: 700, color: '#ea580c' }}>{p.supplierName}</span>
-                              <span style={{ marginLeft: 10, fontWeight: 600, color: '#1d4ed8', fontSize: 13 }}>{p.purchaseNo}</span>
-                              {p.status && <span style={{ marginLeft: 8, fontSize: 12, padding: '1px 6px', borderRadius: 8, background: '#e0f2fe', color: '#0369a1' }}>{p.status}</span>}
-                            </div>
-                            <span style={{ fontWeight: 700, color: '#059669' }}>NT$ {Number(p.totalAmount).toLocaleString()}</span>
-                          </div>
-                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                            <span>進貨日: {p.purchaseDate || '-'}</span>
-                            <span>館別: {p.warehouse || '-'}</span>
-                            {p.invoiceNo && <span style={{ color: '#7c3aed' }}>發票: {p.invoiceNo}</span>}
-                            {p.paymentOrderNo && <span style={{ color: '#b45309' }}>付款單: {p.paymentOrderNo}</span>}
-                            {p.details?.length > 0 && <span>品項: {p.details.map(d => d.productName).filter(Boolean).join(', ').substring(0, 40)}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <label style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>
+                    Step 1: 搜尋「已出納」進貨單，勾選後自動帶入表單
+                    {formMode === '全額退貨' && <span style={{ color: '#dc2626', marginLeft: 8 }}>— 確認後將全額退款並作廢原單據</span>}
+                  </label>
+                  {selectedPurchase && (
+                    <button type="button" onClick={() => { setSelectedPurchase(null); resetForm(); setShowForm(true); }}
+                      style={{ padding: '2px 10px', fontSize: 12, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
+                      清除選取
+                    </button>
                   )}
                 </div>
 
-                {/* Selected purchase info */}
-                {selectedPurchase && (
-                  <div style={{ marginTop: 12, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ fontSize: 14, lineHeight: 1.8 }}>
-                        <div>
-                          <span style={{ fontWeight: 700 }}>已選擇進貨單：</span>
-                          <span style={{ color: '#1d4ed8', fontWeight: 600 }}>{selectedPurchase.purchaseNo}</span>
-                          <span style={{ marginLeft: 10, color: '#ea580c', fontWeight: 600 }}>{selectedPurchase.supplierName}</span>
-                          <span style={{ marginLeft: 10, fontWeight: 700, color: '#059669' }}>NT$ {Number(selectedPurchase.totalAmount).toLocaleString()}</span>
-                        </div>
-                        <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                          {selectedPurchase.invoiceNo
-                            ? <span>✓ 已連動發票: <strong style={{ color: '#7c3aed' }}>{selectedPurchase.invoiceNo}</strong></span>
-                            : <span style={{ color: '#9ca3af' }}>尚無對應發票</span>}
-                          {selectedPurchase.paymentOrderNo
-                            ? <span>✓ 已連動付款單: <strong style={{ color: '#b45309' }}>{selectedPurchase.paymentOrderNo}</strong></span>
-                            : <span style={{ color: '#9ca3af' }}>尚無對應付款單</span>}
-                        </div>
-                      </div>
-                      <button onClick={() => { setSelectedPurchase(null); resetForm(); setShowForm(true); }}
-                        style={{ padding: '2px 10px', fontSize: 13, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 12 }}>
-                        清除
-                      </button>
+                {/* Filters */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>進貨日期起</div>
+                    <input type="date" value={purchaseFilterDateFrom} onChange={e => setPurchaseFilterDateFrom(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>進貨日期迄</div>
+                    <input type="date" value={purchaseFilterDateTo} onChange={e => setPurchaseFilterDateTo(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>廠商</div>
+                    <select value={purchaseFilterSupplierId} onChange={e => setPurchaseFilterSupplierId(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }}>
+                      <option value="">全部廠商</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>館別</div>
+                    <select value={purchaseFilterWarehouse} onChange={e => setPurchaseFilterWarehouse(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }}>
+                      <option value="">全部館別</option>
+                      {warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>關鍵字（單號/品名）</div>
+                    <input value={purchaseSearch} onChange={e => setPurchaseSearch(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && searchPurchaseList()}
+                      placeholder="進貨單號 / 品名..."
+                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <button type="button" onClick={searchPurchaseList} disabled={purchaseListLoading}
+                      style={{ width: '100%', padding: '7px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, cursor: purchaseListLoading ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: purchaseListLoading ? 0.7 : 1 }}>
+                      {purchaseListLoading ? '查詢中...' : '查詢進貨單'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Results list */}
+                {purchaseListSearched && !purchaseListLoading && (
+                  purchaseListResults.length === 0 ? (
+                    <div style={{ padding: '14px', textAlign: 'center', fontSize: 13, color: '#9ca3af', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                      查無符合條件的已出納進貨單
                     </div>
+                  ) : (
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden', maxHeight: 320, overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                          <tr style={{ background: '#fef3c7' }}>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>進貨單號</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb' }}>廠商</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb' }}>館別</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>進貨日期</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>金額</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>付款單號</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>選取</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {purchaseListResults.map((p, idx) => {
+                            const isSelected = selectedPurchase?.purchaseId === p.purchaseId;
+                            return (
+                              <tr key={p.purchaseId} onClick={() => selectPurchase(p)}
+                                style={{ cursor: 'pointer', background: isSelected ? '#fef9c3' : idx % 2 === 0 ? '#fff' : '#fafafa', borderBottom: '1px solid #f3f4f6' }}
+                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#fffbeb'; }}
+                                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#fafafa'; }}>
+                                <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1d4ed8', fontFamily: 'monospace' }}>{p.purchaseNo}</td>
+                                <td style={{ padding: '8px 10px', color: '#ea580c', fontWeight: 600 }}>{p.supplierName}</td>
+                                <td style={{ padding: '8px 10px', color: '#374151' }}>{p.warehouse || '-'}</td>
+                                <td style={{ padding: '8px 10px', color: '#6b7280', whiteSpace: 'nowrap' }}>{p.purchaseDate || '-'}</td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>NT$ {Number(p.totalAmount).toLocaleString()}</td>
+                                <td style={{ padding: '8px 10px', color: '#b45309', fontSize: 12, fontFamily: 'monospace' }}>{p.paymentOrderNo || '-'}</td>
+                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                  {isSelected
+                                    ? <span style={{ fontSize: 16, color: '#f59e0b' }}>✓</span>
+                                    : <span style={{ fontSize: 12, color: '#9ca3af' }}>選取</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+
+                {/* Selected purchase info banner */}
+                {selectedPurchase && (
+                  <div style={{ marginTop: 10, background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 8, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: '#166534' }}>✓ 已帶入：</span>
+                      <span style={{ fontWeight: 700, color: '#1d4ed8', fontFamily: 'monospace', fontSize: 13 }}>{selectedPurchase.purchaseNo}</span>
+                      <span style={{ color: '#ea580c', fontWeight: 600, fontSize: 13 }}>{selectedPurchase.supplierName}</span>
+                      <span style={{ color: '#374151', fontSize: 13 }}>{selectedPurchase.warehouse}</span>
+                      <span style={{ fontWeight: 700, color: '#059669', fontSize: 13 }}>NT$ {Number(selectedPurchase.totalAmount).toLocaleString()}</span>
+                      {selectedPurchase.invoiceNo && <span style={{ fontSize: 12, color: '#7c3aed' }}>發票: {selectedPurchase.invoiceNo}</span>}
+                      {selectedPurchase.paymentOrderNo && <span style={{ fontSize: 12, color: '#b45309' }}>付款單: {selectedPurchase.paymentOrderNo}</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#166534', marginTop: 4 }}>表單欄位已自動填寫，您仍可手動修改任何欄位</div>
                   </div>
                 )}
 
-                {!selectedPurchase && !purchaseSearch && (
+                {!purchaseListSearched && (
                   <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af' }}>
-                    也可以跳過搜尋，直接手動填寫退貨資料
+                    設定條件後按「查詢進貨單」，也可跳過直接手動填寫
                   </div>
                 )}
               </div>

@@ -13,21 +13,36 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const keyword = searchParams.get('keyword') || '';
+    const keyword   = searchParams.get('keyword')    || '';
+    const dateFrom  = searchParams.get('dateFrom')   || '';
+    const dateTo    = searchParams.get('dateTo')     || '';
+    const supplierId = searchParams.get('supplierId') || '';
+    const warehouse = searchParams.get('warehouse')  || '';
+    const onlyPaid  = searchParams.get('onlyPaid') === 'true';
 
-    if (!keyword || keyword.length < 1) {
+    if (!keyword && !dateFrom && !dateTo && !supplierId && !warehouse) {
       return NextResponse.json([]);
     }
 
-    // 1. 搜尋進貨單（by purchaseNo 或 supplier name）
+    // 1. 搜尋進貨單
+    const where = {};
+    if (keyword) {
+      where.OR = [
+        { purchaseNo: { contains: keyword, mode: 'insensitive' } },
+        { supplier: { name: { contains: keyword, mode: 'insensitive' } } },
+        { warehouse: { contains: keyword, mode: 'insensitive' } },
+      ];
+    }
+    if (supplierId) where.supplierId = parseInt(supplierId);
+    if (warehouse)  where.warehouse  = warehouse;
+    if (dateFrom || dateTo) {
+      where.purchaseDate = {};
+      if (dateFrom) where.purchaseDate.gte = dateFrom;
+      if (dateTo)   where.purchaseDate.lte = dateTo;
+    }
+
     const purchases = await prisma.purchaseMaster.findMany({
-      where: {
-        OR: [
-          { purchaseNo: { contains: keyword, mode: 'insensitive' } },
-          { supplier: { name: { contains: keyword, mode: 'insensitive' } } },
-          { warehouse: { contains: keyword, mode: 'insensitive' } },
-        ],
-      },
+      where,
       include: {
         supplier: { select: { id: true, name: true } },
         details: {
@@ -35,7 +50,7 @@ export async function GET(request) {
         },
       },
       orderBy: { id: 'desc' },
-      take: 30,
+      take: 100,
     });
 
     if (purchases.length === 0) return NextResponse.json([]);
@@ -129,7 +144,10 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json(results);
+    // onlyPaid=true → 只回傳有對應付款單（已出納）的進貨單
+    const filtered = onlyPaid ? results.filter(r => !!r.paymentOrderNo) : results;
+
+    return NextResponse.json(filtered);
   } catch (error) {
     console.error('GET /api/purchase-allowances/search-purchases error:', error.message || error);
     return handleApiError(error);
