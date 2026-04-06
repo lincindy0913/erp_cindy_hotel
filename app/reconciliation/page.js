@@ -1077,6 +1077,15 @@ export default function ReconciliationPage() {
       } else {
         const skipped = data.skipped > 0 ? `（${data.skipped} 筆重複略過）` : '';
         showMessage(`對帳單已匯入${skipped}，正在比對PMS...`);
+        // Auto-switch ccMonth to the billing month of the uploaded statement so it shows up immediately
+        let targetMonth = null;
+        if (ccParsedData?.billingDate) {
+          const parts = ccParsedData.billingDate.replace(/-/g, '/').split('/');
+          if (parts.length >= 2) {
+            targetMonth = `${parts[0]}-${parts[1].padStart(2, '0')}`;
+            setCcMonth(targetMonth);
+          }
+        }
         setCcParsedData(null);
         setCcShowUpload(false);
         // Auto-match with PMS for each newly created statement
@@ -1085,7 +1094,15 @@ export default function ReconciliationPage() {
             if (r.id && !r.skipped) await matchCcPms(r.id);
           }
         }
-        fetchCcData();
+        // If month changed, fetch with the new month directly to avoid stale closure
+        if (targetMonth && targetMonth !== ccMonth) {
+          const params = new URLSearchParams({ month: targetMonth });
+          if (ccWarehouseFilter) params.set('warehouseId', ccWarehouseFilter);
+          const res2 = await fetch(`/api/reconciliation/credit-card-statements?${params}`);
+          if (res2.ok) setCcStatements(await res2.json());
+        } else {
+          fetchCcData();
+        }
       }
     } catch {
       showMessage('匯入失敗', 'error');
