@@ -60,19 +60,48 @@ export async function GET(request) {
       orderBy: { importedAt: 'desc' }
     });
 
-    const result = batches.map(b => ({
-      ...b,
-      creditTotal: Number(b.creditTotal),
-      debitTotal: Number(b.debitTotal),
-      difference: Number(b.difference),
-      occupancyRate: b.occupancyRate ? Number(b.occupancyRate) : null,
-      avgRoomRate: b.avgRoomRate ? Number(b.avgRoomRate) : null,
-      roomRevenue: b.roomRevenue ? Number(b.roomRevenue) : null,
-      monthlyCreditTotal: b.monthlyCreditTotal ? Number(b.monthlyCreditTotal) : null,
-      monthlyDebitTotal: b.monthlyDebitTotal ? Number(b.monthlyDebitTotal) : null,
-      importedAt: b.importedAt.toISOString(),
-      recordCount: b._count.records
-    }));
+    // Attach credit card reconciliation status for each batch
+    // Match on warehouse + billingDate == businessDate (same-day settlement)
+    const businessDates = [...new Set(batches.map(b => b.businessDate))];
+    const ccStatements = businessDates.length > 0
+      ? await prisma.creditCardStatement.findMany({
+          where: {
+            billingDate: { in: businessDates.map(d => d.replace(/-/g, '/')) },
+          },
+          select: { warehouse: true, billingDate: true, status: true, totalFee: true, netAmount: true },
+        })
+      : [];
+
+    // Index by warehouse+date for O(1) lookup
+    const ccMap = {};
+    for (const cc of ccStatements) {
+      const key = `${cc.warehouse}|${cc.billingDate.replace(/\//g, '-')}`;
+      // Keep highest-priority status (confirmed > matched > pending)
+      const priority = { confirmed: 3, matched: 2, pending: 1 };
+      if (!ccMap[key] || (priority[cc.status] || 0) > (priority[ccMap[key].status] || 0)) {
+        ccMap[key] = cc;
+      }
+    }
+
+    const result = batches.map(b => {
+      const cc = ccMap[`${b.warehouse}|${b.businessDate}`] || null;
+      return {
+        ...b,
+        creditTotal: Number(b.creditTotal),
+        debitTotal: Number(b.debitTotal),
+        difference: Number(b.difference),
+        occupancyRate: b.occupancyRate ? Number(b.occupancyRate) : null,
+        avgRoomRate: b.avgRoomRate ? Number(b.avgRoomRate) : null,
+        roomRevenue: b.roomRevenue ? Number(b.roomRevenue) : null,
+        monthlyCreditTotal: b.monthlyCreditTotal ? Number(b.monthlyCreditTotal) : null,
+        monthlyDebitTotal: b.monthlyDebitTotal ? Number(b.monthlyDebitTotal) : null,
+        importedAt: b.importedAt.toISOString(),
+        recordCount: b._count.records,
+        ccReconciliation: cc
+          ? { status: cc.status, totalFee: Number(cc.totalFee), netAmount: Number(cc.netAmount) }
+          : null,
+      };
+    });
 
     return NextResponse.json(result);
   } catch (error) {

@@ -79,35 +79,7 @@ export async function POST(request) {
           bd.setDate(bd.getDate() + delayDays);
           const settlementDate = bd.toISOString().split('T')[0];
 
-          const existingGroupTx = await tx.cashTransaction.findFirst({
-            where: {
-              sourceType: 'pms_credit_card_settlement',
-              transactionDate: settlementDate,
-              warehouse: rec.warehouse,
-              accountId: config.cashAccountId
-            }
-          });
-
-          if (existingGroupTx) {
-            const groupRecords = records.filter(r =>
-              r.entryType === '借方' &&
-              isCreditCard(r.pmsColumnName) &&
-              r.warehouse === rec.warehouse &&
-              !r.cashTransactionId &&
-              (() => {
-                const d = new Date(r.businessDate);
-                d.setDate(d.getDate() + (configMap[`${r.warehouse ?? ''}|${r.pmsColumnName}`]?.settlementDelayDays || 0));
-                return d.toISOString().split('T')[0] === settlementDate;
-              })()
-            );
-            for (const r of groupRecords) {
-              await tx.pmsIncomeRecord.update({ where: { id: r.id }, data: { cashTransactionId: existingGroupTx.id } });
-              processedIds.add(r.id);
-            }
-            created += groupRecords.length;
-            continue;
-          }
-
+          // 所有同館別、同撥款日的信用卡記錄（未推送的）
           const groupRecords = records.filter(r =>
             r.entryType === '借方' &&
             isCreditCard(r.pmsColumnName) &&
@@ -123,42 +95,99 @@ export async function POST(request) {
 
           const groupSum = groupRecords.reduce((s, r) => s + Number(r.amount), 0);
           const groupFee = feeMap[`${rec.warehouse}|${settlementDate}`] ?? 0;
-          const groupNet = Math.max(0, groupSum - groupFee);
+          const feeSubject = config.feeAccountingCode
+            ? `${config.feeAccountingCode} 信用卡手續費`
+            : '信用卡手續費';
 
-          const txNo = await nextCashTransactionNo(tx, settlementDate);
-          const newTx = await tx.cashTransaction.create({
-            data: {
-              transactionNo: txNo,
-              transactionDate: settlementDate,
-              type: '收入',
-              warehouse: rec.warehouse,
-              accountId: config.cashAccountId,
-              categoryId: null,
-              supplierId: null,
-              paymentNo: null,
-              amount: groupNet,
-              fee: groupFee,
-              hasFee: groupFee > 0,
-              accountingSubject,
-              paymentTerms: null,
-              description: `PMS 信用卡收入 ${rec.businessDate} 入帳${groupFee > 0 ? `（扣手續費 ${groupFee}）` : ''}`,
+          // 1. 信用卡收入（全額，未扣手續費）
+          const existingGroupTx = await tx.cashTransaction.findFirst({
+            where: {
               sourceType: 'pms_credit_card_settlement',
-              sourceRecordId: rec.id,
-              isAutoCreated: true,
-              autoCreationReason: 'pms_sync',
-              status: '已確認'
+              transactionDate: settlementDate,
+              warehouse: rec.warehouse,
+              accountId: config.cashAccountId
             }
           });
 
-          for (const r of groupRecords) {
-            await tx.pmsIncomeRecord.update({
-              where: { id: r.id },
-              data: { cashTransactionId: newTx.id }
+          if (!existingGroupTx && groupRecords.length > 0) {
+            const txNo = await nextCashTransactionNo(tx, settlementDate);
+            const newTx = await tx.cashTransaction.create({
+              data: {
+                transactionNo: txNo,
+                transactionDate: settlementDate,
+                type: '收入',
+                warehouse: rec.warehouse,
+                accountId: config.cashAccountId,
+                categoryId: null,
+                supplierId: null,
+                paymentNo: null,
+                amount: groupSum,
+                fee: 0,
+                hasFee: false,
+                accountingSubject,
+                paymentTerms: null,
+                description: `PMS 信用卡收入 撥款日 ${settlementDate}（PMS 請款日 ${rec.businessDate}，共 ${groupRecords.length} 筆合計 ${groupSum}）`,
+                sourceType: 'pms_credit_card_settlement',
+                sourceRecordId: rec.id,
+                isAutoCreated: true,
+                autoCreationReason: 'pms_sync',
+                status: '已確認'
+              }
             });
-            processedIds.add(r.id);
+            for (const r of groupRecords) {
+              await tx.pmsIncomeRecord.update({ where: { id: r.id }, data: { cashTransactionId: newTx.id } });
+              processedIds.add(r.id);
+            }
+            created += groupRecords.length;
+          } else if (existingGroupTx) {
+            // 已有收入交易：只補連結未連結的記錄
+            for (const r of groupRecords) {
+              await tx.pmsIncomeRecord.update({ where: { id: r.id }, data: { cashTransactionId: existingGroupTx.id } });
+              processedIds.add(r.id);
+            }
+            created += groupRecords.length;
           }
+
+          // 2. 信用卡手續費（獨立一筆支出）
+          if (groupFee > 0) {
+            const existingFeeTx = await tx.cashTransaction.findFirst({
+              where: {
+                sourceType: 'pms_credit_card_fee',
+                transactionDate: settlementDate,
+                warehouse: rec.warehouse,
+                accountId: config.cashAccountId
+              }
+            });
+            if (!existingFeeTx) {
+              const feeTxNo = await nextCashTransactionNo(tx, settlementDate);
+              await tx.cashTransaction.create({
+                data: {
+                  transactionNo: feeTxNo,
+                  transactionDate: settlementDate,
+                  type: '支出',
+                  warehouse: rec.warehouse,
+                  accountId: config.cashAccountId,
+                  categoryId: null,
+                  supplierId: null,
+                  paymentNo: null,
+                  amount: groupFee,
+                  fee: 0,
+                  hasFee: false,
+                  accountingSubject: feeSubject,
+                  paymentTerms: null,
+                  description: `PMS 信用卡手續費 撥款日 ${settlementDate}（對帳單請款日 ${rec.businessDate}）`,
+                  sourceType: 'pms_credit_card_fee',
+                  sourceRecordId: null,
+                  isAutoCreated: true,
+                  autoCreationReason: 'pms_sync',
+                  status: '已確認'
+                }
+              });
+            }
+          }
+
+          // 重算存簿餘額（收入全額 − 手續費支出 = 撥款淨額）
           await recalcBalance(tx, config.cashAccountId);
-          created += groupRecords.length;
           continue;
         }
 

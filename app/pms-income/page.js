@@ -1500,6 +1500,7 @@ function PmsIncomePage() {
                         <th className="px-3 py-2 font-medium text-center">筆數</th>
                         <th className="px-3 py-2 font-medium text-center">早餐人數</th>
                         <th className="px-3 py-2 font-medium text-center">狀態</th>
+                        <th className="px-3 py-2 font-medium text-center">信用卡對帳</th>
                         <th className="px-3 py-2 font-medium">匯入時間</th>
                         <th className="px-3 py-2 font-medium text-center">操作</th>
                       </tr>
@@ -1526,6 +1527,20 @@ function PmsIncomePage() {
                               batch.status === '已核對' ? 'bg-blue-100 text-blue-700' :
                               'bg-yellow-100 text-yellow-700'
                             }`}>{batch.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {batch.ccReconciliation ? (
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                                batch.ccReconciliation.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                batch.ccReconciliation.status === 'matched'   ? 'bg-blue-100 text-blue-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`} title={`手續費 ${formatNumber(batch.ccReconciliation.totalFee)}｜撥款淨額 ${formatNumber(batch.ccReconciliation.netAmount)}`}>
+                                {batch.ccReconciliation.status === 'confirmed' ? '已確認' :
+                                 batch.ccReconciliation.status === 'matched'   ? '已比對' : '待比對'}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-xs text-gray-500">
                             {batch.importedAt ? new Date(batch.importedAt).toLocaleString('zh-TW') : '-'}
