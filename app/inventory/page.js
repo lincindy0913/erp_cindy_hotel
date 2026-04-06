@@ -10,6 +10,7 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
   { key: 'query', label: '庫存查詢', icon: '📦' },
+  { key: 'inbound', label: '待入庫', icon: '📥' },
   { key: 'requisition', label: '領用單', icon: '📤' },
   { key: 'transfer', label: '調撥單', icon: '🔄' },
   { key: 'count', label: '盤點', icon: '📋' },
@@ -147,6 +148,17 @@ export default function InventoryPage() {
   const [countSubmitting, setCountSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
 
+  // 待入庫
+  const [pendingInbound, setPendingInbound] = useState([]);
+  const [inboundLoading, setInboundLoading] = useState(false);
+  const [inboundUpdating, setInboundUpdating] = useState({});
+  const [inboundWarehouseEdits, setInboundWarehouseEdits] = useState({});
+  const [storageLocations, setStorageLocations] = useState([]);
+  const [inboundWareFilter, setInboundWareFilter] = useState('');
+  const [inboundSearch, setInboundSearch] = useState('');
+  const [inboundDateFrom, setInboundDateFrom] = useState('');
+  const [inboundDateTo, setInboundDateTo] = useState('');
+
   const { sortKey: invQKey, sortDir: invQDir, toggleSort: invQT } = useColumnSort('productName', 'asc');
   const sortedInventory = useMemo(
     () =>
@@ -246,6 +258,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     if (activeTab === 'query') fetchInventory();
+    if (activeTab === 'inbound') fetchPendingInbound();
     if (activeTab === 'requisition') fetchRequisitions();
     if (activeTab === 'transfer') fetchTransfers();
     if (activeTab === 'count') {
@@ -318,6 +331,71 @@ export default function InventoryPage() {
       setStockCounts(Array.isArray(data) ? data : []);
     } catch { setStockCounts([]); }
     setCountLoading(false);
+  }
+
+  async function fetchPendingInbound() {
+    setInboundLoading(true);
+    try {
+      const [purRes, wdRes, prodRes] = await Promise.all([
+        fetch('/api/purchasing?all=true'),
+        fetch('/api/warehouse-departments'),
+        fetch('/api/products?all=true'),
+      ]);
+      const purchases = purRes.ok ? await purRes.json() : [];
+      const prodData = prodRes.ok ? await prodRes.json() : [];
+      const prodArr = Array.isArray(prodData) ? prodData : (prodData?.products || prodData?.data || []);
+      const prodMap = Object.fromEntries(prodArr.map(p => [p.id, p.name]));
+
+      // Build flat list of pending items
+      const rows = [];
+      purchases.forEach(p => {
+        (p.items || []).forEach(item => {
+          if (item.status === '待入庫') {
+            rows.push({
+              ...item,
+              productName: prodMap[item.productId] || `商品#${item.productId}`,
+              purchaseId: p.id,
+              purchaseNo: p.purchaseNo,
+              purchaseDate: p.purchaseDate,
+              purchaseWarehouse: p.warehouse,
+              supplierName: p.supplierName || '',
+            });
+          }
+        });
+      });
+      // Sort: oldest purchase first
+      rows.sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
+      setPendingInbound(rows);
+
+      // Storage locations (type === 'storage')
+      if (wdRes.ok) {
+        const wd = await wdRes.json();
+        const locs = (wd?.list || []).filter(w => w.type === 'storage').map(w => w.name);
+        setStorageLocations(locs);
+      }
+    } catch { setPendingInbound([]); }
+    setInboundLoading(false);
+  }
+
+  async function confirmInbound(row) {
+    const key = `${row.purchaseId}-${row.detailId}`;
+    const loc = inboundWarehouseEdits[key] ?? row.inventoryWarehouse ?? '';
+    setInboundUpdating(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch(`/api/purchasing/${row.purchaseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ detailId: row.detailId, status: '已入庫', inventoryWarehouse: loc }),
+      });
+      if (res.ok) {
+        showToast(`已確認入庫：${row.productName || ''}`, 'success');
+        fetchPendingInbound();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || '更新失敗', 'error');
+      }
+    } catch { showToast('網路錯誤', 'error'); }
+    setInboundUpdating(prev => ({ ...prev, [key]: false }));
   }
 
   async function submitRequisition() {
@@ -507,6 +585,163 @@ export default function InventoryPage() {
             </button>
           ))}
         </div>
+
+        {/* 待入庫管理 */}
+        {activeTab === 'inbound' && (() => {
+          // Apply filters
+          const filteredInbound = pendingInbound.filter(row => {
+            if (inboundWareFilter && row.purchaseWarehouse !== inboundWareFilter) return false;
+            if (inboundSearch) {
+              const q = inboundSearch.toLowerCase();
+              if (!row.productName?.toLowerCase().includes(q) &&
+                  !row.supplierName?.toLowerCase().includes(q) &&
+                  !row.purchaseNo?.toLowerCase().includes(q)) return false;
+            }
+            if (inboundDateFrom && row.purchaseDate < inboundDateFrom) return false;
+            if (inboundDateTo && row.purchaseDate > inboundDateTo) return false;
+            return true;
+          });
+          const totalQty = filteredInbound.reduce((s, r) => s + Number(r.quantity), 0);
+          const totalAmt = filteredInbound.reduce((s, r) => s + Number(r.quantity) * Number(r.unitPrice || 0), 0);
+          const uniqueWarehouses = [...new Set(pendingInbound.map(r => r.purchaseWarehouse).filter(Boolean))];
+
+          return (
+          <div className="space-y-4">
+            {/* KPI cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                <p className="text-xs text-blue-600">待入庫筆數</p>
+                <p className="text-2xl font-bold text-blue-700">{filteredInbound.length}</p>
+              </div>
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
+                <p className="text-xs text-indigo-600">待入庫數量</p>
+                <p className="text-2xl font-bold text-indigo-700">{totalQty}</p>
+              </div>
+              <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-center">
+                <p className="text-xs text-violet-600">待入庫金額</p>
+                <p className="text-2xl font-bold text-violet-700">NT$ {totalAmt.toLocaleString()}</p>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="bg-white rounded-xl shadow-sm border p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">關鍵字（商品/廠商/單號）</label>
+                  <input type="text" value={inboundSearch} onChange={e => setInboundSearch(e.target.value)}
+                    placeholder="搜尋..." className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={inboundWareFilter} onChange={e => setInboundWareFilter(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">全部館別</option>
+                    {uniqueWarehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">進貨日期起</label>
+                  <input type="date" value={inboundDateFrom} onChange={e => setInboundDateFrom(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">進貨日期迄</label>
+                    <input type="date" value={inboundDateTo} onChange={e => setInboundDateTo(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <button onClick={() => { setInboundSearch(''); setInboundWareFilter(''); setInboundDateFrom(''); setInboundDateTo(''); }}
+                    className="px-3 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50 whitespace-nowrap">清除</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div className="px-4 py-3 bg-blue-50 border-b flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-blue-800">待入庫商品</h3>
+                  <p className="text-xs text-blue-600 mt-0.5">由倉庫人員確認入庫位置後按「確認入庫」，進貨單狀態將自動更新</p>
+                </div>
+                <button onClick={fetchPendingInbound} className="text-xs text-blue-600 hover:underline">重新整理</button>
+              </div>
+              {inboundLoading ? (
+                <div className="text-center py-12 text-gray-400">載入中…</div>
+              ) : filteredInbound.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <div className="text-4xl mb-2">📥</div>
+                  <p>{pendingInbound.length === 0 ? '目前沒有待入庫商品' : '無符合篩選條件的商品'}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[800px]">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">進貨單號</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">館別</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">進貨日期</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">廠商</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">商品</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">數量</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">單價</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">備註</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">入庫倉庫 *</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredInbound.map((row) => {
+                        const key = `${row.purchaseId}-${row.detailId}`;
+                        const currentLoc = inboundWarehouseEdits[key] ?? row.inventoryWarehouse ?? '';
+                        const isUpdating = !!inboundUpdating[key];
+                        return (
+                          <tr key={key} className="hover:bg-blue-50/30">
+                            <td className="px-4 py-2.5 font-mono text-blue-700 text-xs">{row.purchaseNo}</td>
+                            <td className="px-4 py-2.5 text-gray-600 text-xs">{row.purchaseWarehouse || '-'}</td>
+                            <td className="px-4 py-2.5 text-gray-500 text-xs">{row.purchaseDate}</td>
+                            <td className="px-4 py-2.5 text-gray-700 text-xs">{row.supplierName || '-'}</td>
+                            <td className="px-4 py-2.5 font-medium text-gray-800">{row.productName || `#${row.productId}`}</td>
+                            <td className="px-4 py-2.5 text-center font-medium">{row.quantity}</td>
+                            <td className="px-4 py-2.5 text-right text-gray-600 text-xs">NT$ {Number(row.unitPrice || 0).toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-gray-500 text-xs">{row.note || '-'}</td>
+                            <td className="px-4 py-2.5">
+                              <select
+                                value={currentLoc}
+                                onChange={e => setInboundWarehouseEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                                className={`w-full px-2 py-1 border rounded text-xs focus:ring-1 focus:ring-blue-500 ${
+                                  currentLoc ? 'bg-white border-gray-300' : 'bg-yellow-50 border-yellow-300'
+                                }`}
+                              >
+                                <option value="">⚠ 請選擇倉庫</option>
+                                {storageLocations.length > 0
+                                  ? storageLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)
+                                  : ['格-地下室','格-2F辦公室','格-備品室','軒-B2小倉庫','軒-辦公室','軒-備品室','海-樓梯下','海-備品室','花-備品室','格-B2F','管理部','工程部'].map(loc => <option key={loc} value={loc}>{loc}</option>)
+                                }
+                              </select>
+                            </td>
+                            <td className="px-4 py-2.5 text-center">
+                              <button
+                                onClick={() => {
+                                  if (!currentLoc) { showToast('請先選擇入庫倉庫', 'error'); return; }
+                                  confirmInbound(row);
+                                }}
+                                disabled={isUpdating}
+                                className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                              >
+                                {isUpdating ? '處理中…' : '確認入庫'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+          );
+        })()}
 
         {/* 庫存查詢 */}
         {activeTab === 'query' && (

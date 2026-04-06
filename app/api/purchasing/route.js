@@ -50,6 +50,7 @@ export async function GET(request) {
       warehouse: p.warehouse,
       department: p.department,
       supplierId: p.supplierId,
+      supplierName: p.supplier?.name || '',
       purchaseDate: p.purchaseDate,
       paymentTerms: p.paymentTerms,
       taxType: p.taxType,
@@ -58,6 +59,7 @@ export async function GET(request) {
       totalAmount: Number(p.totalAmount),
       status: p.status,
       items: p.details.map(d => ({
+        detailId: d.id,
         productId: d.productId,
         quantity: d.quantity,
         unitPrice: Number(d.unitPrice),
@@ -69,7 +71,7 @@ export async function GET(request) {
       updatedAt: p.updatedAt.toISOString()
     });
 
-    const includeOpts = { details: true };
+    const includeOpts = { details: true, supplier: { select: { name: true } } };
     const orderByOpts = { id: 'desc' };
 
     // 不分頁模式（向下相容），上限 5000 筆

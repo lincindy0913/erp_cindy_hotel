@@ -7,6 +7,51 @@ import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertPeriodOpen } from '@/lib/period-lock';
 
+// PATCH: 更新單一進貨明細的入庫狀態（由庫存管理頁面呼叫）
+export async function PATCH(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const id = parseInt(params.id);
+    const { detailId, status, inventoryWarehouse } = await request.json();
+
+    if (!detailId || !status) {
+      return NextResponse.json({ error: '缺少 detailId 或 status' }, { status: 400 });
+    }
+    if (!['待入庫', '已入庫', '不需入庫'].includes(status)) {
+      return NextResponse.json({ error: '無效的入庫狀態' }, { status: 400 });
+    }
+
+    const detail = await prisma.purchaseDetail.findFirst({
+      where: { id: parseInt(detailId), purchaseId: id },
+      include: { purchaseMaster: true },
+    });
+    if (!detail) return NextResponse.json({ error: '找不到進貨明細' }, { status: 404 });
+
+    const wa = assertWarehouseAccess(auth.session, detail.purchaseMaster.warehouse);
+    if (!wa.ok) return wa.response;
+
+    const updated = await prisma.purchaseDetail.update({
+      where: { id: parseInt(detailId) },
+      data: {
+        status,
+        ...(inventoryWarehouse !== undefined ? { inventoryWarehouse: inventoryWarehouse || null } : {}),
+      },
+      include: { product: { select: { name: true } } },
+    });
+
+    return NextResponse.json({
+      id: updated.id,
+      status: updated.status,
+      inventoryWarehouse: updated.inventoryWarehouse || '',
+      productName: updated.product?.name || '',
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_EDIT);
   if (!auth.ok) return auth.response;
@@ -70,6 +115,7 @@ export async function PUT(request, { params }) {
       totalAmount: Number(updated.totalAmount),
       status: updated.status,
       items: updated.details.map(d => ({
+        detailId: d.id,
         productId: d.productId,
         quantity: d.quantity,
         unitPrice: Number(d.unitPrice),

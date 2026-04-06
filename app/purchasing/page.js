@@ -468,8 +468,9 @@ export default function PurchasingPage() {
         });
         if (monthlyExpenseSubTab !== 'records') setMonthlyExpenseSubTab('records');
         fetchExpenseRecords();
-      } else if (res.status === 409 && data?.error?.details?.duplicate) {
-        if (confirm((data?.error?.message || '此月份已有記錄') + '\n\n是否仍要再建立一筆？')) {
+      } else if (res.status === 409 && data?.code === 'CONFLICT_UNIQUE') {
+        // data.error is the message string (production-safe)
+        if (confirm((typeof data?.error === 'string' ? data.error : '此月份已有記錄') + '\n\n是否仍要再建立一筆？')) {
           payload.allowDuplicate = true;
           const res2 = await fetch('/api/expense-records/execute-purchase', {
             method: 'POST',
@@ -941,24 +942,27 @@ export default function PurchasingPage() {
   async function handleSubmit(e) {
     e.preventDefault();
 
+    // 前端驗證（在 setPurchaseSaving 之前）
     if (items.length === 0) {
       showToast('請至少新增一項商品', 'error');
+      return;
+    }
+    if (!formData.warehouse) {
+      showToast('請選擇館別', 'error');
+      return;
+    }
+    if (!formData.department) {
+      showToast('請選擇部門', 'error');
+      return;
+    }
+    if (!formData.supplierId) {
+      showToast('請選擇廠商', 'error');
       return;
     }
 
     setPurchaseSaving(true);
     try {
       const totals = calculateTotal();
-      // 驗證必填欄位
-      if (!formData.warehouse) {
-        showToast('請選擇館別', 'error');
-        return;
-      }
-      if (!formData.department) {
-        showToast('請選擇部門', 'error');
-        return;
-      }
-
       const purchaseData = {
         ...formData,
         items: items.map(item => ({
@@ -969,9 +973,9 @@ export default function PurchasingPage() {
           status: item.status || '不需入庫',
           inventoryWarehouse: item.inventoryWarehouse || null
         })),
-        amount: parseFloat(totals.total), // 金額
-        tax: 0, // 稅額設為 0
-        totalAmount: parseFloat(totals.total) // 總金額
+        amount: parseFloat(totals.total),
+        tax: 0,
+        totalAmount: parseFloat(totals.total)
       };
 
       const isEditing = !!editingPurchase;
@@ -1005,6 +1009,8 @@ export default function PurchasingPage() {
     } catch (error) {
       console.error(`${editingPurchase ? '更新' : '新增'}進貨單失敗:`, error);
       showToast(`${editingPurchase ? '更新' : '新增'}進貨單失敗，請稍後再試`, 'error');
+    } finally {
+      setPurchaseSaving(false);
     }
   }
 
@@ -1238,58 +1244,22 @@ export default function PurchasingPage() {
                             <td className="px-3 py-2">
                               {(() => {
                                 const product = products.find(p => p.id === parseInt(item.productId));
-                                const invoiced = editingPurchase && item.originalIndex !== undefined
-                                  ? isItemInvoiced(editingPurchase.id, item.originalIndex) : false;
                                 if (!product?.isInStock) {
                                   return <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-500 border border-gray-200">不需入庫</span>;
                                 }
+                                const s = item.status || '待入庫';
                                 return (
-                                  <select
-                                    value={item.status}
-                                    disabled={invoiced}
-                                    onChange={(e) => {
-                                      const newItems = [...items];
-                                      newItems[index] = { ...newItems[index], status: e.target.value };
-                                      setItems(newItems);
-                                    }}
-                                    className={`px-2 py-1 rounded text-xs border ${invoiced ? 'bg-gray-100 text-gray-500 cursor-not-allowed' :
-                                      item.status === '已入庫' ? 'bg-green-100 text-green-800 border-green-300' :
-                                      'bg-yellow-100 text-yellow-800 border-yellow-300'
-                                    }`}
-                                  >
-                                    <option value="待入庫">待入庫</option>
-                                    <option value="已入庫">已入庫</option>
-                                  </select>
+                                  <span className={`px-2 py-1 rounded text-xs border ${
+                                    s === '已入庫' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                                  }`}>{s}<span className="ml-1 text-gray-400 text-xs">(庫存管理)</span></span>
                                 );
                               })()}
                             </td>
                             <td className="px-3 py-2">
                               {(() => {
                                 const product = products.find(p => p.id === parseInt(item.productId));
-                                const invoiced = editingPurchase && item.originalIndex !== undefined
-                                  ? isItemInvoiced(editingPurchase.id, item.originalIndex) : false;
-                                if (!product?.isInStock) {
-                                  return <span className="text-xs text-gray-400">-</span>;
-                                }
-                                if (invoiced) {
-                                  return <span className="text-xs text-gray-600">{item.inventoryWarehouse || '未指定'}</span>;
-                                }
-                                return (
-                                  <select
-                                    value={item.inventoryWarehouse || ''}
-                                    onChange={(e) => {
-                                      const newItems = [...items];
-                                      newItems[index] = { ...newItems[index], inventoryWarehouse: e.target.value };
-                                      setItems(newItems);
-                                    }}
-                                    className="px-2 py-1 rounded text-xs border border-gray-300 bg-white focus:ring-1 focus:ring-blue-500"
-                                  >
-                                    <option value="">選擇倉庫</option>
-                                    {storageLocationsList.map(w => (
-                                      <option key={w} value={w}>{w}</option>
-                                    ))}
-                                  </select>
-                                );
+                                if (!product?.isInStock) return <span className="text-xs text-gray-400">-</span>;
+                                return <span className="text-xs text-gray-600">{item.inventoryWarehouse || '-'}</span>;
                               })()}
                             </td>
                             <td className="px-3 py-2">
@@ -1562,6 +1532,7 @@ export default function PurchasingPage() {
                     setEditingPurchase(null);
                     setItems([]);
                     setSupplierSearch('');
+                    setPurchaseSaving(false);
                     setFormData({
                       warehouse: '',
                       department: '',
