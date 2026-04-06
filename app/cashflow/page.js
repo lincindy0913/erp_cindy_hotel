@@ -14,7 +14,7 @@ const TX_TYPES = ['收入', '支出', '移轉'];
 const TABS = [
   { key: 'overview', label: '帳戶總覽' },
   { key: 'transactions', label: '交易紀錄' },
-  { key: 'categories', label: '類別管理' },
+  { key: 'subject-query', label: '科目查詢' },
   { key: 'report', label: '現金流量表' },
   { key: 'forecast', label: '資金預測' },
   { key: 'cash-count', label: '現金盤點' }
@@ -70,7 +70,7 @@ export default function CashFlowPage() {
     type: '',
     accountId: '',
     sourceType: '',
-    categoryId: ''
+    accountingSubject: ''
   });
   const [txPage, setTxPage] = useState(1);
   const [txPagination, setTxPagination] = useState({ page: 1, limit: 50, totalCount: 0, totalPages: 1 });
@@ -104,8 +104,18 @@ export default function CashFlowPage() {
     endDate: new Date().toISOString().split('T')[0],
     warehouse: '',
     supplierId: '',
-    categoryId: ''
+    accountingSubject: ''
   });
+
+  // Subject query state
+  const [subjectFilter, setSubjectFilter] = useState({
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    warehouse: '',
+    accountingSubject: ''
+  });
+  const [subjectData, setSubjectData] = useState(null);
+  const [subjectLoading, setSubjectLoading] = useState(false);
 
   // Overview category summary (current month)
   const [overviewCategorySummary, setOverviewCategorySummary] = useState(null);
@@ -176,7 +186,7 @@ export default function CashFlowPage() {
       if (txFilter.type) params.append('type', txFilter.type);
       if (txFilter.accountId) params.append('accountId', txFilter.accountId);
       if (txFilter.sourceType) params.append('sourceType', txFilter.sourceType);
-      if (txFilter.categoryId) params.append('categoryId', txFilter.categoryId);
+      if (txFilter.accountingSubject) params.append('accountingSubject', txFilter.accountingSubject);
       params.append('page', String(p));
       params.append('limit', '50');
 
@@ -216,12 +226,45 @@ export default function CashFlowPage() {
       if (reportFilter.endDate) params.set('endDate', reportFilter.endDate);
       if (reportFilter.warehouse) params.set('warehouse', reportFilter.warehouse);
       if (reportFilter.supplierId) params.set('supplierId', reportFilter.supplierId);
-      if (reportFilter.categoryId) params.set('categoryId', reportFilter.categoryId);
+      if (reportFilter.accountingSubject) params.set('accountingSubject', reportFilter.accountingSubject);
       const res = await fetch(`/api/cashflow/report?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) { showToast(data.error?.message || '產生報表失敗', 'error'); setReportData(null); return; }
       setReportData(data);
     } catch (e) { showToast('產生報表失敗: ' + (e.message || ''), 'error'); setReportData(null); }
+  }
+
+  async function fetchSubjectQuery() {
+    setSubjectLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (subjectFilter.startDate) params.set('startDate', subjectFilter.startDate);
+      if (subjectFilter.endDate) params.set('endDate', subjectFilter.endDate);
+      if (subjectFilter.warehouse) params.set('warehouse', subjectFilter.warehouse);
+      if (subjectFilter.accountingSubject) params.set('accountingSubject', subjectFilter.accountingSubject);
+      params.set('limit', '500');
+      const res = await fetch(`/api/cashflow/transactions?${params}`);
+      const data = await res.json();
+      const txs = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+
+      // Group by accountingSubject + warehouse (exclude transfer types)
+      const grouped = {};
+      let totalIncome = 0, totalExpense = 0;
+      for (const tx of txs) {
+        if (tx.type === '移轉' || tx.type === '移轉入') continue;
+        const subject = tx.accountingSubject ||
+          (tx.category?.accountingSubject ? `${tx.category.accountingSubject.code} ${tx.category.accountingSubject.name}` : '未分類');
+        const wh = tx.warehouse || '未指定';
+        const key = `${subject}__${wh}`;
+        if (!grouped[key]) grouped[key] = { subject, warehouse: wh, income: 0, expense: 0, count: 0 };
+        if (tx.type === '收入') { grouped[key].income += Number(tx.amount); totalIncome += Number(tx.amount); }
+        else if (tx.type === '支出') { grouped[key].expense += Number(tx.amount); totalExpense += Number(tx.amount); }
+        grouped[key].count++;
+      }
+      const rows = Object.values(grouped).sort((a, b) => a.subject.localeCompare(b.subject, 'zh-TW'));
+      setSubjectData({ rows, totalIncome, totalExpense, totalCount: txs.filter(t => t.type !== '移轉' && t.type !== '移轉入').length });
+    } catch { setSubjectData(null); }
+    setSubjectLoading(false);
   }
 
   async function fetchSummary() {
@@ -747,17 +790,14 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
-                  <select
-                    value={txFilter.categoryId}
-                    onChange={(e) => setTxFilter({ ...txFilter, categoryId: e.target.value })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                  <input
+                    type="text"
+                    value={txFilter.accountingSubject}
+                    onChange={(e) => setTxFilter({ ...txFilter, accountingSubject: e.target.value })}
+                    placeholder="科目代碼或名稱"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="">全部</option>
-                    {categories.filter(c => c.isActive).map(c => (
-                      <option key={c.id} value={c.id}>{c.type === '收入' ? '📈' : '📉'} {c.name}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
               <button
@@ -1141,182 +1181,141 @@ export default function CashFlowPage() {
           </div>
         )}
 
-        {/* ==================== Tab 3: Category Management ==================== */}
-        {activeTab === 'categories' && (
+        {/* ==================== Tab 3: Subject Query ==================== */}
+        {activeTab === 'subject-query' && (
           <div>
-            {isLoggedIn && (
-              <div className="mb-4">
-                <button
-                  onClick={() => setShowCategoryForm(!showCategoryForm)}
-                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm"
-                >
-                  + 新增類別
-                </button>
+            {/* Filters */}
+            <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
+                  <input
+                    type="date"
+                    value={subjectFilter.startDate}
+                    onChange={(e) => setSubjectFilter({ ...subjectFilter, startDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+                  <input
+                    type="date"
+                    value={subjectFilter.endDate}
+                    onChange={(e) => setSubjectFilter({ ...subjectFilter, endDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select
+                    value={subjectFilter.warehouse}
+                    onChange={(e) => setSubjectFilter({ ...subjectFilter, warehouse: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">全部</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                  <input
+                    type="text"
+                    value={subjectFilter.accountingSubject}
+                    onChange={(e) => setSubjectFilter({ ...subjectFilter, accountingSubject: e.target.value })}
+                    placeholder="科目代碼或名稱關鍵字"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
-            )}
+              <button
+                onClick={fetchSubjectQuery}
+                disabled={subjectLoading}
+                className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50"
+              >
+                {subjectLoading ? '查詢中...' : '查詢'}
+              </button>
+            </div>
 
-            {showCategoryForm && (
-              <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-emerald-200">
-                <h3 className="text-lg font-semibold mb-4">新增資金類別</h3>
-                <form onSubmit={handleCreateCategory}>
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">類別名稱 *</label>
-                      <input
-                        type="text"
-                        required
-                        value={categoryForm.name}
-                        onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                        placeholder="例：客房收入、進貨支出"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">類型 *</label>
-                      <select
-                        value={categoryForm.type}
-                        onChange={(e) => setCategoryForm({ ...categoryForm, type: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="收入">收入</option>
-                        <option value="支出">支出</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">所屬館別</label>
-                      <select
-                        value={categoryForm.warehouse}
-                        onChange={(e) => setCategoryForm({ ...categoryForm, warehouse: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="">全部（通用）</option>
-                        {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-                      </select>
+            {/* Results */}
+            {subjectData && (
+              <div>
+                {/* Summary cards */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-green-500">
+                    <div className="text-sm text-gray-500 mb-1">收入合計</div>
+                    <div className="text-xl font-bold text-green-700">{formatMoney(subjectData.totalIncome)}</div>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm p-4 border-l-4 border-red-500">
+                    <div className="text-sm text-gray-500 mb-1">支出合計</div>
+                    <div className="text-xl font-bold text-red-700">{formatMoney(subjectData.totalExpense)}</div>
+                  </div>
+                  <div className={`bg-white rounded-lg shadow-sm p-4 border-l-4 ${subjectData.totalIncome - subjectData.totalExpense >= 0 ? 'border-emerald-500' : 'border-orange-500'}`}>
+                    <div className="text-sm text-gray-500 mb-1">淨額（共 {subjectData.totalCount} 筆）</div>
+                    <div className={`text-xl font-bold ${subjectData.totalIncome - subjectData.totalExpense >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>
+                      {formatMoney(subjectData.totalIncome - subjectData.totalExpense)}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        會計科目
-                        <a href="/accounting-subjects" className="text-xs text-blue-600 hover:underline ml-1">（管理科目）</a>
-                      </label>
-                      <select
-                        value={categoryForm.accountingSubjectId}
-                        onChange={(e) => setCategoryForm({ ...categoryForm, accountingSubjectId: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      >
-                        <option value="">不指定</option>
-                        {accountingSubjects.map(s => (
-                          <option key={s.id} value={s.id}>{s.code} - {s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="submit" className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm">儲存</button>
-                    <button type="button" onClick={() => setShowCategoryForm(false)} className="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 text-sm">取消</button>
-                  </div>
-                </form>
-              </div>
-            )}
+                </div>
 
-            {/* Category tables - reusable for income and expense */}
-            {[
-              { type: '收入', label: '收入類別', color: 'green', bgHead: 'bg-green-50' },
-              { type: '支出', label: '支出類別', color: 'red', bgHead: 'bg-red-50' },
-            ].map(({ type: catType, label, color, bgHead }) => (
-              <div key={catType} className={catType === '收入' ? 'mb-6' : ''}>
-                <h3 className={`text-lg font-semibold mb-3 text-${color}-700`}>{label}</h3>
+                {/* Grouped table */}
                 <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                   <table className="w-full">
-                    <thead className={bgHead}>
+                    <thead className="bg-emerald-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">所屬館別</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">交易筆數</th>
-                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">累計金額</th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">狀態</th>
-                        {isLoggedIn && <th className="px-4 py-3 text-center text-sm font-medium text-gray-700">操作</th>}
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">筆數</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">收入</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">支出</th>
+                        <th className="px-4 py-3 text-right text-sm font-medium text-gray-700">淨額</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {categories.filter(c => c.type === catType).map(c => (
-                        <tr key={c.id} className={`hover:bg-gray-50 ${!c.isActive ? 'opacity-50' : ''}`}>
-                          <td className="px-4 py-3 text-sm font-medium">
-                            {c.name}
-                            {c.isSystemDefault && <span className="ml-1 text-xs text-gray-400">(系統)</span>}
+                      {subjectData.rows.length === 0 ? (
+                        <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">查無符合的交易紀錄</td></tr>
+                      ) : (
+                        subjectData.rows.map((row, idx) => {
+                          const net = row.income - row.expense;
+                          return (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm font-mono">{row.subject}</td>
+                              <td className="px-4 py-3 text-sm">{row.warehouse}</td>
+                              <td className="px-4 py-3 text-sm text-right">{row.count}</td>
+                              <td className="px-4 py-3 text-sm text-right text-green-700 font-medium">
+                                {row.income > 0 ? formatMoney(row.income) : '-'}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-right text-red-700 font-medium">
+                                {row.expense > 0 ? formatMoney(row.expense) : '-'}
+                              </td>
+                              <td className={`px-4 py-3 text-sm text-right font-semibold ${net >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>
+                                {formatMoney(net)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                      {subjectData.rows.length > 0 && (
+                        <tr className="bg-gray-50 font-semibold">
+                          <td className="px-4 py-3 text-sm" colSpan={2}>合計</td>
+                          <td className="px-4 py-3 text-sm text-right">{subjectData.totalCount}</td>
+                          <td className="px-4 py-3 text-sm text-right text-green-700">{formatMoney(subjectData.totalIncome)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-red-700">{formatMoney(subjectData.totalExpense)}</td>
+                          <td className={`px-4 py-3 text-sm text-right ${subjectData.totalIncome - subjectData.totalExpense >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>
+                            {formatMoney(subjectData.totalIncome - subjectData.totalExpense)}
                           </td>
-                          <td className="px-4 py-3 text-sm">
-                            {c.accountingSubject ? (
-                              <span className="text-blue-700 font-mono text-xs">{c.accountingSubject.code} {c.accountingSubject.name}</span>
-                            ) : (
-                              <span className="text-gray-400 text-xs">未設定</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm">{c.warehouse || '通用'}</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium">{c._count?.transactions || 0}</td>
-                          <td className={`px-4 py-3 text-sm text-right font-semibold ${catType === '收入' ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatMoney(c.totalAmount || 0)}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {isLoggedIn ? (
-                              <button
-                                onClick={() => {
-                                  fetch(`/api/cashflow/categories/${c.id}`, {
-                                    method: 'PUT',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ isActive: !c.isActive })
-                                  }).then(() => fetchCategories());
-                                }}
-                                className={`px-2 py-0.5 rounded text-xs cursor-pointer ${c.isActive ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                              >
-                                {c.isActive ? '啟用' : '停用'}
-                              </button>
-                            ) : (
-                              <span className={`px-2 py-0.5 rounded text-xs ${c.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                {c.isActive ? '啟用' : '停用'}
-                              </span>
-                            )}
-                          </td>
-                          {isLoggedIn && (
-                            <td className="px-4 py-3 text-center">
-                              <div className="flex gap-2 justify-center">
-                                <select
-                                  value={c.accountingSubjectId || ''}
-                                  onChange={(e) => {
-                                    fetch(`/api/cashflow/categories/${c.id}`, {
-                                      method: 'PUT',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ accountingSubjectId: e.target.value || null })
-                                    }).then(() => fetchCategories());
-                                  }}
-                                  className="text-xs border border-gray-300 rounded px-1 py-0.5"
-                                >
-                                  <option value="">設定科目</option>
-                                  {accountingSubjects.map(s => (
-                                    <option key={s.id} value={s.id}>{s.code} {s.name}</option>
-                                  ))}
-                                </select>
-                                <button
-                                  onClick={() => handleDeleteCategory(c.id)}
-                                  className="text-red-600 hover:underline text-sm"
-                                >
-                                  刪除
-                                </button>
-                              </div>
-                            </td>
-                          )}
                         </tr>
-                      ))}
-                      {categories.filter(c => c.type === catType).length === 0 && (
-                        <tr><td colSpan={isLoggedIn ? 7 : 6} className="px-4 py-4 text-center text-gray-500">尚無{label}</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
-            ))}
+            )}
+
+            {!subjectData && !subjectLoading && (
+              <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
+                請設定查詢條件後點擊「查詢」
+              </div>
+            )}
           </div>
         )}
 
@@ -1367,17 +1366,14 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
-                  <select
-                    value={reportFilter.categoryId}
-                    onChange={(e) => setReportFilter({ ...reportFilter, categoryId: e.target.value })}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                  <input
+                    type="text"
+                    value={reportFilter.accountingSubject}
+                    onChange={(e) => setReportFilter({ ...reportFilter, accountingSubject: e.target.value })}
+                    placeholder="科目代碼或名稱"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    <option value="">全部</option>
-                    {categories.filter(c => c.isActive).map(c => (
-                      <option key={c.id} value={c.id}>{c.type === '收入' ? '收' : '支'} {c.name}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
               <button

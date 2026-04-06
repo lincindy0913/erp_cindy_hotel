@@ -63,6 +63,20 @@ export async function POST(request) {
 
       // 1. 建立現金流扣款（包含支票支付：出納執行時即建立，支票分頁兌現時不再重複建立）
       const categoryId = await getCategoryId(tx, 'cashier_payment');
+
+      // Derive accountingSubject from linked expense record (if fixed_expense source)
+      let accountingSubjectForTx = null;
+      if (order.sourceType === 'fixed_expense') {
+        const expRec = await tx.commonExpenseRecord.findFirst({
+          where: { paymentOrderId: parsedOrderId },
+          include: { entryLines: { where: { entryType: 'debit' }, orderBy: { sortOrder: 'asc' }, take: 1 } }
+        });
+        const debitLine = expRec?.entryLines?.[0];
+        if (debitLine?.accountingCode) {
+          accountingSubjectForTx = [debitLine.accountingCode, debitLine.accountingName].filter(Boolean).join(' ').trim() || null;
+        }
+      }
+
       const cashTx = await tx.cashTransaction.create({
         data: {
           transactionNo: txNo,
@@ -72,6 +86,7 @@ export async function POST(request) {
           accountId: parsedAccountId,
           categoryId,
           amount: actualAmount,
+          accountingSubject: accountingSubjectForTx,
           description: `出納付款 - ${order.orderNo} - ${order.supplierName || ''}`,
           sourceType: 'cashier_payment',
           sourceRecordId: order.id,

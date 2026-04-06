@@ -150,6 +150,22 @@ export async function POST(request) {
       }
     }
 
+    // Pre-fetch accountingSubjects for fixed_expense orders (outside transaction for efficiency)
+    const orderSubjectMap = {};
+    const fixedExpenseOrders = orders.filter(o => o.sourceType === 'fixed_expense');
+    if (fixedExpenseOrders.length > 0) {
+      const expRecs = await prisma.commonExpenseRecord.findMany({
+        where: { paymentOrderId: { in: fixedExpenseOrders.map(o => o.id) } },
+        include: { entryLines: { where: { entryType: 'debit' }, orderBy: { sortOrder: 'asc' }, take: 1 } }
+      });
+      for (const rec of expRecs) {
+        const line = rec.entryLines?.[0];
+        if (line?.accountingCode) {
+          orderSubjectMap[rec.paymentOrderId] = [line.accountingCode, line.accountingName].filter(Boolean).join(' ').trim() || null;
+        }
+      }
+    }
+
     const dateStr = executionDate.replace(/-/g, '');
 
     const result = await prisma.$transaction(async (tx) => {
@@ -190,6 +206,7 @@ export async function POST(request) {
             accountId: alloc.accountId,
             categoryId,
             amount: alloc.amount,
+            accountingSubject: orderSubjectMap[alloc.orderId] || null,
             description: `出納付款 - ${alloc.orderNo} - ${alloc.supplierName || ''}`,
             sourceType: 'cashier_payment',
             sourceRecordId: alloc.orderId,

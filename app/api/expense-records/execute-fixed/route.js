@@ -230,6 +230,10 @@ export async function POST(request) {
             const transactionNo = `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
 
             const fixedCatId = await getCategoryId(tx, 'fixed_expense');
+            const firstDebitLine = whLines.find(l => l.entryType === 'debit' && l.amount > 0);
+            const fixedExpSubject = firstDebitLine?.accountingCode
+              ? [firstDebitLine.accountingCode, firstDebitLine.accountingName].filter(Boolean).join(' ').trim() || null
+              : null;
             const cashTx = await tx.cashTransaction.create({
               data: {
                 transactionNo,
@@ -239,6 +243,7 @@ export async function POST(request) {
                 accountId: accId,
                 categoryId: fixedCatId,
                 amount: debitTotal,
+                accountingSubject: fixedExpSubject,
                 description: `固定費用 - ${orderNo} - ${data.expenseMonth}`,
                 sourceType: 'fixed_expense',
                 sourceRecordId: po.id,

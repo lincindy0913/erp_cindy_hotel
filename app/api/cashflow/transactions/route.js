@@ -42,6 +42,8 @@ export async function GET(request) {
     if (sourceType) where.sourceType = sourceType;
     const categoryId = searchParams.get('categoryId');
     if (categoryId) where.categoryId = parseInt(categoryId);
+    const accountingSubject = searchParams.get('accountingSubject');
+    if (accountingSubject) where.accountingSubject = { contains: accountingSubject, mode: 'insensitive' };
 
     // Warehouse-level access control
     const wf = applyWarehouseFilter(auth.session, where);
