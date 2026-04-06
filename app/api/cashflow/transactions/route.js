@@ -108,6 +108,34 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '交易日期、類型、帳戶、金額為必填', 400);
     }
 
+    // For non-transfer transactions, validate required fields
+    if (data.type !== '移轉') {
+      if (!data.warehouse) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '館別為必填', 400);
+      }
+      if (!data.accountingSubject) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '會計科目為必填', 400);
+      }
+      if (!data.supplierId) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '廠商為必填', 400);
+      }
+      if (!data.invoiceNo) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '發票號碼為必填', 400);
+      }
+      if (!data.invoiceAmount) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '發票金額為必填', 400);
+      }
+      if (!data.invoiceDate) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '發票日期為必填', 400);
+      }
+      if (!data.taxType) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '發票稅項為必填', 400);
+      }
+      if (data.taxAmount === undefined || data.taxAmount === null || data.taxAmount === '') {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '發票稅金為必填', 400);
+      }
+    }
+
     if (!['收入', '支出', '移轉'].includes(data.type)) {
       return createErrorResponse('VALIDATION_FAILED', '類型必須是「收入」、「支出」或「移轉」', 400);
     }
@@ -230,6 +258,11 @@ export async function POST(request) {
             fee,
             hasFee: data.hasFee || false,
             accountingSubject: data.accountingSubject || null,
+            invoiceNo: data.invoiceNo || null,
+            invoiceAmount: data.invoiceAmount ? parseFloat(data.invoiceAmount) : null,
+            invoiceDate: data.invoiceDate || null,
+            taxType: data.taxType || null,
+            taxAmount: data.taxAmount !== undefined && data.taxAmount !== '' ? parseFloat(data.taxAmount) : null,
             paymentTerms: data.paymentTerms || null,
             description: data.description || null,
             sourceType,

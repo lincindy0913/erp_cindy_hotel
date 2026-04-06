@@ -59,7 +59,12 @@ export default function CashFlowPage() {
     accountingSubject: '',
     paymentTerms: '',
     description: '',
-    transferAccountId: ''
+    transferAccountId: '',
+    invoiceNo: '',
+    invoiceAmount: '',
+    invoiceDate: '',
+    taxType: '',
+    taxAmount: ''
   });
 
   // Transaction filters
@@ -363,6 +368,16 @@ export default function CashFlowPage() {
       showToast('移轉交易必須指定目的帳戶', 'error');
       return;
     }
+    if (txForm.type !== '移轉') {
+      if (!txForm.warehouse) { showToast('館別為必填', 'error'); return; }
+      if (!txForm.accountingSubject) { showToast('會計科目為必填', 'error'); return; }
+      if (!txForm.supplierId) { showToast('廠商為必填', 'error'); return; }
+      if (!txForm.invoiceNo) { showToast('發票號碼為必填', 'error'); return; }
+      if (!txForm.invoiceAmount) { showToast('發票金額為必填', 'error'); return; }
+      if (!txForm.invoiceDate) { showToast('發票日期為必填', 'error'); return; }
+      if (!txForm.taxType) { showToast('發票稅項為必填', 'error'); return; }
+      if (txForm.taxAmount === '') { showToast('發票稅金為必填', 'error'); return; }
+    }
     try {
       const res = await fetch('/api/cashflow/transactions', {
         method: 'POST',
@@ -385,7 +400,12 @@ export default function CashFlowPage() {
           accountingSubject: '',
           paymentTerms: '',
           description: '',
-          transferAccountId: ''
+          transferAccountId: '',
+          invoiceNo: '',
+          invoiceAmount: '',
+          invoiceDate: '',
+          taxType: '',
+          taxAmount: ''
         });
         fetchTransactions();
         fetchAccounts();
@@ -848,7 +868,9 @@ export default function CashFlowPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        館別{txForm.type !== '移轉' ? ' *' : ''}
+                      </label>
                       <select
                         value={txForm.warehouse}
                         onChange={(e) => setTxForm({ ...txForm, warehouse: e.target.value })}
@@ -908,17 +930,19 @@ export default function CashFlowPage() {
                       </div>
                     )}
 
+                    {txForm.type !== '移轉' && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
                       <select
                         value={txForm.supplierId}
                         onChange={(e) => setTxForm({ ...txForm, supplierId: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
-                        <option value="">無</option>
+                        <option value="">選擇廠商</option>
                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                     </div>
+                    )}
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">金額 *</label>
@@ -963,7 +987,9 @@ export default function CashFlowPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        會計科目{txForm.type !== '移轉' ? ' *' : ''}
+                      </label>
                       <input
                         type="text"
                         value={txForm.accountingSubject}
@@ -1011,6 +1037,70 @@ export default function CashFlowPage() {
                     </div>
                   </div>
 
+                  {/* Invoice section - required for non-transfer transactions */}
+                  {txForm.type !== '移轉' && (
+                    <div className="border-t border-gray-200 pt-4 mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">發票資訊（必填）</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票號碼 *</label>
+                          <input
+                            type="text"
+                            value={txForm.invoiceNo}
+                            onChange={(e) => setTxForm({ ...txForm, invoiceNo: e.target.value })}
+                            placeholder="AB-12345678"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票金額 *</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={txForm.invoiceAmount}
+                            onChange={(e) => setTxForm({ ...txForm, invoiceAmount: e.target.value })}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票日期 *</label>
+                          <input
+                            type="date"
+                            value={txForm.invoiceDate}
+                            onChange={(e) => setTxForm({ ...txForm, invoiceDate: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票稅項 *</label>
+                          <select
+                            value={txForm.taxType}
+                            onChange={(e) => setTxForm({ ...txForm, taxType: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <option value="">選擇稅項</option>
+                            <option value="應稅">應稅</option>
+                            <option value="零稅率">零稅率</option>
+                            <option value="免稅">免稅</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">發票稅金 *</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={txForm.taxAmount}
+                            onChange={(e) => setTxForm({ ...txForm, taxAmount: e.target.value })}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* Transfer info */}
                   {txForm.type === '移轉' && txForm.accountId && txForm.transferAccountId && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-sm">
