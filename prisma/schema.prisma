@@ -1461,7 +1461,10 @@ model RentalProperty {
   depositAccountId      Int?     @map("deposit_account_id")
   status                String   @default("available") @db.VarChar(20)
   note                  String?  @db.Text
-  publicInterestLandlord Boolean @default(false) @map("public_interest_landlord")
+  publicInterestLandlord Boolean  @default(false) @map("public_interest_landlord")
+  publicInterestStartDate String? @map("public_interest_start_date") @db.VarChar(20)
+  publicInterestEndDate   String? @map("public_interest_end_date") @db.VarChar(20)
+  publicInterestRent      Decimal? @map("public_interest_rent") @db.Decimal(12, 2)
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 

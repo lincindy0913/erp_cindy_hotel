@@ -79,7 +79,10 @@ export async function POST(request) {
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         status: body.status || 'available',
         note: body.note || null,
-        publicInterestLandlord: body.publicInterestLandlord === true
+        publicInterestLandlord: body.publicInterestLandlord === true,
+        publicInterestStartDate: body.publicInterestStartDate || null,
+        publicInterestEndDate: body.publicInterestEndDate || null,
+        publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
       }
     });
 
