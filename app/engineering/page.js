@@ -15,6 +15,7 @@ const TABS = [
   { key: 'contracts', label: '合約與期數' },
   { key: 'materials', label: '材料使用' },
   { key: 'payments', label: '付款單' },
+  { key: 'income', label: '收款管理' },
 ];
 
 const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
@@ -50,7 +51,7 @@ export default function EngineeringPage() {
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [editingTerm, setEditingTerm] = useState(null);
 
-  const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
+  const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
   const [contractForm, setContractForm] = useState({ projectId: '', supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '', terms: [], materials: [] });
   const [materialForm, setMaterialForm] = useState({ projectId: '', productId: '', contractId: '', termId: '', description: '', quantity: '', unit: '', unitPrice: '', usedAt: '', note: '' });
   const [termForm, setTermForm] = useState({ termName: '', amount: '', dueDate: '', status: 'pending', paidAt: '', paymentOrderId: '', note: '' });
@@ -294,6 +295,14 @@ export default function EngineeringPage() {
   const [termSaving, setTermSaving] = useState(false);
   const [materialSaving, setMaterialSaving] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
+
+  // Income tab state
+  const [incomes, setIncomes] = useState([]);
+  const [incomeSaving, setIncomeSaving] = useState(false);
+  const [showIncomeForm, setShowIncomeForm] = useState(false);
+  const [incomeForm, setIncomeForm] = useState({ projectId: '', termName: '', amount: '', receivedDate: new Date().toISOString().split('T')[0], accountId: '', accountingSubject: '41000 工程收入', note: '' });
+  const [incomeFilterProjectId, setIncomeFilterProjectId] = useState('');
+
   const { data: session } = useSession();
   const { showToast } = useToast();
 
@@ -314,6 +323,10 @@ export default function EngineeringPage() {
       fetchAccounts();
       fetchContracts();
       fetch('/api/settings/payment-methods').then(res => res.json()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(() => null);
+    }
+    if (activeTab === 'income') {
+      fetchIncomes();
+      fetchAccounts();
     }
   }, [activeTab, filterProjectId]);
 
@@ -377,6 +390,48 @@ export default function EngineeringPage() {
     } catch { setPaymentOrders([]); }
   }
 
+  async function fetchIncomes(projectId) {
+    try {
+      const pid = projectId !== undefined ? projectId : incomeFilterProjectId;
+      const url = pid ? `/api/engineering/income?projectId=${pid}` : '/api/engineering/income';
+      const res = await fetch(url);
+      const data = await res.json();
+      setIncomes(Array.isArray(data) ? data : []);
+    } catch { setIncomes([]); }
+  }
+
+  async function handleCreateIncome(e) {
+    e.preventDefault();
+    if (!incomeForm.projectId || !incomeForm.termName || !incomeForm.amount || !incomeForm.receivedDate) {
+      showToast('請填寫工程案、期數名稱、收款金額、收款日期', 'error');
+      return;
+    }
+    setIncomeSaving(true);
+    try {
+      const res = await fetch('/api/engineering/income', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(incomeForm),
+      });
+      const resData = await res.json();
+      if (!res.ok) { showToast(resData.error?.message || '建立失敗', 'error'); return; }
+      showToast('收款紀錄已建立', 'success');
+      setShowIncomeForm(false);
+      setIncomeForm({ projectId: '', termName: '', amount: '', receivedDate: new Date().toISOString().split('T')[0], accountId: '', accountingSubject: '41000 工程收入', note: '' });
+      fetchIncomes();
+    } catch { showToast('建立收款紀錄失敗', 'error'); }
+    setIncomeSaving(false);
+  }
+
+  async function handleDeleteIncome(id) {
+    if (!confirm('確定要刪除此收款紀錄？對應的現金流交易也會一併刪除。')) return;
+    try {
+      const res = await fetch(`/api/engineering/income/${id}`, { method: 'DELETE' });
+      if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); }
+      else { const err = await res.json(); showToast(err.error?.message || '刪除失敗', 'error'); }
+    } catch { showToast('刪除失敗', 'error'); }
+  }
+
   async function fetchAccounts() {
     try {
       const res = await fetch('/api/cashflow/accounts');
@@ -387,7 +442,7 @@ export default function EngineeringPage() {
 
   function openAddProject() {
     setEditingProject(null);
-    setProjectForm({ code: '', name: '', clientName: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
+    setProjectForm({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
     setShowProjectModal(true);
   }
 
@@ -395,6 +450,7 @@ export default function EngineeringPage() {
     setEditingProject(p);
     setProjectForm({
       code: p.code, name: p.name, clientName: p.clientName || '',
+      clientContractAmount: p.clientContractAmount != null ? String(p.clientContractAmount) : '',
       startDate: p.startDate || '', endDate: p.endDate || '',
       budget: p.budget != null ? String(p.budget) : '',
       status: p.status || '進行中',
@@ -412,6 +468,7 @@ export default function EngineeringPage() {
       const body = {
         code: projectForm.code.trim(), name: projectForm.name.trim(),
         clientName: projectForm.clientName?.trim() || null,
+        clientContractAmount: projectForm.clientContractAmount ? parseFloat(projectForm.clientContractAmount) : null,
         startDate: projectForm.startDate || null, endDate: projectForm.endDate || null,
         budget: projectForm.budget ? parseFloat(projectForm.budget) : null,
         status: projectForm.status,
@@ -1284,6 +1341,176 @@ ${projectRows.map(p => `<tr>
             </div>
           </>
         )}
+
+        {/* ===== 收款管理 TAB ===== */}
+        {activeTab === 'income' && (() => {
+          // Per-project totals
+          const projectIncomeMap = {};
+          incomes.forEach(inc => {
+            const pid = inc.projectId;
+            if (!projectIncomeMap[pid]) projectIncomeMap[pid] = { received: 0, project: inc.project };
+            projectIncomeMap[pid].received += Number(inc.amount);
+          });
+          const filteredIncomes = incomeFilterProjectId
+            ? incomes.filter(i => String(i.projectId) === incomeFilterProjectId)
+            : incomes;
+
+          return (
+            <div>
+              {/* Summary KPI */}
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                {(incomeFilterProjectId ? [{ projectId: parseInt(incomeFilterProjectId), ...projectIncomeMap[incomeFilterProjectId] }] : Object.entries(projectIncomeMap).map(([pid, v]) => ({ projectId: parseInt(pid), ...v }))).map(({ projectId: pid, received, project: proj }) => {
+                  const contractAmt = proj?.clientContractAmount || 0;
+                  const remaining = contractAmt - received;
+                  return (
+                    <div key={pid} className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="text-xs text-gray-500 mb-1">{proj?.code} {proj?.name}</div>
+                      <div className="text-xs text-gray-400 mb-2">業主：{proj?.clientName || '－'}</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">合約金額</span>
+                        <span className="font-semibold">{contractAmt > 0 ? `NT$ ${contractAmt.toLocaleString()}` : '未設定'}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">已收款</span>
+                        <span className="font-semibold text-green-700">NT$ {received.toLocaleString()}</span>
+                      </div>
+                      {contractAmt > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">剩餘收款</span>
+                          <span className={`font-bold ${remaining > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>NT$ {remaining.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {contractAmt > 0 && (
+                        <div className="mt-2 bg-gray-100 rounded-full h-2">
+                          <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min((received / contractAmt) * 100, 100)}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {Object.keys(projectIncomeMap).length === 0 && (
+                  <div className="col-span-3 bg-white rounded-lg border border-gray-200 p-4 text-center text-gray-400 text-sm">尚無收款紀錄</div>
+                )}
+              </div>
+
+              {/* Filter & Add */}
+              <div className="flex gap-3 mb-4 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">篩選工程案</label>
+                  <select value={incomeFilterProjectId} onChange={e => { setIncomeFilterProjectId(e.target.value); fetchIncomes(e.target.value); }}
+                    className="border rounded-lg px-3 py-2 text-sm">
+                    <option value="">全部工程案</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => setShowIncomeForm(f => !f)}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+                  + 新增收款
+                </button>
+              </div>
+
+              {/* Income Form */}
+              {showIncomeForm && (
+                <form onSubmit={handleCreateIncome} className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                  <h4 className="text-sm font-semibold text-green-800 mb-3">新增收款紀錄</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">工程案 *</label>
+                      <select value={incomeForm.projectId} onChange={e => setIncomeForm(f => ({ ...f, projectId: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm" required>
+                        <option value="">請選擇</option>
+                        {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">期數名稱 *</label>
+                      <input value={incomeForm.termName} onChange={e => setIncomeForm(f => ({ ...f, termName: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：第一期款" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">收款金額 *</label>
+                      <input type="number" value={incomeForm.amount} onChange={e => setIncomeForm(f => ({ ...f, amount: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" step="0.01" min="0.01" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">收款日期 *</label>
+                      <input type="date" value={incomeForm.receivedDate} onChange={e => setIncomeForm(f => ({ ...f, receivedDate: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">收款帳戶</label>
+                      <select value={incomeForm.accountId} onChange={e => setIncomeForm(f => ({ ...f, accountId: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">請選擇（選擇後自動建立現金流）</option>
+                        {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? `${a.warehouse} - ` : ''}{a.name} ({a.type})</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">會計科目</label>
+                      <input value={incomeForm.accountingSubject} onChange={e => setIncomeForm(f => ({ ...f, accountingSubject: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="41000 工程收入" />
+                    </div>
+                    <div className="col-span-2 md:col-span-3">
+                      <label className="block text-xs text-gray-500 mb-1">備註</label>
+                      <input value={incomeForm.note} onChange={e => setIncomeForm(f => ({ ...f, note: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button type="submit" disabled={incomeSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50">
+                      {incomeSaving ? '儲存中…' : '儲存收款'}
+                    </button>
+                    <button type="button" onClick={() => setShowIncomeForm(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
+                  </div>
+                </form>
+              )}
+
+              {/* Income Table */}
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-green-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">工程案</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">業主</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">期數</th>
+                      <th className="px-4 py-2 text-right font-medium text-gray-700">收款金額</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">收款日期</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">收款帳戶</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">會計科目</th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-700">備註</th>
+                      <th className="px-4 py-2 text-center font-medium text-gray-700">現金流</th>
+                      <th className="px-4 py-2 text-center font-medium text-gray-700">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredIncomes.length === 0 ? (
+                      <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-400">尚無收款紀錄</td></tr>
+                    ) : filteredIncomes.map(inc => (
+                      <tr key={inc.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-mono text-xs">{inc.project?.code} {inc.project?.name}</td>
+                        <td className="px-4 py-2 text-gray-600">{inc.project?.clientName || '－'}</td>
+                        <td className="px-4 py-2">{inc.termName}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-green-700">NT$ {Number(inc.amount).toLocaleString()}</td>
+                        <td className="px-4 py-2">{inc.receivedDate}</td>
+                        <td className="px-4 py-2">{inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}</td>
+                        <td className="px-4 py-2 text-xs text-gray-500 font-mono">{inc.accountingSubject || '－'}</td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">{inc.note || '－'}</td>
+                        <td className="px-4 py-2 text-center">
+                          {inc.cashTransactionId
+                            ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">已連動</span>
+                            : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">無帳戶</span>}
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-600 hover:underline text-xs">刪除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ===== 工程案 Modal ===== */}
@@ -1296,7 +1523,10 @@ ${projectRows.map(p => `<tr>
                 <div><label className="block text-xs text-gray-500 mb-1">工程代碼 *</label><input value={projectForm.code} onChange={e => setProjectForm(f => ({ ...f, code: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：PRJ-001" disabled={!!editingProject} /></div>
                 <div><label className="block text-xs text-gray-500 mb-1">名稱 *</label><input value={projectForm.name} onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">業主／客戶</label><input value={projectForm.clientName} onChange={e => setProjectForm(f => ({ ...f, clientName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-xs text-gray-500 mb-1">業主／客戶</label><input value={projectForm.clientName} onChange={e => setProjectForm(f => ({ ...f, clientName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label className="block text-xs text-gray-500 mb-1">業主合約金額（收款總額）</label><input type="number" value={projectForm.clientContractAmount} onChange={e => setProjectForm(f => ({ ...f, clientContractAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" /></div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-xs text-gray-500 mb-1">開始日期</label><input type="date" value={projectForm.startDate} onChange={e => setProjectForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
                 <div><label className="block text-xs text-gray-500 mb-1">結束日期</label><input type="date" value={projectForm.endDate} onChange={e => setProjectForm(f => ({ ...f, endDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>

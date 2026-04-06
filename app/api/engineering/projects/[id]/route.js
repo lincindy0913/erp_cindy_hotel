@@ -39,6 +39,7 @@ export async function PUT(request, { params }) {
       ...(data.code !== undefined && { code: String(data.code).trim() }),
       ...(data.name !== undefined && { name: String(data.name).trim() }),
       ...(data.clientName !== undefined && { clientName: data.clientName?.trim() || null }),
+      ...(data.clientContractAmount !== undefined && { clientContractAmount: data.clientContractAmount != null ? parseFloat(data.clientContractAmount) : null }),
       ...(data.startDate !== undefined && { startDate: data.startDate || null }),
       ...(data.endDate !== undefined && { endDate: data.endDate || null }),
       ...(data.budget !== undefined && { budget: data.budget != null ? parseFloat(data.budget) : null }),
@@ -82,6 +83,7 @@ function serializeProject(p) {
   return {
     ...p,
     budget: p.budget != null ? Number(p.budget) : null,
+    clientContractAmount: p.clientContractAmount != null ? Number(p.clientContractAmount) : null,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
     contracts: (p.contracts || []).map(c => ({

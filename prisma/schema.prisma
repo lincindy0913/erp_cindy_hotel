@@ -421,18 +421,19 @@ model CashAccount {
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  transactions       CashTransaction[]        @relation("AccountTransactions")
-  transfersIn        CashTransaction[]        @relation("TransferToAccount")
-  reconciliations    BankReconciliation[]
-  statementImports   BankStatementImport[]
-  checksSource       Check[]                  @relation("CheckSourceAccount")
-  checksDestination  Check[]                  @relation("CheckDestinationAccount")
-  loanMasters        LoanMaster[]
-  rentalProperties   RentalProperty[]         @relation("RentCollectAccount")
-  depositProperties  RentalProperty[]         @relation("DepositAccount")
-  monthlySnapshots   AccountMonthlySnapshot[]
-  cashCountConfigs   CashCountConfig[]
-  cashCounts         CashCount[]
+  transactions        CashTransaction[]        @relation("AccountTransactions")
+  transfersIn         CashTransaction[]        @relation("TransferToAccount")
+  reconciliations     BankReconciliation[]
+  statementImports    BankStatementImport[]
+  checksSource        Check[]                  @relation("CheckSourceAccount")
+  checksDestination   Check[]                  @relation("CheckDestinationAccount")
+  loanMasters         LoanMaster[]
+  rentalProperties    RentalProperty[]         @relation("RentCollectAccount")
+  depositProperties   RentalProperty[]         @relation("DepositAccount")
+  monthlySnapshots    AccountMonthlySnapshot[]
+  cashCountConfigs    CashCountConfig[]
+  cashCounts          CashCount[]
+  engineeringIncomes  EngineeringIncome[]
 
   @@index([warehouse])
   @@index([type])
@@ -2706,10 +2707,13 @@ model EngineeringProject {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
+  clientContractAmount Decimal? @map("client_contract_amount") @db.Decimal(14, 2)
+
   warehouseRef  Warehouse?  @relation(fields: [warehouseId], references: [id])
   departmentRef Department? @relation(fields: [departmentId], references: [id])
   contracts     EngineeringContract[]
   materials     EngineeringMaterial[]
+  incomes       EngineeringIncome[]
 
   @@index([status])
   @@index([warehouse])
@@ -2789,6 +2793,26 @@ model EngineeringMaterial {
   @@index([termId])
   @@index([productId])
   @@map("engineering_materials")
+}
+
+model EngineeringIncome {
+  id                Int      @id @default(autoincrement())
+  projectId         Int      @map("project_id")
+  termName          String   @map("term_name") @db.VarChar(100)
+  amount            Decimal  @db.Decimal(14, 2)
+  receivedDate      String   @map("received_date") @db.VarChar(20)
+  accountId         Int?     @map("account_id")
+  accountingSubject String?  @map("accounting_subject") @db.VarChar(100)
+  note              String?  @db.Text
+  cashTransactionId Int?     @map("cash_transaction_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  account CashAccount?       @relation(fields: [accountId], references: [id])
+
+  @@index([projectId])
+  @@map("engineering_incomes")
 }
 
 // ============================================

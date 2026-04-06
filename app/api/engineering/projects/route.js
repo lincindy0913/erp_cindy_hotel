@@ -21,6 +21,7 @@ export async function GET() {
     return NextResponse.json(projects.map(p => ({
       ...p,
       budget: p.budget != null ? Number(p.budget) : null,
+      clientContractAmount: p.clientContractAmount != null ? Number(p.clientContractAmount) : null,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     })));
@@ -54,6 +55,7 @@ export async function POST(request) {
         code,
         name: String(data.name).trim(),
         clientName: data.clientName?.trim() || null,
+        clientContractAmount: data.clientContractAmount != null ? parseFloat(data.clientContractAmount) : null,
         startDate: data.startDate || null,
         endDate: data.endDate || null,
         budget: data.budget != null ? parseFloat(data.budget) : null,
