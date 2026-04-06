@@ -294,9 +294,6 @@ export default function EngineeringPage() {
   const [termSaving, setTermSaving] = useState(false);
   const [materialSaving, setMaterialSaving] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
-  const [engExecOrder, setEngExecOrder] = useState(null);
-  const [engExecForm, setEngExecForm] = useState({ executionDate: '', actualAmount: '', accountId: '', paymentMethod: '' });
-  const [engExecLoading, setEngExecLoading] = useState(false);
   const { data: session } = useSession();
   const { showToast } = useToast();
 
@@ -386,36 +383,6 @@ export default function EngineeringPage() {
       const data = await res.json();
       setAccounts(Array.isArray(data) ? data : []);
     } catch { setAccounts([]); }
-  }
-
-  async function handleEngExecute(e) {
-    e.preventDefault();
-    if (!engExecForm.accountId) { showToast('請選擇付款帳戶', 'error'); return; }
-    setEngExecLoading(true);
-    try {
-      const res = await fetch('/api/cashier/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentOrderId: engExecOrder.id,
-          executionDate: engExecForm.executionDate,
-          actualAmount: parseFloat(engExecForm.actualAmount),
-          accountId: engExecForm.accountId,
-          paymentMethod: engExecForm.paymentMethod,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        showToast((typeof data.error === 'string' ? data.error : data.error?.message) || '執行失敗', 'error');
-      } else {
-        showToast(`付款單 ${engExecOrder.orderNo} 已執行`, 'success');
-        setEngExecOrder(null);
-        fetchPaymentOrders();
-      }
-    } catch (err) {
-      showToast('執行失敗: ' + err.message, 'error');
-    }
-    setEngExecLoading(false);
   }
 
   function openAddProject() {
@@ -1199,13 +1166,7 @@ ${projectRows.map(p => `<tr>
                               <span className="text-xs text-gray-400">已執行</span>
                             ) : isPending ? (
                               <div className="flex items-center justify-center gap-2">
-                                <button onClick={() => { setEngExecOrder(o); setEngExecForm({ executionDate: new Date().toISOString().split('T')[0], actualAmount: String(o.netAmount || o.amount || ''), accountId: o.accountId ? String(o.accountId) : '', paymentMethod: o.paymentMethod || '轉帳' }); }} className="text-teal-600 hover:underline text-xs">執行</button>
-                                <button onClick={async () => {
-                                  if (!confirm(`確定要作廢付款單 ${o.orderNo}？`)) return;
-                                  const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'void' }) });
-                                  if (res.ok) { showToast('付款單已作廢', 'success'); fetchPaymentOrders(); }
-                                  else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '作廢失敗', 'error'); }
-                                }} className="text-red-500 hover:underline text-xs">作廢</button>
+                                <Link href="/cashier" className="text-amber-600 hover:underline text-xs whitespace-nowrap">→ 至出納</Link>
                               </div>
                             ) : (
                               <div className="flex items-center justify-center gap-2">
@@ -1687,49 +1648,6 @@ ${projectRows.map(p => `<tr>
       )}
 
       {/* ── Engineering cashier execute modal ── */}
-      {engExecOrder && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEngExecOrder(null)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-800 mb-1">執行付款</h3>
-            <p className="text-sm text-gray-500 mb-4">{engExecOrder.orderNo} — {engExecOrder.supplierName || ''}</p>
-            <form onSubmit={handleEngExecute} className="space-y-3">
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">執行日期 *</label>
-                <input type="date" value={engExecForm.executionDate} onChange={e => setEngExecForm(f => ({ ...f, executionDate: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" required />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">實際金額 *</label>
-                <input type="number" value={engExecForm.actualAmount} onChange={e => setEngExecForm(f => ({ ...f, actualAmount: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" required />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">付款帳戶 *</label>
-                <select value={engExecForm.accountId} onChange={e => setEngExecForm(f => ({ ...f, accountId: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" required>
-                  <option value="">請選擇帳戶</option>
-                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">付款方式</label>
-                <select value={engExecForm.paymentMethod} onChange={e => setEngExecForm(f => ({ ...f, paymentMethod: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm">
-                  {paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setEngExecOrder(null)}
-                  className="px-4 py-2 border text-gray-600 text-sm rounded-lg hover:bg-gray-50">取消</button>
-                <button type="submit" disabled={engExecLoading}
-                  className="px-6 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50">
-                  {engExecLoading ? '執行中...' : '確認執行'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
