@@ -158,6 +158,8 @@ export default function InventoryPage() {
   const [inboundSearch, setInboundSearch] = useState('');
   const [inboundDateFrom, setInboundDateFrom] = useState('');
   const [inboundDateTo, setInboundDateTo] = useState('');
+  const [inboundSelected, setInboundSelected] = useState(new Set()); // keys for batch
+  const [batchConfirming, setBatchConfirming] = useState(false);
 
   const { sortKey: invQKey, sortDir: invQDir, toggleSort: invQT } = useColumnSort('productName', 'asc');
   const sortedInventory = useMemo(
@@ -396,6 +398,40 @@ export default function InventoryPage() {
       }
     } catch { showToast('網路錯誤', 'error'); }
     setInboundUpdating(prev => ({ ...prev, [key]: false }));
+  }
+
+  async function batchConfirmInbound(rows) {
+    const selected = rows.filter(r => inboundSelected.has(`${r.purchaseId}-${r.detailId}`));
+    if (selected.length === 0) return;
+    // Validate all have a warehouse
+    const missing = selected.filter(r => !(inboundWarehouseEdits[`${r.purchaseId}-${r.detailId}`] ?? r.inventoryWarehouse));
+    if (missing.length > 0) {
+      showToast(`有 ${missing.length} 筆未選擇入庫倉庫，請先填寫`, 'error');
+      return;
+    }
+    if (!confirm(`確認批次入庫 ${selected.length} 筆商品？`)) return;
+    setBatchConfirming(true);
+    let ok = 0;
+    let fail = 0;
+    for (const row of selected) {
+      const key = `${row.purchaseId}-${row.detailId}`;
+      const loc = inboundWarehouseEdits[key] ?? row.inventoryWarehouse ?? '';
+      setInboundUpdating(prev => ({ ...prev, [key]: true }));
+      try {
+        const res = await fetch(`/api/purchasing/${row.purchaseId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ detailId: row.detailId, status: '已入庫', inventoryWarehouse: loc }),
+        });
+        if (res.ok) ok++;
+        else fail++;
+      } catch { fail++; }
+      setInboundUpdating(prev => ({ ...prev, [key]: false }));
+    }
+    setBatchConfirming(false);
+    setInboundSelected(new Set());
+    showToast(fail === 0 ? `批次入庫完成，共 ${ok} 筆` : `完成 ${ok} 筆，失敗 ${fail} 筆`, fail === 0 ? 'success' : 'error');
+    fetchPendingInbound();
   }
 
   async function submitRequisition() {
@@ -656,12 +692,29 @@ export default function InventoryPage() {
               </div>
             </div>
 
+            {/* Batch action bar */}
+            {inboundSelected.size > 0 && (
+              <div className="bg-blue-700 text-white rounded-xl px-4 py-3 flex items-center justify-between">
+                <span className="text-sm font-medium">已勾選 {inboundSelected.size} 筆</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setInboundSelected(new Set())}
+                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs rounded-lg">
+                    取消選取
+                  </button>
+                  <button onClick={() => batchConfirmInbound(filteredInbound)} disabled={batchConfirming}
+                    className="px-4 py-1.5 bg-green-400 hover:bg-green-300 text-gray-900 text-xs font-bold rounded-lg disabled:opacity-60">
+                    {batchConfirming ? '處理中…' : `批次確認入庫（${inboundSelected.size} 筆）`}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Table */}
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="px-4 py-3 bg-blue-50 border-b flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-blue-800">待入庫商品</h3>
-                  <p className="text-xs text-blue-600 mt-0.5">由倉庫人員確認入庫位置後按「確認入庫」，進貨單狀態將自動更新</p>
+                  <p className="text-xs text-blue-600 mt-0.5">勾選多筆後可批次確認入庫；或逐筆按「確認入庫」</p>
                 </div>
                 <button onClick={fetchPendingInbound} className="text-xs text-blue-600 hover:underline">重新整理</button>
               </div>
@@ -674,9 +727,22 @@ export default function InventoryPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[800px]">
+                  <table className="w-full text-sm min-w-[900px]">
                     <thead className="bg-gray-50 border-b">
                       <tr>
+                        <th className="px-3 py-2 text-center w-8">
+                          <input type="checkbox"
+                            checked={filteredInbound.length > 0 && filteredInbound.every(r => inboundSelected.has(`${r.purchaseId}-${r.detailId}`))}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setInboundSelected(new Set(filteredInbound.map(r => `${r.purchaseId}-${r.detailId}`)));
+                              } else {
+                                setInboundSelected(new Set());
+                              }
+                            }}
+                            className="cursor-pointer"
+                          />
+                        </th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">進貨單號</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">館別</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">進貨日期</th>
@@ -694,8 +760,21 @@ export default function InventoryPage() {
                         const key = `${row.purchaseId}-${row.detailId}`;
                         const currentLoc = inboundWarehouseEdits[key] ?? row.inventoryWarehouse ?? '';
                         const isUpdating = !!inboundUpdating[key];
+                        const isChecked = inboundSelected.has(key);
                         return (
-                          <tr key={key} className="hover:bg-blue-50/30">
+                          <tr key={key} className={`hover:bg-blue-50/30 ${isChecked ? 'bg-blue-50' : ''}`}>
+                            <td className="px-3 py-2.5 text-center">
+                              <input type="checkbox" checked={isChecked}
+                                onChange={e => {
+                                  setInboundSelected(prev => {
+                                    const next = new Set(prev);
+                                    e.target.checked ? next.add(key) : next.delete(key);
+                                    return next;
+                                  });
+                                }}
+                                className="cursor-pointer"
+                              />
+                            </td>
                             <td className="px-4 py-2.5 font-mono text-blue-700 text-xs">{row.purchaseNo}</td>
                             <td className="px-4 py-2.5 text-gray-600 text-xs">{row.purchaseWarehouse || '-'}</td>
                             <td className="px-4 py-2.5 text-gray-500 text-xs">{row.purchaseDate}</td>
@@ -769,8 +848,9 @@ export default function InventoryPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <SortableTh label="產品" colKey="productName" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
-                    <SortableTh label="倉庫" colKey="warehouseLoc" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
-                    <SortableTh label="進貨" colKey="purchaseIn" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
+                    <SortableTh label="館別/倉庫" colKey="warehouseLoc" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">入庫倉庫</th>
+                    <SortableTh label="進貨（已入庫）" colKey="purchaseIn" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
                     <SortableTh label="領用" colKey="requisitionQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
                     <SortableTh label="調出" colKey="transferOutQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
                     <SortableTh label="調入" colKey="transferInQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
@@ -781,14 +861,22 @@ export default function InventoryPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {inventoryLoading ? (
-                    <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
+                    <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
                   ) : inventory.length === 0 ? (
-                    <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-500">尚無庫存資料</td></tr>
+                    <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-500">尚無庫存資料（只顯示已確認入庫的商品）</td></tr>
                   ) : (
                     sortedInventory.map((item, i) => (
                       <tr key={item.productId || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-3 text-sm">{item.product?.name || '-'}</td>
-                        <td className="px-4 py-3 text-sm">{warehouse || item.product?.warehouseLocation || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{warehouse || item.product?.warehouseLocation || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {item.inventoryWarehouses?.length > 0
+                            ? item.inventoryWarehouses.map(w => (
+                                <span key={w} className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 bg-blue-50 text-blue-700 text-xs rounded">{w}</span>
+                              ))
+                            : <span className="text-gray-300 text-xs">—</span>
+                          }
+                        </td>
                         <td className="px-4 py-3 text-sm text-right">{item.purchaseQty ?? item.purchaseIncr ?? '-'}</td>
                         <td className="px-4 py-3 text-sm text-right">{item.requisitionQty ?? '-'}</td>
                         <td className="px-4 py-3 text-sm text-right">{item.transferOutQty ?? '-'}</td>

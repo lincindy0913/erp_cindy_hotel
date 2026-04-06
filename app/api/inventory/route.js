@@ -75,9 +75,10 @@ export async function GET(request) {
       // Calculate post-snapshot increments
       const snapshotEndDate = `${snapshotYear}-${String(snapshotMonth).padStart(2, '0')}-31`;
 
-      // Post-snapshot purchases
+      // Post-snapshot purchases (只計入已入庫的明細)
       const postPurchases = await prisma.purchaseDetail.findMany({
         where: {
+          status: '已入庫',
           purchaseMaster: {
             purchaseDate: { gt: snapshotEndDate },
           },
@@ -121,19 +122,27 @@ export async function GET(request) {
       });
     } else {
       // Fallback: v2 full calculation (含領用、調撥、盤點)
-      const purchaseWhere = whValue
-        ? { OR: [{ inventoryWarehouse: whValue }, { purchaseMaster: { warehouse: whValue } }] }
-        : {};
+      // v2 fallback: 只計入已入庫的明細，待入庫尚未到庫不計入庫存
+      const purchaseWhere = { status: '已入庫' };
+      if (whValue) {
+        purchaseWhere.OR = [{ inventoryWarehouse: whValue }, { purchaseMaster: { warehouse: whValue } }];
+      }
       const purchaseDetails = await prisma.purchaseDetail.findMany({
-        where: Object.keys(purchaseWhere).length ? purchaseWhere : {},
+        where: purchaseWhere,
         include: { purchaseMaster: { select: { warehouse: true } } },
       });
       const purchaseQtyMap = new Map();
+      const inventoryWarehouseMap = new Map(); // productId → [unique warehouse list]
       purchaseDetails.forEach(d => {
         const w = d.inventoryWarehouse || d.purchaseMaster?.warehouse || 'default';
         const matchesFilter = !whNames || whNames.includes(w);
         if (matchesFilter) {
           purchaseQtyMap.set(d.productId, (purchaseQtyMap.get(d.productId) || 0) + (d.quantity || 0));
+          if (d.inventoryWarehouse) {
+            const locs = inventoryWarehouseMap.get(d.productId) || new Set();
+            locs.add(d.inventoryWarehouse);
+            inventoryWarehouseMap.set(d.productId, locs);
+          }
         }
       });
 
@@ -178,6 +187,7 @@ export async function GET(request) {
         const currentQty = purchaseQty - reqQty - outQty + inQty + adjQty;
         const threshold = product.lowStockThreshold || 10;
 
+        const locSet = inventoryWarehouseMap.get(product.id);
         return {
           id: index + 1,
           productId: product.id,
@@ -189,6 +199,7 @@ export async function GET(request) {
           transferInQty: inQty,
           countAdjustQty: adjQty,
           currentQty,
+          inventoryWarehouses: locSet ? [...locSet] : [],
           product: {
             id: product.id, name: product.name, code: product.code,
             unit: product.unit, costPrice: Number(product.costPrice),
