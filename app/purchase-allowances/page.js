@@ -39,6 +39,9 @@ export default function PurchaseAllowancesPage() {
     details: [],
   });
 
+  // Purchase item selection (checkbox per item)
+  const [purchaseItems, setPurchaseItems] = useState([]);
+
   // Saving states
   const [formSaving, setFormSaving] = useState(false);
   const [confirmSaving, setConfirmSaving] = useState(false);
@@ -92,11 +95,45 @@ export default function PurchaseAllowancesPage() {
     setPurchaseListLoading(false);
   }
 
-  // Select purchase and auto-populate form (連動發票單號、付款單號)
+  // Sync purchaseItems selection → form.details + recalc amounts
+  function syncPurchaseItemsToForm(items, purchase) {
+    const selectedItems = items.filter(item => item.selected);
+    const subtotal = selectedItems.reduce((s, item) =>
+      s + Math.round((parseFloat(item.returnQty) || 0) * item.unitPrice), 0);
+    const origAmount = Number(purchase?.amount || 0);
+    const origTax = Number(purchase?.tax || 0);
+    const taxRate = origAmount > 0 ? origTax / origAmount : 0;
+    const tax = Math.round(subtotal * taxRate);
+    setForm(f => ({
+      ...f,
+      amount: String(subtotal),
+      tax: String(tax),
+      totalAmount: String(subtotal + tax),
+      details: selectedItems.map(item => ({
+        productName: item.productName,
+        quantity: item.returnQty,
+        unitPrice: String(item.unitPrice),
+        subtotal: String(Math.round((parseFloat(item.returnQty) || 0) * item.unitPrice)),
+        reason: f.reason || '',
+      })),
+    }));
+  }
+
+  // Select purchase and auto-populate form (連動發票單號、付款單號、品項)
   function selectPurchase(p) {
     setSelectedPurchase(p);
-    setPurchaseResults([]);
+    setPurchaseListResults([]);  // fix: was setPurchaseResults (undefined)
     setPurchaseSearch('');
+    const items = (p.details || []).map(d => ({
+      productId: d.productId,
+      productName: d.productName || '',
+      unit: d.unit || '',
+      quantity: Number(d.quantity),
+      unitPrice: Number(d.unitPrice),
+      returnQty: String(d.quantity),
+      selected: true,
+    }));
+    setPurchaseItems(items);
     setForm(f => ({
       ...f,
       allowanceType: formMode,
@@ -112,14 +149,30 @@ export default function PurchaseAllowancesPage() {
       amount: String(p.amount || ''),
       tax: String(p.tax || 0),
       totalAmount: String(p.totalAmount || ''),
-      details: p.details?.length > 0 ? p.details.map(d => ({
-        productName: d.productName || '',
-        quantity: String(d.quantity || ''),
-        unitPrice: String(d.unitPrice || ''),
-        subtotal: String(d.subtotal || ''),
+      details: items.map(item => ({
+        productName: item.productName,
+        quantity: String(item.quantity),
+        unitPrice: String(item.unitPrice),
+        subtotal: String(Math.round(item.quantity * item.unitPrice)),
         reason: formMode === '全額退貨' ? '全額退貨' : '',
-      })) : f.details,
+      })),
     }));
+  }
+
+  function togglePurchaseItem(idx) {
+    const updated = purchaseItems.map((item, i) =>
+      i === idx ? { ...item, selected: !item.selected } : item
+    );
+    setPurchaseItems(updated);
+    syncPurchaseItemsToForm(updated, selectedPurchase);
+  }
+
+  function updatePurchaseItemReturnQty(idx, qty) {
+    const updated = purchaseItems.map((item, i) =>
+      i === idx ? { ...item, returnQty: qty } : item
+    );
+    setPurchaseItems(updated);
+    syncPurchaseItemsToForm(updated, selectedPurchase);
   }
 
   const draftRecords = useMemo(() => records.filter(r => r.status === '草稿'), [records]);
@@ -165,6 +218,7 @@ export default function PurchaseAllowancesPage() {
     });
     setEditingId(null);
     setSelectedPurchase(null);
+    setPurchaseItems([]);
     setPurchaseSearch('');
     setPurchaseListResults([]);
     setPurchaseListSearched(false);
@@ -615,46 +669,116 @@ export default function PurchaseAllowancesPage() {
               {/* Detail lines */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <label style={{ fontSize: 14, fontWeight: 600 }}>退貨明細</label>
-                  <button type="button" onClick={addDetailLine} style={{ padding: '4px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>+ 新增項目</button>
+                  <label style={{ fontSize: 14, fontWeight: 600 }}>
+                    退貨明細
+                    {selectedPurchase && purchaseItems.length > 0 && (
+                      <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7280', marginLeft: 8 }}>
+                        勾選要退貨的品項，可調整退貨數量
+                      </span>
+                    )}
+                  </label>
+                  {!selectedPurchase && (
+                    <button type="button" onClick={addDetailLine} style={{ padding: '4px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>+ 新增項目</button>
+                  )}
                 </div>
-                {form.details.length > 0 && (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
+
+                {/* 已選進貨單：顯示 checkbox 勾選介面 */}
+                {selectedPurchase && purchaseItems.length > 0 ? (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8, border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
                     <thead>
                       <tr style={{ background: '#fef9c3' }}>
-                        <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'left' }}>品名</th>
-                        <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 80 }}>數量</th>
-                        <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 100 }}>單價</th>
-                        <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 100 }}>小計</th>
-                        <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'left' }}>原因</th>
-                        <th style={{ width: 40 }}></th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'center', width: 50, borderBottom: '1px solid #e5e7eb' }}>退貨</th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>品名</th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 80, borderBottom: '1px solid #e5e7eb' }}>原數量</th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 110, borderBottom: '1px solid #e5e7eb' }}>退貨數量</th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'center', width: 60, borderBottom: '1px solid #e5e7eb' }}>單位</th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 110, borderBottom: '1px solid #e5e7eb' }}>單價</th>
+                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 120, borderBottom: '1px solid #e5e7eb' }}>退貨小計</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {form.details.map((d, idx) => (
-                        <tr key={idx}>
-                          <td style={{ padding: '4px 6px' }}>
-                            <input value={d.productName} onChange={e => updateDetail(idx, 'productName', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                      {purchaseItems.map((item, idx) => (
+                        <tr key={idx} style={{ background: item.selected ? '#f0fdf4' : '#f9fafb', borderBottom: '1px solid #f3f4f6', opacity: item.selected ? 1 : 0.55 }}>
+                          <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                            <input type="checkbox" checked={item.selected} onChange={() => togglePurchaseItem(idx)}
+                              style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#16a34a' }} />
                           </td>
-                          <td style={{ padding: '4px 6px' }}>
-                            <input type="number" value={d.quantity} onChange={e => updateDetail(idx, 'quantity', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right' }} />
+                          <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: item.selected ? 600 : 400, color: item.selected ? '#111827' : '#6b7280' }}>
+                            {item.productName}
                           </td>
-                          <td style={{ padding: '4px 6px' }}>
-                            <input type="number" value={d.unitPrice} onChange={e => updateDetail(idx, 'unitPrice', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right' }} />
+                          <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'right', color: '#6b7280' }}>
+                            {item.quantity}
                           </td>
-                          <td style={{ padding: '4px 6px' }}>
-                            <input type="number" value={d.subtotal} onChange={e => updateDetail(idx, 'subtotal', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right', background: '#f9fafb' }} />
+                          <td style={{ padding: '4px 8px' }}>
+                            <input
+                              type="number" min="0" max={item.quantity} step="1"
+                              value={item.returnQty}
+                              disabled={!item.selected}
+                              onChange={e => updatePurchaseItemReturnQty(idx, e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right', background: item.selected ? '#fff' : '#f3f4f6', cursor: item.selected ? 'text' : 'not-allowed' }}
+                            />
                           </td>
-                          <td style={{ padding: '4px 6px' }}>
-                            <input value={d.reason} onChange={e => updateDetail(idx, 'reason', e.target.value)} placeholder="產品瑕疵/數量不符" style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                          <td style={{ padding: '6px 10px', fontSize: 12, textAlign: 'center', color: '#6b7280' }}>{item.unit}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'right' }}>
+                            NT$ {Number(item.unitPrice).toLocaleString()}
                           </td>
-                          <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                            <button type="button" onClick={() => removeDetail(idx)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                          <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'right', fontWeight: 700, color: item.selected ? '#dc2626' : '#9ca3af' }}>
+                            NT$ {Math.round((parseFloat(item.returnQty) || 0) * item.unitPrice).toLocaleString()}
                           </td>
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#fef3c7' }}>
+                        <td colSpan={6} style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', fontWeight: 600 }}>
+                          已勾選 {purchaseItems.filter(i => i.selected).length} / {purchaseItems.length} 項，退貨小計
+                        </td>
+                        <td style={{ padding: '7px 10px', fontSize: 14, textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
+                          NT$ {purchaseItems.filter(i => i.selected).reduce((s, i) => s + Math.round((parseFloat(i.returnQty) || 0) * i.unitPrice), 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
+                ) : (
+                  /* 無選取進貨單：手動填寫模式 */
+                  form.details.length > 0 && (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
+                      <thead>
+                        <tr style={{ background: '#fef9c3' }}>
+                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'left' }}>品名</th>
+                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 80 }}>數量</th>
+                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 100 }}>單價</th>
+                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 100 }}>小計</th>
+                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'left' }}>原因</th>
+                          <th style={{ width: 40 }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {form.details.map((d, idx) => (
+                          <tr key={idx}>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input value={d.productName} onChange={e => updateDetail(idx, 'productName', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input type="number" value={d.quantity} onChange={e => updateDetail(idx, 'quantity', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right' }} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input type="number" value={d.unitPrice} onChange={e => updateDetail(idx, 'unitPrice', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right' }} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input type="number" value={d.subtotal} onChange={e => updateDetail(idx, 'subtotal', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right', background: '#f9fafb' }} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input value={d.reason} onChange={e => updateDetail(idx, 'reason', e.target.value)} placeholder="產品瑕疵/數量不符" style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                            </td>
+                            <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                              <button type="button" onClick={() => removeDetail(idx)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
                 )}
               </div>
 
