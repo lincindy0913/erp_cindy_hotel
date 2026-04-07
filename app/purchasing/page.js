@@ -1667,6 +1667,7 @@ export default function PurchasingPage() {
                                     status === '已入庫' ? 'bg-green-100 text-green-800' :
                                     status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
                                     status === '已退貨' ? 'bg-orange-100 text-orange-800' :
+                                    status === '部分退貨' ? 'bg-amber-100 text-amber-800' :
                                     'bg-gray-100 text-gray-800'
                                   }`}>
                                     {status}{count > 1 ? ` x${count}` : ''}
@@ -1679,6 +1680,7 @@ export default function PurchasingPage() {
                               purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
                               purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
                               purchase.status === '已退貨' ? 'bg-orange-100 text-orange-800' :
+                              purchase.status === '部分退貨' ? 'bg-amber-100 text-amber-800' :
                               'bg-red-100 text-red-800'
                             }`}>
                               {purchase.status}
