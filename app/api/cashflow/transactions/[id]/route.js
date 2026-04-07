@@ -26,6 +26,7 @@ export async function GET(request, { params }) {
         account: { select: { id: true, name: true, type: true, warehouse: true } },
         category: { select: { id: true, name: true, type: true } },
         transferAccount: { select: { id: true, name: true, type: true, warehouse: true } },
+        supplier: { select: { id: true, name: true } },
       }
     });
 

@@ -59,6 +59,8 @@ export async function PUT(request, { params }) {
         status: body.status,
         note: body.note,
         publicInterestLandlord: body.publicInterestLandlord === true,
+        publicInterestApplicant: body.publicInterestApplicant || null,
+        publicInterestNote: body.publicInterestNote || null,
         publicInterestStartDate: body.publicInterestStartDate || null,
         publicInterestEndDate: body.publicInterestEndDate || null,
         publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,

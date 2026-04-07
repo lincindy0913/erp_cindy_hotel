@@ -80,6 +80,8 @@ export async function POST(request) {
         status: body.status || 'available',
         note: body.note || null,
         publicInterestLandlord: body.publicInterestLandlord === true,
+        publicInterestApplicant: body.publicInterestApplicant || null,
+        publicInterestNote: body.publicInterestNote || null,
         publicInterestStartDate: body.publicInterestStartDate || null,
         publicInterestEndDate: body.publicInterestEndDate || null,
         publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,

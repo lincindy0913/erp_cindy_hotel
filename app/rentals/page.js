@@ -134,7 +134,7 @@ function RentalsPage() {
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false, publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -487,13 +487,15 @@ function RentalsPage() {
         unitNo: property.unitNo || '', status: property.status || 'available',
         rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
         note: property.note || '', publicInterestLandlord: property.publicInterestLandlord || false,
+        publicInterestApplicant: property.publicInterestApplicant || '',
+        publicInterestNote: property.publicInterestNote || '',
         publicInterestStartDate: property.publicInterestStartDate || '',
         publicInterestEndDate: property.publicInterestEndDate || '',
         publicInterestRent: property.publicInterestRent != null ? String(property.publicInterestRent) : '',
       });
     } else {
       setEditingProperty(null);
-      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false, publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
     }
     setShowPropertyModal(true);
   }
@@ -1275,6 +1277,7 @@ function RentalsPage() {
                               <th className="text-left px-3 py-2">目前租客{sortArrow('tenant')}</th>
                               <th className="text-left px-3 py-2">收租帳戶{sortArrow('account')}</th>
                               <th className="text-center px-3 py-2">公益出租人{sortArrow('publicInterest')}</th>
+                              <th className="text-left px-3 py-2">申請人</th>
                               <th className="text-left px-3 py-2">公益租約期間</th>
                               <th className="text-right px-3 py-2">公益租金</th>
                               <th className="text-left px-3 py-2">備註{sortArrow('note')}</th>
@@ -1293,6 +1296,7 @@ function RentalsPage() {
                                 <td className="px-3 py-2">{p.currentTenantName || '-'}</td>
                                 <td className="px-3 py-2 text-xs text-gray-500">{p.rentCollectAccount?.name || '-'}</td>
                                 <td className="px-3 py-2 text-center">{p.publicInterestLandlord ? <span className="text-green-600 font-medium">是</span> : <span className="text-gray-400">否</span>}</td>
+                                <td className="px-3 py-2 text-xs text-gray-600" title={p.publicInterestNote || ''}>{p.publicInterestApplicant || <span className="text-gray-300">—</span>}</td>
                                 <td className="px-3 py-2 text-xs text-gray-600">
                                   {p.publicInterestLandlord && (p.publicInterestStartDate || p.publicInterestEndDate)
                                     ? <span>{p.publicInterestStartDate || '—'} ～ {p.publicInterestEndDate || '—'}</span>
@@ -2028,25 +2032,43 @@ function RentalsPage() {
                     <label htmlFor="publicInterestLandlord" className="text-sm text-gray-600 font-medium">公益出租人</label>
                   </div>
                   {propertyForm.publicInterestLandlord && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-green-700 font-medium block mb-1">租約開始日期</label>
-                        <input type="date" value={propertyForm.publicInterestStartDate}
-                          onChange={e => setPropertyForm(f => ({ ...f, publicInterestStartDate: e.target.value }))}
-                          className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-green-700 font-medium block mb-1">申請人名稱</label>
+                          <input type="text" value={propertyForm.publicInterestApplicant}
+                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestApplicant: e.target.value }))}
+                            placeholder="申請公益出租人之人名"
+                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-green-700 font-medium block mb-1">公益租金（月）</label>
+                          <input type="number" min="0" value={propertyForm.publicInterestRent}
+                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestRent: e.target.value }))}
+                            placeholder="0"
+                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white text-right" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-green-700 font-medium block mb-1">租約開始日期</label>
+                          <input type="date" value={propertyForm.publicInterestStartDate}
+                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestStartDate: e.target.value }))}
+                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-green-700 font-medium block mb-1">租約結束日期</label>
+                          <input type="date" value={propertyForm.publicInterestEndDate}
+                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestEndDate: e.target.value }))}
+                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
+                        </div>
                       </div>
                       <div>
-                        <label className="text-xs text-green-700 font-medium block mb-1">租約結束日期</label>
-                        <input type="date" value={propertyForm.publicInterestEndDate}
-                          onChange={e => setPropertyForm(f => ({ ...f, publicInterestEndDate: e.target.value }))}
-                          className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-green-700 font-medium block mb-1">公益租金（月）</label>
-                        <input type="number" min="0" value={propertyForm.publicInterestRent}
-                          onChange={e => setPropertyForm(f => ({ ...f, publicInterestRent: e.target.value }))}
-                          placeholder="0"
-                          className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white text-right" />
+                        <label className="text-xs text-green-700 font-medium block mb-1">公益出租人備註</label>
+                        <textarea value={propertyForm.publicInterestNote}
+                          onChange={e => setPropertyForm(f => ({ ...f, publicInterestNote: e.target.value }))}
+                          placeholder="申請相關備註"
+                          className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" rows={2} />
                       </div>
                     </div>
                   )}

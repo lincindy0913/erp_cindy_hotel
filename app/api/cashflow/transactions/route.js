@@ -60,7 +60,8 @@ export async function GET(request) {
         include: {
           account: { select: { id: true, name: true, type: true, warehouse: true } },
           category: { select: { id: true, name: true, type: true, warehouse: true, accountingSubject: { select: { code: true, name: true } } } },
-          transferAccount: { select: { id: true, name: true, type: true, warehouse: true } }
+          transferAccount: { select: { id: true, name: true, type: true, warehouse: true } },
+          supplier: { select: { id: true, name: true } },
         },
         orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
         skip,

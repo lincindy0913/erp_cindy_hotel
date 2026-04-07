@@ -86,6 +86,7 @@ model Supplier {
   priceComparisons    PriceComparison[]
   priceSummaryCaches  PriceSummaryCache[]
   expenses            Expense[]
+  cashTransactions    CashTransaction[] @relation("SupplierCashTransactions")
 
   @@index([sortOrder])
   @@index([paymentStatus])
@@ -506,6 +507,7 @@ model CashTransaction {
   account         CashAccount   @relation("AccountTransactions", fields: [accountId], references: [id])
   category        CashCategory? @relation(fields: [categoryId], references: [id])
   transferAccount CashAccount?  @relation("TransferToAccount", fields: [transferAccountId], references: [id])
+  supplier        Supplier?     @relation("SupplierCashTransactions", fields: [supplierId], references: [id])
 
   @@index([transactionDate])
   @@index([accountId])
@@ -1467,9 +1469,11 @@ model RentalProperty {
   depositAccountId      Int?     @map("deposit_account_id")
   status                String   @default("available") @db.VarChar(20)
   note                  String?  @db.Text
-  publicInterestLandlord Boolean  @default(false) @map("public_interest_landlord")
-  publicInterestStartDate String? @map("public_interest_start_date") @db.VarChar(20)
-  publicInterestEndDate   String? @map("public_interest_end_date") @db.VarChar(20)
+  publicInterestLandlord  Boolean  @default(false) @map("public_interest_landlord")
+  publicInterestApplicant String?  @map("public_interest_applicant") @db.VarChar(100)
+  publicInterestNote      String?  @map("public_interest_note") @db.Text
+  publicInterestStartDate String?  @map("public_interest_start_date") @db.VarChar(20)
+  publicInterestEndDate   String?  @map("public_interest_end_date") @db.VarChar(20)
   publicInterestRent      Decimal? @map("public_interest_rent") @db.Decimal(12, 2)
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
