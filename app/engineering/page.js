@@ -302,6 +302,8 @@ export default function EngineeringPage() {
   const [showIncomeForm, setShowIncomeForm] = useState(false);
   const [incomeForm, setIncomeForm] = useState({ projectId: '', termName: '', amount: '', receivedDate: new Date().toISOString().split('T')[0], accountId: '', accountingSubject: '41000 工程收入', note: '' });
   const [incomeFilterProjectId, setIncomeFilterProjectId] = useState('');
+  const [editingIncome, setEditingIncome] = useState(null); // { id, form }
+  const [incomeEditSaving, setIncomeEditSaving] = useState(false);
 
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -430,6 +432,42 @@ export default function EngineeringPage() {
       if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); }
       else { const err = await res.json(); showToast(err.error?.message || '刪除失敗', 'error'); }
     } catch { showToast('刪除失敗', 'error'); }
+  }
+
+  function openEditIncome(inc) {
+    setEditingIncome({
+      id: inc.id,
+      form: {
+        termName: inc.termName || '',
+        amount: String(inc.amount),
+        receivedDate: inc.receivedDate || '',
+        accountId: inc.accountId ? String(inc.accountId) : '',
+        accountingSubject: inc.accountingSubject || '41000 工程收入',
+        note: inc.note || '',
+      },
+    });
+  }
+
+  async function handleUpdateIncome(e) {
+    e.preventDefault();
+    if (!editingIncome) return;
+    setIncomeEditSaving(true);
+    try {
+      const res = await fetch(`/api/engineering/income/${editingIncome.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingIncome.form),
+      });
+      if (res.ok) {
+        showToast('收款紀錄已更新', 'success');
+        setEditingIncome(null);
+        fetchIncomes();
+      } else {
+        const err = await res.json();
+        showToast(err.error?.message || '更新失敗', 'error');
+      }
+    } catch { showToast('更新失敗', 'error'); }
+    setIncomeEditSaving(false);
   }
 
   async function fetchAccounts() {
@@ -1352,10 +1390,11 @@ ${projectRows.map(p => `<tr>
             incomesByProject[pid].push(inc);
           });
 
-          // Determine which projects to display
+          // Only show projects with clientName (業主)
+          const projectsWithClient = projects.filter(p => !!p.clientName);
           const displayProjects = incomeFilterProjectId
-            ? projects.filter(p => String(p.id) === incomeFilterProjectId)
-            : projects;
+            ? projectsWithClient.filter(p => String(p.id) === incomeFilterProjectId)
+            : projectsWithClient;
 
           return (
             <div>
@@ -1365,8 +1404,8 @@ ${projectRows.map(p => `<tr>
                   <label className="block text-xs text-gray-500 mb-1">篩選工程案</label>
                   <select value={incomeFilterProjectId} onChange={e => { setIncomeFilterProjectId(e.target.value); fetchIncomes(e.target.value); }}
                     className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
-                    <option value="">全部工程案</option>
-                    {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
+                    <option value="">全部（有業主）</option>
+                    {projectsWithClient.map(p => <option key={p.id} value={p.id}>{p.code} {p.name} — {p.clientName}</option>)}
                   </select>
                 </div>
                 <button onClick={() => setShowIncomeForm(f => !f)}
@@ -1433,7 +1472,9 @@ ${projectRows.map(p => `<tr>
 
               {/* Per-project sections */}
               {displayProjects.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">尚無工程案</div>
+                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
+                  {projectsWithClient.length === 0 ? '尚無設定業主的工程案，請先在「工程案」分頁設定業主名稱' : '查無符合條件的工程案'}
+                </div>
               ) : (
                 <div className="space-y-5">
                   {displayProjects.map(proj => {
@@ -1516,32 +1557,82 @@ ${projectRows.map(p => `<tr>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                              {projIncomes.map((inc, idx) => (
-                                <tr key={inc.id} className="hover:bg-green-50/40">
-                                  <td className="px-5 py-3 text-xs text-gray-400">{idx + 1}</td>
-                                  <td className="px-5 py-3">
-                                    <span className="font-semibold text-gray-800">{inc.termName}</span>
-                                  </td>
-                                  <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
-                                  <td className="px-5 py-3 text-right font-bold text-green-700 text-base">
-                                    NT$ {Number(inc.amount).toLocaleString()}
-                                  </td>
-                                  <td className="px-5 py-3 text-gray-500 text-xs">
-                                    {inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}
-                                  </td>
-                                  <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px]">
-                                    {inc.note || <span className="text-gray-300">－</span>}
-                                  </td>
-                                  <td className="px-5 py-3 text-center">
-                                    {inc.cashTransactionId
-                                      ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已連動</span>
-                                      : <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">無帳戶</span>}
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-500 hover:text-red-700 text-xs hover:underline">刪除</button>
-                                  </td>
-                                </tr>
-                              ))}
+                              {projIncomes.map((inc, idx) => {
+                                const isEditing = editingIncome?.id === inc.id;
+                                if (isEditing) {
+                                  return (
+                                    <tr key={inc.id} className="bg-emerald-50">
+                                      <td className="px-5 py-2 text-xs text-gray-400">{idx + 1}</td>
+                                      <td className="px-3 py-2">
+                                        <input value={editingIncome.form.termName}
+                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, termName: e.target.value } }))}
+                                          className="w-full border rounded px-2 py-1 text-sm" />
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <input type="date" value={editingIncome.form.receivedDate}
+                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, receivedDate: e.target.value } }))}
+                                          className="w-full border rounded px-2 py-1 text-sm" />
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <input type="number" value={editingIncome.form.amount}
+                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, amount: e.target.value } }))}
+                                          className="w-full border rounded px-2 py-1 text-sm text-right" />
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <select value={editingIncome.form.accountId}
+                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, accountId: e.target.value } }))}
+                                          className="w-full border rounded px-2 py-1 text-sm">
+                                          <option value="">無帳戶</option>
+                                          {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? a.warehouse + ' - ' : ''}{a.name}</option>)}
+                                        </select>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <input value={editingIncome.form.note}
+                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, note: e.target.value } }))}
+                                          className="w-full border rounded px-2 py-1 text-sm" placeholder="備註" />
+                                      </td>
+                                      <td className="px-3 py-2 text-center text-xs text-gray-400">—</td>
+                                      <td className="px-3 py-2 text-center">
+                                        <form onSubmit={handleUpdateIncome} className="flex gap-1 justify-center">
+                                          <button type="submit" disabled={incomeEditSaving}
+                                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
+                                            {incomeEditSaving ? '…' : '儲存'}
+                                          </button>
+                                          <button type="button" onClick={() => setEditingIncome(null)}
+                                            className="text-xs px-2 py-1 border rounded hover:bg-gray-50">取消</button>
+                                        </form>
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                return (
+                                  <tr key={inc.id} className="hover:bg-green-50/40">
+                                    <td className="px-5 py-3 text-xs text-gray-400">{idx + 1}</td>
+                                    <td className="px-5 py-3">
+                                      <span className="font-semibold text-gray-800">{inc.termName}</span>
+                                    </td>
+                                    <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
+                                    <td className="px-5 py-3 text-right font-bold text-green-700 text-base">
+                                      NT$ {Number(inc.amount).toLocaleString()}
+                                    </td>
+                                    <td className="px-5 py-3 text-gray-500 text-xs">
+                                      {inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}
+                                    </td>
+                                    <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px]">
+                                      {inc.note || <span className="text-gray-300">－</span>}
+                                    </td>
+                                    <td className="px-5 py-3 text-center">
+                                      {inc.cashTransactionId
+                                        ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已連動</span>
+                                        : <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">無帳戶</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                      <button onClick={() => openEditIncome(inc)} className="text-blue-500 hover:text-blue-700 text-xs hover:underline mr-2">編輯</button>
+                                      <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-500 hover:text-red-700 text-xs hover:underline">刪除</button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                             <tfoot className="bg-green-50 border-t border-green-100">
                               <tr>
