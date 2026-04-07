@@ -155,51 +155,47 @@ export async function POST(request, { params }) {
         }
       }
 
-      // ====== 全額退貨 額外處理 ======
+      // ====== 狀態更新 ======
       const extraActions = [];
+      const statusToSet = isFullReturn ? '已退貨' : '部分退貨';
 
+      // 1. 更新付款單狀態（全額退貨才更新，部分退貨款已付不動）
       if (isFullReturn) {
-        // 1. 標記原付款單為「已退貨」
+        let poUpdated = false;
         if (allowance.paymentOrderId) {
-          await tx.paymentOrder.update({
-            where: { id: allowance.paymentOrderId },
-            data: { status: '已退貨' },
-          });
-          extraActions.push(`付款單 ${allowance.paymentOrderNo} 已標記退貨`);
+          await tx.paymentOrder.update({ where: { id: allowance.paymentOrderId }, data: { status: '已退貨' } });
+          poUpdated = true;
+        } else if (allowance.paymentOrderNo) {
+          const po = await tx.paymentOrder.findFirst({ where: { orderNo: allowance.paymentOrderNo } });
+          if (po) { await tx.paymentOrder.update({ where: { id: po.id }, data: { status: '已退貨' } }); poUpdated = true; }
         }
+        if (poUpdated) extraActions.push(`付款單 ${allowance.paymentOrderNo || ''} 已標記退貨`);
+      }
 
-        // 2. 標記原發票為「已退貨」
-        if (allowance.invoiceId) {
-          await tx.salesMaster.update({
-            where: { id: allowance.invoiceId },
-            data: { status: '已退貨' },
-          });
-          extraActions.push(`發票 ${allowance.invoiceNo} 已標記退貨`);
-        }
+      // 2. 更新原發票狀態
+      let invoiceUpdated = false;
+      if (allowance.invoiceId) {
+        await tx.salesMaster.update({ where: { id: allowance.invoiceId }, data: { status: statusToSet } });
+        invoiceUpdated = true;
+      } else if (allowance.invoiceNo) {
+        const inv = await tx.salesMaster.findFirst({ where: { invoiceNo: allowance.invoiceNo } });
+        if (inv) { await tx.salesMaster.update({ where: { id: inv.id }, data: { status: statusToSet } }); invoiceUpdated = true; }
+      }
+      if (invoiceUpdated) extraActions.push(`發票 ${allowance.invoiceNo || ''} 已標記「${statusToSet}」`);
 
-        // 3. 標記原進貨單為「已退貨」
-        if (allowance.purchaseId) {
-          await tx.purchaseMaster.update({
-            where: { id: allowance.purchaseId },
-            data: { status: '已退貨' },
-          });
-          extraActions.push(`進貨單 ${allowance.purchaseNo} 已標記退貨`);
-        } else if (allowance.purchaseNo) {
-          // Try to find by purchaseNo
-          const pm = await tx.purchaseMaster.findUnique({
-            where: { purchaseNo: allowance.purchaseNo },
-          });
-          if (pm) {
-            await tx.purchaseMaster.update({
-              where: { id: pm.id },
-              data: { status: '已退貨' },
-            });
-            extraActions.push(`進貨單 ${allowance.purchaseNo} 已標記退貨`);
-          }
-        }
+      // 3. 更新原進貨單狀態
+      let purchaseUpdated = false;
+      if (allowance.purchaseId) {
+        await tx.purchaseMaster.update({ where: { id: allowance.purchaseId }, data: { status: statusToSet } });
+        purchaseUpdated = true;
+      } else if (allowance.purchaseNo) {
+        const pm = await tx.purchaseMaster.findUnique({ where: { purchaseNo: allowance.purchaseNo } });
+        if (pm) { await tx.purchaseMaster.update({ where: { id: pm.id }, data: { status: statusToSet } }); purchaseUpdated = true; }
+      }
+      if (purchaseUpdated) extraActions.push(`進貨單 ${allowance.purchaseNo || ''} 已標記「${statusToSet}」`);
 
-        // 4. 沖銷原出納交易 — 建立反向交易 (reversal)
-        if (allowance.paymentOrderId) {
+      // 4. 沖銷原出納交易（全額退貨才沖銷）
+      if (isFullReturn && allowance.paymentOrderId) {
           const originalCashTx = await tx.cashTransaction.findFirst({
             where: {
               sourceType: 'cashier_payment',
@@ -249,7 +245,6 @@ export async function POST(request, { params }) {
             extraActions.push(`原出納交易 ${originalCashTx.transactionNo} 已沖銷`);
           }
         }
-      }
 
       // Update allowance status
       await tx.purchaseAllowance.update({
