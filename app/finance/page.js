@@ -826,6 +826,7 @@ export default function PaymentPage() {
       '已作廢': 'bg-gray-200 text-gray-500',
       '已代墊': 'bg-purple-100 text-purple-800',
       '已退貨': 'bg-orange-100 text-orange-800',
+      '部分退貨': 'bg-amber-100 text-amber-800',
     };
     return map[status] || 'bg-gray-100 text-gray-800';
   }

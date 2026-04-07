@@ -810,6 +810,7 @@ export default function CashierPage() {
                             order.status === '已拒絕' ? 'bg-red-100 text-red-800' :
                             order.status === '已代墊' ? 'bg-purple-100 text-purple-800' :
                             order.status === '已退貨' ? 'bg-orange-100 text-orange-800' :
+                            order.status === '部分退貨' ? 'bg-amber-100 text-amber-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>{order.status}</span>
                         </td>
