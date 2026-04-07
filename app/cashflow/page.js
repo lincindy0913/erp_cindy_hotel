@@ -89,6 +89,7 @@ export default function CashFlowPage() {
         type: (tx) => tx.type || '',
         warehouse: (tx) => tx.warehouse || '',
         accountName: (tx) => tx.account?.name || '',
+        supplierName: (tx) => tx.supplier?.name || '',
         accountingSubject: (tx) =>
           tx.category?.accountingSubject
             ? `${tx.category.accountingSubject.code || ''} ${tx.category.accountingSubject.name || ''}`
@@ -487,6 +488,7 @@ export default function CashFlowPage() {
                 ...tx,
                 accountName: tx.account?.name || '-',
                 categoryName: tx.category?.name || '-',
+                supplierName: tx.supplier?.name || '-',
               }))}
               columns={EXPORT_CONFIGS.cashflow.columns}
               exportName={EXPORT_CONFIGS.cashflow.filename}
@@ -806,6 +808,8 @@ export default function CashFlowPage() {
                     <option value="check_payment">支票</option>
                     <option value="cash_count_adjustment">盤點調整</option>
                     <option value="reversal">沖銷</option>
+                    <option value="engineering_income">工程收入</option>
+                    <option value="purchase_allowance">退貨收入</option>
                     <option value="manual">手動</option>
                   </select>
                 </div>
@@ -1129,6 +1133,7 @@ export default function CashFlowPage() {
                     <SortableTh label="類別" colKey="type" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                     <SortableTh label="館別" colKey="warehouse" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                     <SortableTh label="帳戶" colKey="accountName" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
+                    <SortableTh label="廠商" colKey="supplierName" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                     <SortableTh label="會計科目" colKey="accountingSubject" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                     <SortableTh label="付款單號" colKey="paymentNo" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                     <SortableTh label="金額" colKey="amount" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" align="right" />
@@ -1140,7 +1145,7 @@ export default function CashFlowPage() {
                 <tbody className="divide-y divide-gray-200">
                   {transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
                         尚無交易紀錄，請先查詢或新增交易
                       </td>
                     </tr>
@@ -1160,6 +1165,7 @@ export default function CashFlowPage() {
                         </td>
                         <td className="px-3 py-2 text-sm">{tx.warehouse || '-'}</td>
                         <td className="px-3 py-2 text-sm">{tx.account ? `${tx.account.name}` : '-'}</td>
+                        <td className="px-3 py-2 text-sm">{tx.supplier?.name || (tx.supplierId ? getSupplierName(tx.supplierId) : '-')}</td>
                         <td className="px-3 py-2 text-sm">
                           {tx.category?.accountingSubject ? (
                             <div>
@@ -1190,6 +1196,8 @@ export default function CashFlowPage() {
                               tx.sourceType.startsWith('fixed_') || tx.sourceType.includes('expense') ? 'bg-orange-100 text-orange-700' :
                               tx.sourceType.startsWith('check_') ? 'bg-cyan-100 text-cyan-700' :
                               tx.sourceType.startsWith('cash_count') ? 'bg-pink-100 text-pink-700' :
+                              tx.sourceType === 'engineering_income' ? 'bg-blue-100 text-blue-700' :
+                              tx.sourceType === 'purchase_allowance' ? 'bg-green-100 text-green-700' :
                               'bg-gray-100 text-gray-600'
                             }`}>
                               {{
@@ -1213,6 +1221,8 @@ export default function CashFlowPage() {
                                 cash_count_shortage: '盤點短缺',
                                 reversal: '沖銷',
                                 reconciliation_adjustment: '對帳調整',
+                                engineering_income: '工程收入',
+                                purchase_allowance: '退貨收入',
                                 manual: '手動',
                               }[tx.sourceType] || tx.sourceType}
                             </span>
