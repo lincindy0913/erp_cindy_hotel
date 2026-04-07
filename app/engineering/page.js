@@ -1344,61 +1344,27 @@ ${projectRows.map(p => `<tr>
 
         {/* ===== 收款管理 TAB ===== */}
         {activeTab === 'income' && (() => {
-          // Per-project totals
-          const projectIncomeMap = {};
+          // Group incomes by projectId
+          const incomesByProject = {};
           incomes.forEach(inc => {
-            const pid = inc.projectId;
-            if (!projectIncomeMap[pid]) projectIncomeMap[pid] = { received: 0, project: inc.project };
-            projectIncomeMap[pid].received += Number(inc.amount);
+            const pid = String(inc.projectId);
+            if (!incomesByProject[pid]) incomesByProject[pid] = [];
+            incomesByProject[pid].push(inc);
           });
-          const filteredIncomes = incomeFilterProjectId
-            ? incomes.filter(i => String(i.projectId) === incomeFilterProjectId)
-            : incomes;
+
+          // Determine which projects to display
+          const displayProjects = incomeFilterProjectId
+            ? projects.filter(p => String(p.id) === incomeFilterProjectId)
+            : projects;
 
           return (
             <div>
-              {/* Summary KPI */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                {(incomeFilterProjectId ? [{ projectId: parseInt(incomeFilterProjectId), ...projectIncomeMap[incomeFilterProjectId] }] : Object.entries(projectIncomeMap).map(([pid, v]) => ({ projectId: parseInt(pid), ...v }))).map(({ projectId: pid, received, project: proj }) => {
-                  const contractAmt = proj?.clientContractAmount || 0;
-                  const remaining = contractAmt - received;
-                  return (
-                    <div key={pid} className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="text-xs text-gray-500 mb-1">{proj?.code} {proj?.name}</div>
-                      <div className="text-xs text-gray-400 mb-2">業主：{proj?.clientName || '－'}</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">合約金額</span>
-                        <span className="font-semibold">{contractAmt > 0 ? `NT$ ${contractAmt.toLocaleString()}` : '未設定'}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">已收款</span>
-                        <span className="font-semibold text-green-700">NT$ {received.toLocaleString()}</span>
-                      </div>
-                      {contractAmt > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">剩餘收款</span>
-                          <span className={`font-bold ${remaining > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>NT$ {remaining.toLocaleString()}</span>
-                        </div>
-                      )}
-                      {contractAmt > 0 && (
-                        <div className="mt-2 bg-gray-100 rounded-full h-2">
-                          <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min((received / contractAmt) * 100, 100)}%` }} />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {Object.keys(projectIncomeMap).length === 0 && (
-                  <div className="col-span-3 bg-white rounded-lg border border-gray-200 p-4 text-center text-gray-400 text-sm">尚無收款紀錄</div>
-                )}
-              </div>
-
-              {/* Filter & Add */}
-              <div className="flex gap-3 mb-4 items-end">
+              {/* Filter & Add toolbar */}
+              <div className="flex gap-3 mb-5 items-end">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">篩選工程案</label>
                   <select value={incomeFilterProjectId} onChange={e => { setIncomeFilterProjectId(e.target.value); fetchIncomes(e.target.value); }}
-                    className="border rounded-lg px-3 py-2 text-sm">
+                    className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
                     <option value="">全部工程案</option>
                     {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
                   </select>
@@ -1411,7 +1377,7 @@ ${projectRows.map(p => `<tr>
 
               {/* Income Form */}
               {showIncomeForm && (
-                <form onSubmit={handleCreateIncome} className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                <form onSubmit={handleCreateIncome} className="bg-green-50 border border-green-200 rounded-xl p-4 mb-5">
                   <h4 className="text-sm font-semibold text-green-800 mb-3">新增收款紀錄</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
@@ -1465,49 +1431,136 @@ ${projectRows.map(p => `<tr>
                 </form>
               )}
 
-              {/* Income Table */}
-              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-green-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">工程案</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">業主</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">期數</th>
-                      <th className="px-4 py-2 text-right font-medium text-gray-700">收款金額</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">收款日期</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">收款帳戶</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">會計科目</th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-700">備註</th>
-                      <th className="px-4 py-2 text-center font-medium text-gray-700">現金流</th>
-                      <th className="px-4 py-2 text-center font-medium text-gray-700">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredIncomes.length === 0 ? (
-                      <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-400">尚無收款紀錄</td></tr>
-                    ) : filteredIncomes.map(inc => (
-                      <tr key={inc.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 font-mono text-xs">{inc.project?.code} {inc.project?.name}</td>
-                        <td className="px-4 py-2 text-gray-600">{inc.project?.clientName || '－'}</td>
-                        <td className="px-4 py-2">{inc.termName}</td>
-                        <td className="px-4 py-2 text-right font-semibold text-green-700">NT$ {Number(inc.amount).toLocaleString()}</td>
-                        <td className="px-4 py-2">{inc.receivedDate}</td>
-                        <td className="px-4 py-2">{inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}</td>
-                        <td className="px-4 py-2 text-xs text-gray-500 font-mono">{inc.accountingSubject || '－'}</td>
-                        <td className="px-4 py-2 text-gray-500 text-xs">{inc.note || '－'}</td>
-                        <td className="px-4 py-2 text-center">
-                          {inc.cashTransactionId
-                            ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">已連動</span>
-                            : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">無帳戶</span>}
-                        </td>
-                        <td className="px-4 py-2 text-center">
-                          <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-600 hover:underline text-xs">刪除</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {/* Per-project sections */}
+              {displayProjects.length === 0 ? (
+                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">尚無工程案</div>
+              ) : (
+                <div className="space-y-5">
+                  {displayProjects.map(proj => {
+                    const projIncomes = incomesByProject[String(proj.id)] || [];
+                    const contractAmt = Number(proj.clientContractAmount || 0);
+                    const received = projIncomes.reduce((s, i) => s + Number(i.amount), 0);
+                    const remaining = contractAmt - received;
+                    const pct = contractAmt > 0 ? Math.min((received / contractAmt) * 100, 100) : 0;
+
+                    return (
+                      <div key={proj.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                        {/* Project header */}
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200 px-5 py-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-mono bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded">{proj.code}</span>
+                                <span className="font-bold text-gray-900 text-base">{proj.name}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  proj.status === '進行中' ? 'bg-green-100 text-green-700' :
+                                  proj.status === '已結案' ? 'bg-gray-100 text-gray-500' :
+                                  'bg-amber-100 text-amber-700'
+                                }`}>{proj.status}</span>
+                              </div>
+                              <div className="text-sm text-gray-500">業主：{proj.clientName || '－'}</div>
+                            </div>
+                            {/* KPI summary */}
+                            <div className="flex gap-6 text-sm shrink-0">
+                              <div className="text-right">
+                                <div className="text-xs text-gray-400 mb-0.5">合約金額</div>
+                                <div className="font-semibold text-gray-700">
+                                  {contractAmt > 0 ? `NT$ ${contractAmt.toLocaleString()}` : <span className="text-gray-400 text-xs">未設定</span>}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-gray-400 mb-0.5">已收款 ({projIncomes.length} 筆)</div>
+                                <div className="font-bold text-green-700">NT$ {received.toLocaleString()}</div>
+                              </div>
+                              {contractAmt > 0 && (
+                                <div className="text-right">
+                                  <div className="text-xs text-gray-400 mb-0.5">尚未收款</div>
+                                  <div className={`font-bold ${remaining > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                    NT$ {remaining.toLocaleString()}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {/* Progress bar */}
+                          {contractAmt > 0 && (
+                            <div className="mt-3">
+                              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>收款進度</span>
+                                <span>{pct.toFixed(1)}%</span>
+                              </div>
+                              <div className="bg-gray-200 rounded-full h-2">
+                                <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Income records table */}
+                        {projIncomes.length === 0 ? (
+                          <div className="px-5 py-5 text-center text-sm text-gray-400">
+                            此工程案尚無收款紀錄
+                          </div>
+                        ) : (
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-100">
+                              <tr>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 w-6">#</th>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">期數 / 品項</th>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款日期</th>
+                                <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500">收款金額</th>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款帳戶</th>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">備註</th>
+                                <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500">現金流</th>
+                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500">操作</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                              {projIncomes.map((inc, idx) => (
+                                <tr key={inc.id} className="hover:bg-green-50/40">
+                                  <td className="px-5 py-3 text-xs text-gray-400">{idx + 1}</td>
+                                  <td className="px-5 py-3">
+                                    <span className="font-semibold text-gray-800">{inc.termName}</span>
+                                  </td>
+                                  <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
+                                  <td className="px-5 py-3 text-right font-bold text-green-700 text-base">
+                                    NT$ {Number(inc.amount).toLocaleString()}
+                                  </td>
+                                  <td className="px-5 py-3 text-gray-500 text-xs">
+                                    {inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}
+                                  </td>
+                                  <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px]">
+                                    {inc.note || <span className="text-gray-300">－</span>}
+                                  </td>
+                                  <td className="px-5 py-3 text-center">
+                                    {inc.cashTransactionId
+                                      ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已連動</span>
+                                      : <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">無帳戶</span>}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-500 hover:text-red-700 text-xs hover:underline">刪除</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-green-50 border-t border-green-100">
+                              <tr>
+                                <td colSpan={3} className="px-5 py-2.5 text-xs font-semibold text-gray-600">
+                                  共 {projIncomes.length} 筆收款
+                                </td>
+                                <td className="px-5 py-2.5 text-right font-bold text-green-800">
+                                  NT$ {received.toLocaleString()}
+                                </td>
+                                <td colSpan={4} />
+                              </tr>
+                            </tfoot>
+                          </table>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })()}
