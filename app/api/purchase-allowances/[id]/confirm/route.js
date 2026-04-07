@@ -195,11 +195,18 @@ export async function POST(request, { params }) {
       if (purchaseUpdated) extraActions.push(`進貨單 ${allowance.purchaseNo || ''} 已標記「${statusToSet}」`);
 
       // 4. 沖銷原出納交易（全額退貨才沖銷）
-      if (isFullReturn && allowance.paymentOrderId) {
+      if (isFullReturn) {
+        // 找出付款單 ID（優先用 ID，fallback 用 orderNo 查）
+        let poIdForReversal = allowance.paymentOrderId;
+        if (!poIdForReversal && allowance.paymentOrderNo) {
+          const poFallback = await tx.paymentOrder.findFirst({ where: { orderNo: allowance.paymentOrderNo } });
+          if (poFallback) poIdForReversal = poFallback.id;
+        }
+        if (poIdForReversal) {
           const originalCashTx = await tx.cashTransaction.findFirst({
             where: {
               sourceType: 'cashier_payment',
-              sourceRecordId: allowance.paymentOrderId,
+              sourceRecordId: poIdForReversal,
               status: '已確認',
             },
           });
@@ -245,6 +252,7 @@ export async function POST(request, { params }) {
             extraActions.push(`原出納交易 ${originalCashTx.transactionNo} 已沖銷`);
           }
         }
+      }
 
       // Update allowance status
       await tx.purchaseAllowance.update({
