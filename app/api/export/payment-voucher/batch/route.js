@@ -69,9 +69,24 @@ export async function POST(request) {
     const allOrderIds = orders.map(o => o.id);
     const expenseRecs = await prisma.commonExpenseRecord.findMany({
       where: { paymentOrderId: { in: allOrderIds } },
-      include: { entryLines: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        entryLines: { orderBy: { sortOrder: 'asc' } },
+        template: { include: { entryLines: { orderBy: { sortOrder: 'asc' } } } },
+      },
     });
     const expenseRecMap = new Map(expenseRecs.map(r => [r.paymentOrderId, r]));
+
+    // Batch-resolve CashAccount names for template entry lines
+    const allTemplateAccountIds = [];
+    for (const rec of expenseRecs) {
+      for (const tl of (rec.template?.entryLines || [])) {
+        if (tl.accountId) allTemplateAccountIds.push(tl.accountId);
+      }
+    }
+    const templateAccounts = allTemplateAccountIds.length > 0
+      ? await prisma.cashAccount.findMany({ where: { id: { in: [...new Set(allTemplateAccountIds)] } }, select: { id: true, name: true } })
+      : [];
+    const templateAccountMap = new Map(templateAccounts.map(a => [a.id, a.name]));
 
     // ── Batch fetch related purchases via SalesDetail.purchaseId ──
     const allSalesDetailPurchaseIds = [];
@@ -236,13 +251,34 @@ export async function POST(request) {
         : [];
       const expenseNote = expRec?.note || '';
 
+      // Build rich expense items from template entry lines
+      let expenseItems = [];
+      if (expRec) {
+        const templateLines = expRec.template?.entryLines || [];
+        const templateLineMap = new Map(templateLines.map(l => [l.sortOrder, l]));
+        expenseItems = expRec.entryLines
+          .filter(l => l.entryType === 'debit')
+          .map(l => {
+            const tl = templateLineMap.get(l.sortOrder);
+            return {
+              expenseName: l.accountingName || tl?.accountingName || '',
+              supplierName: tl?.supplierName || '',
+              warehouse: tl?.warehouse || '',
+              paymentMethod: tl?.paymentMethod || '',
+              accountName: tl?.accountId ? (templateAccountMap.get(tl.accountId) || '') : (tl?.advancedBy || ''),
+              summary: l.summary || '',
+              amount: Number(l.amount),
+            };
+          });
+      }
+
       renderVoucherTablePage(doc, {
         order, invoices, supplierName, accountName,
         executionNo, executionDate, cashTransactionNo, makerName,
         pageNum: idx + 1, totalPages: orders.length,
         productMap: productMapForOrder, sortedDates: sortedDatesForOrder,
         priceNoteItems: priceNoteItemsForOrder,
-        expenseLines, expenseNote,
+        expenseLines, expenseNote, expenseItems,
         cjkFont,
       });
     }

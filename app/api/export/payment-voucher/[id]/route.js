@@ -70,9 +70,13 @@ export async function GET(request, { params }) {
     // ── Fetch expense entry lines (for expense-type payment orders) ──
     let expenseLines = [];
     let expenseNote = '';
+    let expenseItems = [];
     const expenseRec = await prisma.commonExpenseRecord.findFirst({
       where: { paymentOrderId: orderId },
-      include: { entryLines: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        entryLines: { orderBy: { sortOrder: 'asc' } },
+        template: { include: { entryLines: { orderBy: { sortOrder: 'asc' } } } },
+      },
     });
     if (expenseRec) {
       expenseLines = expenseRec.entryLines.map(l => ({
@@ -83,6 +87,30 @@ export async function GET(request, { params }) {
         amount: Number(l.amount),
       }));
       expenseNote = expenseRec.note || '';
+
+      // Build rich expense items (費用名稱, 廠商, 館別, 付款方式, 存簿/代墊員工, 摘要, 金額)
+      const templateLines = expenseRec.template?.entryLines || [];
+      const templateLineMap = new Map(templateLines.map(l => [l.sortOrder, l]));
+      const templateAccountIds = templateLines.map(l => l.accountId).filter(Boolean);
+      const templateAccounts = templateAccountIds.length > 0
+        ? await prisma.cashAccount.findMany({ where: { id: { in: templateAccountIds } }, select: { id: true, name: true } })
+        : [];
+      const templateAccountMap = new Map(templateAccounts.map(a => [a.id, a.name]));
+
+      expenseItems = expenseRec.entryLines
+        .filter(l => l.entryType === 'debit')
+        .map(l => {
+          const tl = templateLineMap.get(l.sortOrder);
+          return {
+            expenseName: l.accountingName || tl?.accountingName || '',
+            supplierName: tl?.supplierName || '',
+            warehouse: tl?.warehouse || '',
+            paymentMethod: tl?.paymentMethod || '',
+            accountName: tl?.accountId ? (templateAccountMap.get(tl.accountId) || '') : (tl?.advancedBy || ''),
+            summary: l.summary || '',
+            amount: Number(l.amount),
+          };
+        });
     }
 
     // ── Fetch related purchases via SalesDetail.purchaseId ──
@@ -191,7 +219,7 @@ export async function GET(request, { params }) {
       order, invoices, supplierName, accountName,
       executionNo, executionDate, cashTransactionNo, makerName,
       productMap, sortedDates, priceNoteItems,
-      expenseLines, expenseNote,
+      expenseLines, expenseNote, expenseItems,
       cjkFont,
     });
 
