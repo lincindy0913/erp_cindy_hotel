@@ -115,16 +115,28 @@
   --import-dark: #B45309;
 }
 
+html {
+  /* Base font scale: 30px (default 16px) — all rem-based Tailwind sizes scale up ~87% */
+  font-size: 30px;
+}
+
 body {
   color: var(--text-primary);
   background: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
 /* Ensure form elements inherit the larger base font */
 input, select, textarea, button {
   font-size: inherit;
+}
+
+/* Tab navigation buttons — always at least text-base for readability */
+button.text-sm.font-medium,
+a.text-sm.font-medium {
+  font-size: 1rem !important;
+  line-height: 1.5rem !important;
 }
 
 /* Table cells: minimum readable size */
@@ -427,6 +439,7 @@ table th, table td {
 .page-bg-year-end { background: linear-gradient(180deg, rgba(124, 58, 237, 0.08) 0%, rgba(124, 58, 237, 0.15) 100%); }
 .page-bg-backup { background: linear-gradient(180deg, rgba(220, 38, 38, 0.08) 0%, rgba(220, 38, 38, 0.15) 100%); }
 .page-bg-import { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
+
 
 @media print {
   .no-print { display: none !important; }

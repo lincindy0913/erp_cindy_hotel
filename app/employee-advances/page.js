@@ -471,32 +471,32 @@ export default function EmployeeAdvancesPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
                   <thead>
                     <tr style={{ background: '#ecfdf5' }}>
-                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊單號</th>
-                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊員工</th>
-                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>費用名稱</th>
-                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>摘要</th>
-                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #d1fae5' }}>金額</th>
-                      <th style={{ padding: '8px 12px', fontSize: 16, fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #d1fae5' }}>取消</th>
+                      <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊單號</th>
+                      <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊員工</th>
+                      <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>費用名稱</th>
+                      <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>摘要</th>
+                      <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #d1fae5' }}>金額</th>
+                      <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #d1fae5' }}>取消</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedAdvances.map(a => (
                       <tr key={a.id}>
-                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace' }}>{a.advanceNo}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{a.employeeName}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6' }}>{a.expenseName || '-'}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6' }}>{a.summary || a.sourceDescription || '-'}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', textAlign: 'right', fontWeight: 600 }}>NT$ {Number(a.amount).toLocaleString()}</td>
-                        <td style={{ padding: '6px 12px', fontSize: 16, borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
-                          <button onClick={() => toggleSelect(a.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 17 }}>✕</button>
+                        <td style={{ padding: '6px 12px', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace' }}>{a.advanceNo}</td>
+                        <td style={{ padding: '6px 12px', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{a.employeeName}</td>
+                        <td style={{ padding: '6px 12px', fontSize: '1rem', borderBottom: '1px solid #f3f4f6' }}>{a.expenseName || '-'}</td>
+                        <td style={{ padding: '6px 12px', fontSize: '1rem', borderBottom: '1px solid #f3f4f6' }}>{a.summary || a.sourceDescription || '-'}</td>
+                        <td style={{ padding: '6px 12px', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', textAlign: 'right', fontWeight: 600 }}>NT$ {Number(a.amount).toLocaleString()}</td>
+                        <td style={{ padding: '6px 12px', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
+                          <button onClick={() => toggleSelect(a.id)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr style={{ background: '#ecfdf5' }}>
-                      <td colSpan={4} style={{ padding: '8px 12px', fontSize: 17, fontWeight: 700 }}>代墊公費合計</td>
-                      <td style={{ padding: '8px 12px', fontSize: 18, fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>NT$ {selectedTotal.toLocaleString()}</td>
+                      <td colSpan={4} style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 700 }}>代墊公費合計</td>
+                      <td style={{ padding: '8px 12px', fontSize: '1.1rem', fontWeight: 700, textAlign: 'right', color: '#dc2626' }}>NT$ {selectedTotal.toLocaleString()}</td>
                       <td></td>
                     </tr>
                   </tfoot>

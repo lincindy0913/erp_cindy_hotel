@@ -214,7 +214,9 @@ export async function GET(request) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 12;
     const contentWidth = pageWidth - margin * 2;
-    const warehouseDisplay = warehouse || '全館';
+    // 若有篩選館別則直接用，否則看進貨單是否全屬同一館別
+    const uniqueWarehouses = [...new Set(purchases.map(p => p.warehouse).filter(Boolean))];
+    const warehouseDisplay = warehouse || (uniqueWarehouses.length === 1 ? uniqueWarehouses[0] : '全館');
     const tableFS = isLandscape ? 7 : 8;
     const printDate = new Date();
     const printDateStr = `${printDate.getFullYear()}/${printDate.getMonth() + 1}/${printDate.getDate()}`;

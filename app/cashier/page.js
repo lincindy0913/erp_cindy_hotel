@@ -173,11 +173,20 @@ export default function CashierPage() {
   function syncBatchAccountFromOrders(orderSet) {
     const sel = pendingOrders.filter(o => orderSet.has(o.id));
     if (sel.length === 0) return;
-    const ids = [...new Set(sel.map(o => o.accountId).filter(id => id != null && id !== ''))];
-    if (ids.length === 1) {
-      const total = sel.reduce((s, o) => s + Number(o.netAmount), 0);
-      setBatchAccounts([{ accountId: String(ids[0]), amount: String(total) }]);
+    // Only auto-fill if every selected order has an accountId set
+    const selWithAccount = sel.filter(o => o.accountId != null && o.accountId !== '');
+    if (selWithAccount.length !== sel.length) return;
+    // Group by accountId and sum netAmount
+    const accountTotals = {};
+    for (const o of sel) {
+      const aid = String(o.accountId);
+      accountTotals[aid] = (accountTotals[aid] || 0) + Number(o.netAmount);
     }
+    const newAccounts = Object.entries(accountTotals).map(([accountId, amount]) => ({
+      accountId,
+      amount: String(amount),
+    }));
+    setBatchAccounts(newAccounts);
   }
 
   function handleToggleSelect(orderId) {

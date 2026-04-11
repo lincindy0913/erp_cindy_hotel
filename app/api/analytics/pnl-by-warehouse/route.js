@@ -42,6 +42,9 @@ export async function GET(request) {
         fee: true,
         hasFee: true,
         accountingSubject: true,
+        description: true,
+        supplierId: true,
+        supplier: { select: { id: true, name: true } },
         categoryId: true,
         category: {
           select: {
@@ -83,8 +86,14 @@ export async function GET(request) {
         row.incomeBySubject[subjectKey].amount += amt;
         row.totalIncome += amt;
       } else if (tx.type === '支出') {
-        if (!row.expenseBySubject[subjectKey]) row.expenseBySubject[subjectKey] = { subject, amount: 0 };
+        if (!row.expenseBySubject[subjectKey]) row.expenseBySubject[subjectKey] = { subject, amount: 0, items: [] };
         row.expenseBySubject[subjectKey].amount += amt;
+        row.expenseBySubject[subjectKey].items.push({
+          supplierName: tx.supplier?.name || '',
+          accountingSubjectName: subject?.name || tx.accountingSubject || subjectKey,
+          description: tx.description || '',
+          amount: amt,
+        });
         row.totalExpense += amt;
         row.totalFees += fee;
       }
@@ -103,6 +112,7 @@ export async function GET(request) {
           ...v,
           subjectKey: k,
           amount: Math.round(v.amount * 100) / 100,
+          items: v.items || [],
         }))
         .sort((a, b) => b.amount - a.amount);
       return {

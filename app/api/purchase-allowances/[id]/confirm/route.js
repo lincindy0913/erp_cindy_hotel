@@ -159,17 +159,19 @@ export async function POST(request, { params }) {
       const extraActions = [];
       const statusToSet = isFullReturn ? '已退貨' : '部分退貨';
 
-      // 1. 更新付款單狀態（全額退貨才更新，部分退貨款已付不動）
-      if (isFullReturn) {
+      // 1. 更新付款單狀態（全額退貨→已退貨，部分退貨→部分退貨）
+      {
         let poUpdated = false;
-        if (allowance.paymentOrderId) {
-          await tx.paymentOrder.update({ where: { id: allowance.paymentOrderId }, data: { status: '已退貨' } });
-          poUpdated = true;
-        } else if (allowance.paymentOrderNo) {
+        let poId = allowance.paymentOrderId;
+        if (!poId && allowance.paymentOrderNo) {
           const po = await tx.paymentOrder.findFirst({ where: { orderNo: allowance.paymentOrderNo } });
-          if (po) { await tx.paymentOrder.update({ where: { id: po.id }, data: { status: '已退貨' } }); poUpdated = true; }
+          if (po) poId = po.id;
         }
-        if (poUpdated) extraActions.push(`付款單 ${allowance.paymentOrderNo || ''} 已標記退貨`);
+        if (poId) {
+          await tx.paymentOrder.update({ where: { id: poId }, data: { status: statusToSet } });
+          poUpdated = true;
+        }
+        if (poUpdated) extraActions.push(`付款單 ${allowance.paymentOrderNo || ''} 已標記「${statusToSet}」`);
       }
 
       // 2. 更新原發票狀態

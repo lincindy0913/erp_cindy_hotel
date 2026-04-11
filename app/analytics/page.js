@@ -648,22 +648,30 @@ function PnlTab({ data, onTrace }) {
             <div className="p-4">
               <p className="text-xs font-semibold text-red-500 mb-2">支出明細</p>
               <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="py-1 text-left font-normal">廠商</th>
+                    <th className="py-1 text-left font-normal">會計科目</th>
+                    <th className="py-1 text-left font-normal">內容</th>
+                    <th className="py-1 text-right font-normal">金額</th>
+                  </tr>
+                </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {w.expenseBySubject.map((item, i) => (
-                    <tr key={i} className="hover:bg-red-50/40 cursor-pointer" onClick={() => onTrace({ warehouseLabel: w.warehouse, flowType: 'expense', subjectKey: item.subjectKey, subjectName: item.subject?.name })}>
-                      <td className="py-1.5 text-gray-600">{item.subject?.name || item.subjectKey}</td>
-                      <td className="py-1.5 text-right font-medium text-red-600">{NT(item.amount)}</td>
-                      <td className="py-1.5 pl-2 w-24">
-                        <Bar value={item.amount} max={w.totalExpense} color="bg-red-400" />
-                      </td>
-                    </tr>
-                  ))}
+                  {w.expenseBySubject.flatMap((item, i) =>
+                    (item.items && item.items.length > 0 ? item.items : [{ supplierName: '', accountingSubjectName: item.subject?.name || item.subjectKey, description: '', amount: item.amount }]).map((tx, j) => (
+                      <tr key={`${i}-${j}`} className="hover:bg-red-50/40 cursor-pointer" onClick={() => onTrace({ warehouseLabel: w.warehouse, flowType: 'expense', subjectKey: item.subjectKey, subjectName: item.subject?.name })}>
+                        <td className="py-1.5 text-gray-600 pr-2">{tx.supplierName || <span className="text-gray-300">—</span>}</td>
+                        <td className="py-1.5 text-gray-600 pr-2">{tx.accountingSubjectName || <span className="text-gray-300">—</span>}</td>
+                        <td className="py-1.5 text-gray-600 pr-2">{tx.description || <span className="text-gray-300">—</span>}</td>
+                        <td className="py-1.5 text-right font-medium text-red-600 whitespace-nowrap">{NT(tx.amount)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-gray-200 font-semibold">
-                    <td className="py-1.5 text-gray-700">合計</td>
+                    <td className="py-1.5 text-gray-700" colSpan={3}>合計</td>
                     <td className="py-1.5 text-right text-red-600">{NT(w.totalExpense)}</td>
-                    <td />
                   </tr>
                 </tfoot>
               </table>

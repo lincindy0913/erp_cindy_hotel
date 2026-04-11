@@ -375,9 +375,10 @@ export default function PurchaseAllowancesPage() {
     const headers = isDraft
       ? ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','金額']
       : ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','退款金額','退款交易','確認者'];
+    const typeLabel = t => t === '折讓' ? '退貨' : (t || '退貨');
     const bodyRows = rows.map(r => {
       const base = [
-        r.allowanceNo || '', r.allowanceType || '退貨', r.allowanceDate || '',
+        r.allowanceNo || '', typeLabel(r.allowanceType), r.allowanceDate || '',
         r.supplierName || '-', r.warehouse || '-', r.invoiceNo || '-',
         r.paymentOrderNo || '-', (r.reason || '-').substring(0, 30),
         `NT$ ${Number(r.totalAmount).toLocaleString()}`,
@@ -411,9 +412,10 @@ export default function PurchaseAllowancesPage() {
     const headers = isDraft
       ? ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','金額']
       : ['單號','類型','日期','供應商','館別','發票號碼','付款單號','原因','退款金額','退款交易','確認者'];
+    const typeLabel = t => t === '折讓' ? '退貨' : (t || '退貨');
     const csvRows = rows.map(r => {
       const base = [
-        r.allowanceNo || '', r.allowanceType || '退貨', r.allowanceDate || '',
+        r.allowanceNo || '', typeLabel(r.allowanceType), r.allowanceDate || '',
         r.supplierName || '', r.warehouse || '', r.invoiceNo || '',
         r.paymentOrderNo || '', r.reason || '', Number(r.totalAmount),
       ];
@@ -433,10 +435,10 @@ export default function PurchaseAllowancesPage() {
     URL.revokeObjectURL(url);
   }
 
-  const thStyle = { padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: 15, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
-  const tdStyle = { padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 15 };
-  const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, boxSizing: 'border-box' };
-  const labelStyle = { fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 };
+  const thStyle = { padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontSize: '1rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' };
+  const tdStyle = { padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '1rem' };
+  const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem', boxSizing: 'border-box' };
+  const labelStyle = { fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: 4 };
 
   if (loading) return (
     <>
@@ -452,14 +454,14 @@ export default function PurchaseAllowancesPage() {
       <Navigation borderColor="border-orange-500" />
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700 }}>進貨退貨管理</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>進貨退貨管理</h2>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => { setFormMode('折讓'); resetForm(); setShowForm(v => formMode !== '折讓' ? true : !v); }}
-              style={{ padding: '8px 16px', background: '#ea580c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>
+              style={{ padding: '8px 16px', background: '#ea580c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '1rem' }}>
               + 新增退貨單
             </button>
             <button onClick={() => { setFormMode('全額退貨'); resetForm(); setShowForm(v => formMode !== '全額退貨' ? true : !v); }}
-              style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>
+              style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '1rem' }}>
               + 全額退貨退款
             </button>
           </div>
@@ -468,16 +470,16 @@ export default function PurchaseAllowancesPage() {
         {/* KPI Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
           <div style={{ background: '#fff7ed', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 13, color: '#9a3412' }}>草稿件數</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#9a3412' }}>{draftRecords.length}</div>
+            <div style={{ fontSize: '0.875rem', color: '#9a3412' }}>草稿件數</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#9a3412' }}>{draftRecords.length}</div>
           </div>
           <div style={{ background: '#fef3c7', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 13, color: '#92400e' }}>草稿金額</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#92400e' }}>NT$ {draftRecords.reduce((s, r) => s + r.totalAmount, 0).toLocaleString()}</div>
+            <div style={{ fontSize: '0.875rem', color: '#92400e' }}>草稿金額</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#92400e' }}>NT$ {draftRecords.reduce((s, r) => s + r.totalAmount, 0).toLocaleString()}</div>
           </div>
           <div style={{ background: '#d1fae5', borderRadius: 8, padding: 16 }}>
-            <div style={{ fontSize: 13, color: '#065f46' }}>已退款金額</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#065f46' }}>NT$ {confirmedRecords.reduce((s, r) => s + r.totalAmount, 0).toLocaleString()}</div>
+            <div style={{ fontSize: '0.875rem', color: '#065f46' }}>已退款金額</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#065f46' }}>NT$ {confirmedRecords.reduce((s, r) => s + r.totalAmount, 0).toLocaleString()}</div>
           </div>
         </div>
 
@@ -485,11 +487,11 @@ export default function PurchaseAllowancesPage() {
         {showForm && (
           <div style={{ background: formMode === '全額退貨' ? '#fef2f2' : '#fffbeb', border: `1px solid ${formMode === '全額退貨' ? '#fca5a5' : '#fbbf24'}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>
                 {editingId ? '編輯' : '新增'}{formMode === '全額退貨' ? '全額退貨退款單' : '退貨單'}
               </h3>
               <span style={{
-                padding: '2px 10px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                padding: '2px 10px', borderRadius: 10, fontSize: '0.875rem', fontWeight: 600,
                 background: formMode === '全額退貨' ? '#fee2e2' : '#fef3c7',
                 color: formMode === '全額退貨' ? '#dc2626' : '#92400e',
               }}>
@@ -501,13 +503,13 @@ export default function PurchaseAllowancesPage() {
             {!editingId && (
               <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <label style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>
+                  <label style={{ fontSize: '1rem', fontWeight: 600, color: '#374151' }}>
                     Step 1: 搜尋「已出納」進貨單，勾選後自動帶入表單
                     {formMode === '全額退貨' && <span style={{ color: '#dc2626', marginLeft: 8 }}>— 確認後將全額退款並作廢原單據</span>}
                   </label>
                   {selectedPurchase && (
                     <button type="button" onClick={() => { setSelectedPurchase(null); resetForm(); setShowForm(true); }}
-                      style={{ padding: '2px 10px', fontSize: 12, background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
+                      style={{ padding: '2px 10px', fontSize: '0.75rem', background: 'none', border: '1px solid #dc2626', color: '#dc2626', borderRadius: 4, cursor: 'pointer' }}>
                       清除選取
                     </button>
                   )}
@@ -516,41 +518,41 @@ export default function PurchaseAllowancesPage() {
                 {/* Filters */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: 10 }}>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>進貨日期起</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>進貨日期起</div>
                     <input type="date" value={purchaseFilterDateFrom} onChange={e => setPurchaseFilterDateFrom(e.target.value)}
-                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }} />
+                      style={{ ...inputStyle, fontSize: '0.875rem', padding: '6px 8px' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>進貨日期迄</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>進貨日期迄</div>
                     <input type="date" value={purchaseFilterDateTo} onChange={e => setPurchaseFilterDateTo(e.target.value)}
-                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }} />
+                      style={{ ...inputStyle, fontSize: '0.875rem', padding: '6px 8px' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>廠商</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>廠商</div>
                     <select value={purchaseFilterSupplierId} onChange={e => setPurchaseFilterSupplierId(e.target.value)}
-                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }}>
+                      style={{ ...inputStyle, fontSize: '0.875rem', padding: '6px 8px' }}>
                       <option value="">全部廠商</option>
                       {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>館別</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>館別</div>
                     <select value={purchaseFilterWarehouse} onChange={e => setPurchaseFilterWarehouse(e.target.value)}
-                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }}>
+                      style={{ ...inputStyle, fontSize: '0.875rem', padding: '6px 8px' }}>
                       <option value="">全部館別</option>
                       {warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>關鍵字（單號/品名）</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>關鍵字（單號/品名）</div>
                     <input value={purchaseSearch} onChange={e => setPurchaseSearch(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && searchPurchaseList()}
                       placeholder="進貨單號 / 品名..."
-                      style={{ ...inputStyle, fontSize: 13, padding: '6px 8px' }} />
+                      style={{ ...inputStyle, fontSize: '0.875rem', padding: '6px 8px' }} />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                     <button type="button" onClick={searchPurchaseList} disabled={purchaseListLoading}
-                      style={{ width: '100%', padding: '7px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, cursor: purchaseListLoading ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: purchaseListLoading ? 0.7 : 1 }}>
+                      style={{ width: '100%', padding: '7px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, cursor: purchaseListLoading ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: purchaseListLoading ? 0.7 : 1 }}>
                       {purchaseListLoading ? '查詢中...' : '查詢進貨單'}
                     </button>
                   </div>
@@ -559,12 +561,12 @@ export default function PurchaseAllowancesPage() {
                 {/* Results list */}
                 {purchaseListSearched && !purchaseListLoading && (
                   purchaseListResults.length === 0 ? (
-                    <div style={{ padding: '14px', textAlign: 'center', fontSize: 13, color: '#9ca3af', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                    <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.875rem', color: '#9ca3af', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
                       查無符合條件的已出納進貨單
                     </div>
                   ) : (
                     <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden', maxHeight: 320, overflowY: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                           <tr style={{ background: '#fef3c7' }}>
                             <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#92400e', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>進貨單號</th>
@@ -589,11 +591,11 @@ export default function PurchaseAllowancesPage() {
                                 <td style={{ padding: '8px 10px', color: '#374151' }}>{p.warehouse || '-'}</td>
                                 <td style={{ padding: '8px 10px', color: '#6b7280', whiteSpace: 'nowrap' }}>{p.purchaseDate || '-'}</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>NT$ {Number(p.totalAmount).toLocaleString()}</td>
-                                <td style={{ padding: '8px 10px', color: '#b45309', fontSize: 12, fontFamily: 'monospace' }}>{p.paymentOrderNo || '-'}</td>
+                                <td style={{ padding: '8px 10px', color: '#b45309', fontSize: '0.75rem', fontFamily: 'monospace' }}>{p.paymentOrderNo || '-'}</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                                   {isSelected
-                                    ? <span style={{ fontSize: 16, color: '#f59e0b' }}>✓</span>
-                                    : <span style={{ fontSize: 12, color: '#9ca3af' }}>選取</span>}
+                                    ? <span style={{ fontSize: '1rem', color: '#f59e0b' }}>✓</span>
+                                    : <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>選取</span>}
                                 </td>
                               </tr>
                             );
@@ -608,20 +610,20 @@ export default function PurchaseAllowancesPage() {
                 {selectedPurchase && (
                   <div style={{ marginTop: 10, background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 8, padding: '10px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: '#166534' }}>✓ 已帶入：</span>
-                      <span style={{ fontWeight: 700, color: '#1d4ed8', fontFamily: 'monospace', fontSize: 13 }}>{selectedPurchase.purchaseNo}</span>
-                      <span style={{ color: '#ea580c', fontWeight: 600, fontSize: 13 }}>{selectedPurchase.supplierName}</span>
-                      <span style={{ color: '#374151', fontSize: 13 }}>{selectedPurchase.warehouse}</span>
-                      <span style={{ fontWeight: 700, color: '#059669', fontSize: 13 }}>NT$ {Number(selectedPurchase.totalAmount).toLocaleString()}</span>
-                      {selectedPurchase.invoiceNo && <span style={{ fontSize: 12, color: '#7c3aed' }}>發票: {selectedPurchase.invoiceNo}</span>}
-                      {selectedPurchase.paymentOrderNo && <span style={{ fontSize: 12, color: '#b45309' }}>付款單: {selectedPurchase.paymentOrderNo}</span>}
+                      <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#166534' }}>✓ 已帶入：</span>
+                      <span style={{ fontWeight: 700, color: '#1d4ed8', fontFamily: 'monospace', fontSize: '0.875rem' }}>{selectedPurchase.purchaseNo}</span>
+                      <span style={{ color: '#ea580c', fontWeight: 600, fontSize: '0.875rem' }}>{selectedPurchase.supplierName}</span>
+                      <span style={{ color: '#374151', fontSize: '0.875rem' }}>{selectedPurchase.warehouse}</span>
+                      <span style={{ fontWeight: 700, color: '#059669', fontSize: '0.875rem' }}>NT$ {Number(selectedPurchase.totalAmount).toLocaleString()}</span>
+                      {selectedPurchase.invoiceNo && <span style={{ fontSize: '0.75rem', color: '#7c3aed' }}>發票: {selectedPurchase.invoiceNo}</span>}
+                      {selectedPurchase.paymentOrderNo && <span style={{ fontSize: '0.75rem', color: '#b45309' }}>付款單: {selectedPurchase.paymentOrderNo}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: '#166534', marginTop: 4 }}>表單欄位已自動填寫，您仍可手動修改任何欄位</div>
+                    <div style={{ fontSize: '0.75rem', color: '#166534', marginTop: 4 }}>表單欄位已自動填寫，您仍可手動修改任何欄位</div>
                   </div>
                 )}
 
                 {!purchaseListSearched && (
-                  <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af' }}>
+                  <div style={{ marginTop: 8, fontSize: '0.875rem', color: '#9ca3af' }}>
                     設定條件後按「查詢進貨單」，也可跳過直接手動填寫
                   </div>
                 )}
@@ -650,17 +652,17 @@ export default function PurchaseAllowancesPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>原進貨單號 {selectedPurchase && form.purchaseNo && <span style={{ color: '#059669', fontSize: 11 }}>✓ 已連動</span>}</label>
+                  <label style={labelStyle}>原進貨單號 {selectedPurchase && form.purchaseNo && <span style={{ color: '#059669', fontSize: '0.75rem' }}>✓ 已連動</span>}</label>
                   <input value={form.purchaseNo} onChange={e => setForm(f => ({ ...f, purchaseNo: e.target.value }))} placeholder="選填"
                     style={{ ...inputStyle, ...(selectedPurchase && form.purchaseNo ? { background: '#f0fdf4', borderColor: '#86efac' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>原發票號碼 {selectedPurchase && form.invoiceNo && <span style={{ color: '#059669', fontSize: 11 }}>✓ 已連動</span>}</label>
+                  <label style={labelStyle}>原發票號碼 {selectedPurchase && form.invoiceNo && <span style={{ color: '#059669', fontSize: '0.75rem' }}>✓ 已連動</span>}</label>
                   <input value={form.invoiceNo} onChange={e => setForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="選填"
                     style={{ ...inputStyle, ...(selectedPurchase && form.invoiceNo ? { background: '#f0fdf4', borderColor: '#86efac' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>原付款單號 {selectedPurchase && form.paymentOrderNo && <span style={{ color: '#059669', fontSize: 11 }}>✓ 已連動</span>}</label>
+                  <label style={labelStyle}>原付款單號 {selectedPurchase && form.paymentOrderNo && <span style={{ color: '#059669', fontSize: '0.75rem' }}>✓ 已連動</span>}</label>
                   <input value={form.paymentOrderNo} onChange={e => setForm(f => ({ ...f, paymentOrderNo: e.target.value }))} placeholder="選填"
                     style={{ ...inputStyle, ...(selectedPurchase && form.paymentOrderNo ? { background: '#f0fdf4', borderColor: '#86efac' } : {}) }} />
                 </div>
@@ -669,16 +671,16 @@ export default function PurchaseAllowancesPage() {
               {/* Detail lines */}
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <label style={{ fontSize: 14, fontWeight: 600 }}>
+                  <label style={{ fontSize: '1rem', fontWeight: 600 }}>
                     退貨明細
                     {selectedPurchase && purchaseItems.length > 0 && (
-                      <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7280', marginLeft: 8 }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 400, color: '#6b7280', marginLeft: 8 }}>
                         勾選要退貨的品項，可調整退貨數量
                       </span>
                     )}
                   </label>
                   {!selectedPurchase && (
-                    <button type="button" onClick={addDetailLine} style={{ padding: '4px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>+ 新增項目</button>
+                    <button type="button" onClick={addDetailLine} style={{ padding: '4px 12px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.875rem' }}>+ 新增項目</button>
                   )}
                 </div>
 
@@ -687,13 +689,13 @@ export default function PurchaseAllowancesPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8, border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
                     <thead>
                       <tr style={{ background: '#fef9c3' }}>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'center', width: 50, borderBottom: '1px solid #e5e7eb' }}>退貨</th>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>品名</th>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 80, borderBottom: '1px solid #e5e7eb' }}>原數量</th>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 110, borderBottom: '1px solid #e5e7eb' }}>退貨數量</th>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'center', width: 60, borderBottom: '1px solid #e5e7eb' }}>單位</th>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 110, borderBottom: '1px solid #e5e7eb' }}>單價</th>
-                        <th style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', width: 120, borderBottom: '1px solid #e5e7eb' }}>退貨小計</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'center', width: 50, borderBottom: '1px solid #e5e7eb' }}>退貨</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>品名</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'right', width: 80, borderBottom: '1px solid #e5e7eb' }}>原數量</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'right', width: 110, borderBottom: '1px solid #e5e7eb' }}>退貨數量</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'center', width: 60, borderBottom: '1px solid #e5e7eb' }}>單位</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'right', width: 110, borderBottom: '1px solid #e5e7eb' }}>單價</th>
+                        <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'right', width: 120, borderBottom: '1px solid #e5e7eb' }}>退貨小計</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -703,10 +705,10 @@ export default function PurchaseAllowancesPage() {
                             <input type="checkbox" checked={item.selected} onChange={() => togglePurchaseItem(idx)}
                               style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#16a34a' }} />
                           </td>
-                          <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: item.selected ? 600 : 400, color: item.selected ? '#111827' : '#6b7280' }}>
+                          <td style={{ padding: '6px 10px', fontSize: '0.875rem', fontWeight: item.selected ? 600 : 400, color: item.selected ? '#111827' : '#6b7280' }}>
                             {item.productName}
                           </td>
-                          <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'right', color: '#6b7280' }}>
+                          <td style={{ padding: '6px 10px', fontSize: '0.875rem', textAlign: 'right', color: '#6b7280' }}>
                             {item.quantity}
                           </td>
                           <td style={{ padding: '4px 8px' }}>
@@ -715,14 +717,14 @@ export default function PurchaseAllowancesPage() {
                               value={item.returnQty}
                               disabled={!item.selected}
                               onChange={e => updatePurchaseItemReturnQty(idx, e.target.value)}
-                              style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right', background: item.selected ? '#fff' : '#f3f4f6', cursor: item.selected ? 'text' : 'not-allowed' }}
+                              style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: '0.875rem', textAlign: 'right', background: item.selected ? '#fff' : '#f3f4f6', cursor: item.selected ? 'text' : 'not-allowed' }}
                             />
                           </td>
-                          <td style={{ padding: '6px 10px', fontSize: 12, textAlign: 'center', color: '#6b7280' }}>{item.unit}</td>
-                          <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'right' }}>
+                          <td style={{ padding: '6px 10px', fontSize: '0.75rem', textAlign: 'center', color: '#6b7280' }}>{item.unit}</td>
+                          <td style={{ padding: '6px 10px', fontSize: '0.875rem', textAlign: 'right' }}>
                             NT$ {Number(item.unitPrice).toLocaleString()}
                           </td>
-                          <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'right', fontWeight: 700, color: item.selected ? '#dc2626' : '#9ca3af' }}>
+                          <td style={{ padding: '6px 10px', fontSize: '0.875rem', textAlign: 'right', fontWeight: 700, color: item.selected ? '#dc2626' : '#9ca3af' }}>
                             NT$ {Math.round((parseFloat(item.returnQty) || 0) * item.unitPrice).toLocaleString()}
                           </td>
                         </tr>
@@ -730,10 +732,10 @@ export default function PurchaseAllowancesPage() {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: '#fef3c7' }}>
-                        <td colSpan={6} style={{ padding: '7px 10px', fontSize: 13, textAlign: 'right', fontWeight: 600 }}>
+                        <td colSpan={6} style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'right', fontWeight: 600 }}>
                           已勾選 {purchaseItems.filter(i => i.selected).length} / {purchaseItems.length} 項，退貨小計
                         </td>
-                        <td style={{ padding: '7px 10px', fontSize: 14, textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
+                        <td style={{ padding: '7px 10px', fontSize: '1rem', textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
                           NT$ {purchaseItems.filter(i => i.selected).reduce((s, i) => s + Math.round((parseFloat(i.returnQty) || 0) * i.unitPrice), 0).toLocaleString()}
                         </td>
                       </tr>
@@ -745,11 +747,11 @@ export default function PurchaseAllowancesPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
                       <thead>
                         <tr style={{ background: '#fef9c3' }}>
-                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'left' }}>品名</th>
-                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 80 }}>數量</th>
-                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 100 }}>單價</th>
-                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'right', width: 100 }}>小計</th>
-                          <th style={{ padding: '6px 8px', fontSize: 13, textAlign: 'left' }}>原因</th>
+                          <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'left' }}>品名</th>
+                          <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'right', width: 80 }}>數量</th>
+                          <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'right', width: 100 }}>單價</th>
+                          <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'right', width: 100 }}>小計</th>
+                          <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'left' }}>原因</th>
                           <th style={{ width: 40 }}></th>
                         </tr>
                       </thead>
@@ -757,22 +759,22 @@ export default function PurchaseAllowancesPage() {
                         {form.details.map((d, idx) => (
                           <tr key={idx}>
                             <td style={{ padding: '4px 6px' }}>
-                              <input value={d.productName} onChange={e => updateDetail(idx, 'productName', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                              <input value={d.productName} onChange={e => updateDetail(idx, 'productName', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: '0.875rem' }} />
                             </td>
                             <td style={{ padding: '4px 6px' }}>
-                              <input type="number" value={d.quantity} onChange={e => updateDetail(idx, 'quantity', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right' }} />
+                              <input type="number" value={d.quantity} onChange={e => updateDetail(idx, 'quantity', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: '0.875rem', textAlign: 'right' }} />
                             </td>
                             <td style={{ padding: '4px 6px' }}>
-                              <input type="number" value={d.unitPrice} onChange={e => updateDetail(idx, 'unitPrice', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right' }} />
+                              <input type="number" value={d.unitPrice} onChange={e => updateDetail(idx, 'unitPrice', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: '0.875rem', textAlign: 'right' }} />
                             </td>
                             <td style={{ padding: '4px 6px' }}>
-                              <input type="number" value={d.subtotal} onChange={e => updateDetail(idx, 'subtotal', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13, textAlign: 'right', background: '#f9fafb' }} />
+                              <input type="number" value={d.subtotal} onChange={e => updateDetail(idx, 'subtotal', e.target.value)} style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: '0.875rem', textAlign: 'right', background: '#f9fafb' }} />
                             </td>
                             <td style={{ padding: '4px 6px' }}>
-                              <input value={d.reason} onChange={e => updateDetail(idx, 'reason', e.target.value)} placeholder="產品瑕疵/數量不符" style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }} />
+                              <input value={d.reason} onChange={e => updateDetail(idx, 'reason', e.target.value)} placeholder="產品瑕疵/數量不符" style={{ width: '100%', padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: '0.875rem' }} />
                             </td>
                             <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                              <button type="button" onClick={() => removeDetail(idx)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                              <button type="button" onClick={() => removeDetail(idx)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
                             </td>
                           </tr>
                         ))}
@@ -784,7 +786,7 @@ export default function PurchaseAllowancesPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
                 {formMode === '全額退貨' && selectedPurchase && (
-                  <div style={{ gridColumn: '1 / -1', background: '#fee2e2', padding: '6px 12px', borderRadius: 6, fontSize: 13, color: '#991b1b', marginBottom: 4 }}>
+                  <div style={{ gridColumn: '1 / -1', background: '#fee2e2', padding: '6px 12px', borderRadius: 6, fontSize: '0.875rem', color: '#991b1b', marginBottom: 4 }}>
                     全額退貨模式：金額已鎖定為原進貨單全額，不可修改
                   </div>
                 )}
@@ -807,7 +809,7 @@ export default function PurchaseAllowancesPage() {
                   <input type="number" value={form.totalAmount}
                     onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))}
                     readOnly={formMode === '全額退貨' && !!selectedPurchase}
-                    style={{ ...inputStyle, border: `2px solid ${formMode === '全額退貨' ? '#dc2626' : '#f59e0b'}`, fontSize: 15, fontWeight: 700, textAlign: 'right',
+                    style={{ ...inputStyle, border: `2px solid ${formMode === '全額退貨' ? '#dc2626' : '#f59e0b'}`, fontSize: '1rem', fontWeight: 700, textAlign: 'right',
                       background: formMode === '全額退貨' && selectedPurchase ? '#fee2e2' : '#fffbeb',
                       ...(formMode === '全額退貨' && selectedPurchase ? { cursor: 'not-allowed' } : {}),
                     }} />
@@ -826,7 +828,7 @@ export default function PurchaseAllowancesPage() {
               </div>
 
               {formMode === '全額退貨' && selectedPurchase && (
-                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 14, color: '#991b1b' }}>
+                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: '1rem', color: '#991b1b' }}>
                   <strong>全額退貨確認後將執行：</strong>
                   <ul style={{ margin: '4px 0 0 16px', padding: 0, lineHeight: 1.8 }}>
                     <li>建立退款收入交易 NT$ {form.totalAmount ? Number(form.totalAmount).toLocaleString() : '0'}</li>
@@ -841,12 +843,12 @@ export default function PurchaseAllowancesPage() {
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="submit" disabled={formSaving} style={{
-                  padding: '8px 24px', color: '#fff', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600,
+                  padding: '8px 24px', color: '#fff', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: '1rem', fontWeight: 600,
                   background: formMode === '全額退貨' ? '#dc2626' : '#ea580c', opacity: formSaving ? 0.7 : 1,
                 }}>
                   {formSaving ? '儲存中...' : `${editingId ? '更新' : '建立'}${formMode === '全額退貨' ? '退貨單（草稿）' : '退貨單（草稿）'}`}
                 </button>
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); }} disabled={formSaving} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: 14 }}>取消</button>
+                <button type="button" onClick={() => { setShowForm(false); resetForm(); }} disabled={formSaving} style={{ padding: '8px 20px', background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: 6, cursor: formSaving ? 'not-allowed' : 'pointer', fontSize: '1rem' }}>取消</button>
               </div>
             </form>
           </div>
@@ -858,7 +860,7 @@ export default function PurchaseAllowancesPage() {
             {TABS.map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                 padding: '10px 20px', border: 'none', borderBottom: activeTab === tab.key ? '3px solid #ea580c' : '3px solid transparent',
-                background: 'none', fontSize: 15, fontWeight: activeTab === tab.key ? 600 : 400,
+                background: 'none', fontSize: '1rem', fontWeight: activeTab === tab.key ? 600 : 400,
                 color: activeTab === tab.key ? '#ea580c' : '#6b7280', cursor: 'pointer',
               }}>
                 {tab.label}
@@ -866,13 +868,13 @@ export default function PurchaseAllowancesPage() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>列印</button>
-            <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: 13, color: '#374151' }}>匯出 Excel</button>
+            <button onClick={handlePrint} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: '0.875rem', color: '#374151' }}>列印</button>
+            <button onClick={handleExportExcel} style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer', fontSize: '0.875rem', color: '#374151' }}>匯出 Excel</button>
             <input
               value={filterKeyword}
               onChange={e => setFilterKeyword(e.target.value)}
               placeholder="篩選退貨單..."
-              style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, width: 200 }}
+              style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem', width: 200 }}
             />
           </div>
         </div>
@@ -899,10 +901,10 @@ export default function PurchaseAllowancesPage() {
               <tbody>
                 {filteredDraft.map(r => (
                   <tr key={r.id} style={{ background: r.allowanceType === '全額退貨' ? '#fef2f2' : undefined }}>
-                    <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 14 }}>{r.allowanceNo}</span></td>
+                    <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: '1rem' }}>{r.allowanceNo}</span></td>
                     <td style={tdStyle}>
                       <span style={{
-                        padding: '2px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
                         background: r.allowanceType === '全額退貨' ? '#fee2e2' : '#fef3c7',
                         color: r.allowanceType === '全額退貨' ? '#dc2626' : '#92400e',
                       }}>
@@ -913,19 +915,19 @@ export default function PurchaseAllowancesPage() {
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{r.supplierName || '-'}</td>
                     <td style={tdStyle}>{r.warehouse || '-'}</td>
                     <td style={tdStyle}>
-                      <div style={{ fontSize: 13 }}>
+                      <div style={{ fontSize: '0.875rem' }}>
                         {r.invoiceNo && <div>發票: {r.invoiceNo}</div>}
                         {r.paymentOrderNo && <div style={{ color: '#6b7280' }}>付款: {r.paymentOrderNo}</div>}
                         {!r.invoiceNo && !r.paymentOrderNo && '-'}
                       </div>
                     </td>
-                    <td style={tdStyle}><span style={{ fontSize: 13, color: '#6b7280' }}>{r.reason?.substring(0, 20) || '-'}{r.reason?.length > 20 ? '...' : ''}</span></td>
+                    <td style={tdStyle}><span style={{ fontSize: '0.875rem', color: '#6b7280' }}>{r.reason?.substring(0, 20) || '-'}{r.reason?.length > 20 ? '...' : ''}</span></td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#059669' }}>NT$ {r.totalAmount.toLocaleString()}</td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => { setConfirmingId(r.id); setConfirmDate(r.allowanceDate); }} style={{ padding: '4px 10px', fontSize: 13, color: '#fff', background: '#059669', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>確認退款</button>
-                        <button onClick={() => openEdit(r)} style={{ padding: '4px 10px', fontSize: 13, color: '#2563eb', background: 'none', border: '1px solid #2563eb', borderRadius: 4, cursor: 'pointer' }}>編輯</button>
-                        <button onClick={() => handleDelete(r)} style={{ padding: '4px 10px', fontSize: 13, color: '#dc2626', background: 'none', border: '1px solid #dc2626', borderRadius: 4, cursor: 'pointer' }}>刪除</button>
+                        <button onClick={() => { setConfirmingId(r.id); setConfirmDate(r.allowanceDate); }} style={{ padding: '4px 10px', fontSize: '0.875rem', color: '#fff', background: '#059669', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>確認退款</button>
+                        <button onClick={() => openEdit(r)} style={{ padding: '4px 10px', fontSize: '0.875rem', color: '#2563eb', background: 'none', border: '1px solid #2563eb', borderRadius: 4, cursor: 'pointer' }}>編輯</button>
+                        <button onClick={() => handleDelete(r)} style={{ padding: '4px 10px', fontSize: '0.875rem', color: '#dc2626', background: 'none', border: '1px solid #dc2626', borderRadius: 4, cursor: 'pointer' }}>刪除</button>
                       </div>
                     </td>
                   </tr>
@@ -965,10 +967,10 @@ export default function PurchaseAllowancesPage() {
               <tbody>
                 {filteredConfirmed.map(r => (
                   <tr key={r.id} style={{ background: r.allowanceType === '全額退貨' ? '#fef2f2' : undefined }}>
-                    <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 14 }}>{r.allowanceNo}</span></td>
+                    <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: '1rem' }}>{r.allowanceNo}</span></td>
                     <td style={tdStyle}>
                       <span style={{
-                        padding: '2px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
                         background: r.allowanceType === '全額退貨' ? '#fee2e2' : '#d1fae5',
                         color: r.allowanceType === '全額退貨' ? '#dc2626' : '#065f46',
                       }}>
@@ -979,16 +981,16 @@ export default function PurchaseAllowancesPage() {
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{r.supplierName || '-'}</td>
                     <td style={tdStyle}>{r.warehouse || '-'}</td>
                     <td style={tdStyle}>
-                      <div style={{ fontSize: 13 }}>
+                      <div style={{ fontSize: '0.875rem' }}>
                         {r.invoiceNo && <div>發票: {r.invoiceNo}</div>}
                         {r.paymentOrderNo && <div style={{ color: '#6b7280' }}>付款: {r.paymentOrderNo}</div>}
                         {!r.invoiceNo && !r.paymentOrderNo && '-'}
                       </div>
                     </td>
-                    <td style={tdStyle}><span style={{ fontSize: 13, color: '#6b7280' }}>{r.reason?.substring(0, 30) || '-'}</span></td>
+                    <td style={tdStyle}><span style={{ fontSize: '0.875rem', color: '#6b7280' }}>{r.reason?.substring(0, 30) || '-'}</span></td>
                     <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#059669' }}>NT$ {r.totalAmount.toLocaleString()}</td>
-                    <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: 13, color: '#059669' }}>{r.cashTransactionNo || '-'}</span></td>
-                    <td style={tdStyle}><span style={{ fontSize: 13 }}>{r.confirmedBy || '-'}</span></td>
+                    <td style={tdStyle}><span style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#059669' }}>{r.cashTransactionNo || '-'}</span></td>
+                    <td style={tdStyle}><span style={{ fontSize: '0.875rem' }}>{r.confirmedBy || '-'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -1014,15 +1016,15 @@ export default function PurchaseAllowancesPage() {
               const isFullReturn = rec.allowanceType === '全額退貨';
               return (
                 <>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: isFullReturn ? '#dc2626' : '#374151' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 16, color: isFullReturn ? '#dc2626' : '#374151' }}>
                     {isFullReturn ? '確認全額退貨退款' : '確認退貨退款'}
                   </h3>
 
-                  <div style={{ background: isFullReturn ? '#fef2f2' : '#f0fdf4', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+                  <div style={{ background: isFullReturn ? '#fef2f2' : '#f0fdf4', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div><strong>{isFullReturn ? '退貨單' : '退貨單'}：</strong>{rec.allowanceNo}</div>
                       <span style={{
-                        padding: '2px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        padding: '2px 10px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
                         background: isFullReturn ? '#fee2e2' : '#fef3c7',
                         color: isFullReturn ? '#dc2626' : '#92400e',
                       }}>{rec.allowanceType === '折讓' ? '退貨' : (rec.allowanceType || '退貨')}</span>
@@ -1032,12 +1034,12 @@ export default function PurchaseAllowancesPage() {
                     {rec.paymentOrderNo && <div><strong>原付款單：</strong>{rec.paymentOrderNo}</div>}
                     <div style={{ marginTop: 8 }}>
                       <strong>退款金額：</strong>
-                      <span style={{ color: isFullReturn ? '#dc2626' : '#059669', fontWeight: 700, fontSize: 20 }}>NT$ {rec.totalAmount.toLocaleString()}</span>
+                      <span style={{ color: isFullReturn ? '#dc2626' : '#059669', fontWeight: 700, fontSize: '1.25rem' }}>NT$ {rec.totalAmount.toLocaleString()}</span>
                     </div>
                     {rec.reason && <div style={{ marginTop: 4 }}><strong>原因：</strong>{rec.reason}</div>}
                   </div>
 
-                  <div style={{ background: isFullReturn ? '#fef2f2' : '#eff6ff', padding: 10, borderRadius: 6, marginBottom: 16, fontSize: 13, color: isFullReturn ? '#991b1b' : '#1d4ed8' }}>
+                  <div style={{ background: isFullReturn ? '#fef2f2' : '#eff6ff', padding: 10, borderRadius: 6, marginBottom: 16, fontSize: '0.875rem', color: isFullReturn ? '#991b1b' : '#1d4ed8' }}>
                     確認後系統將自動：
                     <ul style={{ margin: '4px 0 0 16px', padding: 0, lineHeight: 1.6 }}>
                       <li>建立退款收入交易 NT$ {rec.totalAmount.toLocaleString()}</li>
@@ -1051,22 +1053,22 @@ export default function PurchaseAllowancesPage() {
                   </div>
 
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 13, color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款入帳帳戶 *</label>
-                    <select value={confirmAccountId} onChange={e => setConfirmAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14 }}>
+                    <label style={{ fontSize: '0.875rem', color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款入帳帳戶 *</label>
+                    <select value={confirmAccountId} onChange={e => setConfirmAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem' }}>
                       <option value="">選擇帳戶</option>
                       {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                     </select>
                   </div>
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 13, color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款日期</label>
-                    <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, boxSizing: 'border-box' }} />
+                    <label style={{ fontSize: '0.875rem', color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款日期</label>
+                    <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem', boxSizing: 'border-box' }} />
                   </div>
                 </>
               );
             })()}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => { setConfirmingId(null); setConfirmAccountId(''); }} disabled={confirmSaving} style={{ padding: '8px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: confirmSaving ? 'not-allowed' : 'pointer', fontSize: 14 }}>取消</button>
-              <button onClick={handleConfirm} disabled={confirmSaving} style={{ padding: '8px 20px', background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: confirmSaving ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600, opacity: confirmSaving ? 0.7 : 1 }}>{confirmSaving ? '處理中...' : '確認退款入帳'}</button>
+              <button onClick={() => { setConfirmingId(null); setConfirmAccountId(''); }} disabled={confirmSaving} style={{ padding: '8px 20px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, cursor: confirmSaving ? 'not-allowed' : 'pointer', fontSize: '1rem' }}>取消</button>
+              <button onClick={handleConfirm} disabled={confirmSaving} style={{ padding: '8px 20px', background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: confirmSaving ? 'not-allowed' : 'pointer', fontSize: '1rem', fontWeight: 600, opacity: confirmSaving ? 0.7 : 1 }}>{confirmSaving ? '處理中...' : '確認退款入帳'}</button>
             </div>
           </div>
         </div>

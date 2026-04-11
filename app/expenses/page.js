@@ -611,6 +611,70 @@ export default function ExpensesPage() {
     }
   }
 
+  function handlePrintMonthlyReport() {
+    const rows = sortedExpenseRecords;
+    if (rows.length === 0) { showToast('沒有資料可列印', 'error'); return; }
+    const monthLabel = recordFilter.month || '全部月份';
+    const warehouseLabel = recordFilter.warehouse || '全部館別';
+    const title = `每月支出報表 — ${monthLabel} ${warehouseLabel}`;
+    const w = window.open('', '_blank');
+    const total = rows.reduce((s, r) => s + Number(r.totalDebit || 0), 0);
+    w.document.write(`<html><head><title>${title}</title><style>
+      body{font-family:'Microsoft JhengHei',sans-serif;padding:20px;font-size:13px}
+      h2{margin:0 0 4px}
+      .info{color:#666;font-size:12px;margin-bottom:12px}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
+      th{background:#f3f4f6;font-weight:600;font-size:12px}
+      .right{text-align:right}
+      .amt{text-align:right;font-weight:500}
+      .sub{font-size:11px;color:#555;margin-top:3px}
+      .badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px}
+      .paid{background:#d4edda;color:#155724}
+      .pending{background:#fff3cd;color:#856404}
+      .advance{background:#f3e8ff;color:#6d28d9}
+      .total-row{font-weight:700;background:#f9fafb}
+      @media print{button{display:none}}
+    </style></head><body>
+    <h2>${title}</h2>
+    <div class="info">列印時間: ${new Date().toLocaleString('zh-TW')}</div>
+    <table>
+      <thead><tr>
+        <th>記錄單號</th><th>範本</th><th>月份</th><th>館別</th>
+        <th class="right">金額</th><th>費用明細</th><th>關聯單號</th><th>狀態</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => {
+          const debitLines = (r.entryLines || []).filter(l => l.entryType === 'debit');
+          const ps = r.paymentStatus || r.status || '';
+          const badgeClass = ps === '已付款' ? 'paid' : ps === '待出納' ? 'pending' : ps === '已代墊' ? 'advance' : '';
+          const relatedNos = [r.purchaseNo, r.salesNo, r.paymentOrderNo].filter(Boolean).join(' / ');
+          const linesHtml = debitLines.map(l =>
+            `<div class="sub">${l.accountingName || ''}${l.summary ? ' — ' + l.summary : ''} <span style="float:right">${Number(l.amount).toLocaleString()}</span></div>`
+          ).join('');
+          return `<tr>
+            <td style="font-family:monospace">${r.recordNo || ''}</td>
+            <td>${r.template?.name || '－'}</td>
+            <td>${r.expenseMonth || ''}</td>
+            <td>${r.warehouse || ''}</td>
+            <td class="amt">${Number(r.totalDebit || 0).toLocaleString()}</td>
+            <td>${linesHtml || '－'}</td>
+            <td style="font-size:11px">${relatedNos || '－'}</td>
+            <td><span class="badge ${badgeClass}">${ps || '－'}</span></td>
+          </tr>`;
+        }).join('')}
+        <tr class="total-row">
+          <td colspan="4" class="right">合計 ${rows.length} 筆</td>
+          <td class="amt">NT$ ${total.toLocaleString()}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tbody>
+    </table>
+    <button onclick="window.print()" style="margin-top:14px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button>
+    </body></html>`);
+    w.document.close();
+  }
+
   function openEditRecord(record) {
     setEditingRecord(record);
     setEditForm({
@@ -1878,6 +1942,49 @@ export default function ExpensesPage() {
                 <h2 style={{ fontSize: 20, fontWeight: 600 }}>
                   {mainTab === 'purchase' ? '進銷存費用記錄' : '固定費用記錄'}
                 </h2>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={handlePrintMonthlyReport}
+                    disabled={sortedExpenseRecords.length === 0}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '8px 14px', borderRadius: 8, fontSize: 14, fontWeight: 500,
+                      border: '1px solid #d1d5db', background: '#fff', color: '#374151',
+                      cursor: sortedExpenseRecords.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: sortedExpenseRecords.length === 0 ? 0.5 : 1,
+                    }}
+                  >
+                    <svg style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    列印每月支出報表
+                  </button>
+                  <ExportButtons
+                    data={sortedExpenseRecords.map(r => ({
+                      recordNo: r.recordNo || '',
+                      templateName: r.template?.name || '',
+                      expenseMonth: r.expenseMonth || '',
+                      warehouse: r.warehouse || '',
+                      totalDebit: Number(r.totalDebit || 0),
+                      relatedNos: [r.purchaseNo, r.salesNo, r.paymentOrderNo].filter(Boolean).join(' / '),
+                      paymentStatus: r.paymentStatus || r.status || '',
+                      note: r.note || '',
+                    }))}
+                    columns={[
+                      { header: '記錄單號', key: 'recordNo' },
+                      { header: '範本', key: 'templateName' },
+                      { header: '月份', key: 'expenseMonth' },
+                      { header: '館別', key: 'warehouse' },
+                      { header: '金額', key: 'totalDebit', format: 'number' },
+                      { header: '關聯單號', key: 'relatedNos' },
+                      { header: '狀態', key: 'paymentStatus' },
+                      { header: '備註', key: 'note' },
+                    ]}
+                    exportName="費用記錄"
+                    period={recordFilter.month}
+                    title={`費用記錄 ${recordFilter.month || ''} ${recordFilter.warehouse || ''}`}
+                  />
+                </div>
               </div>
 
               {/* Filters */}

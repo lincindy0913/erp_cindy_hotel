@@ -65,6 +65,14 @@ export async function POST(request) {
 
     const makerName = auth.session?.user?.name || auth.session?.user?.email?.split('@')[0] || '';
 
+    // ── Batch fetch expense entry lines (for expense-type payment orders) ──
+    const allOrderIds = orders.map(o => o.id);
+    const expenseRecs = await prisma.commonExpenseRecord.findMany({
+      where: { paymentOrderId: { in: allOrderIds } },
+      include: { entryLines: { orderBy: { sortOrder: 'asc' } } },
+    });
+    const expenseRecMap = new Map(expenseRecs.map(r => [r.paymentOrderId, r]));
+
     // ── Batch fetch related purchases via SalesDetail.purchaseId ──
     const allSalesDetailPurchaseIds = [];
     for (const inv of allInvoices) {
@@ -216,12 +224,26 @@ export async function POST(request) {
         }
       }
 
+      const expRec = expenseRecMap.get(order.id);
+      const expenseLines = expRec
+        ? expRec.entryLines.map(l => ({
+            entryType: l.entryType,
+            accountingCode: l.accountingCode,
+            accountingName: l.accountingName,
+            summary: l.summary,
+            amount: Number(l.amount),
+          }))
+        : [];
+      const expenseNote = expRec?.note || '';
+
       renderVoucherTablePage(doc, {
         order, invoices, supplierName, accountName,
         executionNo, executionDate, cashTransactionNo, makerName,
         pageNum: idx + 1, totalPages: orders.length,
         productMap: productMapForOrder, sortedDates: sortedDatesForOrder,
-        priceNoteItems: priceNoteItemsForOrder, cjkFont,
+        priceNoteItems: priceNoteItemsForOrder,
+        expenseLines, expenseNote,
+        cjkFont,
       });
     }
 

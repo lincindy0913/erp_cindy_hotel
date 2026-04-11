@@ -67,6 +67,24 @@ export async function GET(request, { params }) {
 
     const makerName = auth.session?.user?.name || auth.session?.user?.email?.split('@')[0] || '';
 
+    // ── Fetch expense entry lines (for expense-type payment orders) ──
+    let expenseLines = [];
+    let expenseNote = '';
+    const expenseRec = await prisma.commonExpenseRecord.findFirst({
+      where: { paymentOrderId: orderId },
+      include: { entryLines: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (expenseRec) {
+      expenseLines = expenseRec.entryLines.map(l => ({
+        entryType: l.entryType,
+        accountingCode: l.accountingCode,
+        accountingName: l.accountingName,
+        summary: l.summary,
+        amount: Number(l.amount),
+      }));
+      expenseNote = expenseRec.note || '';
+    }
+
     // ── Fetch related purchases via SalesDetail.purchaseId ──
     const allPurchaseIds = [];
     for (const inv of invoices) {
@@ -172,7 +190,9 @@ export async function GET(request, { params }) {
     renderVoucherTablePage(doc, {
       order, invoices, supplierName, accountName,
       executionNo, executionDate, cashTransactionNo, makerName,
-      productMap, sortedDates, priceNoteItems, cjkFont,
+      productMap, sortedDates, priceNoteItems,
+      expenseLines, expenseNote,
+      cjkFont,
     });
 
     // Audit

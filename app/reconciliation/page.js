@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
   { key: 'dashboard', label: '對帳儀表板' },
@@ -39,6 +40,7 @@ export default function ReconciliationPage() {
   const [dashLoading, setDashLoading] = useState(false);
   const [dashFilter, setDashFilter] = useState('all');
   const [dashSearch, setDashSearch] = useState('');
+  const { sortKey: dashSortKey, sortDir: dashSortDir, toggleSort: dashToggleSort } = useColumnSort('accountName', 'asc');
 
   // Account tab state
   const [accounts, setAccounts] = useState([]);
@@ -437,15 +439,94 @@ export default function ReconciliationPage() {
   };
 
   // ---- CSV/Excel Import ----
-  const handleFileUpload = (e) => {
+  // ---- Bank account statement PDF parsers ----
+
+  // Parse PDF text for 土地銀行 / 土銀 (ROC date, Big5-extracted text)
+  function parseLandBankStatementPdf(lines) {
+    const parsed = [];
+    const toNum = s => parseFloat((String(s || '')).replace(/,/g, '')) || 0;
+    for (const line of lines) {
+      // ROC date: 113/01/05 or 1130105
+      const m = line.match(/^(\d{2,3})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/);
+      if (m) {
+        const year = parseInt(m[1]) + 1911;
+        const txDate = `${year}-${m[2]}-${m[3]}`;
+        const desc = m[4].trim();
+        const col5 = toNum(m[5]);
+        const col6 = toNum(m[6]);
+        const balance = toNum(m[7]);
+        // 土銀: 支出 存入 餘額 (debit credit balance)
+        parsed.push({ txDate, description: desc, debitAmount: String(col5 || 0), creditAmount: String(col6 || 0), referenceNo: '', runningBalance: String(balance) });
+        continue;
+      }
+      // Alternative: ROC date + debit/credit marker
+      const m2 = line.match(/^(\d{2,3})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(支出|存入|借|貸)\s+([\d,]+)\s+([\d,]+)/);
+      if (m2) {
+        const year = parseInt(m2[1]) + 1911;
+        const txDate = `${year}-${m2[2]}-${m2[3]}`;
+        const isDeb = /支出|借/.test(m2[5]);
+        const amount = String(toNum(m2[6]));
+        const balance = String(toNum(m2[7]));
+        parsed.push({ txDate, description: m2[4].trim(), debitAmount: isDeb ? amount : '0', creditAmount: isDeb ? '0' : amount, referenceNo: '', runningBalance: balance });
+      }
+    }
+    return parsed;
+  }
+
+  // Parse PDF text for 台新銀行 / 玉山銀行 / 中信 / 合庫 / 第一 (AD date)
+  function parseGenericBankStatementPdf(lines, bankName) {
+    const parsed = [];
+    const toNum = s => parseFloat((String(s || '')).replace(/,/g, '')) || 0;
+    for (const line of lines) {
+      // AD date: 2024/01/05 or 2024-01-05
+      const m = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/);
+      if (m) {
+        const txDate = `${m[1]}-${m[2]}-${m[3]}`;
+        const col5 = toNum(m[5]);
+        const col6 = toNum(m[6]);
+        const balance = toNum(m[7]);
+        const desc = m[4].trim();
+        // Heuristic: larger of col5/col6 is more likely the balance; smaller two are debit/credit
+        // But actually col5=debit, col6=credit is most common
+        parsed.push({ txDate, description: desc, debitAmount: String(col5), creditAmount: String(col6), referenceNo: '', runningBalance: String(balance) });
+        continue;
+      }
+      // Some banks put debit/credit label: 2024/01/05 摘要 支出 12,500 餘額 250,000
+      const m2 = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(?:支出|提出|提款)\s+([\d,]+(?:\.\d+)?)\s+(?:餘額)?\s*([\d,]+(?:\.\d+)?)/);
+      if (m2) {
+        const txDate = `${m2[1]}-${m2[2]}-${m2[3]}`;
+        parsed.push({ txDate, description: m2[4].trim(), debitAmount: String(toNum(m2[5])), creditAmount: '0', referenceNo: '', runningBalance: String(toNum(m2[6])) });
+        continue;
+      }
+      const m3 = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(?:存入|轉入|收入)\s+([\d,]+(?:\.\d+)?)\s+(?:餘額)?\s*([\d,]+(?:\.\d+)?)/);
+      if (m3) {
+        const txDate = `${m3[1]}-${m3[2]}-${m3[3]}`;
+        parsed.push({ txDate, description: m3[4].trim(), debitAmount: '0', creditAmount: String(toNum(m3[5])), referenceNo: '', runningBalance: String(toNum(m3[6])) });
+      }
+    }
+    return parsed;
+  }
+
+  // Dispatch bank account statement PDF text by bank name
+  function parseBankStatementPdfText(fullText, bankName) {
+    const lines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
+    const bn = bankName || '';
+    if (bn.includes('土地') || bn.includes('土銀')) {
+      return parseLandBankStatementPdf(lines);
+    }
+    return parseGenericBankStatementPdf(lines, bankName);
+  }
+
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setImportFileName(file.name);
     const fmt = formats.find(f => String(f.id) === String(selectedFormatId));
+    const isPdf = /\.pdf$/i.test(file.name || '');
     const isExcel = /\.(xls|xlsx)$/i.test(file.name || '');
     let encoding = fmt?.fileEncoding || 'UTF-8';
     // 土地銀行、陽信銀行 CSV 多為 Big5 編碼，若為 UTF-8 則改為 Big5 避免亂碼
-    if (!isExcel && (fmt?.bankName === '土地銀行' || fmt?.bankName === '土銀' || fmt?.bankName === '陽信銀行')) {
+    if (!isPdf && !isExcel && (fmt?.bankName === '土地銀行' || fmt?.bankName === '土銀' || fmt?.bankName === '陽信銀行')) {
       if (encoding === 'UTF-8') encoding = 'Big5';
     }
 
@@ -457,6 +538,42 @@ export default function ReconciliationPage() {
         showMessage('無法解析資料，請確認檔案格式與編碼是否正確', 'error');
       }
     };
+
+    // --- PDF handling: client-side text extraction then bank-specific parsing ---
+    if (isPdf) {
+      try {
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
+        const arrayBuffer = await file.arrayBuffer();
+        const doc = await pdfjsLib.getDocument({ data: arrayBuffer, useSystemFonts: true }).promise;
+        let fullText = '';
+        for (let i = 1; i <= doc.numPages; i++) {
+          const page = await doc.getPage(i);
+          const content = await page.getTextContent();
+          const items = [...(content?.items || [])].sort((a, b) => {
+            const y1 = a.transform?.[5] ?? 0;
+            const y2 = b.transform?.[5] ?? 0;
+            if (Math.abs(y1 - y2) > 5) return y2 - y1;
+            return (a.transform?.[4] ?? 0) - (b.transform?.[4] ?? 0);
+          });
+          let lastY = null;
+          for (const it of items) {
+            const y = it.transform?.[5] ?? 0;
+            if (lastY !== null && Math.abs(y - lastY) > 5) fullText += '\n';
+            fullText += (it.str ?? '');
+            lastY = y;
+          }
+          fullText += '\n';
+        }
+        const parsed = parseBankStatementPdfText(fullText, fmt?.bankName || '');
+        processResult(parsed);
+      } catch (err) {
+        console.error('Bank statement PDF parse error:', err);
+        showMessage('PDF 解析失敗：' + (err.message || '未知錯誤'), 'error');
+      }
+      e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -657,7 +774,7 @@ export default function ReconciliationPage() {
 
   const submitImport = async () => {
     if (!selectedAccountId || !selectedFormatId || importLines.length === 0) {
-      showMessage('請選擇帳戶、銀行格式並上傳 CSV', 'error');
+      showMessage('請選擇帳戶、銀行格式並上傳對帳單檔案', 'error');
       return;
     }
     setImportSubmitting(true);
@@ -1912,11 +2029,19 @@ export default function ReconciliationPage() {
   };
 
   // Dashboard filtered items
-  const filteredDashItems = (dashboardData?.items || []).filter(item => {
-    if (dashFilter !== 'all' && item.status !== dashFilter) return false;
-    if (dashSearch && !item.accountName.includes(dashSearch) && !(item.warehouse || '').includes(dashSearch)) return false;
-    return true;
-  });
+  const dashSortAccessors = {
+    currentBalance: i => Number(i.currentBalance ?? 0),
+    difference: i => Number(i.difference ?? 0),
+    status: i => ({ not_started: 0, draft: 1, confirmed: 2 }[i.status] ?? 0),
+  };
+  const filteredDashItems = sortRows(
+    (dashboardData?.items || []).filter(item => {
+      if (dashFilter !== 'all' && item.status !== dashFilter) return false;
+      if (dashSearch && !item.accountName.includes(dashSearch) && !(item.warehouse || '').includes(dashSearch)) return false;
+      return true;
+    }),
+    dashSortKey, dashSortDir, dashSortAccessors
+  );
 
   // Matched / unmatched helpers
   const matchedBankIds = new Set(bankLines.filter(l => l.matchStatus === 'matched').map(l => l.id));
@@ -2067,7 +2192,7 @@ export default function ReconciliationPage() {
               </div>
             )}
 
-            {/* Account Cards Grid */}
+            {/* Account List Table */}
             {dashLoading ? (
               <div className="text-center py-12 text-gray-400">載入中...</div>
             ) : filteredDashItems.length === 0 ? (
@@ -2076,57 +2201,64 @@ export default function ReconciliationPage() {
                 <p className="text-gray-300 text-sm mt-1">請先至現金流模組新增銀行存款帳戶</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDashItems.map(item => {
-                  const statusInfo = STATUS_MAP[item.status] || STATUS_MAP.not_started;
-                  const hasDiff = item.status === 'confirmed' && item.difference !== 0;
-                  const cardBorder = hasDiff ? 'border-orange-400 border-2' : 'border';
-
-                  return (
-                    <div
-                      key={item.accountId}
-                      className={`bg-white rounded-xl shadow-sm ${cardBorder} p-4 cursor-pointer hover:shadow-md transition-shadow`}
-                      onClick={() => navigateToAccount(item.accountId)}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-800">{item.accountName}</h4>
-                          {item.warehouse && (
-                            <span className="text-xs text-gray-400">{item.warehouse}</span>
-                          )}
-                          {item.accountCode && (
-                            <span className="text-xs text-gray-400 ml-2">{item.accountCode}</span>
-                          )}
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded-full border ${statusInfo.color}`}>
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        <div className="flex justify-between">
-                          <span>目前餘額</span>
-                          <span className="font-medium text-gray-700">${formatMoney(item.currentBalance)}</span>
-                        </div>
-                        {item.status !== 'not_started' && item.difference !== 0 && (
-                          <div className="flex justify-between mt-1">
-                            <span>差異金額</span>
-                            <span className={`font-medium ${item.difference !== 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                              ${formatMoney(item.difference)}
+              <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <SortableTh label="帳戶名稱" colKey="accountName" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" />
+                      <SortableTh label="館別" colKey="warehouse" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" />
+                      <SortableTh label="存簿餘額" colKey="currentBalance" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" align="right" />
+                      <SortableTh label="差異金額" colKey="difference" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" align="right" />
+                      <SortableTh label="對帳狀態" colKey="status" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" align="center" />
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredDashItems.map(item => {
+                      const statusInfo = STATUS_MAP[item.status] || STATUS_MAP.not_started;
+                      const hasDiff = item.status === 'confirmed' && item.difference !== 0;
+                      return (
+                        <tr
+                          key={item.accountId}
+                          className={`hover:bg-violet-50/40 cursor-pointer transition-colors ${hasDiff ? 'bg-orange-50/30' : ''}`}
+                          onClick={() => navigateToAccount(item.accountId)}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-800">{item.accountName}</div>
+                            {item.accountCode && <div className="text-xs text-gray-400">{item.accountCode}</div>}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">{item.warehouse || <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-3 text-right font-mono font-medium text-gray-800">${formatMoney(item.currentBalance)}</td>
+                          <td className="px-4 py-3 text-right font-mono">
+                            {item.status === 'not_started' || item.difference === 0
+                              ? <span className="text-gray-300">—</span>
+                              : <span className={item.difference !== 0 ? 'text-orange-600 font-medium' : 'text-green-600'}>${formatMoney(item.difference)}</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border ${statusInfo.color}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
+                              {statusInfo.label}
                             </span>
-                          </div>
-                        )}
-                      </div>
-                      {hasDiff && (
-                        <div className="mt-2 text-xs text-orange-500 flex items-center gap-1">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                          </svg>
-                          存在差異，需複查
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {hasDiff && (
+                              <span className="text-xs text-orange-500 flex items-center justify-end gap-1">
+                                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                                需複查
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2 bg-gray-50 border-t text-xs text-gray-400 text-right">
+                  共 {filteredDashItems.length} 筆帳戶
+                </div>
               </div>
             )}
           </div>
@@ -2701,7 +2833,7 @@ export default function ReconciliationPage() {
         {showImportModal && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowImportModal(false)}>
             <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={e => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">匯入銀行對帳單 (CSV)</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">匯入銀行對帳單 (CSV / Excel / PDF)</h3>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">銀行格式</label>
@@ -2717,17 +2849,17 @@ export default function ReconciliationPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">上傳 CSV 檔案</label>
+                  <label className="block text-sm text-gray-600 mb-1">上傳對帳單檔案</label>
                   <p className="text-xs text-gray-400 mb-2">
                     {selectedFormatId && ['土地', '世華', '國泰世華', '陽信', '兆豐', '玉山'].some(k => formats.find(f => String(f.id) === String(selectedFormatId))?.bankName?.includes(k)) ? (
-                      <>已選銀行格式；兆豐、玉山請上傳 .xls/.xlsx，其餘上傳 CSV（請先選格式再上傳）</>
+                      <>已選銀行格式；兆豐、玉山請上傳 .xls/.xlsx，其餘支援 CSV 或 PDF（請先選格式再上傳）</>
                     ) : (
-                      <>預設格式：日期, 說明, 提款金額, 存入金額, 備註, 餘額；或先選擇銀行格式</>
+                      <>支援 CSV、Excel（.xls/.xlsx）或 PDF 格式；PDF 請先選擇對應銀行格式</>
                     )}
                   </p>
                   <input
                     type="file"
-                    accept=".csv,.xls,.xlsx"
+                    accept=".csv,.xls,.xlsx,.pdf"
                     onChange={handleFileUpload}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
                   />

@@ -203,7 +203,8 @@ export async function POST(request) {
       const pageHeight = orientation === 'landscape' ? 210 : 297;
       const m = 12;
       const contentWidth = pageWidth - m * 2;
-      const warehouseDisplay = warehouse || '全館';
+      const uniqueWarehouses = [...new Set(purchases.map(p => p.warehouse).filter(Boolean))];
+      const warehouseDisplay = warehouse || (uniqueWarehouses.length === 1 ? uniqueWarehouses[0] : '全館');
       const tableFS = isLandscape ? 7 : 8;
       const printDate = new Date();
       const printDateStr = `${printDate.getFullYear()}/${printDate.getMonth() + 1}/${printDate.getDate()}`;

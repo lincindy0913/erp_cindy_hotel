@@ -2365,10 +2365,10 @@ export default function PaymentPage() {
             <div style={{ borderBottom: '3px solid #16a34a', paddingBottom: '10px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <div>
-                  <h1 style={{ fontSize: '18px', fontWeight: 700, color: '#111827', margin: 0 }}>付款單報表（按進貨單館別）</h1>
-                  <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }}>{periodLabel}　廠商：{suppliers.find(s => String(s.id) === purchaseReportSupplierId)?.name || '全部'}</p>
+                  <h1 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#111827', margin: 0 }}>付款單報表（按進貨單館別）</h1>
+                  <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: '4px 0 0' }}>{periodLabel}　廠商：{suppliers.find(s => String(s.id) === purchaseReportSupplierId)?.name || '全部'}</p>
                 </div>
-                <div style={{ textAlign: 'right', fontSize: '11px', color: '#9ca3af' }}>
+                <div style={{ textAlign: 'right', fontSize: '0.75rem', color: '#9ca3af' }}>
                   <p style={{ margin: 0 }}>列印日期：{new Date().toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
                   <p style={{ margin: '2px 0 0' }}>共 {allOrders.length} 筆 / {Object.keys(groups).length} 館別 / 總計 NT$ {grandTotal.toLocaleString()}</p>
                 </div>
@@ -2383,14 +2383,14 @@ export default function PaymentPage() {
                   {/* Group header bar */}
                   <div style={{ background: '#166534', color: '#fff', padding: '6px 12px', borderRadius: '4px 4px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: '3px', padding: '1px 6px', fontSize: '11px', fontWeight: 700 }}>{gIdx + 1}</span>
-                      <span style={{ fontWeight: 700, fontSize: '13px' }}>進貨館別：{whKey}</span>
-                      <span style={{ fontSize: '11px', opacity: 0.85 }}>（{list.length} 筆）</span>
+                      <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: '3px', padding: '1px 6px', fontSize: '0.75rem', fontWeight: 700 }}>{gIdx + 1}</span>
+                      <span style={{ fontWeight: 700, fontSize: '1rem' }}>進貨館別：{whKey}</span>
+                      <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>（{list.length} 筆）</span>
                     </div>
-                    <span style={{ fontWeight: 700, fontSize: '13px' }}>小計 NT$ {subtotal.toLocaleString()}</span>
+                    <span style={{ fontWeight: 700, fontSize: '1rem' }}>小計 NT$ {subtotal.toLocaleString()}</span>
                   </div>
                   {/* Table */}
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', border: '1px solid #d1d5db' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', border: '1px solid #d1d5db' }}>
                     <thead>
                       <tr style={{ background: '#f0fdf4' }}>
                         <th style={{ padding: '5px 8px', textAlign: 'left', border: '1px solid #d1d5db', width: '28px', color: '#374151' }}>#</th>
@@ -2405,13 +2405,13 @@ export default function PaymentPage() {
                     <tbody>
                       {list.map((o, idx) => (
                         <tr key={o.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                          <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#9ca3af', fontSize: '11px' }}>{idx + 1}</td>
+                          <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#9ca3af', fontSize: '0.75rem' }}>{idx + 1}</td>
                           <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', fontWeight: 600, fontFamily: 'monospace', color: '#4338ca' }}>{o.orderNo}</td>
                           <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb' }}>{o.supplierName || '-'}</td>
                           <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#6b7280' }}>{o.paymentMethod || '-'}</td>
                           <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', textAlign: 'right', fontWeight: 600 }}>NT$ {Number(o.netAmount).toLocaleString()}</td>
-                          <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#6b7280', fontFamily: 'monospace', fontSize: '11px' }}>{o.purchaseNo || '-'}</td>
-                          <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#9ca3af', fontSize: '11px' }}>{o.note || '－'}</td>
+                          <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#6b7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>{o.purchaseNo || '-'}</td>
+                          <td style={{ padding: '4px 8px', border: '1px solid #e5e7eb', color: '#9ca3af', fontSize: '0.75rem' }}>{o.note || '－'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2429,8 +2429,8 @@ export default function PaymentPage() {
 
             {/* Grand total */}
             <div style={{ background: '#1f2937', color: '#fff', padding: '10px 16px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-              <span style={{ fontSize: '13px' }}>總計　{allOrders.length} 筆　{Object.keys(groups).length} 個館別</span>
-              <span style={{ fontSize: '16px', fontWeight: 700 }}>NT$ {grandTotal.toLocaleString()}</span>
+              <span style={{ fontSize: '1rem' }}>總計　{allOrders.length} 筆　{Object.keys(groups).length} 個館別</span>
+              <span style={{ fontSize: '1rem', fontWeight: 700 }}>NT$ {grandTotal.toLocaleString()}</span>
             </div>
           </div>
         );
