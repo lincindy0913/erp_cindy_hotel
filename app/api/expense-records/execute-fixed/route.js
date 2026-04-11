@@ -155,7 +155,7 @@ export async function POST(request) {
               supplierId: lineSupplierId, supplierName: lineSupplierName, paymentMethod: pm, totalDebit: debitTotal, totalCredit: creditTotal,
               paymentOrderId: po.id, paymentOrderNo: orderNo, status: '已確認', confirmedBy: data.createdBy.trim(), confirmedAt: new Date(),
               note: data.note || null, createdBy: data.createdBy.trim(),
-              entryLines: { create: whLines.map((line, idx) => ({ entryType: line.entryType, accountingCode: line.accountingCode || '', accountingName: line.accountingName || '', summary: line.summary || '', amount: line.amount, sortOrder: idx })) }
+              entryLines: { create: whLines.map((line, idx) => ({ entryType: line.entryType, accountingCode: line.accountingCode || '', accountingName: line.accountingName || '', summary: line.summary || '', amount: line.amount, sortOrder: line.sortOrder ?? idx })) }
             }
           });
 
