@@ -8,111 +8,111 @@ export const dynamic = 'force-dynamic';
 
 // Tables that store warehouse as free-text string
 const WAREHOUSE_TABLES = [
-  { model: 'purchaseMaster', field: 'warehouse', label: '進貨單' },
-  { model: 'purchaseDetail', field: 'inventoryWarehouse', label: '進貨明細(庫存)' },
-  { model: 'salesDetail', field: 'warehouse', label: '發票明細' },
-  { model: 'cashAccount', field: 'warehouse', label: '現金帳戶' },
-  { model: 'cashCategory', field: 'warehouse', label: '現金類別' },
-  { model: 'cashTransaction', field: 'warehouse', label: '現金交易' },
-  { model: 'expense', field: 'warehouse', label: '費用' },
-  { model: 'paymentOrder', field: 'warehouse', label: '付款單' },
-  { model: 'commonExpenseRecord', field: 'warehouse', label: '固定費用紀錄' },
-  { model: 'employeeAdvance', field: 'warehouse', label: '員工代墊' },
-  { model: 'purchaseAllowance', field: 'warehouse', label: '進貨折讓' },
-  { model: 'pmsImportBatch', field: 'warehouse', label: 'PMS匯入' },
-  { model: 'pmsIncomeRecord', field: 'warehouse', label: 'PMS收入' },
-  { model: 'pmsPaymentMethodConfig', field: 'warehouse', label: 'PMS付款設定' },
-  { model: 'utilityBillRecord', field: 'warehouse', label: '水電費' },
-  { model: 'inventoryRequisition', field: 'warehouse', label: '領料單' },
-  { model: 'stockCount', field: 'warehouse', label: '盤點' },
-  { model: 'monthEndStatus', field: 'warehouse', label: '月結狀態' },
-  { model: 'monthEndReport', field: 'warehouse', label: '月結報表' },
-  { model: 'departmentExpense', field: 'warehouse', label: '部門費用' },
-  { model: 'monthlyAggregation', field: 'warehouse', label: '月彙總' },
-  { model: 'creditCardStatement', field: 'warehouse', label: '信用卡帳單' },
+  { model: 'purchaseMaster',         field: 'warehouse',          label: '進貨單' },
+  { model: 'purchaseDetail',         field: 'inventoryWarehouse', label: '進貨明細(庫存)' },
+  { model: 'salesDetail',            field: 'warehouse',          label: '發票明細' },
+  { model: 'cashAccount',            field: 'warehouse',          label: '現金帳戶' },
+  { model: 'cashCategory',           field: 'warehouse',          label: '現金類別' },
+  { model: 'cashTransaction',        field: 'warehouse',          label: '現金交易' },
+  { model: 'expense',                field: 'warehouse',          label: '費用' },
+  { model: 'paymentOrder',           field: 'warehouse',          label: '付款單' },
+  { model: 'commonExpenseRecord',    field: 'warehouse',          label: '固定費用紀錄' },
+  { model: 'employeeAdvance',        field: 'warehouse',          label: '員工代墊' },
+  { model: 'purchaseAllowance',      field: 'warehouse',          label: '進貨折讓' },
+  { model: 'pmsImportBatch',         field: 'warehouse',          label: 'PMS匯入' },
+  { model: 'pmsIncomeRecord',        field: 'warehouse',          label: 'PMS收入' },
+  { model: 'pmsPaymentMethodConfig', field: 'warehouse',          label: 'PMS付款設定' },
+  { model: 'utilityBillRecord',      field: 'warehouse',          label: '水電費' },
+  { model: 'inventoryRequisition',   field: 'warehouse',          label: '領料單' },
+  { model: 'stockCount',             field: 'warehouse',          label: '盤點' },
+  { model: 'monthEndStatus',         field: 'warehouse',          label: '月結狀態' },
+  { model: 'monthEndReport',         field: 'warehouse',          label: '月結報表' },
+  { model: 'departmentExpense',      field: 'warehouse',          label: '部門費用' },
+  { model: 'monthlyAggregation',     field: 'warehouse',          label: '月彙總' },
+  { model: 'creditCardStatement',    field: 'warehouse',          label: '信用卡帳單' },
 ];
 
 // Tables that store supplierName as free-text
 const SUPPLIER_TABLES = [
-  { model: 'expense', field: 'supplierName', label: '費用' },
-  { model: 'paymentOrder', field: 'supplierName', label: '付款單' },
-  { model: 'commonExpenseRecord', field: 'supplierName', label: '固定費用紀錄' },
-  { model: 'templateEntryLine', field: 'supplierName', label: '範本明細' },
-  { model: 'purchaseAllowance', field: 'supplierName', label: '進貨折讓' },
+  { model: 'expense',               field: 'supplierName', label: '費用' },
+  { model: 'paymentOrder',          field: 'supplierName', label: '付款單' },
+  { model: 'commonExpenseRecord',   field: 'supplierName', label: '固定費用紀錄' },
+  { model: 'templateEntryLine',     field: 'supplierName', label: '範本明細' },
+  { model: 'purchaseAllowance',     field: 'supplierName', label: '進貨折讓' },
 ];
 
-// GET: scan all tables for inconsistent names
+// Tables that store accountingSubject as free-text string
+const ACCOUNTING_SUBJECT_TABLES = [
+  { model: 'cashTransaction', field: 'accountingSubject', label: '現金交易' },
+  { model: 'product',         field: 'accountingSubject', label: '商品預設科目' },
+];
+
+// ── helpers ─────────────────────────────────────────────────────────
+async function scanTables(tables, validNameSet) {
+  const values = {};
+  for (const t of tables) {
+    try {
+      const rows = await prisma[t.model].groupBy({
+        by: [t.field],
+        _count: { [t.field]: true },
+        where: { [t.field]: { not: null, not: '' } },
+      });
+      for (const row of rows) {
+        const val = row[t.field];
+        if (!val) continue;
+        if (!values[val]) values[val] = { name: val, inMaster: validNameSet.has(val), tables: [], totalCount: 0 };
+        values[val].tables.push({ table: t.label, model: t.model, field: t.field, count: row._count[t.field] });
+        values[val].totalCount += row._count[t.field];
+      }
+    } catch { /* table or field may not exist yet */ }
+  }
+  return Object.values(values).sort((a, b) => {
+    if (a.inMaster !== b.inMaster) return a.inMaster ? 1 : -1; // non-master first
+    return b.totalCount - a.totalCount;
+  });
+}
+
+// ── GET: scan all tables for inconsistent names ──────────────────────
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
   if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type') || 'all'; // 'warehouse', 'supplier', 'all'
+    const type = searchParams.get('type') || 'all';
 
-    // Get master lists
-    const [masterWarehouses, masterSuppliers] = await Promise.all([
+    // Fetch all master lists in parallel
+    const [masterWarehouses, masterSuppliers, masterSubjects] = await Promise.all([
       prisma.warehouse.findMany({ where: { type: 'building', parentId: null }, select: { name: true } }),
       prisma.supplier.findMany({ where: { isActive: true }, select: { id: true, name: true } }),
+      prisma.accountingSubject.findMany({ where: { isActive: true }, select: { id: true, code: true, name: true } }).catch(() => []),
     ]);
 
-    const validWarehouseNames = new Set(masterWarehouses.map(w => w.name));
-    const validSupplierNames = new Set(masterSuppliers.map(s => s.name));
+    const validWarehouseNames  = new Set(masterWarehouses.map(w => w.name));
+    const validSupplierNames   = new Set(masterSuppliers.map(s => s.name));
+    // Accounting subjects are stored as free-text in various formats — match both "code name" and just "name"
+    const validSubjectStrings  = new Set([
+      ...masterSubjects.map(s => `${s.code} ${s.name}`),
+      ...masterSubjects.map(s => s.name),
+      ...masterSubjects.map(s => s.code),
+    ]);
 
-    const result = { warehouse: [], supplier: [] };
+    const result = { warehouse: [], supplier: [], accountingSubject: [] };
 
-    // Scan warehouse fields
-    if (type === 'all' || type === 'warehouse') {
-      const warehouseValues = {};
-      for (const t of WAREHOUSE_TABLES) {
-        try {
-          const rows = await prisma[t.model].groupBy({
-            by: [t.field],
-            _count: { [t.field]: true },
-            where: { [t.field]: { not: null, not: '' } },
-          });
-          for (const row of rows) {
-            const val = row[t.field];
-            if (!val) continue;
-            if (!warehouseValues[val]) warehouseValues[val] = { name: val, inMaster: validWarehouseNames.has(val), tables: [], totalCount: 0 };
-            warehouseValues[val].tables.push({ table: t.label, model: t.model, field: t.field, count: row._count[t.field] });
-            warehouseValues[val].totalCount += row._count[t.field];
-          }
-        } catch { /* table may not exist */ }
-      }
-      result.warehouse = Object.values(warehouseValues).sort((a, b) => {
-        if (a.inMaster !== b.inMaster) return a.inMaster ? 1 : -1; // non-master first
-        return b.totalCount - a.totalCount;
-      });
-    }
+    const [wh, sp, as] = await Promise.all([
+      (type === 'all' || type === 'warehouse')         ? scanTables(WAREHOUSE_TABLES,          validWarehouseNames)  : Promise.resolve([]),
+      (type === 'all' || type === 'supplier')          ? scanTables(SUPPLIER_TABLES,           validSupplierNames)   : Promise.resolve([]),
+      (type === 'all' || type === 'accountingSubject') ? scanTables(ACCOUNTING_SUBJECT_TABLES, validSubjectStrings)  : Promise.resolve([]),
+    ]);
 
-    // Scan supplier fields
-    if (type === 'all' || type === 'supplier') {
-      const supplierValues = {};
-      for (const t of SUPPLIER_TABLES) {
-        try {
-          const rows = await prisma[t.model].groupBy({
-            by: [t.field],
-            _count: { [t.field]: true },
-            where: { [t.field]: { not: null, not: '' } },
-          });
-          for (const row of rows) {
-            const val = row[t.field];
-            if (!val) continue;
-            if (!supplierValues[val]) supplierValues[val] = { name: val, inMaster: validSupplierNames.has(val), tables: [], totalCount: 0 };
-            supplierValues[val].tables.push({ table: t.label, model: t.model, field: t.field, count: row._count[t.field] });
-            supplierValues[val].totalCount += row._count[t.field];
-          }
-        } catch { /* table may not exist */ }
-      }
-      result.supplier = Object.values(supplierValues).sort((a, b) => {
-        if (a.inMaster !== b.inMaster) return a.inMaster ? 1 : -1;
-        return b.totalCount - a.totalCount;
-      });
-    }
+    result.warehouse         = wh;
+    result.supplier          = sp;
+    result.accountingSubject = as;
 
-    result.masterWarehouses = [...validWarehouseNames].sort();
-    result.masterSuppliers = masterSuppliers.map(s => ({ id: s.id, name: s.name })).sort((a, b) => a.name.localeCompare(b.name));
+    result.masterWarehouses      = [...validWarehouseNames].sort();
+    result.masterSuppliers       = masterSuppliers.map(s => ({ id: s.id, name: s.name })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    result.masterSubjects        = masterSubjects.map(s => ({ id: s.id, code: s.code, name: s.name, display: `${s.code} ${s.name}` }))
+                                     .sort((a, b) => a.code.localeCompare(b.code));
 
     return NextResponse.json(result);
   } catch (error) {
@@ -120,7 +120,7 @@ export async function GET(request) {
   }
 }
 
-// POST: batch rename — replace oldName with newName across all tables
+// ── POST: batch rename across all tables of the given type ──────────
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.SETTINGS_EDIT);
   if (!auth.ok) return auth.response;
@@ -135,10 +135,13 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '新舊名稱相同', 400);
     }
 
-    const tables = type === 'warehouse' ? WAREHOUSE_TABLES : type === 'supplier' ? SUPPLIER_TABLES : [];
-    if (tables.length === 0) {
-      return createErrorResponse('VALIDATION_FAILED', '未知的類型', 400);
-    }
+    const tableMap = {
+      warehouse:         WAREHOUSE_TABLES,
+      supplier:          SUPPLIER_TABLES,
+      accountingSubject: ACCOUNTING_SUBJECT_TABLES,
+    };
+    const tables = tableMap[type];
+    if (!tables) return createErrorResponse('VALIDATION_FAILED', '未知的類型', 400);
 
     let totalUpdated = 0;
     const details = [];
@@ -147,13 +150,13 @@ export async function POST(request) {
       try {
         const result = await prisma[t.model].updateMany({
           where: { [t.field]: oldName },
-          data: { [t.field]: newName },
+          data:  { [t.field]: newName },
         });
         if (result.count > 0) {
           details.push({ table: t.label, count: result.count });
           totalUpdated += result.count;
         }
-      } catch { /* table may not exist or field mismatch */ }
+      } catch { /* table or field may not exist */ }
     }
 
     return NextResponse.json({

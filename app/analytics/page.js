@@ -91,6 +91,10 @@ export default function AnalyticsPage() {
   const [supplierPnlWarehouse, setSupplierPnlWarehouse] = useState('');
   const [supplierPnlSearch, setSupplierPnlSearch] = useState('');
 
+  // ── Shared dropdown data ───────────────────────────────────────
+  const [warehouses, setWarehouses] = useState([]);
+  const [suppliersList, setSuppliersList] = useState([]);
+
   // ── Cash Flow ─────────────────────────────────────────────────
   const [cashflow, setCashflow] = useState(null);
   const [cashflowLoading, setCashflowLoading] = useState(false);
@@ -214,6 +218,23 @@ export default function AnalyticsPage() {
     setReportApproving(false);
   };
 
+  // Load warehouses and suppliers once on mount
+  useEffect(() => {
+    fetch('/api/warehouse-departments')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.list) setWarehouses(data.list.filter(w => w.type === 'building').map(w => w.name));
+      })
+      .catch(() => {});
+    fetch('/api/suppliers?all=true')
+      .then(r => r.json())
+      .then(data => {
+        const list = Array.isArray(data) ? data : (data?.data || []);
+        setSuppliersList(list.map(s => s.name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant')));
+      })
+      .catch(() => {});
+  }, []);
+
   // Load on tab activation
   useEffect(() => {
     if (activeTab === 'overview') fetchOverview();
@@ -274,8 +295,11 @@ export default function AnalyticsPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <input type="text" value={pnlWarehouse} onChange={e => setPnlWarehouse(e.target.value)}
-                    placeholder="全部館別" className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                  <select value={pnlWarehouse} onChange={e => setPnlWarehouse(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                    <option value="">全部館別</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
                 </div>
                 <button onClick={fetchPnl} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
                   查詢
@@ -307,13 +331,19 @@ export default function AnalyticsPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <input type="text" value={supplierPnlWarehouse} onChange={e => setSupplierPnlWarehouse(e.target.value)}
-                    placeholder="全部館別" className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                  <select value={supplierPnlWarehouse} onChange={e => setSupplierPnlWarehouse(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                    <option value="">全部館別</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">搜尋廠商</label>
-                  <input type="text" value={supplierPnlSearch} onChange={e => setSupplierPnlSearch(e.target.value)}
-                    placeholder="廠商名稱..." className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                  <select value={supplierPnlSearch} onChange={e => setSupplierPnlSearch(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                    <option value="">全部廠商</option>
+                    {suppliersList.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
                 <button onClick={fetchSupplierPnl} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
                   查詢

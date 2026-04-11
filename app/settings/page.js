@@ -485,12 +485,18 @@ export default function SettingsPage() {
   const [systemInfo, setSystemInfo] = useState({
     version: '',
     dbStatus: '',
+    dbError: '',
     productCount: 0,
     supplierCount: 0,
     purchaseCount: 0,
     invoiceCount: 0,
     expenseCount: 0,
     userCount: 0,
+    cashAccountCount: 0,
+    loanCount: 0,
+    cashTransactionCount: 0,
+    warehouseCount: 0,
+    departmentCount: 0,
   });
 
   // Master data counts state
@@ -2110,32 +2116,75 @@ export default function SettingsPage() {
 
   // === 7. 系統資訊 (existing) ===
   function renderSystemInfoSection() {
-    const infoItems = [
-      { label: '系統版本', value: systemInfo.version || '1.0.0' },
-      { label: '資料庫狀態', value: systemInfo.dbStatus || '正常', isStatus: true },
-      { label: '產品數量', value: systemInfo.productCount ?? '-' },
-      { label: '廠商數量', value: systemInfo.supplierCount ?? '-' },
-      { label: '進貨單數量', value: systemInfo.purchaseCount ?? '-' },
-      { label: '發票數量', value: systemInfo.invoiceCount ?? '-' },
-      { label: '支出記錄數', value: systemInfo.expenseCount ?? '-' },
-      { label: '使用者數量', value: systemInfo.userCount ?? '-' },
+    const dbOk = systemInfo.dbStatus === '正常';
+
+    const dataGroups = [
+      {
+        label: '商品與供應商',
+        items: [
+          { label: '產品數量',   value: systemInfo.productCount },
+          { label: '廠商數量',   value: systemInfo.supplierCount },
+          { label: '館別數量',   value: systemInfo.warehouseCount },
+          { label: '部門數量',   value: systemInfo.departmentCount },
+        ],
+      },
+      {
+        label: '交易與財務',
+        items: [
+          { label: '進貨單數量',     value: systemInfo.purchaseCount },
+          { label: '發票數量',       value: systemInfo.invoiceCount },
+          { label: '支出記錄數',     value: systemInfo.expenseCount },
+          { label: '現金交易筆數',   value: systemInfo.cashTransactionCount },
+          { label: '現金帳戶數',     value: systemInfo.cashAccountCount },
+          { label: '貸款筆數',       value: systemInfo.loanCount },
+        ],
+      },
+      {
+        label: '系統',
+        items: [
+          { label: '使用者數量', value: systemInfo.userCount },
+        ],
+      },
     ];
 
     return (
       <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-6">系統資訊</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {infoItems.map((item) => (
-              <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-gray-100">
-                <span className="text-sm text-gray-500">{item.label}</span>
-                <span className={`text-sm font-medium ${item.isStatus ? (item.value === '正常' ? 'text-green-600' : 'text-red-600') : 'text-gray-700'}`}>
-                  {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}
-                </span>
-              </div>
-            ))}
+        {/* DB status banner */}
+        <div className={`rounded-xl border p-4 flex items-start gap-3 ${dbOk ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+          <span className={`text-xl mt-0.5 ${dbOk ? 'text-emerald-500' : 'text-red-500'}`}>{dbOk ? '✅' : '❌'}</span>
+          <div>
+            <p className={`text-sm font-semibold ${dbOk ? 'text-emerald-800' : 'text-red-800'}`}>
+              資料庫狀態：{systemInfo.dbStatus || '載入中...'}
+            </p>
+            {!dbOk && systemInfo.dbError && (
+              <p className="text-xs text-red-600 mt-1 font-mono">{systemInfo.dbError}</p>
+            )}
+            {dbOk && (
+              <p className="text-xs text-emerald-600 mt-0.5">PostgreSQL 連線正常，資料查詢成功</p>
+            )}
+          </div>
+          <div className="ml-auto text-right">
+            <p className="text-xs text-gray-400">系統版本</p>
+            <p className="text-sm font-bold text-gray-700">{systemInfo.version || '—'}</p>
           </div>
         </div>
+
+        {/* Data counts by group */}
+        {dataGroups.map(group => (
+          <div key={group.label} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">{group.label}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {group.items.map(item => (
+                <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <span className="text-sm text-gray-500">{item.label}</span>
+                  <span className="text-sm font-semibold text-gray-800">
+                    {dbOk ? (item.value ?? 0).toLocaleString() : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-4">環境資訊</h3>
