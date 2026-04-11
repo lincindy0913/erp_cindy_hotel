@@ -116,8 +116,7 @@
 }
 
 html {
-  /* Base font scale: 30px (default 16px) — all rem-based Tailwind sizes scale up ~87% */
-  font-size: 30px;
+  font-size: 16px;
 }
 
 body {
