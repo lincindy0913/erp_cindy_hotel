@@ -13,7 +13,7 @@ const SECTIONS = [
   { key: 'notifications', label: '通知設定', icon: '🔔' },
   { key: 'notification-channels', label: '通知渠道管理', icon: '📨' },
   { key: 'cash-count', label: '現金盤點設定', icon: '🏦' },
-  { key: 'backup', label: '資料備份', icon: '💾' },
+
   { key: 'data-import', label: '期初資料匯入', icon: '📥' },
   { key: 'users', label: '使用者管理', icon: '👥' },
   { key: 'master-governance', label: '主檔治理', icon: '🔍', href: '/settings/master-data-governance' },
@@ -2240,38 +2240,6 @@ export default function SettingsPage() {
     return <CashCountConfigSection showToast={showToast} />;
   }
 
-  // === 8. 資料備份 ===
-  function renderBackupSection() {
-    return (
-      <div className="space-y-6">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">資料備份管理</h3>
-          <p className="text-sm text-gray-500 mb-4">管理系統資料備份策略、手動觸發備份與還原</p>
-          <div className="grid grid-cols-2 gap-4">
-            <a href="/admin/backup" className="group p-5 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">💾</span>
-                <h4 className="text-sm font-semibold text-gray-700 group-hover:text-gray-900">備份管理控制台</h4>
-              </div>
-              <p className="text-xs text-gray-400">查看備份歷史、手動觸發各層級備份、管理備份設定</p>
-              <div className="text-right mt-3">
-                <span className="text-xs text-gray-400 group-hover:text-gray-600">前往管理 →</span>
-              </div>
-            </a>
-            <div className="p-5 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="text-sm font-semibold text-blue-800 mb-2">備份層級說明</h4>
-              <ul className="text-xs text-blue-700 space-y-1">
-                <li>Tier 1 — 全量備份（每週自動）</li>
-                <li>Tier 2 — 快照備份（每日自動）</li>
-                <li>Tier 3 — 月結/年結備份（月結或年結觸發）</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // === 9. 期初資料匯入 ===
   function renderDataImportSection() {
     return (
@@ -2323,8 +2291,6 @@ export default function SettingsPage() {
         return renderNotificationChannelsSection();
       case 'cash-count':
         return renderCashCountConfigSection();
-      case 'backup':
-        return renderBackupSection();
       case 'data-import':
         return renderDataImportSection();
       case 'users':

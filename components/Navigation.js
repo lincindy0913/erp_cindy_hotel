@@ -45,7 +45,7 @@ const DATA_SETTINGS_ITEMS = [
   { href: '/settings', label: '系統設定', linkClass: 'link-settings', requiredPermission: 'settings.view' },
   { href: '/admin/users', label: '使用者管理', linkClass: 'link-dashboard', adminOnly: true },
   { href: '/admin/audit-log', label: '稽核日誌', linkClass: 'link-audit', adminOnly: true },
-  { href: '/admin/backup', label: '資料備份', linkClass: 'link-settings', adminOnly: true },
+
 ];
 
 export default function Navigation({ borderColor = 'border-blue-500' }) {
