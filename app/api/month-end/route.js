@@ -341,7 +341,7 @@ export async function POST(request) {
           name: '現金盤點未完成',
           count: missingAccounts.length,
           passed: missingAccounts.length === 0,
-          level: missingAccounts.length > 0 ? 'error' : 'pass',
+          level: missingAccounts.length > 0 ? 'warning' : 'pass',
           detail: missingAccounts.length > 0
             ? `以下帳戶尚未完成 ${lastDayStr} 盤點：${missingAccounts.map(a => a.name).join('、')}`
             : undefined,
