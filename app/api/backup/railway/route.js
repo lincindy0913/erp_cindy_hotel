@@ -31,9 +31,9 @@ export async function GET() {
   const auth = await requireAnyPermission([PERMISSIONS.BACKUP_VIEW, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
 
-  const token      = process.env.RAILWAY_API_TOKEN;
-  const projectId  = process.env.RAILWAY_PROJECT_ID;
-  const envId      = process.env.RAILWAY_ENVIRONMENT_ID;
+  const token     = process.env.RAILWAY_API_TOKEN;
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  const envId     = process.env.RAILWAY_ENVIRONMENT_ID;
 
   // Not configured
   if (!token) {
@@ -47,55 +47,53 @@ export async function GET() {
   }
 
   try {
-    // Step 1: Get project + plugins info
-    const projectQuery = `
-      query GetProject($projectId: String!) {
-        project(id: $projectId) {
-          id
-          name
-          description
-          createdAt
-          updatedAt
-          plugins {
-            edges {
-              node {
-                id
-                name
-                friendlyName
-                status
-                databaseType
-              }
-            }
-          }
-          services {
-            edges {
-              node {
-                id
-                name
-              }
-            }
-          }
-        }
-      }
-    `;
+    // Step 1: Verify token works with a simple "me" query (no projectId needed)
+    const meQuery = `query { me { id name email } }`;
+    const meData = await railwayQuery(meQuery);
+    const me = meData?.me;
 
     let project = null;
     let postgresPlugin = null;
 
+    // Step 2: Get project info only if projectId is available
     if (projectId) {
-      const data = await railwayQuery(projectQuery, { projectId });
-      project = data?.project;
+      try {
+        const projectQuery = `
+          query GetProject($projectId: String!) {
+            project(id: $projectId) {
+              id
+              name
+              createdAt
+              plugins {
+                edges {
+                  node {
+                    id
+                    name
+                    friendlyName
+                    status
+                    databaseType
+                  }
+                }
+              }
+            }
+          }
+        `;
+        const data = await railwayQuery(projectQuery, { projectId });
+        project = data?.project;
 
-      // Find the Postgres plugin
-      const plugins = project?.plugins?.edges?.map(e => e.node) || [];
-      postgresPlugin = plugins.find(p =>
-        p.databaseType === 'PostgreSQL' ||
-        p.name?.toLowerCase().includes('postgres') ||
-        p.friendlyName?.toLowerCase().includes('postgres')
-      );
+        const plugins = project?.plugins?.edges?.map(e => e.node) || [];
+        postgresPlugin = plugins.find(p =>
+          p.databaseType === 'PostgreSQL' ||
+          p.name?.toLowerCase().includes('postgres') ||
+          p.friendlyName?.toLowerCase().includes('postgres')
+        );
+      } catch (err) {
+        // project query failed — continue with what we have
+        console.warn('Railway project query failed:', err.message);
+      }
     }
 
-    // Step 2: Try to get backup list for the Postgres plugin
+    // Step 3: Try backup listing (only if we found the plugin)
     let backups = [];
     let backupError = null;
 
@@ -118,12 +116,11 @@ export async function GET() {
         });
         backups = backupData?.backupsByPlugin || [];
       } catch (err) {
-        // Backup listing may not be available in all Railway plans
         backupError = err.message;
       }
     }
 
-    // Step 3: Get latest deployment info for the app service
+    // Step 4: Latest deployment (optional)
     let latestDeployment = null;
     if (projectId && envId) {
       try {
@@ -139,7 +136,6 @@ export async function GET() {
                   status
                   createdAt
                   updatedAt
-                  url
                 }
               }
             }
@@ -147,24 +143,22 @@ export async function GET() {
         `;
         const deployData = await railwayQuery(deployQuery, { projectId, environmentId: envId });
         latestDeployment = deployData?.deployments?.edges?.[0]?.node || null;
-      } catch { /* optional */ }
+      } catch { /* optional — skip silently */ }
     }
 
     const dashboardUrl = projectId
       ? `https://railway.app/project/${projectId}`
       : 'https://railway.app/dashboard';
 
-    const backupTabUrl = postgresPlugin
+    const backupTabUrl = postgresPlugin && projectId
       ? `https://railway.app/project/${projectId}/plugin/${postgresPlugin.id}?tab=backups`
       : dashboardUrl;
 
     return NextResponse.json({
       connected: true,
-      project: project ? {
-        id: project.id,
-        name: project.name,
-        createdAt: project.createdAt,
-      } : null,
+      me: me ? { id: me.id, name: me.name, email: me.email } : null,
+      project: project ? { id: project.id, name: project.name, createdAt: project.createdAt } : null,
+      projectIdAvailable: !!projectId,
       postgresPlugin: postgresPlugin ? {
         id: postgresPlugin.id,
         name: postgresPlugin.friendlyName || postgresPlugin.name,

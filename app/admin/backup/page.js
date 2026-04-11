@@ -498,6 +498,21 @@ export default function BackupPage() {
                 ) : (
                   /* ── CONNECTED ── */
                   <>
+                    {/* Warning: RAILWAY_PROJECT_ID not wired */}
+                    {!railwayData.projectIdAvailable && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                        <span className="text-amber-500 text-lg">⚠️</span>
+                        <div>
+                          <p className="text-sm font-semibold text-amber-800">Token 連線成功，但缺少 RAILWAY_PROJECT_ID</p>
+                          <p className="text-xs text-amber-700 mt-1">
+                            在 Railway app service → Variables 新增：
+                            <code className="ml-1 bg-amber-100 px-1.5 py-0.5 rounded font-mono">RAILWAY_PROJECT_ID</code>
+                            → 值選擇 <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{'${{RAILWAY_PROJECT_ID}}'}</code>（Railway Reference 變數）
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Connection status + Project info */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="bg-white rounded-xl border border-emerald-200 shadow-sm p-4">
@@ -506,6 +521,9 @@ export default function BackupPage() {
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
                           <span className="font-semibold text-emerald-700">已連線</span>
                         </div>
+                        {railwayData.me && (
+                          <p className="text-xs text-gray-400 mt-1">{railwayData.me.name || railwayData.me.email}</p>
+                        )}
                         {railwayData.project && (
                           <p className="text-xs text-gray-400 mt-1">專案：{railwayData.project.name}</p>
                         )}
