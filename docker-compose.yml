@@ -11,9 +11,6 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required — set your Railway PostgreSQL URL in .env}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
-      RAILWAY_API_TOKEN: ${RAILWAY_API_TOKEN:-}
-      RAILWAY_PROJECT_ID: ${RAILWAY_PROJECT_ID:-}
-      RAILWAY_ENVIRONMENT_ID: ${RAILWAY_ENVIRONMENT_ID:-}
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-admin123}
     restart: unless-stopped
 
