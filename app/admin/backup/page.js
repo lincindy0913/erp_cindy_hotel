@@ -438,7 +438,7 @@ export default function BackupPage() {
             {/* ===== Railway 雲端備份 ===== */}
             {activeTab === 'railway' && (
               <div className="space-y-5">
-                {/* Header info */}
+                {/* Header */}
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                   <div className="flex items-start justify-between">
                     <div>
@@ -446,7 +446,7 @@ export default function BackupPage() {
                         <span className="text-xl">🐘</span> Railway PostgreSQL 雲端備份
                       </h3>
                       <p className="text-sm text-gray-500 mt-1">
-                        透過 Railway API 查看雲端資料庫的備份狀態與備份紀錄
+                        檢視雲端資料庫狀態，並前往 Railway Dashboard 管理備份
                       </p>
                     </div>
                     <button
@@ -463,87 +463,46 @@ export default function BackupPage() {
                 </div>
 
                 {railwayLoading && !railwayData ? (
-                  <div className="text-center py-16 text-gray-400">連線 Railway 中...</div>
+                  <div className="text-center py-16 text-gray-400">連線中...</div>
                 ) : !railwayData ? (
-                  <div className="text-center py-16 text-gray-400">點擊「重新整理」載入 Railway 資料</div>
-                ) : !railwayData.connected ? (
-                  /* ── NOT CONNECTED ── */
-                  <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-6">
-                    <div className="flex items-start gap-4">
-                      <span className="text-3xl">⚙️</span>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-800 mb-1">
-                          {railwayData.reason === 'NOT_CONFIGURED' ? 'Railway API Token 未設定' : 'Railway API 連線失敗'}
-                        </h4>
-                        <p className="text-sm text-gray-600 mb-4">{railwayData.message}</p>
-
-                        <div className="bg-gray-900 rounded-lg p-4 text-sm font-mono mb-4">
-                          <p className="text-gray-400 text-xs mb-2"># Railway 專案 Variables 新增以下設定：</p>
-                          <p className="text-green-400">RAILWAY_API_TOKEN<span className="text-white"> = </span><span className="text-amber-300">your_token_here</span></p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                          <a href="https://railway.app/account/tokens" target="_blank" rel="noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700">
-                            🔑 取得 Railway API Token
-                          </a>
-                          <a href={railwayData.dashboardUrl} target="_blank" rel="noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900">
-                            🚂 開啟 Railway Dashboard
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div className="text-center py-16 text-gray-400">點擊「重新整理」載入狀態</div>
                 ) : (
-                  /* ── CONNECTED ── */
                   <>
-                    {/* Warning: RAILWAY_PROJECT_ID not wired */}
-                    {!railwayData.projectIdAvailable && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                        <span className="text-amber-500 text-lg">⚠️</span>
-                        <div>
-                          <p className="text-sm font-semibold text-amber-800">Token 連線成功，但缺少 RAILWAY_PROJECT_ID</p>
-                          <p className="text-xs text-amber-700 mt-1">
-                            在 Railway app service → Variables 新增：
-                            <code className="ml-1 bg-amber-100 px-1.5 py-0.5 rounded font-mono">RAILWAY_PROJECT_ID</code>
-                            → 值選擇 <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{'${{RAILWAY_PROJECT_ID}}'}</code>（Railway Reference 變數）
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Connection status + Project info */}
+                    {/* ── Status cards ── */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-white rounded-xl border border-emerald-200 shadow-sm p-4">
-                        <p className="text-xs text-gray-500 mb-1">連線狀態</p>
+                      {/* DB Connection */}
+                      <div className={`bg-white rounded-xl border shadow-sm p-4 ${railwayData.dbConnected ? 'border-emerald-200' : 'border-red-200'}`}>
+                        <p className="text-xs text-gray-500 mb-1">資料庫連線</p>
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                          <span className="font-semibold text-emerald-700">已連線</span>
+                          <span className={`w-2.5 h-2.5 rounded-full inline-block ${railwayData.dbConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
+                          <span className={`font-semibold ${railwayData.dbConnected ? 'text-emerald-700' : 'text-red-600'}`}>
+                            {railwayData.dbConnected ? '正常連線' : '連線失敗'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Railway PostgreSQL</p>
+                        {railwayData.dbError && (
+                          <p className="text-xs text-red-500 mt-1 truncate">{railwayData.dbError}</p>
+                        )}
+                      </div>
+
+                      {/* Railway API status */}
+                      <div className={`bg-white rounded-xl border shadow-sm p-4 ${railwayData.apiWorking ? 'border-emerald-200' : 'border-amber-200'}`}>
+                        <p className="text-xs text-gray-500 mb-1">Railway API</p>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full inline-block ${railwayData.apiWorking ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
+                          <span className={`font-semibold text-sm ${railwayData.apiWorking ? 'text-emerald-700' : 'text-amber-700'}`}>
+                            {!railwayData.connected ? 'Token 未設定' : railwayData.apiWorking ? '已驗證' : '授權失敗'}
+                          </span>
                         </div>
                         {railwayData.me && (
                           <p className="text-xs text-gray-400 mt-1">{railwayData.me.name || railwayData.me.email}</p>
                         )}
-                        {railwayData.project && (
-                          <p className="text-xs text-gray-400 mt-1">專案：{railwayData.project.name}</p>
+                        {railwayData.apiError && !railwayData.apiWorking && (
+                          <p className="text-xs text-amber-600 mt-1">{railwayData.apiError}</p>
                         )}
                       </div>
 
-                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                        <p className="text-xs text-gray-500 mb-1">PostgreSQL 狀態</p>
-                        {railwayData.postgresPlugin ? (
-                          <>
-                            <div className="flex items-center gap-2">
-                              <span className={`w-2.5 h-2.5 rounded-full inline-block ${railwayData.postgresPlugin.status === 'RUNNING' ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
-                              <span className="font-semibold text-gray-800">{railwayData.postgresPlugin.status}</span>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1">{railwayData.postgresPlugin.name}</p>
-                          </>
-                        ) : (
-                          <p className="text-sm text-gray-400">未偵測到 Plugin</p>
-                        )}
-                      </div>
-
+                      {/* Latest deployment */}
                       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                         <p className="text-xs text-gray-500 mb-1">最新部署</p>
                         {railwayData.latestDeployment ? (
@@ -555,133 +514,107 @@ export default function BackupPage() {
                             <p className="text-xs text-gray-400 mt-1">{formatDate(railwayData.latestDeployment.createdAt)}</p>
                           </>
                         ) : (
-                          <p className="text-sm text-gray-400">-</p>
+                          <p className="text-sm text-gray-400">—</p>
                         )}
                       </div>
                     </div>
 
-                    {/* Open Railway backup page button */}
-                    <div className="flex flex-wrap gap-3">
-                      <a href={railwayData.backupTabUrl} target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 shadow-sm">
-                        🐘 開啟 Railway 備份管理頁面
-                      </a>
-                      <a href={railwayData.dashboardUrl} target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 shadow-sm">
-                        🚂 Railway Dashboard
-                      </a>
-                    </div>
-
-                    {/* Backup list */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                        <h4 className="font-semibold text-gray-800">Railway 備份紀錄</h4>
-                        {railwayData.backupError && (
-                          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
-                            備份列表需升級 Railway 方案
-                          </span>
-                        )}
-                      </div>
-
-                      {railwayData.backupError && railwayData.backups.length === 0 ? (
-                        /* Railway didn't expose backups via API — show guide */
-                        <div className="p-6 text-center space-y-4">
-                          <div className="text-4xl">🔒</div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-700">備份檔案需在 Railway 平台查看</p>
-                            <p className="text-xs text-gray-400 mt-1">
-                              Railway 的 Postgres 備份儲存在加密的雲端儲存，目前需透過 Railway Dashboard 查看與還原
-                            </p>
+                    {/* ── API auth warning ── */}
+                    {railwayData.connected && !railwayData.apiWorking && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                        <span className="text-amber-500 text-lg mt-0.5">⚠️</span>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-amber-800">Railway API Token 授權失敗</p>
+                          <p className="text-xs text-amber-700 mt-1 mb-3">
+                            Railway 的 GraphQL API 拒絕目前的 Token。請至 Railway 帳號頁面生成新的 <strong>Personal API Token</strong>，
+                            並確認選擇正確的 Token 類型（非 Deployment Token）。
+                          </p>
+                          <div className="bg-gray-900 rounded-lg p-3 text-xs font-mono mb-3">
+                            <p className="text-gray-400 mb-1"># 在 .env 更新：</p>
+                            <p className="text-green-400">RAILWAY_API_TOKEN<span className="text-white"> = </span><span className="text-amber-300">your_new_token</span></p>
                           </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left mx-auto max-w-lg">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-2 text-xs text-gray-500">在 Railway Dashboard 中可見的操作</th>
-                                  <th className="px-4 py-2 text-xs text-gray-500">說明</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {[
-                                  { action: 'New backup', desc: '手動觸發備份' },
-                                  { action: 'Edit schedule', desc: '設定自動備份排程' },
-                                  { action: 'Restore', desc: '還原至指定備份時間點' },
-                                ].map(row => (
-                                  <tr key={row.action}>
-                                    <td className="px-4 py-2 font-mono text-xs bg-gray-100 text-gray-700 rounded">{row.action}</td>
-                                    <td className="px-4 py-2 text-gray-600">{row.desc}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                          <div className="flex flex-wrap gap-2">
+                            <a href="https://railway.app/account/tokens" target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700">
+                              🔑 生成 Personal API Token
+                            </a>
                           </div>
-                          <a href={railwayData.backupTabUrl} target="_blank" rel="noreferrer"
-                            className="inline-flex items-center gap-2 px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700">
-                            前往 Railway 查看備份 →
-                          </a>
                         </div>
-                      ) : railwayData.backups.length > 0 ? (
-                        /* Show backup list from Railway API */
-                        <table className="w-full">
-                          <thead className="bg-gray-50 border-b border-gray-100">
-                            <tr>
-                              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">時間 (UTC)</th>
-                              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">狀態</th>
-                              <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">大小</th>
-                              <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase">操作</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-50">
-                            {railwayData.backups.map((bk, i) => (
-                              <tr key={bk.id || i} className="hover:bg-gray-50">
-                                <td className="px-5 py-3 text-sm text-gray-800 font-mono">
-                                  {bk.createdAt ? new Date(bk.createdAt).toLocaleString('zh-TW') : '-'}
-                                </td>
-                                <td className="px-5 py-3">
-                                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                    bk.status === 'COMPLETED' || bk.status === 'SUCCESS'
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : bk.status === 'IN_PROGRESS'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-gray-100 text-gray-600'
-                                  }`}>
-                                    {bk.status || '已完成'}
-                                  </span>
-                                </td>
-                                <td className="px-5 py-3 text-sm text-right text-gray-600">
-                                  {bk.size ? formatFileSize(bk.size) : '-'}
-                                </td>
-                                <td className="px-5 py-3 text-center">
-                                  {bk.restoreUrl ? (
-                                    <a href={bk.restoreUrl} target="_blank" rel="noreferrer"
-                                      className="px-3 py-1 bg-gray-800 text-white text-xs rounded-lg hover:bg-gray-900">
-                                      Restore
-                                    </a>
-                                  ) : (
-                                    <a href={railwayData.backupTabUrl} target="_blank" rel="noreferrer"
-                                      className="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-lg hover:bg-gray-200">
-                                      Railway →
-                                    </a>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <div className="text-center py-10 text-gray-400 text-sm">尚無備份紀錄</div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
-                    {/* How Railway backup works — info box */}
-                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 text-sm text-purple-800">
-                      <p className="font-semibold mb-1">Railway 備份說明</p>
-                      <ul className="text-xs text-purple-700 space-y-1 list-disc list-inside">
-                        <li>Railway Postgres 備份儲存在加密的雲端儲存（🔒 符號代表已加密）</li>
-                        <li>預設自動備份頻率視方案而定（Hobby Plan：每日；Pro Plan：更頻繁）</li>
-                        <li>手動備份可透過 Railway Dashboard 的「New backup」按鈕觸發</li>
-                        <li>還原操作會覆蓋現有資料庫，請謹慎操作</li>
-                      </ul>
+                    {/* ── Not configured warning ── */}
+                    {!railwayData.connected && (
+                      <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-6">
+                        <div className="flex items-start gap-4">
+                          <span className="text-3xl">⚙️</span>
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-800 mb-1">Railway API Token 未設定</h4>
+                            <p className="text-sm text-gray-600 mb-4">在 <code className="bg-gray-100 px-1 rounded">.env</code> 中設定 Token 以啟用 API 功能</p>
+                            <div className="bg-gray-900 rounded-lg p-4 text-sm font-mono mb-4">
+                              <p className="text-gray-400 text-xs mb-2"># .env 新增：</p>
+                              <p className="text-green-400">RAILWAY_API_TOKEN<span className="text-white"> = </span><span className="text-amber-300">your_token_here</span></p>
+                            </div>
+                            <a href="https://railway.app/account/tokens" target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700">
+                              🔑 取得 Railway API Token
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Direct Railway Dashboard links (always shown if projectId exists) ── */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100">
+                        <h4 className="font-semibold text-gray-800">Railway Dashboard — 備份管理</h4>
+                        <p className="text-xs text-gray-500 mt-0.5">Railway 備份需在 Dashboard 中操作（查看、手動觸發、還原）</p>
+                      </div>
+                      <div className="p-5 space-y-4">
+                        {/* Steps guide */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          {[
+                            { step: '1', icon: '📋', title: '查看備份清單', desc: '進入 Postgres 服務 → Backups 分頁' },
+                            { step: '2', icon: '💾', title: '手動觸發備份', desc: '點擊「New backup」立即建立備份' },
+                            { step: '3', icon: '🔄', title: '還原備份', desc: '選擇備份點 → 點擊「Restore」' },
+                          ].map(({ step, icon, title, desc }) => (
+                            <div key={step} className="bg-gray-50 rounded-lg p-3 flex items-start gap-3">
+                              <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step}</div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">{icon} {title}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap gap-3 pt-1">
+                          <a href={railwayData.dashboardUrl} target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 shadow-sm">
+                            🚂 開啟 Railway Dashboard
+                          </a>
+                          {railwayData.projectId && (
+                            <a
+                              href={`https://railway.app/project/${railwayData.projectId}`}
+                              target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-900 shadow-sm">
+                              🐘 前往專案頁面
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Info note */}
+                        <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 text-xs text-purple-700">
+                          <p className="font-semibold text-purple-800 mb-1">備份說明</p>
+                          <ul className="space-y-0.5 list-disc list-inside">
+                            <li>Railway Postgres 備份儲存在加密的雲端儲存</li>
+                            <li>Hobby Plan：每日自動備份，保留 7 天</li>
+                            <li>手動備份可隨時從 Dashboard 觸發，不佔用自動備份配額</li>
+                            <li>還原操作會覆蓋現有資料庫，請謹慎操作</li>
+                          </ul>
+                        </div>
+                      </div>
                     </div>
                   </>
                 )}
