@@ -59,7 +59,6 @@ const EVENT_CODES = [
   { code: 'N11', label: '代墊款逾期提醒' },
   { code: 'N12', label: '信用卡繳款到期' },
   { code: 'N13', label: '現金盤點逾期提醒' },
-  { code: 'N14', label: '備份失敗 / 驗證失敗' },
 ];
 
 function NotificationChannelsSection({ showToast }) {

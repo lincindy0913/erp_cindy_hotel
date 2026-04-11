@@ -2288,77 +2288,6 @@ model YearEndFinancialStatement {
   @@map("year_end_financial_statements")
 }
 
-// ============================================
-// 資料備份管理 (spec27)
-// ============================================
-
-model BackupRecord {
-  id              Int       @id @default(autoincrement())
-  tier            String    @db.VarChar(20) // tier1_full, tier2_snapshot, tier3_monthend, tier3_yearend
-  triggerType     String    @map("trigger_type") @db.VarChar(20) // scheduled, manual, month_end, year_end
-  businessPeriod  String?   @map("business_period") @db.VarChar(20) // YYYY-MM for Tier 3
-  status          String    @default("in_progress") @db.VarChar(20) // in_progress, completed, failed, corrupted
-  filePath        String?   @map("file_path") @db.VarChar(500)
-  fileSize        BigInt?   @map("file_size")
-  sha256          String?   @db.VarChar(64)
-  encrypted       Boolean   @default(false)
-  cloudUploaded   Boolean   @default(false) @map("cloud_uploaded")
-  cloudPath       String?   @map("cloud_path") @db.VarChar(500)
-  cloudUploadedAt DateTime? @map("cloud_uploaded_at")
-  verified        Boolean   @default(false)
-  verifiedAt      DateTime? @map("verified_at")
-  verifyResult    String?   @map("verify_result") @db.VarChar(20) // passed, failed
-  errorMessage    String?   @map("error_message") @db.Text
-  tableCount      Int?      @map("table_count")
-  totalRecords    Int?      @map("total_records")
-  startedAt       DateTime  @default(now()) @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  createdBy       String?   @map("created_by") @db.VarChar(255)
-
-  verifications BackupVerification[]
-  restoreDrills RestoreDrill[]
-
-  @@index([tier])
-  @@index([status])
-  @@index([startedAt])
-  @@index([businessPeriod])
-  @@map("backup_records")
-}
-
-model BackupConfig {
-  id                       Int      @id @default(autoincrement())
-  // Schedule
-  tier1BackupTime          String   @default("04:00") @map("tier1_backup_time") @db.VarChar(10)
-  tier2SnapshotTime        String   @default("04:30") @map("tier2_snapshot_time") @db.VarChar(10)
-  backupCleanTime          String   @default("05:00") @map("backup_clean_time") @db.VarChar(10)
-  verifyDayOfWeek          Int      @default(0) @map("verify_day_of_week") // 0=Sunday
-  verifyTime               String   @default("06:00") @map("verify_time") @db.VarChar(10)
-  // Retention
-  tier1RetainDays          Int      @default(90) @map("tier1_retain_days")
-  tier2RetainDays          Int      @default(30) @map("tier2_retain_days")
-  // Cloud
-  cloudProvider            String   @default("disabled") @map("cloud_provider") @db.VarChar(20) // aws_s3, gcs, b2, disabled
-  cloudBucketTier1         String?  @map("cloud_bucket_tier1") @db.VarChar(255)
-  cloudBucketTier2         String?  @map("cloud_bucket_tier2") @db.VarChar(255)
-  cloudBucketTier3         String?  @map("cloud_bucket_tier3") @db.VarChar(255)
-  cloudAccessKey           String?  @map("cloud_access_key") @db.VarChar(500) // encrypted
-  cloudSecretKey           String?  @map("cloud_secret_key") @db.VarChar(500) // encrypted
-  cloudRegion              String?  @map("cloud_region") @db.VarChar(50)
-  // Encryption
-  encryptionEnabled        Boolean  @default(false) @map("encryption_enabled")
-  // Notifications
-  notifyOnFailure          Boolean  @default(true) @map("notify_on_failure")
-  alertAfterFailCount      Int      @default(1) @map("alert_after_fail_count")
-  // RTO/RPO targets & drill schedule
-  rtoTargetMinutes         Int      @default(60) @map("rto_target_minutes")   // 目標還原時間（分鐘）
-  rpoTargetHours           Int      @default(24) @map("rpo_target_hours")     // 目標資料最大落後（小時）
-  drillEnabled             Boolean  @default(true) @map("drill_enabled")       // 是否啟用定期演練
-  drillFrequencyDays       Int      @default(7) @map("drill_frequency_days")   // 演練頻率（天）
-  drillAutoRestore         Boolean  @default(true) @map("drill_auto_restore")  // 演練時是否執行實際還原
-  updatedAt                DateTime @updatedAt @map("updated_at")
-
-  @@map("backup_configs")
-}
 
 // ============================================
 // 錯誤警報紀錄 (error alerting)
@@ -2380,48 +2309,6 @@ model ErrorAlertLog {
   @@map("error_alert_logs")
 }
 
-// ============================================
-// 備份還原演練紀錄
-// ============================================
-
-model RestoreDrill {
-  id              Int       @id @default(autoincrement())
-  backupRecordId  Int       @map("backup_record_id")
-  status          String    @default("in_progress") @db.VarChar(20) // in_progress, passed, failed
-  // Test results (5-point verification)
-  fileIntegrity   Boolean?  @map("file_integrity")
-  checksumMatch   Boolean?  @map("checksum_match")
-  dataReadable    Boolean?  @map("data_readable")
-  recordCountMatch Boolean? @map("record_count_match")
-  sampleDataValid Boolean?  @map("sample_data_valid")
-  // Actual restore test results
-  actualRestore   Boolean?  @map("actual_restore")       // 是否執行了實際還原測試
-  restoreMethod   String?   @map("restore_method") @db.VarChar(50) // pg_restore_temp_schema, json_validate_insert, file_only
-  tablesExpected  Int?      @map("tables_expected")
-  tablesRestored  Int?      @map("tables_restored")
-  recordsExpected Int?      @map("records_expected")
-  recordsRestored Int?      @map("records_restored")
-  // RTO/RPO metrics
-  restoreDurationMs Int?    @map("restore_duration_ms")   // 還原耗時（毫秒）= RTO 實測
-  dataAgeMinutes    Int?    @map("data_age_minutes")      // 備份資料年齡（分鐘）= RPO 實測
-  rtoCompliant    Boolean?  @map("rto_compliant")         // 是否符合 RTO 目標
-  rpoCompliant    Boolean?  @map("rpo_compliant")         // 是否符合 RPO 目標
-  rtoTargetMinutes Int?     @map("rto_target_minutes")    // 演練時的 RTO 目標快照
-  rpoTargetHours   Int?     @map("rpo_target_hours")      // 演練時的 RPO 目標快照
-  // Metadata
-  details         Json?
-  errorMessage    String?   @map("error_message") @db.Text
-  startedAt       DateTime  @default(now()) @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  triggeredBy     String?   @map("triggered_by") @db.VarChar(255)
-
-  backup BackupRecord @relation(fields: [backupRecordId], references: [id])
-
-  @@index([backupRecordId])
-  @@index([status])
-  @@index([startedAt])
-  @@map("restore_drills")
-}
 
 // ============================================
 // 面額設定 (spec26 / spec20)
@@ -2504,28 +2391,6 @@ model ImportLog {
   @@map("import_logs")
 }
 
-// ============================================
-// 備份驗證記錄 (spec27)
-// ============================================
-
-model BackupVerification {
-  id               Int      @id @default(autoincrement())
-  backupRecordId   Int      @map("backup_record_id")
-  verifiedAt       DateTime @default(now()) @map("verified_at")
-  result           String   @db.VarChar(20) // passed, warning, failed
-  checksumMatch    Boolean  @default(false) @map("checksum_match")
-  dbConnectable    Boolean  @default(false) @map("db_connectable")
-  recordCountMatch Boolean  @default(false) @map("record_count_match")
-  indexIntegrity   Boolean  @default(false) @map("index_integrity")
-  details          Json?    // 各表筆數查核細節
-  note             String?  @db.Text
-
-  backupRecord BackupRecord @relation(fields: [backupRecordId], references: [id], onDelete: Cascade)
-
-  @@index([backupRecordId])
-  @@index([result])
-  @@map("backup_verifications")
-}
 
 // ============================================
 // 每月經營分析報告 (spec13 v9 / spec16 v5)

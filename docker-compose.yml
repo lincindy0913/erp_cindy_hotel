@@ -5,8 +5,6 @@ services:
     container_name: erp_cindy
     ports:
       - "3000:3000"
-    volumes:
-      - ./backup-data:/app/backup-data
     environment:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0
