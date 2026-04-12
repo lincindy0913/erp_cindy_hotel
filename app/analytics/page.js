@@ -4,15 +4,17 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ExportButtons from '@/components/ExportButtons';
 
 const TABS = [
-  { key: 'overview',       label: '經營總覽' },
-  { key: 'pnl-warehouse',  label: '館別損益' },
-  { key: 'pnl-supplier',   label: '廠商損益' },
-  { key: 'cashflow',       label: '現金流預測' },
-  { key: 'procurement',    label: '採購分析' },
-  { key: 'payables',       label: '應付帳齡' },
-  { key: 'report',         label: '月度報告' },
+  { key: 'overview',        label: '經營總覽' },
+  { key: 'pnl-warehouse',   label: '館別損益' },
+  { key: 'pnl-supplier',    label: '廠商損益' },
+  { key: 'cashflow',        label: '現金流預測' },
+  { key: 'procurement',     label: '採購分析' },
+  { key: 'payables',        label: '應付帳齡' },
+  { key: 'report',          label: '月度報告' },
+  { key: 'supplier-items',  label: '廠商採購明細' },
 ];
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
@@ -119,6 +121,17 @@ export default function AnalyticsPage() {
   });
   const [reportApproving, setReportApproving] = useState(false);
 
+  // ── Supplier Purchase Items ───────────────────────────────────
+  const [spItems, setSpItems] = useState(null);
+  const [spItemsLoading, setSpItemsLoading] = useState(false);
+  const [spItemsStart, setSpItemsStart] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [spItemsEnd, setSpItemsEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [spItemsWarehouse, setSpItemsWarehouse] = useState('');
+  const [spItemsSupplierId, setSpItemsSupplierId] = useState('');
+  const [suppliersFullList, setSuppliersFullList] = useState([]); // [{id, name}]
+
   // ── Fetch helpers ─────────────────────────────────────────────
   const fetchOverview = useCallback(async () => {
     setOverviewLoading(true);
@@ -209,6 +222,18 @@ export default function AnalyticsPage() {
     setReportLoading(false);
   }, [reportMonth]);
 
+  const fetchSpItems = useCallback(async () => {
+    setSpItemsLoading(true); setSpItems(null);
+    try {
+      const p = new URLSearchParams({ startDate: spItemsStart, endDate: spItemsEnd });
+      if (spItemsSupplierId) p.set('supplierId', spItemsSupplierId);
+      if (spItemsWarehouse.trim()) p.set('warehouse', spItemsWarehouse.trim());
+      const res = await fetch(`/api/analytics/supplier-purchase-items?${p}`);
+      if (res.ok) setSpItems(await res.json());
+    } catch (e) { console.error(e); }
+    setSpItemsLoading(false);
+  }, [spItemsStart, spItemsEnd, spItemsSupplierId, spItemsWarehouse]);
+
   const approveReport = async () => {
     setReportApproving(true);
     try {
@@ -230,7 +255,9 @@ export default function AnalyticsPage() {
       .then(r => r.json())
       .then(data => {
         const list = Array.isArray(data) ? data : (data?.data || []);
-        setSuppliersList(list.map(s => s.name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant')));
+        const sorted = list.filter(s => s.id && s.name).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+        setSuppliersList(sorted.map(s => s.name));
+        setSuppliersFullList(sorted.map(s => ({ id: s.id, name: s.name })));
       })
       .catch(() => {});
   }, []);
@@ -432,6 +459,65 @@ export default function AnalyticsPage() {
             {reportLoading ? <Loading text="載入月度報告中..." /> :
               report ? <ReportTab data={report} onApprove={approveReport} approving={reportApproving} /> :
               <div className="text-center py-12 text-gray-400">無資料</div>
+            }
+          </div>
+        )}
+
+        {/* ══ 廠商採購明細 ════════════════════════════════════════ */}
+        {activeTab === 'supplier-items' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">廠商</label>
+                  <select value={spItemsSupplierId} onChange={e => setSpItemsSupplierId(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[160px]">
+                    <option value="">全部廠商</option>
+                    {suppliersFullList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input type="date" value={spItemsStart} onChange={e => setSpItemsStart(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input type="date" value={spItemsEnd} onChange={e => setSpItemsEnd(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select value={spItemsWarehouse} onChange={e => setSpItemsWarehouse(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                    <option value="">全部館別</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <button onClick={fetchSpItems}
+                  className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                  查詢
+                </button>
+              </div>
+            </div>
+
+            {spItemsLoading ? <Loading text="載入採購明細中..." /> :
+              spItems ? (
+                <SupplierItemsTab
+                  data={spItems}
+                  filterMeta={{
+                    supplierName: suppliersFullList.find(s => String(s.id) === String(spItemsSupplierId))?.name || '',
+                    startDate: spItemsStart,
+                    endDate: spItemsEnd,
+                    warehouse: spItemsWarehouse,
+                  }}
+                />
+              ) :
+              <div className="text-center py-16 text-gray-400">
+                <p className="text-4xl mb-3">🔍</p>
+                <p className="font-medium">請選擇廠商及日期區間後按「查詢」</p>
+                <p className="text-xs mt-1">可查詢指定廠商在特定期間內的所有採購品項明細</p>
+              </div>
             }
           </div>
         )}
@@ -1168,6 +1254,196 @@ function SupplierPnlTab({ data, search }) {
                 <td />
               </tr>
             </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══ SupplierItemsTab ════════════════════════════════════════════
+function SupplierItemsTab({ data, filterMeta }) {
+  const { rows = [], totalAmount = 0, totalQty = 0 } = data;
+
+  const EXPORT_COLS = [
+    { header: '日期',     key: 'purchaseDate', width: 14 },
+    { header: '進貨單號', key: 'purchaseNo',   width: 22 },
+    { header: '館別',     key: 'warehouse',    width: 12 },
+    { header: '部門',     key: 'department',   width: 12 },
+    { header: '廠商',     key: 'supplierName', width: 22 },
+    { header: '品號',     key: 'productCode',  width: 16 },
+    { header: '品名',     key: 'productName',  width: 32 },
+    { header: '分類',     key: 'category',     width: 14 },
+    { header: '單位',     key: 'unit',         width: 8  },
+    { header: '數量',     key: 'quantity',     width: 8,  format: 'number'   },
+    { header: '單價',     key: 'unitPrice',    width: 14, format: 'currency' },
+    { header: '小計',     key: 'subtotal',     width: 16, format: 'currency' },
+    { header: '備註',     key: 'note',         width: 24 },
+  ];
+
+  const titleLabel = filterMeta.supplierName
+    ? `廠商採購明細 — ${filterMeta.supplierName}`
+    : '廠商採購明細（全部廠商）';
+
+  function handlePrint() {
+    const periodLabel = `${filterMeta.startDate} ～ ${filterMeta.endDate}${filterMeta.warehouse ? ` ／ ${filterMeta.warehouse}` : ''}`;
+    const rowsHtml = rows.map(r => `
+      <tr>
+        <td>${r.purchaseDate}</td>
+        <td>${r.purchaseNo}</td>
+        <td>${r.warehouse || ''}</td>
+        <td>${r.supplierName}</td>
+        <td>${r.productCode}</td>
+        <td>${r.productName}</td>
+        <td>${r.category || ''}</td>
+        <td>${r.unit || ''}</td>
+        <td style="text-align:right">${r.quantity.toLocaleString()}</td>
+        <td style="text-align:right">NT$ ${Number(r.unitPrice).toLocaleString()}</td>
+        <td style="text-align:right">NT$ ${Number(r.subtotal).toLocaleString()}</td>
+        <td>${r.note || ''}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head>
+  <meta charset="UTF-8">
+  <title>${titleLabel}</title>
+  <style>
+    body { font-family: Arial, "Microsoft JhengHei", sans-serif; font-size: 11px; padding: 20px; color: #111; }
+    h2 { font-size: 15px; margin: 0 0 4px; }
+    .meta { font-size: 11px; color: #555; margin-bottom: 12px; }
+    .summary { display: flex; gap: 24px; margin-bottom: 14px; }
+    .kpi { border: 1px solid #ddd; border-radius: 6px; padding: 8px 16px; }
+    .kpi-label { font-size: 10px; color: #888; }
+    .kpi-val { font-size: 14px; font-weight: bold; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 4px 7px; white-space: nowrap; }
+    th { background: #f5f5f5; font-size: 11px; }
+    tfoot td { background: #f0f0f0; font-weight: bold; }
+    @page { size: landscape; margin: 15mm; }
+  </style>
+</head><body>
+  <h2>${titleLabel}</h2>
+  <p class="meta">查詢期間：${periodLabel} ／ 列印時間：${new Date().toLocaleString('zh-TW')}</p>
+  <div class="summary">
+    <div class="kpi"><div class="kpi-label">品項筆數</div><div class="kpi-val">${rows.length.toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">總數量</div><div class="kpi-val">${totalQty.toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">採購總金額</div><div class="kpi-val">NT$ ${Number(totalAmount).toLocaleString()}</div></div>
+  </div>
+  <table>
+    <thead><tr>
+      <th>日期</th><th>進貨單號</th><th>館別</th><th>廠商</th>
+      <th>品號</th><th>品名</th><th>分類</th><th>單位</th>
+      <th>數量</th><th>單價</th><th>小計</th><th>備註</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+    <tfoot><tr>
+      <td colspan="8" style="text-align:right">合計</td>
+      <td style="text-align:right">${totalQty.toLocaleString()}</td>
+      <td></td>
+      <td style="text-align:right">NT$ ${Number(totalAmount).toLocaleString()}</td>
+      <td></td>
+    </tr></tfoot>
+  </table>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=1200,height=800');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPI summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <KpiCard label="品項筆數"   value={rows.length.toLocaleString()}            icon="📋" color="text-blue-600" />
+        <KpiCard label="總數量"     value={totalQty.toLocaleString()}               icon="📦" color="text-gray-700" />
+        <KpiCard label="採購總金額" value={NT(totalAmount)}                          icon="💰" color="text-cyan-700" />
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+          <p className="font-semibold text-sm text-gray-700">
+            採購品項明細
+            <span className="ml-2 text-xs font-normal text-gray-400">共 {rows.length.toLocaleString()} 筆</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              disabled={rows.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              列印
+            </button>
+            <ExportButtons
+              data={rows}
+              columns={EXPORT_COLS}
+              title={titleLabel}
+              exportName="廠商採購明細"
+              sheetName="採購明細"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">日期</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">進貨單號</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">館別</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">廠商</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">品號</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">品名</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">分類</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">單位</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">數量</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">單價</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">小計</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">備註</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((r, i) => (
+                <tr key={i} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.purchaseDate}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{r.purchaseNo}</td>
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.warehouse || '—'}</td>
+                  <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{r.supplierName}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-gray-400 whitespace-nowrap">{r.productCode || '—'}</td>
+                  <td className="px-3 py-2 font-medium text-gray-900">{r.productName}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{r.category || '—'}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{r.unit || '—'}</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-800">{r.quantity.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{NT(r.unitPrice)}</td>
+                  <td className="px-3 py-2 text-right font-bold text-gray-900 whitespace-nowrap">{NT(r.subtotal)}</td>
+                  <td className="px-3 py-2 text-gray-400 text-xs max-w-[160px] truncate">{r.note || '—'}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={12} className="px-4 py-10 text-center text-gray-400">
+                    查無符合條件的採購記錄
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot className="bg-gray-50 border-t font-semibold text-sm">
+                <tr>
+                  <td colSpan={8} className="px-3 py-2.5 text-right text-gray-700">合計</td>
+                  <td className="px-3 py-2.5 text-right text-gray-900">{totalQty.toLocaleString()}</td>
+                  <td />
+                  <td className="px-3 py-2.5 text-right text-cyan-700">{NT(totalAmount)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
