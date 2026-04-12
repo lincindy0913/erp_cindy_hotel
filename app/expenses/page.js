@@ -1746,29 +1746,42 @@ export default function ExpensesPage() {
                       {/* 固定費用：依範本列出費用項目，可新增/刪除/編輯 */}
                       <div style={{ marginBottom: 20 }}>
                           <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>費用項目（請填入本月金額）</h4>
-                          <table style={tableStyle}>
+                          <div style={{ overflowX: 'auto' }}>
+                          <table style={{ ...tableStyle, minWidth: 1080 }}>
                             <thead>
                               <tr>
                                 <th style={{ ...thStyle, width: 120 }}>費用名稱</th>
-                                <th style={{ ...thStyle, width: 120 }}>廠商</th>
-                                <th style={{ ...thStyle, width: 100 }}>館別</th>
-                                <th style={{ ...thStyle, width: 90 }}>付款方式</th>
-                                <th style={{ ...thStyle, width: 140 }}>存簿 / 代墊員工</th>
-                                <th style={{ ...thStyle, width: 150 }}>摘要</th>
-                                <th style={{ ...thStyle, width: 120 }}>金額 *</th>
-                                <th style={{ ...thStyle, width: 40 }}></th>
+                                <th style={{ ...thStyle, width: 110 }}>會計科目</th>
+                                <th style={{ ...thStyle, width: 110 }}>廠商</th>
+                                <th style={{ ...thStyle, width: 90 }}>館別</th>
+                                <th style={{ ...thStyle, width: 80 }}>付款方式</th>
+                                <th style={{ ...thStyle, width: 150 }}>付款帳戶</th>
+                                <th style={{ ...thStyle, width: 110 }}>代墊員工</th>
+                                <th style={{ ...thStyle, width: 130 }}>摘要</th>
+                                <th style={{ ...thStyle, width: 110 }}>金額 *</th>
+                                <th style={{ ...thStyle, width: 36 }}></th>
                               </tr>
                             </thead>
                             <tbody>
                               {executeForm.entryLines.filter(l => l.entryType === 'debit').map((line, idx) => {
                                 const realIdx = executeForm.entryLines.indexOf(line);
+                                const isAdvance = line.paymentMethod === '信用卡' || line.paymentMethod === '員工代付';
+                                const isTransfer = line.paymentMethod === '轉帳' || line.paymentMethod === '匯款';
                                 return (
                                   <tr key={realIdx}>
+                                    {/* 費用名稱 */}
                                     <td style={{ ...tdStyle, fontWeight: 500 }}>
                                       <input value={line.accountingName || ''}
                                         onChange={e => updateExecuteLine(realIdx, 'accountingName', e.target.value)}
                                         style={{ ...inputStyle, marginBottom: 0, fontWeight: 500 }} placeholder="費用名稱" />
                                     </td>
+                                    {/* 會計科目 */}
+                                    <td style={tdStyle}>
+                                      <input value={line.accountingCode || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'accountingCode', e.target.value)}
+                                        style={{ ...inputStyle, marginBottom: 0, fontSize: 15, color: '#555' }} placeholder="科目代碼" />
+                                    </td>
+                                    {/* 廠商 */}
                                     <td style={tdStyle}>
                                       <select value={line.supplierId || ''}
                                         onChange={e => {
@@ -1781,6 +1794,7 @@ export default function ExpensesPage() {
                                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                       </select>
                                     </td>
+                                    {/* 館別 */}
                                     <td style={tdStyle}>
                                       <select value={line.warehouse || ''}
                                         onChange={e => updateExecuteLine(realIdx, 'warehouse', e.target.value)}
@@ -1789,40 +1803,56 @@ export default function ExpensesPage() {
                                         {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
                                       </select>
                                     </td>
+                                    {/* 付款方式 */}
                                     <td style={tdStyle}>
                                       <select value={line.paymentMethod || ''}
-                                        onChange={e => updateExecuteLine(realIdx, 'paymentMethod', e.target.value)}
+                                        onChange={e => {
+                                          updateExecuteLine(realIdx, 'paymentMethod', e.target.value);
+                                          if (e.target.value !== '轉帳' && e.target.value !== '匯款') {
+                                            updateExecuteLine(realIdx, 'accountId', '');
+                                          }
+                                          if (e.target.value !== '信用卡' && e.target.value !== '員工代付') {
+                                            updateExecuteLine(realIdx, 'advancedBy', '');
+                                          }
+                                        }}
                                         style={{ ...inputStyle, marginBottom: 0 }}>
                                         <option value="">不指定</option>
                                         {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                                       </select>
                                     </td>
+                                    {/* 付款帳戶（常駐，轉帳/匯款時可選） */}
                                     <td style={tdStyle}>
-                                      {(line.paymentMethod === '信用卡' || line.paymentMethod === '員工代付') ? (
-                                        <input value={line.advancedBy || ''}
-                                          onChange={e => updateExecuteLine(realIdx, 'advancedBy', e.target.value)}
-                                          style={{ ...inputStyle, marginBottom: 0 }} placeholder="代墊員工姓名" />
-                                      ) : (line.paymentMethod === '轉帳' || line.paymentMethod === '匯款') ? (
-                                        <select value={line.accountId || ''}
-                                          onChange={e => updateExecuteLine(realIdx, 'accountId', e.target.value)}
-                                          style={{ ...inputStyle, marginBottom: 0 }}>
-                                          <option value="">不指定</option>
-                                          {cashAccounts.map(a => (
-                                            <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
-                                          ))}
-                                        </select>
-                                      ) : <span style={{ fontSize: 15, color: '#999' }}>—</span>}
+                                      <select value={line.accountId || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'accountId', e.target.value)}
+                                        disabled={!isTransfer}
+                                        style={{ ...inputStyle, marginBottom: 0, opacity: isTransfer ? 1 : 0.4, background: isTransfer ? '#fff' : '#f8f9fa' }}>
+                                        <option value="">{isTransfer ? '選擇帳戶' : '—'}</option>
+                                        {cashAccounts.map(a => (
+                                          <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
+                                        ))}
+                                      </select>
                                     </td>
+                                    {/* 代墊員工（信用卡/員工代付時可填） */}
+                                    <td style={tdStyle}>
+                                      <input value={line.advancedBy || ''}
+                                        onChange={e => updateExecuteLine(realIdx, 'advancedBy', e.target.value)}
+                                        disabled={!isAdvance}
+                                        style={{ ...inputStyle, marginBottom: 0, opacity: isAdvance ? 1 : 0.4, background: isAdvance ? '#fff' : '#f8f9fa' }}
+                                        placeholder={isAdvance ? '員工姓名' : '—'} />
+                                    </td>
+                                    {/* 摘要 */}
                                     <td style={tdStyle}>
                                       <input value={line.summary || ''}
                                         onChange={e => updateExecuteLine(realIdx, 'summary', e.target.value)}
                                         style={{ ...inputStyle, marginBottom: 0 }} placeholder="摘要" />
                                     </td>
+                                    {/* 金額 */}
                                     <td style={tdStyle}>
                                       <input type="number" value={line.amount}
                                         onChange={e => updateExecuteLine(realIdx, 'amount', e.target.value)}
                                         style={{ ...inputStyle, marginBottom: 0, textAlign: 'right' }} step="0.01" placeholder="0" />
                                     </td>
+                                    {/* 刪除 */}
                                     <td style={tdStyle}>
                                       <button onClick={() => {
                                         setExecuteForm(prev => ({
@@ -1838,7 +1868,7 @@ export default function ExpensesPage() {
                             </tbody>
                             <tfoot>
                               <tr>
-                                <td colSpan={6} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
+                                <td colSpan={8} style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>合計</td>
                                 <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, fontSize: 18 }}>
                                   {executeForm.entryLines
                                     .filter(l => l.entryType === 'debit')
@@ -1849,6 +1879,7 @@ export default function ExpensesPage() {
                               </tr>
                             </tfoot>
                           </table>
+                          </div>
                           <button onClick={() => {
                             setExecuteForm(prev => ({
                               ...prev,

@@ -84,6 +84,7 @@ export async function POST(request) {
           type: '支出',
           warehouse: order.warehouse,
           accountId: parsedAccountId,
+          supplierId: order.supplierId || null,
           categoryId,
           amount: actualAmount,
           accountingSubject: accountingSubjectForTx,

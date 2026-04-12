@@ -146,6 +146,11 @@ export default function InventoryPage() {
   const [countLoading, setCountLoading] = useState(false);
   const [countForm, setCountForm] = useState({ warehouse: '', countDate: todayStr(), items: [] });
   const [countSubmitting, setCountSubmitting] = useState(false);
+
+  // 庫存調整 Modal
+  const [adjustModal, setAdjustModal] = useState(null); // { productId, productName, currentQty }
+  const [adjustForm, setAdjustForm] = useState({ warehouse: '', targetQty: '', reason: '' });
+  const [adjustSubmitting, setAdjustSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
 
   // 待入庫
@@ -541,6 +546,41 @@ export default function InventoryPage() {
     setCountSubmitting(false);
   }
 
+  async function submitAdjustment() {
+    if (!adjustForm.warehouse) {
+      showToast('請選擇倉庫', 'error');
+      return;
+    }
+    if (adjustForm.targetQty === '' || adjustForm.targetQty === null) {
+      showToast('請輸入目標數量', 'error');
+      return;
+    }
+    setAdjustSubmitting(true);
+    try {
+      const res = await fetch('/api/inventory/adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: adjustModal.productId,
+          warehouse: adjustForm.warehouse,
+          targetQty: Number(adjustForm.targetQty),
+          reason: adjustForm.reason,
+        }),
+      });
+      const result = await res.json();
+      if (res.ok) {
+        showToast(`調整完成：${adjustModal.productName} ${result.systemQty} → ${result.actualQty}`);
+        setAdjustModal(null);
+        setAdjustForm({ warehouse: '', targetQty: '', reason: '' });
+        fetchInventory();
+        fetchStockCounts();
+      } else {
+        showToast(result.error?.message || '調整失敗', 'error');
+      }
+    } catch { showToast('調整失敗', 'error'); }
+    setAdjustSubmitting(false);
+  }
+
   function addCountItem() {
     const invItem = inventory.find(i => i.productId && !countForm.items.some(c => c.productId === i.productId));
     if (!invItem) {
@@ -857,13 +897,14 @@ export default function InventoryPage() {
                     <SortableTh label="盤點調整" colKey="countAdjustQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
                     <SortableTh label="現存量" colKey="currentQty" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" align="right" />
                     <SortableTh label="狀態" colKey="status" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {inventoryLoading ? (
-                    <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
+                    <tr><td colSpan="11" className="px-4 py-8 text-center text-gray-500">載入中...</td></tr>
                   ) : inventory.length === 0 ? (
-                    <tr><td colSpan="10" className="px-4 py-8 text-center text-gray-500">尚無庫存資料（只顯示已確認入庫的商品）</td></tr>
+                    <tr><td colSpan="11" className="px-4 py-8 text-center text-gray-500">尚無庫存資料（只顯示已確認入庫的商品）</td></tr>
                   ) : (
                     sortedInventory.map((item, i) => (
                       <tr key={item.productId || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -886,6 +927,19 @@ export default function InventoryPage() {
                           (item.currentQty || 0) < 0 ? 'text-red-600' : (item.currentQty || 0) < 10 ? 'text-orange-600' : 'text-gray-900'
                         }`}>{item.currentQty}</td>
                         <td className="px-4 py-3 text-sm">{getStatusIcon(item.status)} {item.status}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {(item.currentQty || 0) < 0 && (
+                            <button
+                              onClick={() => {
+                                setAdjustModal({ productId: item.productId, productName: item.product?.name || '未知', currentQty: item.currentQty });
+                                setAdjustForm({ warehouse: warehouse || '', targetQty: '0', reason: '' });
+                              }}
+                              className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded hover:bg-red-200 whitespace-nowrap"
+                            >
+                              調整庫存
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1201,6 +1255,65 @@ export default function InventoryPage() {
           </div>
         )}
       </main>
+
+      {/* 庫存調整 Modal */}
+      {adjustModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h2 className="text-base font-semibold">手動調整庫存</h2>
+              <button onClick={() => setAdjustModal(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
+                <span className="font-medium text-gray-800">{adjustModal.productName}</span>
+                <span className="ml-2 text-red-700">現存量：{adjustModal.currentQty}</span>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">倉庫 *</label>
+                <WarehouseSelect
+                  value={adjustForm.warehouse}
+                  onChange={v => setAdjustForm(prev => ({ ...prev, warehouse: v }))}
+                  warehouseList={warehouseList}
+                  placeholder="選擇倉庫"
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">設定為（目標數量） *</label>
+                <input
+                  type="number"
+                  value={adjustForm.targetQty}
+                  onChange={e => setAdjustForm(prev => ({ ...prev, targetQty: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  placeholder="例：0 或正整數"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">原因</label>
+                <input
+                  type="text"
+                  value={adjustForm.reason}
+                  onChange={e => setAdjustForm(prev => ({ ...prev, reason: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  placeholder="說明調整原因（選填）"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-5 border-t">
+              <button onClick={() => setAdjustModal(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">取消</button>
+              <button
+                onClick={submitAdjustment}
+                disabled={adjustSubmitting}
+                className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {adjustSubmitting ? '調整中...' : '確認調整'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

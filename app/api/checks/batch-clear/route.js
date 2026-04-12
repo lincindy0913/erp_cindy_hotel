@@ -75,6 +75,7 @@ export async function POST(request) {
               type: txType,
               warehouse: check.warehouse,
               accountId,
+              supplierId: check.supplierId || null,
               categoryId,
               amount: Number(check.amount),
               description: `批次兌現 - ${check.checkNo} (${check.checkNumber})`,

@@ -2225,6 +2225,29 @@ export default function SettingsPage() {
           </div>
           {renderAuditTrail('system-info')}
         </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-orange-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-700">回填廠商資料</h3>
+              <p className="text-sm text-gray-400 mt-1">將現金流交易記錄中遺漏的廠商資訊（出納付款、支票兌現）補齊，執行一次即可</p>
+            </div>
+            <button
+              onClick={async () => {
+                if (!confirm('確定要執行廠商資料回填嗎？此操作不可逆，建議先備份資料。')) return;
+                try {
+                  const res = await fetch('/api/admin/backfill-supplier-ids', { method: 'POST' });
+                  const d = await res.json();
+                  if (res.ok) showToast(d.message || '回填完成');
+                  else showToast(d.error?.message || '回填失敗', 'error');
+                } catch { showToast('回填失敗', 'error'); }
+              }}
+              className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 text-sm font-medium transition-colors border border-orange-300"
+            >
+              執行回填
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

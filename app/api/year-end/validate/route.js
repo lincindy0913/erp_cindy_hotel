@@ -162,6 +162,39 @@ export async function POST(request) {
       }
     }
 
+    // 7. Check bank reconciliation completeness (December of the year)
+    const bankAccounts = await prisma.cashAccount.findMany({
+      where: { isActive: true, type: '銀行存款' },
+      select: { id: true, name: true, accountCode: true }
+    });
+
+    let unreconciledAccountCount = 0;
+    const unreconciledAccounts = [];
+
+    if (bankAccounts.length > 0) {
+      const confirmedRecs = await prisma.bankReconciliation.findMany({
+        where: {
+          statementYear: year,
+          status: 'confirmed',
+          accountId: { in: bankAccounts.map(a => a.id) }
+        },
+        select: { accountId: true, statementMonth: true }
+      });
+
+      const reconciledDecemberSet = new Set(
+        confirmedRecs
+          .filter(r => r.statementMonth === 12)
+          .map(r => r.accountId)
+      );
+
+      for (const account of bankAccounts) {
+        if (!reconciledDecemberSet.has(account.id)) {
+          unreconciledAccountCount++;
+          unreconciledAccounts.push(account.name);
+        }
+      }
+    }
+
     // Build warnings
     const warnings = [];
 
@@ -171,6 +204,15 @@ export async function POST(request) {
         message: `${unlockedMonths.length} 個月份尚未鎖定`,
         details: unlockedMonths.slice(0, 10),
         count: unlockedMonths.length
+      });
+    }
+
+    if (unreconciledAccountCount > 0) {
+      warnings.push({
+        type: 'warning',
+        message: `${unreconciledAccountCount} 個銀行帳戶 12 月份對帳未完成`,
+        details: unreconciledAccounts.slice(0, 5),
+        count: unreconciledAccountCount
       });
     }
 
@@ -215,6 +257,7 @@ export async function POST(request) {
         uncollectedAP,
         unclearedChecks,
         negativeInventoryCount,
+        unreconciledAccountCount,
         warehouseCount: warehouses.length
       }
     });
