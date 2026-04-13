@@ -1,7 +1,11 @@
 /**
  * GET /api/analytics/occupancy-cost
  *
- * 每日住宿成本效益分析 — JOIN PmsImportBatch + PurchaseMaster
+ * 每日住宿成本效益分析 — FULL OUTER JOIN PmsImportBatch + PurchaseMaster
+ *
+ * 以「館別 + 日期」為鍵，合併兩個資料來源：
+ *   - PmsImportBatch：住宿間數、住宿人數、早餐人數
+ *   - PurchaseMaster → PurchaseDetail → Product：採購金額（可依分類篩選）
  *
  * Query params:
  *   startDate  YYYY-MM-DD
@@ -83,7 +87,7 @@ export async function GET(request) {
     });
 
     // ── 3. 彙整採購金額 by 館別 + 日期（依分類篩選） ──────────────
-    const purchaseMap  = new Map(); // "wh|date" → amount
+    const purchaseMap   = new Map(); // "wh|date" → amount
     const allCategories = new Set();
 
     for (const p of purchases) {
@@ -97,18 +101,49 @@ export async function GET(request) {
       }
     }
 
-    // ── 4. 以 PMS 批次為主，LEFT JOIN 採購金額 ────────────────────
-    const rows = batches
-      .map(b => {
-        const key            = `${b.warehouse}|${b.businessDate}`;
-        const purchaseTotal  = purchaseMap.get(key) || 0;
-        const occupiedRooms  = b.occupiedRooms  || 0;
-        const guestCount     = b.guestCount     || 0;
-        const breakfastCount = b.breakfastCount || 0;
+    // ── 4. 彙整 PMS 批次資料 by "wh|date" ────────────────────────
+    const batchMap = new Map(); // "wh|date" → batch
+    for (const b of batches) {
+      const key = `${b.warehouse}|${b.businessDate}`;
+      // 若同 wh+date 有多筆批次，累加住客人數（不重複計算）
+      if (!batchMap.has(key)) {
+        batchMap.set(key, {
+          warehouse:      b.warehouse,
+          date:           b.businessDate,
+          occupiedRooms:  b.occupiedRooms  || 0,
+          guestCount:     b.guestCount     || 0,
+          breakfastCount: b.breakfastCount || 0,
+          roomCount:      b.roomCount      || 0,
+        });
+      } else {
+        const existing = batchMap.get(key);
+        existing.occupiedRooms  += b.occupiedRooms  || 0;
+        existing.guestCount     += b.guestCount     || 0;
+        existing.breakfastCount += b.breakfastCount || 0;
+      }
+    }
+
+    // ── 5. FULL OUTER JOIN：合併兩個來源的所有 (wh|date) 鍵 ──────
+    const allKeys = new Set([...batchMap.keys(), ...purchaseMap.keys()]);
+
+    const rows = Array.from(allKeys)
+      .map(key => {
+        const batchData = batchMap.get(key);
+        const purchaseTotal = purchaseMap.get(key) || 0;
+
+        // 解析 key → warehouse, date
+        const sepIdx       = key.indexOf('|');
+        const wh           = key.slice(0, sepIdx);
+        const dt           = key.slice(sepIdx + 1);
+
+        const occupiedRooms  = batchData?.occupiedRooms  ?? 0;
+        const guestCount     = batchData?.guestCount     ?? 0;
+        const breakfastCount = batchData?.breakfastCount ?? 0;
 
         return {
-          date:             b.businessDate,
-          warehouse:        b.warehouse,
+          date:             dt,
+          warehouse:        wh,
+          hasPmsData:       batchMap.has(key),
           occupiedRooms,
           guestCount,
           breakfastCount,

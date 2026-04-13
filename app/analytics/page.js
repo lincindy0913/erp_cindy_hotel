@@ -137,7 +137,7 @@ export default function AnalyticsPage() {
   const [occCost, setOccCost] = useState(null);
   const [occCostLoading, setOccCostLoading] = useState(false);
   const [occCostStart, setOccCostStart] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(d.getDate() - 89); return d.toISOString().slice(0, 10);
   });
   const [occCostEnd, setOccCostEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [occCostWarehouse, setOccCostWarehouse] = useState('');
@@ -1859,9 +1859,12 @@ ${anomalyCount>0?`<p class="leg">▲ 橘色 = 每人採購超過本期館別平�
                 {rows.map((r, i) => {
                   const anomaly = isAnomaly(r);
                   return (
-                    <tr key={i} className={`transition-colors ${anomaly ? 'bg-orange-50 hover:bg-orange-100/80' : 'hover:bg-gray-50'}`}>
+                    <tr key={i} className={`transition-colors ${anomaly ? 'bg-orange-50 hover:bg-orange-100/80' : r.hasPmsData === false ? 'bg-gray-50/60' : 'hover:bg-gray-50'}`}>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap tabular-nums">{r.date}</td>
-                      <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{r.warehouse}</td>
+                      <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">
+                        {r.warehouse}
+                        {r.hasPmsData === false && <span className="ml-1 text-[10px] text-gray-400 font-normal">(無PMS)</span>}
+                      </td>
                       <td className="px-3 py-2 text-right text-indigo-700 tabular-nums">{r.occupiedRooms || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2 text-right text-blue-700 tabular-nums">{r.guestCount || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2 text-right text-teal-700 tabular-nums">{r.breakfastCount || <span className="text-gray-300">—</span>}</td>
