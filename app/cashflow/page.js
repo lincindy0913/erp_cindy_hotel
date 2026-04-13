@@ -821,13 +821,33 @@ export default function CashFlowPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
-                  <input
-                    type="text"
+                  <select
                     value={txFilter.accountingSubject}
                     onChange={(e) => setTxFilter({ ...txFilter, accountingSubject: e.target.value })}
-                    placeholder="科目代碼或名稱"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="">全部科目</option>
+                    {(() => {
+                      const groups = {};
+                      for (const s of accountingSubjects) {
+                        const cat = s.category || '其他';
+                        if (!groups[cat]) groups[cat] = [];
+                        groups[cat].push(s);
+                      }
+                      return Object.entries(groups).map(([cat, items]) => (
+                        <optgroup key={cat} label={cat}>
+                          {items
+                            .slice()
+                            .sort((a, b) => a.code.localeCompare(b.code))
+                            .map(s => (
+                              <option key={s.id} value={s.code}>
+                                {s.code}　{s.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ));
+                    })()}
+                  </select>
                 </div>
               </div>
               <button
@@ -1324,13 +1344,33 @@ export default function CashFlowPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
-                  <input
-                    type="text"
+                  <select
                     value={subjectFilter.accountingSubject}
                     onChange={(e) => setSubjectFilter({ ...subjectFilter, accountingSubject: e.target.value })}
-                    placeholder="科目代碼或名稱關鍵字"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="">全部科目</option>
+                    {(() => {
+                      const groups = {};
+                      for (const s of accountingSubjects) {
+                        const cat = s.category || '其他';
+                        if (!groups[cat]) groups[cat] = [];
+                        groups[cat].push(s);
+                      }
+                      return Object.entries(groups).map(([cat, items]) => (
+                        <optgroup key={cat} label={cat}>
+                          {items
+                            .slice()
+                            .sort((a, b) => a.code.localeCompare(b.code))
+                            .map(s => (
+                              <option key={s.id} value={s.code}>
+                                {s.code}　{s.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ));
+                    })()}
+                  </select>
                 </div>
               </div>
               <button
