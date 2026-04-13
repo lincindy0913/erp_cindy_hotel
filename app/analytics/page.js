@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
@@ -1264,8 +1264,39 @@ function SupplierPnlTab({ data, search }) {
 // ══ SupplierItemsTab ════════════════════════════════════════════
 function SupplierItemsTab({ data, filterMeta }) {
   const { rows = [], totalAmount = 0, totalQty = 0 } = data;
+  const [viewMode, setViewMode] = useState('detail'); // 'detail' | 'monthly'
 
-  const EXPORT_COLS = [
+  // ── Monthly pivot: 廠商 × 月份 ────────────────────────────────
+  const MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+  const monthlyPivot = useMemo(() => {
+    const map = new Map();
+    for (const r of rows) {
+      const m = parseInt(r.purchaseDate.slice(5, 7), 10);
+      if (!map.has(r.supplierName)) {
+        map.set(r.supplierName, { 1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0 });
+      }
+      map.get(r.supplierName)[m] += r.subtotal;
+    }
+    return Array.from(map.entries())
+      .map(([name, months]) => ({
+        supplierName: name,
+        months,
+        total: Object.values(months).reduce((s, v) => s + v, 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [rows]);
+
+  // Column totals for monthly view footer
+  const monthlyColTotals = useMemo(() =>
+    MONTHS.reduce((acc, m) => {
+      acc[m] = monthlyPivot.reduce((s, r) => s + r.months[m], 0);
+      return acc;
+    }, {}),
+  [monthlyPivot]);
+
+  // ── Export configs ─────────────────────────────────────────────
+  const DETAIL_EXPORT_COLS = [
     { header: '日期',     key: 'purchaseDate', width: 14 },
     { header: '進貨單號', key: 'purchaseNo',   width: 22 },
     { header: '館別',     key: 'warehouse',    width: 12 },
@@ -1281,97 +1312,119 @@ function SupplierItemsTab({ data, filterMeta }) {
     { header: '備註',     key: 'note',         width: 24 },
   ];
 
+  const MONTHLY_EXPORT_COLS = [
+    { header: '廠商', key: 'supplierName', width: 22 },
+    ...MONTHS.map(m => ({ header: `${m}月`, key: `m${m}`, width: 12, format: 'currency' })),
+    { header: '合計', key: 'total', width: 14, format: 'currency' },
+  ];
+
+  const monthlyExportData = useMemo(() =>
+    monthlyPivot.map(r => ({
+      supplierName: r.supplierName,
+      ...MONTHS.reduce((acc, m) => { acc[`m${m}`] = r.months[m] || 0; return acc; }, {}),
+      total: r.total,
+    })),
+  [monthlyPivot]);
+
   const titleLabel = filterMeta.supplierName
     ? `廠商採購明細 — ${filterMeta.supplierName}`
     : '廠商採購明細（全部廠商）';
 
-  function handlePrint() {
+  // ── Print: detail view ─────────────────────────────────────────
+  function handlePrintDetail() {
     const periodLabel = `${filterMeta.startDate} ～ ${filterMeta.endDate}${filterMeta.warehouse ? ` ／ ${filterMeta.warehouse}` : ''}`;
     const rowsHtml = rows.map(r => `
       <tr>
-        <td>${r.purchaseDate}</td>
-        <td>${r.purchaseNo}</td>
-        <td>${r.warehouse || ''}</td>
-        <td>${r.supplierName}</td>
-        <td>${r.productCode}</td>
-        <td>${r.productName}</td>
-        <td>${r.category || ''}</td>
-        <td>${r.unit || ''}</td>
+        <td>${r.purchaseDate}</td><td>${r.purchaseNo}</td><td>${r.warehouse || ''}</td>
+        <td>${r.supplierName}</td><td>${r.productCode}</td><td>${r.productName}</td>
+        <td>${r.category || ''}</td><td>${r.unit || ''}</td>
         <td style="text-align:right">${r.quantity.toLocaleString()}</td>
         <td style="text-align:right">NT$ ${Number(r.unitPrice).toLocaleString()}</td>
         <td style="text-align:right">NT$ ${Number(r.subtotal).toLocaleString()}</td>
         <td>${r.note || ''}</td>
       </tr>`).join('');
-
-    const html = `<!DOCTYPE html>
-<html><head>
-  <meta charset="UTF-8">
-  <title>${titleLabel}</title>
-  <style>
-    body { font-family: Arial, "Microsoft JhengHei", sans-serif; font-size: 11px; padding: 20px; color: #111; }
-    h2 { font-size: 15px; margin: 0 0 4px; }
-    .meta { font-size: 11px; color: #555; margin-bottom: 12px; }
-    .summary { display: flex; gap: 24px; margin-bottom: 14px; }
-    .kpi { border: 1px solid #ddd; border-radius: 6px; padding: 8px 16px; }
-    .kpi-label { font-size: 10px; color: #888; }
-    .kpi-val { font-size: 14px; font-weight: bold; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 4px 7px; white-space: nowrap; }
-    th { background: #f5f5f5; font-size: 11px; }
-    tfoot td { background: #f0f0f0; font-weight: bold; }
-    @page { size: landscape; margin: 15mm; }
-  </style>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titleLabel}</title>
+<style>body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;padding:20px}h2{font-size:15px;margin:0 0 4px}.meta{font-size:11px;color:#555;margin-bottom:12px}.summary{display:flex;gap:24px;margin-bottom:14px}.kpi{border:1px solid #ddd;border-radius:6px;padding:8px 16px}.kpi-label{font-size:10px;color:#888}.kpi-val{font-size:14px;font-weight:bold}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 7px;white-space:nowrap}th{background:#f5f5f5}tfoot td{background:#f0f0f0;font-weight:bold}@page{size:landscape;margin:15mm}</style>
 </head><body>
-  <h2>${titleLabel}</h2>
-  <p class="meta">查詢期間：${periodLabel} ／ 列印時間：${new Date().toLocaleString('zh-TW')}</p>
-  <div class="summary">
-    <div class="kpi"><div class="kpi-label">品項筆數</div><div class="kpi-val">${rows.length.toLocaleString()}</div></div>
-    <div class="kpi"><div class="kpi-label">總數量</div><div class="kpi-val">${totalQty.toLocaleString()}</div></div>
-    <div class="kpi"><div class="kpi-label">採購總金額</div><div class="kpi-val">NT$ ${Number(totalAmount).toLocaleString()}</div></div>
-  </div>
-  <table>
-    <thead><tr>
-      <th>日期</th><th>進貨單號</th><th>館別</th><th>廠商</th>
-      <th>品號</th><th>品名</th><th>分類</th><th>單位</th>
-      <th>數量</th><th>單價</th><th>小計</th><th>備註</th>
-    </tr></thead>
-    <tbody>${rowsHtml}</tbody>
-    <tfoot><tr>
-      <td colspan="8" style="text-align:right">合計</td>
-      <td style="text-align:right">${totalQty.toLocaleString()}</td>
-      <td></td>
-      <td style="text-align:right">NT$ ${Number(totalAmount).toLocaleString()}</td>
-      <td></td>
-    </tr></tfoot>
-  </table>
-</body></html>`;
-
+<h2>${titleLabel}</h2>
+<p class="meta">查詢期間：${periodLabel} ／ 列印時間：${new Date().toLocaleString('zh-TW')}</p>
+<div class="summary">
+  <div class="kpi"><div class="kpi-label">品項筆數</div><div class="kpi-val">${rows.length.toLocaleString()}</div></div>
+  <div class="kpi"><div class="kpi-label">總數量</div><div class="kpi-val">${totalQty.toLocaleString()}</div></div>
+  <div class="kpi"><div class="kpi-label">採購總金額</div><div class="kpi-val">NT$ ${Number(totalAmount).toLocaleString()}</div></div>
+</div>
+<table><thead><tr><th>日期</th><th>進貨單號</th><th>館別</th><th>廠商</th><th>品號</th><th>品名</th><th>分類</th><th>單位</th><th>數量</th><th>單價</th><th>小計</th><th>備註</th></tr></thead>
+<tbody>${rowsHtml}</tbody>
+<tfoot><tr><td colspan="8" style="text-align:right">合計</td><td style="text-align:right">${totalQty.toLocaleString()}</td><td></td><td style="text-align:right">NT$ ${Number(totalAmount).toLocaleString()}</td><td></td></tr></tfoot>
+</table></body></html>`;
     const win = window.open('', '_blank', 'width=1200,height=800');
-    win.document.write(html);
-    win.document.close();
-    win.focus();
+    win.document.write(html); win.document.close(); win.focus();
     setTimeout(() => { win.print(); }, 400);
   }
+
+  // ── Print: monthly pivot view ──────────────────────────────────
+  function handlePrintMonthly() {
+    const periodLabel = `${filterMeta.startDate} ～ ${filterMeta.endDate}${filterMeta.warehouse ? ` ／ ${filterMeta.warehouse}` : ''}`;
+    const bodyRows = monthlyPivot.map(r => `
+      <tr>
+        <td>${r.supplierName}</td>
+        ${MONTHS.map(m => `<td style="text-align:right">${r.months[m] ? Number(r.months[m]).toLocaleString() : ''}</td>`).join('')}
+        <td style="text-align:right;font-weight:bold">${Number(r.total).toLocaleString()}</td>
+      </tr>`).join('');
+    const footRow = `<tr>
+      <td style="font-weight:bold">合計</td>
+      ${MONTHS.map(m => `<td style="text-align:right;font-weight:bold">${monthlyColTotals[m] ? Number(monthlyColTotals[m]).toLocaleString() : ''}</td>`).join('')}
+      <td style="text-align:right;font-weight:bold">${Number(totalAmount).toLocaleString()}</td>
+    </tr>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titleLabel} — 月份彙整</title>
+<style>body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;padding:20px}h2{font-size:15px;margin:0 0 4px}.meta{font-size:11px;color:#555;margin-bottom:14px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 8px;white-space:nowrap}th{background:#f5f5f5;text-align:center}tfoot td{background:#f0f0f0}@page{size:landscape;margin:12mm}</style>
+</head><body>
+<h2>${titleLabel} — 月份採購金額彙整</h2>
+<p class="meta">查詢期間：${periodLabel} ／ 共 ${monthlyPivot.length} 家廠商 ／ 列印時間：${new Date().toLocaleString('zh-TW')}</p>
+<table>
+<thead><tr><th>廠商／月份</th>${MONTHS.map(m=>`<th>${m}月</th>`).join('')}<th>合計</th></tr></thead>
+<tbody>${bodyRows}</tbody>
+<tfoot>${footRow}</tfoot>
+</table></body></html>`;
+    const win = window.open('', '_blank', 'width=1400,height=800');
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  }
+
+  const isMonthly = viewMode === 'monthly';
 
   return (
     <div className="space-y-4">
       {/* KPI summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KpiCard label="品項筆數"   value={rows.length.toLocaleString()}            icon="📋" color="text-blue-600" />
-        <KpiCard label="總數量"     value={totalQty.toLocaleString()}               icon="📦" color="text-gray-700" />
-        <KpiCard label="採購總金額" value={NT(totalAmount)}                          icon="💰" color="text-cyan-700" />
+        <KpiCard label="品項筆數"   value={rows.length.toLocaleString()} icon="📋" color="text-blue-600" />
+        <KpiCard label="總數量"     value={totalQty.toLocaleString()}    icon="📦" color="text-gray-700" />
+        <KpiCard label="採購總金額" value={NT(totalAmount)}               icon="💰" color="text-cyan-700" />
       </div>
 
-      {/* Table */}
+      {/* Table card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Toolbar */}
         <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between flex-wrap gap-2">
-          <p className="font-semibold text-sm text-gray-700">
-            採購品項明細
-            <span className="ml-2 text-xs font-normal text-gray-400">共 {rows.length.toLocaleString()} 筆</span>
-          </p>
+          {/* View toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode('detail')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${!isMonthly ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              明細清單
+            </button>
+            <button
+              onClick={() => setViewMode('monthly')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${isMonthly ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              月份彙整
+            </button>
+          </div>
+          {/* Action buttons */}
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrint}
+              onClick={isMonthly ? handlePrintMonthly : handlePrintDetail}
               disabled={rows.length === 0}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1381,71 +1434,132 @@ function SupplierItemsTab({ data, filterMeta }) {
               列印
             </button>
             <ExportButtons
-              data={rows}
-              columns={EXPORT_COLS}
-              title={titleLabel}
-              exportName="廠商採購明細"
-              sheetName="採購明細"
+              data={isMonthly ? monthlyExportData : rows}
+              columns={isMonthly ? MONTHLY_EXPORT_COLS : DETAIL_EXPORT_COLS}
+              title={isMonthly ? `${titleLabel} — 月份彙整` : titleLabel}
+              exportName={isMonthly ? '廠商月份採購彙整' : '廠商採購明細'}
+              sheetName={isMonthly ? '月份彙整' : '採購明細'}
             />
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">日期</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">進貨單號</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">館別</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">廠商</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">品號</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">品名</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">分類</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">單位</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">數量</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">單價</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">小計</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">備註</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.map((r, i) => (
-                <tr key={i} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.purchaseDate}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{r.purchaseNo}</td>
-                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.warehouse || '—'}</td>
-                  <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{r.supplierName}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-400 whitespace-nowrap">{r.productCode || '—'}</td>
-                  <td className="px-3 py-2 font-medium text-gray-900">{r.productName}</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{r.category || '—'}</td>
-                  <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{r.unit || '—'}</td>
-                  <td className="px-3 py-2 text-right font-medium text-gray-800">{r.quantity.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{NT(r.unitPrice)}</td>
-                  <td className="px-3 py-2 text-right font-bold text-gray-900 whitespace-nowrap">{NT(r.subtotal)}</td>
-                  <td className="px-3 py-2 text-gray-400 text-xs max-w-[160px] truncate">{r.note || '—'}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
+        {/* ── Detail view ─────────────────────────────────────── */}
+        {!isMonthly && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
                 <tr>
-                  <td colSpan={12} className="px-4 py-10 text-center text-gray-400">
-                    查無符合條件的採購記錄
-                  </td>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">日期</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">進貨單號</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">館別</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">廠商</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">品號</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">品名</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">分類</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">單位</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">數量</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">單價</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 whitespace-nowrap">小計</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">備註</th>
                 </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((r, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.purchaseDate}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{r.purchaseNo}</td>
+                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.warehouse || '—'}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{r.supplierName}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-400 whitespace-nowrap">{r.productCode || '—'}</td>
+                    <td className="px-3 py-2 font-medium text-gray-900">{r.productName}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{r.category || '—'}</td>
+                    <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">{r.unit || '—'}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-800">{r.quantity.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{NT(r.unitPrice)}</td>
+                    <td className="px-3 py-2 text-right font-bold text-gray-900 whitespace-nowrap">{NT(r.subtotal)}</td>
+                    <td className="px-3 py-2 text-gray-400 text-xs max-w-[160px] truncate">{r.note || '—'}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr><td colSpan={12} className="px-4 py-10 text-center text-gray-400">查無符合條件的採購記錄</td></tr>
+                )}
+              </tbody>
+              {rows.length > 0 && (
+                <tfoot className="bg-gray-50 border-t font-semibold text-sm">
+                  <tr>
+                    <td colSpan={8} className="px-3 py-2.5 text-right text-gray-700">合計</td>
+                    <td className="px-3 py-2.5 text-right text-gray-900">{totalQty.toLocaleString()}</td>
+                    <td />
+                    <td className="px-3 py-2.5 text-right text-cyan-700">{NT(totalAmount)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-            {rows.length > 0 && (
-              <tfoot className="bg-gray-50 border-t font-semibold text-sm">
+            </table>
+          </div>
+        )}
+
+        {/* ── Monthly pivot view ──────────────────────────────── */}
+        {isMonthly && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
                 <tr>
-                  <td colSpan={8} className="px-3 py-2.5 text-right text-gray-700">合計</td>
-                  <td className="px-3 py-2.5 text-right text-gray-900">{totalQty.toLocaleString()}</td>
-                  <td />
-                  <td className="px-3 py-2.5 text-right text-cyan-700">{NT(totalAmount)}</td>
-                  <td />
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap sticky left-0 bg-gray-50 z-10">
+                    廠商／月份
+                  </th>
+                  {MONTHS.map(m => (
+                    <th key={m} className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 whitespace-nowrap min-w-[80px]">
+                      {m}月
+                    </th>
+                  ))}
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-700 whitespace-nowrap bg-cyan-50">
+                    合計
+                  </th>
                 </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {monthlyPivot.map((r, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-2 font-medium text-gray-800 whitespace-nowrap sticky left-0 bg-white z-10">
+                      {r.supplierName}
+                    </td>
+                    {MONTHS.map(m => (
+                      <td key={m} className="px-3 py-2 text-right text-gray-700 whitespace-nowrap tabular-nums">
+                        {r.months[m] > 0 ? Number(r.months[m]).toLocaleString() : (
+                          <span className="text-gray-200">—</span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2 text-right font-bold text-cyan-700 whitespace-nowrap tabular-nums bg-cyan-50">
+                      {Number(r.total).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+                {monthlyPivot.length === 0 && (
+                  <tr><td colSpan={14} className="px-4 py-10 text-center text-gray-400">查無符合條件的採購記錄</td></tr>
+                )}
+              </tbody>
+              {monthlyPivot.length > 0 && (
+                <tfoot className="bg-gray-50 border-t">
+                  <tr>
+                    <td className="px-4 py-2.5 font-semibold text-gray-700 sticky left-0 bg-gray-50 z-10">合計</td>
+                    {MONTHS.map(m => (
+                      <td key={m} className="px-3 py-2.5 text-right font-semibold text-gray-800 tabular-nums whitespace-nowrap">
+                        {monthlyColTotals[m] > 0 ? Number(monthlyColTotals[m]).toLocaleString() : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2.5 text-right font-bold text-cyan-700 tabular-nums whitespace-nowrap bg-cyan-50">
+                      {Number(totalAmount).toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
