@@ -2105,6 +2105,25 @@ export default function ExpensesPage() {
                               style={smallBtnStyle}>
                               {expandedRecord === r.id ? '收起' : '明細'}
                             </button>
+                            {mainTab === 'fixed' && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch('/api/export/expense-record', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      credentials: 'include',
+                                      body: JSON.stringify({ recordId: r.id }),
+                                    });
+                                    if (!res.ok) { showToast('PDF 產生失敗', 'error'); return; }
+                                    const blob = await res.blob();
+                                    window.open(URL.createObjectURL(blob), '_blank');
+                                  } catch { showToast('PDF 產生失敗', 'error'); }
+                                }}
+                                style={{ ...smallBtnStyle, color: '#6d28d9', borderColor: '#6d28d9' }}>
+                                傳票PDF
+                              </button>
+                            )}
                             {(ps === '待出納' || ps === '已代墊') && (
                               <>
                                 <button onClick={() => openEditRecord(r)}
