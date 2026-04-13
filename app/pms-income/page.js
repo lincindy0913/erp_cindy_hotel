@@ -127,6 +127,10 @@ function PmsIncomePage() {
   const [sortField, setSortField] = useState('businessDate');
   const [sortDir, setSortDir] = useState('desc');
 
+  // 住宿統計摘要（records tab 用）
+  const [occupancyStats, setOccupancyStats] = useState([]);
+  const [occupancyLoading, setOccupancyLoading] = useState(false);
+
   // 每日信用卡手續費（收入記錄 → 現金流連動用）
   const [creditCardFees, setCreditCardFees] = useState([]);
   const [creditCardFeeForm, setCreditCardFeeForm] = useState({
@@ -292,6 +296,40 @@ function PmsIncomePage() {
   useEffect(() => {
     if (activeTab === 'records') fetchCreditCardFees();
   }, [activeTab, fetchCreditCardFees]);
+
+  const fetchOccupancyStats = useCallback(async () => {
+    if (!filterStartDate && !filterEndDate) { setOccupancyStats([]); return; }
+    setOccupancyLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterWarehouse) params.set('warehouse', filterWarehouse);
+      if (filterStartDate) params.set('startDate', filterStartDate);
+      if (filterEndDate) params.set('endDate', filterEndDate);
+      const res = await fetch(`/api/pms-income/batches?${params.toString()}`);
+      const batches = await res.json();
+      const list = Array.isArray(batches) ? batches : [];
+
+      // Aggregate by warehouse: sum occupiedRooms/guestCount/breakfastCount; keep latest roomCount as capacity
+      const map = new Map();
+      for (const b of list) {
+        if (!map.has(b.warehouse)) {
+          map.set(b.warehouse, { warehouse: b.warehouse, occupiedRooms: 0, guestCount: 0, breakfastCount: 0, roomCount: 0, days: 0 });
+        }
+        const w = map.get(b.warehouse);
+        w.occupiedRooms += b.occupiedRooms || 0;
+        w.guestCount    += b.guestCount    || 0;
+        w.breakfastCount += b.breakfastCount || 0;
+        if (b.roomCount) w.roomCount = b.roomCount; // use latest capacity value
+        w.days += 1;
+      }
+      setOccupancyStats(Array.from(map.values()));
+    } catch { setOccupancyStats([]); }
+    setOccupancyLoading(false);
+  }, [filterWarehouse, filterStartDate, filterEndDate]);
+
+  useEffect(() => {
+    if (activeTab === 'records') fetchOccupancyStats();
+  }, [activeTab, fetchOccupancyStats]);
 
   const handlePushToCashflow = async () => {
     setPushToCashflowLoading(true);
@@ -1566,6 +1604,90 @@ function PmsIncomePage() {
         {/* ============================== */}
         {activeTab === 'records' && (
           <div className="space-y-4">
+
+            {/* ── 住宿統計摘要 ─────────────────────────────────── */}
+            {(filterStartDate || filterEndDate) && (
+              <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+                <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-indigo-800">
+                    住宿統計摘要
+                    {filterStartDate && filterEndDate && (
+                      <span className="ml-2 text-xs font-normal text-indigo-500">
+                        {filterStartDate} ～ {filterEndDate}
+                      </span>
+                    )}
+                  </p>
+                  {occupancyLoading && <span className="text-xs text-indigo-400">載入中...</span>}
+                </div>
+                {!occupancyLoading && occupancyStats.length === 0 && (
+                  <p className="px-4 py-3 text-sm text-gray-400">查無住宿資料（請確認已匯入 PMS 日報）</p>
+                )}
+                {occupancyStats.length > 0 && (() => {
+                  const totals = occupancyStats.reduce((acc, r) => ({
+                    occupiedRooms: acc.occupiedRooms + r.occupiedRooms,
+                    guestCount: acc.guestCount + r.guestCount,
+                    breakfastCount: acc.breakfastCount + r.breakfastCount,
+                    roomCount: acc.roomCount + r.roomCount,
+                    days: Math.max(acc.days, r.days),
+                  }), { occupiedRooms: 0, guestCount: 0, breakfastCount: 0, roomCount: 0, days: 0 });
+
+                  const occ = (r) => (r.roomCount && r.days)
+                    ? ((r.occupiedRooms / (r.roomCount * r.days)) * 100).toFixed(1) + '%'
+                    : '—';
+                  const bfRate = (r) => r.guestCount
+                    ? ((r.breakfastCount / r.guestCount) * 100).toFixed(1) + '%'
+                    : '—';
+                  const perRoom = (r) => r.occupiedRooms
+                    ? (r.breakfastCount / r.occupiedRooms).toFixed(1)
+                    : '—';
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">館別</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">住宿間數</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">住宿人數</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">早餐人數</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">住房率</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">早餐滲透率</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">每間房早餐</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {occupancyStats.map(r => (
+                            <tr key={r.warehouse} className="hover:bg-indigo-50/30">
+                              <td className="px-4 py-2 font-medium text-gray-800">{r.warehouse}</td>
+                              <td className="px-4 py-2 text-right font-mono text-gray-700">{r.occupiedRooms.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right font-mono text-gray-700">{r.guestCount.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right font-mono text-gray-700">{r.breakfastCount.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right font-medium text-indigo-700">{occ(r)}</td>
+                              <td className="px-4 py-2 text-right font-medium text-teal-700">{bfRate(r)}</td>
+                              <td className="px-4 py-2 text-right text-gray-600">{perRoom(r)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        {occupancyStats.length > 1 && (
+                          <tfoot className="bg-indigo-50 border-t font-semibold text-sm">
+                            <tr>
+                              <td className="px-4 py-2 text-gray-700">合計</td>
+                              <td className="px-4 py-2 text-right font-mono">{totals.occupiedRooms.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right font-mono">{totals.guestCount.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right font-mono">{totals.breakfastCount.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right text-indigo-700">{occ(totals)}</td>
+                              <td className="px-4 py-2 text-right text-teal-700">{bfRate(totals)}</td>
+                              <td className="px-4 py-2 text-right text-gray-600">{perRoom(totals)}</td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Filters */}
             <div className="bg-white rounded-lg shadow-sm border p-4">
               <div className="flex flex-wrap gap-3 items-end">
