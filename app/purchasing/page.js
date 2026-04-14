@@ -154,11 +154,13 @@ export default function PurchasingPage() {
   async function fetchExpenseTemplates() {
     try {
       const res = await fetch('/api/expense-templates?activeOnly=false');
+      if (!res.ok) { showToast('載入費用範本失敗', 'error'); return; }
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       setExpenseTemplates(list.filter(t => (t.templateType || 'fixed') === 'purchase'));
     } catch (err) {
       console.error('載入費用範本失敗:', err);
+      showToast('載入費用範本失敗', 'error');
     }
   }
 
@@ -171,11 +173,18 @@ export default function PurchasingPage() {
       if (expenseRecordFilter.status) params.set('status', expenseRecordFilter.status);
       params.set('type', 'purchase');
       const res = await fetch(`/api/expense-records?${params.toString()}`);
+      if (!res.ok) {
+        showToast('載入執行記錄失敗', 'error');
+        setExpenseRecords([]); setExpenseRecordsTotal(0);
+        setExpenseRecordsLoading(false); return;
+      }
       const data = await res.json();
       setExpenseRecords(data.records || []);
       setExpenseRecordsTotal(data.total || 0);
     } catch (err) {
       console.error('載入執行記錄失敗:', err);
+      showToast('載入執行記錄失敗', 'error');
+      setExpenseRecords([]); setExpenseRecordsTotal(0);
     }
     setExpenseRecordsLoading(false);
   }
@@ -533,6 +542,7 @@ export default function PurchasingPage() {
   async function fetchInvoices() {
     try {
       const response = await fetch('/api/sales');
+      if (!response.ok) { setInvoices([]); return; }
       const data = await response.json();
       setInvoices(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -565,11 +575,13 @@ export default function PurchasingPage() {
   async function fetchWarehouseDepartments() {
     try {
       const response = await fetch('/api/warehouse-departments');
+      if (!response.ok) { showToast('載入館別資料失敗', 'error'); return; }
       const data = await response.json();
       setWarehouseDepartments((data && data.byName) ? data.byName : (data || {}));
       if (data && Array.isArray(data.list)) setWarehouseList(data.list);
     } catch (error) {
       console.error('取得館別部門失敗:', error);
+      showToast('載入館別資料失敗', 'error');
     }
   }
 
@@ -702,6 +714,11 @@ export default function PurchasingPage() {
       if (filters.startDate) params.set('dateFrom', filters.startDate);
       if (filters.endDate) params.set('dateTo', filters.endDate);
       const response = await fetch(`/api/purchasing?${params}`);
+      if (!response.ok) {
+        showToast('載入進貨單失敗，請稍後再試', 'error');
+        setAllPurchases([]); setPurchases([]); setTotalCount(0); setLoading(false);
+        return;
+      }
       const result = await response.json();
       if (result.data && result.pagination) {
         setAllPurchases(result.data);
@@ -717,6 +734,7 @@ export default function PurchasingPage() {
       setLoading(false);
     } catch (error) {
       console.error('取得進貨單列表失敗:', error);
+      showToast('載入進貨單失敗，請稍後再試', 'error');
       setAllPurchases([]);
       setPurchases([]);
       setTotalCount(0);
@@ -845,10 +863,12 @@ export default function PurchasingPage() {
   async function fetchSuppliers() {
     try {
       const response = await fetch('/api/suppliers?all=true');
+      if (!response.ok) { showToast('載入廠商清單失敗', 'error'); return; }
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('取得廠商列表失敗:', error);
+      showToast('載入廠商清單失敗', 'error');
       setSuppliers([]);
     }
   }
@@ -856,10 +876,12 @@ export default function PurchasingPage() {
   async function fetchProducts() {
     try {
       const response = await fetch('/api/products?all=true', { credentials: 'include' });
+      if (!response.ok) { showToast('載入品項清單失敗', 'error'); return; }
       const data = await response.json().catch(() => []);
       setProducts(Array.isArray(data) ? data : (data?.products || []));
     } catch (error) {
       console.error('取得產品列表失敗:', error);
+      showToast('載入品項清單失敗', 'error');
       setProducts([]);
     }
   }
