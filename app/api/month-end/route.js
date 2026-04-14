@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
-import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { applyWarehouseFilter, getAllowedWarehouse } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -67,10 +67,15 @@ export async function GET(request) {
     const yearStart = `${year}-01-01`;
     const yearEnd = `${year}-12-31`;
 
+    // Derive warehouse restriction once for all subsequent queries
+    const allowedWarehouse = getAllowedWarehouse(auth.session);
+    const whFilter = allowedWarehouse ? { warehouse: allowedWarehouse } : {};
+
     // Get monthly purchase summaries
     const purchases = await prisma.purchaseMaster.findMany({
       where: {
-        purchaseDate: { gte: yearStart, lte: yearEnd }
+        purchaseDate: { gte: yearStart, lte: yearEnd },
+        ...whFilter,
       },
       select: {
         purchaseDate: true,
@@ -80,7 +85,7 @@ export async function GET(request) {
       }
     });
 
-    // Get monthly sales summaries
+    // Get monthly sales summaries (SalesMaster has no warehouse field — not filterable)
     const sales = await prisma.salesMaster.findMany({
       where: {
         invoiceDate: { gte: yearStart, lte: yearEnd }
@@ -95,7 +100,8 @@ export async function GET(request) {
     // Get monthly expense summaries (legacy Expense table)
     const expenses = await prisma.expense.findMany({
       where: {
-        invoiceDate: { gte: yearStart, lte: yearEnd }
+        invoiceDate: { gte: yearStart, lte: yearEnd },
+        ...whFilter,
       },
       select: {
         invoiceDate: true,
@@ -109,7 +115,8 @@ export async function GET(request) {
     const commonExpenses = await prisma.commonExpenseRecord.findMany({
       where: {
         expenseMonth: { gte: `${year}-01`, lte: `${year}-12` },
-        status: '已確認'
+        status: '已確認',
+        ...whFilter,
       },
       select: {
         expenseMonth: true,

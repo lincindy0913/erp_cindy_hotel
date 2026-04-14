@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { applyWarehouseFilter } from '@/lib/warehouse-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,8 +18,13 @@ export async function GET(request) {
       orderBy: { id: 'asc' }
     });
 
-    // 依付款單狀態計算每張發票的「付款狀態」
+    // 依付款單狀態計算每張發票的「付款狀態」（套館別限制）
+    const paymentOrderWhere = {};
+    const wfPO = applyWarehouseFilter(auth.session, paymentOrderWhere);
+    if (!wfPO.ok) return wfPO.response;
+
     const paymentOrders = await prisma.paymentOrder.findMany({
+      where: paymentOrderWhere,
       select: {
         invoiceIds: true,
         status: true

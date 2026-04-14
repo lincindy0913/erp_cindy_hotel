@@ -18,18 +18,37 @@ const SOURCE_MODULE_MAP = {
 
 async function checkSourceWarehouseAccess(session, sourceModule, sourceRecordId) {
   const mapping = SOURCE_MODULE_MAP[sourceModule];
-  if (!mapping || !mapping.field) return { ok: true }; // no warehouse field — skip
+  if (!mapping) return { ok: true }; // unknown module — module-level auth already checked
 
-  try {
-    const record = await prisma[mapping.model]?.findUnique({
-      where: { id: sourceRecordId },
-      select: { [mapping.field]: true },
-    });
-    if (!record) return { ok: true }; // record not found — module-level auth already checked
-    return assertWarehouseAccess(session, record[mapping.field]);
-  } catch {
-    return { ok: true }; // best effort — don't block on lookup failures
+  if (mapping.field) {
+    // Direct warehouse field on the model
+    try {
+      const record = await prisma[mapping.model]?.findUnique({
+        where: { id: sourceRecordId },
+        select: { [mapping.field]: true },
+      });
+      if (!record) return { ok: true }; // record not found — module-level auth already checked
+      return assertWarehouseAccess(session, record[mapping.field]);
+    } catch {
+      return { ok: true }; // best effort — don't block on lookup failures
+    }
   }
+
+  // cashierExecution: no direct warehouse — derive via paymentOrder
+  if (mapping.model === 'cashierExecution') {
+    try {
+      const record = await prisma.cashierExecution.findUnique({
+        where: { id: sourceRecordId },
+        select: { paymentOrder: { select: { warehouse: true } } },
+      });
+      if (!record) return { ok: true };
+      return assertWarehouseAccess(session, record.paymentOrder?.warehouse);
+    } catch {
+      return { ok: true }; // best effort
+    }
+  }
+
+  return { ok: true }; // no warehouse field and no special case — skip
 }
 
 export const dynamic = 'force-dynamic';
