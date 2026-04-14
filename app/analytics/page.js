@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
+import { useToast } from '@/context/ToastContext';
 
 const TABS = [
   { key: 'overview',        label: '經營總覽' },
@@ -66,6 +67,7 @@ const Bar = ({ value, max, color = 'bg-cyan-500' }) => {
 
 export default function AnalyticsPage() {
   useSession();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
 
   // ── Overview ─────────────────────────────────────────────────
@@ -241,7 +243,8 @@ export default function AnalyticsPage() {
       if (spItemsWarehouse.trim()) p.set('warehouse', spItemsWarehouse.trim());
       const res = await fetch(`/api/analytics/supplier-purchase-items?${p}`);
       if (res.ok) setSpItems(await res.json());
-    } catch (e) { console.error(e); }
+      else showToast('廠商品項查詢失敗，請稍後再試', 'error');
+    } catch (e) { console.error(e); showToast('廠商品項查詢失敗，請稍後再試', 'error'); }
     setSpItemsLoading(false);
   }, [spItemsStart, spItemsEnd, spItemsSupplierId, spItemsWarehouse]);
 
@@ -253,7 +256,8 @@ export default function AnalyticsPage() {
       if (occCostCategory)  p.set('category',  occCostCategory);
       const res = await fetch(`/api/analytics/occupancy-cost?${p}`);
       if (res.ok) setOccCost(await res.json());
-    } catch (e) { console.error(e); }
+      else showToast('住宿成本效益查詢失敗，請稍後再試', 'error');
+    } catch (e) { console.error(e); showToast('住宿成本效益查詢失敗，請稍後再試', 'error'); }
     setOccCostLoading(false);
   }, [occCostStart, occCostEnd, occCostWarehouse, occCostCategory]);
 
@@ -294,6 +298,7 @@ export default function AnalyticsPage() {
     if (activeTab === 'procurement') fetchSupplierRisk();
     if (activeTab === 'payables') fetchPayables();
     if (activeTab === 'report') fetchReport();
+    if (activeTab === 'supplier-items') fetchSpItems();
     if (activeTab === 'occupancy-cost') fetchOccCost();
   }, [activeTab]);
 
