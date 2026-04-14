@@ -27,9 +27,10 @@ export async function GET(request) {
     const whNames = await expandWarehouseNames(prisma, warehouse);
     const whValue = warehouseWhereValue(whNames);
 
-    // 只取得「列入庫存」的產品
+    // 只取得「列入庫存」的產品（上限 2000 筆防止 OOM）
     const products = await prisma.product.findMany({
-      where: { isInStock: true }
+      where: { isInStock: true },
+      take: 2000,
     });
 
     // v3: Try snapshot-based calculation first

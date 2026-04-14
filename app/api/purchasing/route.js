@@ -152,18 +152,17 @@ export async function POST(request) {
         include: { details: true }
       });
 
-      // 記錄價格歷史
-      for (const item of (data.items || [])) {
-        if (item.productId && item.unitPrice) {
-          await tx.priceHistory.create({
-            data: {
-              supplierId: parseInt(data.supplierId),
-              productId: parseInt(item.productId),
-              purchaseDate: data.purchaseDate,
-              unitPrice: parseFloat(item.unitPrice)
-            }
-          });
-        }
+      // 記錄價格歷史（批次寫入，避免 N+1）
+      const priceItems = (data.items || [])
+        .filter(item => item.productId && item.unitPrice)
+        .map(item => ({
+          supplierId: parseInt(data.supplierId),
+          productId: parseInt(item.productId),
+          purchaseDate: data.purchaseDate,
+          unitPrice: parseFloat(item.unitPrice),
+        }));
+      if (priceItems.length > 0) {
+        await tx.priceHistory.createMany({ data: priceItems });
       }
 
       return created;

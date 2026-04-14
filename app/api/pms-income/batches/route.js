@@ -11,17 +11,14 @@ async function generateBatchNo(businessDate) {
   const dateStr = (businessDate || new Date().toISOString().split('T')[0]).replace(/-/g, '');
   const prefix = `PMI-${dateStr}-`;
 
-  const existing = await prisma.pmsImportBatch.findMany({
+  // 取序號最大的一筆，避免載入所有批次再 loop
+  const latest = await prisma.pmsImportBatch.findFirst({
     where: { batchNo: { startsWith: prefix } },
-    select: { batchNo: true }
+    orderBy: { batchNo: 'desc' },
+    select: { batchNo: true },
   });
 
-  let maxSeq = 0;
-  for (const b of existing) {
-    const seq = parseInt(b.batchNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
+  const maxSeq = latest ? (parseInt(latest.batchNo.substring(prefix.length)) || 0) : 0;
   return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 }
 

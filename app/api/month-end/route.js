@@ -261,30 +261,25 @@ export async function POST(request) {
       });
 
       for (const account of cashAccounts) {
-        const txAgg = await prisma.cashTransaction.aggregate({
-          where: { accountId: account.id, status: '已確認' },
-          _sum: { amount: true }
-        });
-
-        const incomeTxs = await prisma.cashTransaction.aggregate({
-          where: { accountId: account.id, status: '已確認', type: '收入' },
-          _sum: { amount: true }
-        });
-
-        const expenseTxs = await prisma.cashTransaction.aggregate({
-          where: { accountId: account.id, status: '已確認', type: '支出' },
-          _sum: { amount: true }
-        });
-
-        const transferOutTxs = await prisma.cashTransaction.aggregate({
-          where: { accountId: account.id, status: '已確認', type: '移轉' },
-          _sum: { amount: true }
-        });
-
-        const transferInTxs = await prisma.cashTransaction.aggregate({
-          where: { transferAccountId: account.id, status: '已確認', type: '移轉' },
-          _sum: { amount: true }
-        });
+        // 批次送入同一 transaction，確保讀取一致性
+        const [incomeTxs, expenseTxs, transferOutTxs, transferInTxs] = await prisma.$transaction([
+          prisma.cashTransaction.aggregate({
+            where: { accountId: account.id, status: '已確認', type: '收入' },
+            _sum: { amount: true },
+          }),
+          prisma.cashTransaction.aggregate({
+            where: { accountId: account.id, status: '已確認', type: '支出' },
+            _sum: { amount: true },
+          }),
+          prisma.cashTransaction.aggregate({
+            where: { accountId: account.id, status: '已確認', type: '移轉' },
+            _sum: { amount: true },
+          }),
+          prisma.cashTransaction.aggregate({
+            where: { transferAccountId: account.id, status: '已確認', type: '移轉' },
+            _sum: { amount: true },
+          }),
+        ]);
 
         const income = Number(incomeTxs._sum.amount || 0);
         const expense = Number(expenseTxs._sum.amount || 0);

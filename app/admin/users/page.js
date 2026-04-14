@@ -74,9 +74,12 @@ export default function UserManagementPage() {
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
+      } else {
+        showToast('載入用戶清單失敗，請重新整理', 'error');
       }
     } catch (error) {
       console.error('Fetch users error:', error);
+      showToast('載入用戶清單失敗，請重新整理', 'error');
     } finally {
       setLoading(false);
     }
