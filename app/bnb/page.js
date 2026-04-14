@@ -88,6 +88,7 @@ const TABS = [
   { key: 'monthly',    label: '月收入總表' },
   { key: 'pnl',        label: '月收支總表' },
   { key: 'declaration',label: '旅宿網申報' },
+  { key: 'deposit',    label: '訂金核對' },
 ];
 
 const STATUS_COLORS = {
@@ -213,6 +214,17 @@ export default function BnbPage() {
   // ── 館別清單 state ────────────────────────────────────────────
   const [warehouseList, setWarehouseList] = useState([]);
 
+  // ── 訂金核對 state ────────────────────────────────────────────
+  const [dmMonth,       setDmMonth]       = useState(() => new Date().toISOString().slice(0, 7));
+  const [dmWarehouse,   setDmWarehouse]   = useState('');
+  const [dmAccountId,   setDmAccountId]   = useState('');
+  const [dmData,        setDmData]        = useState(null);
+  const [dmLoading,     setDmLoading]     = useState(false);
+  const [dmAccounts,    setDmAccounts]    = useState([]);
+  const [dmSelBnb,      setDmSelBnb]      = useState(null);  // selected BNB id
+  const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
+  const [dmMatching,    setDmMatching]    = useState(false);
+
   // ── 旅宿網申報 state ─────────────────────────────────────────
   const [declMonth,     setDeclMonth]     = useState(() => new Date().toISOString().slice(0, 7));
   const [declWarehouse, setDeclWarehouse] = useState('民宿');
@@ -224,7 +236,7 @@ export default function BnbPage() {
   const [declSaving, setDeclSaving] = useState(false);
   const [declLoading, setDeclLoading] = useState(false);
 
-  // ── 館別清單 fetch ────────────────────────────────────────────
+  // ── 館別清單 + 銀行帳戶 fetch（mount once）────────────────────
   useEffect(() => {
     fetch('/api/warehouse-departments')
       .then(r => r.ok ? r.json() : null)
@@ -234,7 +246,75 @@ export default function BnbPage() {
         }
       })
       .catch(() => {});
+    fetch('/api/cashflow/accounts')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setDmAccounts(data.filter(a => a.type === '銀行存款' && a.isActive)))
+      .catch(() => {});
   }, []);
+
+  // ── 訂金核對 fetch ────────────────────────────────────────────
+  const fetchDepositMatch = useCallback(async () => {
+    if (!dmAccountId) { showToast('請先選擇存簿帳戶', 'error'); return; }
+    setDmLoading(true);
+    try {
+      const p = new URLSearchParams({ month: dmMonth, accountId: dmAccountId });
+      if (dmWarehouse) p.set('warehouse', dmWarehouse);
+      const res = await fetch(`/api/bnb/deposit-match?${p}`);
+      if (!res.ok) { showToast('載入核對資料失敗', 'error'); return; }
+      setDmData(await res.json());
+      setDmSelBnb(null);
+      setDmSelLine(null);
+    } catch { showToast('載入核對資料失敗', 'error'); }
+    finally { setDmLoading(false); }
+  }, [dmMonth, dmAccountId, dmWarehouse]);
+
+  // ── 訂金手動配對 ──────────────────────────────────────────────
+  async function handleMatch() {
+    if (!dmSelBnb || !dmSelLine) return;
+    setDmMatching(true);
+    try {
+      const res = await fetch('/api/bnb/deposit-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bnbId: dmSelBnb, bankLineId: dmSelLine }),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.message || '配對失敗', 'error'); return; }
+      showToast('配對成功', 'success');
+      setDmSelBnb(null); setDmSelLine(null);
+      fetchDepositMatch();
+    } catch { showToast('配對失敗', 'error'); }
+    finally { setDmMatching(false); }
+  }
+
+  // ── 解除配對 ──────────────────────────────────────────────────
+  async function handleUnmatch(bnbId) {
+    const res = await fetch(`/api/bnb/deposit-match?bnbId=${bnbId}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('解除配對失敗', 'error'); return; }
+    showToast('已解除配對', 'success');
+    fetchDepositMatch();
+  }
+
+  // ── 自動配對（套用全部建議）──────────────────────────────────
+  async function handleAutoMatch() {
+    const suggestions = dmData?.suggestions || [];
+    if (!suggestions.length) { showToast('目前沒有可自動配對的項目', 'info'); return; }
+    setDmMatching(true);
+    let count = 0;
+    try {
+      for (const s of suggestions) {
+        const res = await fetch('/api/bnb/deposit-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bnbId: s.bnbId, bankLineId: s.bankLineId }),
+        });
+        if (res.ok) count++;
+      }
+      showToast(`自動配對完成：${count} 筆`, 'success');
+      fetchDepositMatch();
+    } catch { showToast('自動配對發生錯誤', 'error'); }
+    finally { setDmMatching(false); }
+  }
 
   // ── 訂房明細 fetch ────────────────────────────────────────────
   const fetchRecords = useCallback(async () => {
@@ -291,6 +371,7 @@ export default function BnbPage() {
     if (activeTab === 'records')     fetchRecords();
     if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary();
     if (activeTab === 'declaration') fetchDecl();
+    if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
   }, [activeTab]);
 
   useEffect(() => { if (activeTab === 'records') fetchRecords(); }, [filterMonth, filterSource, filterStatus]);
@@ -800,6 +881,222 @@ export default function BnbPage() {
             </div>
           </div>
         )}
+
+        {/* ══ Tab: 訂金核對 ══ */}
+        {activeTab === 'deposit' && (() => {
+          const suggestMap = new Map((dmData?.suggestions || []).map(s => [s.bnbId, s.bankLineId]));
+          const lineMatchedByBnb = new Map(
+            (dmData?.bnbRecords || [])
+              .filter(r => r.depositBankLineId)
+              .map(r => [r.depositBankLineId, r.guestName])
+          );
+          const summary = dmData?.summary;
+          const bnbRecords = dmData?.bnbRecords || [];
+          const bankLines  = dmData?.bankLines  || [];
+
+          return (
+            <div>
+              {/* 篩選列 */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">月份</label>
+                  <input type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={dmWarehouse} onChange={e => setDmWarehouse(e.target.value)} className={inputCls}>
+                    <option value="">全部</option>
+                    {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
+                  <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
+                    <option value="">請選擇帳戶</option>
+                    {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <button onClick={fetchDepositMatch} disabled={dmLoading || !dmAccountId}
+                  className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
+                  {dmLoading ? '載入中…' : '查詢'}
+                </button>
+                {dmData && (
+                  <button onClick={handleAutoMatch} disabled={dmMatching || !(dmData?.suggestions?.length)}
+                    className={`${btnCls} bg-amber-50 text-amber-700 disabled:opacity-40`}>
+                    ⚡ 自動配對{dmData?.suggestions?.length ? `（${dmData.suggestions.length}筆）` : ''}
+                  </button>
+                )}
+              </div>
+
+              {/* 摘要卡 */}
+              {summary && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+                  {[
+                    { label: 'BNB 訂金合計',  val: `NT$ ${summary.totalBnbDeposit.toLocaleString()}`,  color: 'text-indigo-700' },
+                    { label: '存簿入帳合計',   val: `NT$ ${summary.totalBankCredit.toLocaleString()}`,  color: 'text-blue-700' },
+                    { label: '差異',          val: `NT$ ${Math.abs(summary.diff).toLocaleString()}`,    color: summary.diff !== 0 ? 'text-red-600 font-bold' : 'text-green-600' },
+                    { label: '已配對',         val: `${summary.matchedCount} 筆`,                        color: 'text-green-600' },
+                    { label: '未配對（BNB）',  val: `${summary.unmatchedBnbCount} 筆`,                   color: summary.unmatchedBnbCount > 0 ? 'text-amber-600' : 'text-gray-500' },
+                  ].map(c => (
+                    <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
+                      <p className="text-xs text-gray-500">{c.label}</p>
+                      <p className={`font-bold text-sm mt-0.5 ${c.color}`}>{c.val}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 配對按鈕 */}
+              {(dmSelBnb && dmSelLine) && (
+                <div className="mb-3 flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+                  <span className="text-sm text-indigo-700">已選取雙側各一筆，確認配對？</span>
+                  <button onClick={handleMatch} disabled={dmMatching}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {dmMatching ? '配對中…' : '確認配對'}
+                  </button>
+                  <button onClick={() => { setDmSelBnb(null); setDmSelLine(null); }}
+                    className="text-xs text-gray-500 hover:underline">取消</button>
+                </div>
+              )}
+
+              {!dmData && !dmLoading && (
+                <div className="text-center py-20 text-gray-400">請選擇存簿帳戶後按「查詢」</div>
+              )}
+              {dmLoading && (
+                <div className="text-center py-20 text-gray-400">載入中…</div>
+              )}
+
+              {/* 雙欄核對表 */}
+              {dmData && !dmLoading && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                  {/* 左欄：BNB 訂金 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-indigo-800">訂房訂金（BNB）</span>
+                      <span className="text-xs text-indigo-500">{bnbRecords.length} 筆　點選後再點右側存簿行配對</span>
+                    </div>
+                    <div className="overflow-y-auto max-h-[480px]">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="text-gray-500">
+                            <th className="px-3 py-2 text-left">狀態</th>
+                            <th className="px-3 py-2 text-left">姓名</th>
+                            <th className="px-3 py-2 text-left">入住</th>
+                            <th className="px-3 py-2 text-right">訂金</th>
+                            <th className="px-3 py-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {bnbRecords.length === 0 && (
+                            <tr><td colSpan={5} className="text-center py-8 text-gray-400">本月無訂金記錄</td></tr>
+                          )}
+                          {bnbRecords.map(r => {
+                            const isMatched  = !!r.depositBankLineId;
+                            const isSuggested = !isMatched && suggestMap.has(r.id);
+                            const isSelected = dmSelBnb === r.id;
+                            let rowCls = 'cursor-pointer transition-colors ';
+                            if (isSelected)  rowCls += 'bg-indigo-100 ring-1 ring-inset ring-indigo-300';
+                            else if (isMatched)   rowCls += 'bg-green-50 hover:bg-green-100';
+                            else if (isSuggested) rowCls += 'bg-amber-50 hover:bg-amber-100';
+                            else rowCls += 'hover:bg-gray-50';
+                            return (
+                              <tr key={r.id} className={rowCls}
+                                onClick={() => !isMatched && setDmSelBnb(isSelected ? null : r.id)}>
+                                <td className="px-3 py-2.5">
+                                  {isMatched
+                                    ? <span className="text-green-600 font-bold">✓</span>
+                                    : isSuggested
+                                      ? <span className="text-amber-500">⚡</span>
+                                      : <span className="text-gray-300">○</span>
+                                  }
+                                </td>
+                                <td className="px-3 py-2.5 max-w-[100px] truncate font-medium">{r.guestName}</td>
+                                <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{r.checkInDate}</td>
+                                <td className="px-3 py-2.5 text-right font-semibold text-indigo-700">
+                                  {r.payDeposit.toLocaleString()}
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  {isMatched && (
+                                    <button onClick={e => { e.stopPropagation(); handleUnmatch(r.id); }}
+                                      className="text-[10px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded border border-red-200 hover:bg-red-50">
+                                      解除
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 右欄：存簿入帳 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-blue-800">存簿入帳（銀行明細）</span>
+                      <span className="text-xs text-blue-500">{bankLines.length} 筆入帳</span>
+                    </div>
+                    <div className="overflow-y-auto max-h-[480px]">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="text-gray-500">
+                            <th className="px-3 py-2 text-left">狀態</th>
+                            <th className="px-3 py-2 text-left">日期</th>
+                            <th className="px-3 py-2 text-left">說明</th>
+                            <th className="px-3 py-2 text-right">金額</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {bankLines.length === 0 && (
+                            <tr><td colSpan={4} className="text-center py-8 text-gray-400">本月無存簿入帳資料</td></tr>
+                          )}
+                          {bankLines.map(l => {
+                            const isUsed      = l.isUsed;
+                            const isSuggested = !isUsed && [...suggestMap.values()].includes(l.id);
+                            const isSelected  = dmSelLine === l.id;
+                            const matchedTo   = lineMatchedByBnb.get(l.id);
+                            let rowCls = 'transition-colors ';
+                            if (isUsed) rowCls += 'bg-green-50 opacity-70';
+                            else if (isSelected) rowCls += 'bg-indigo-100 cursor-pointer ring-1 ring-inset ring-indigo-300';
+                            else if (isSuggested) rowCls += 'bg-amber-50 hover:bg-amber-100 cursor-pointer';
+                            else rowCls += 'hover:bg-gray-50 cursor-pointer';
+                            return (
+                              <tr key={l.id} className={rowCls}
+                                onClick={() => !isUsed && setDmSelLine(isSelected ? null : l.id)}>
+                                <td className="px-3 py-2.5">
+                                  {isUsed
+                                    ? <span className="text-green-600 font-bold" title={`已配對：${matchedTo}`}>✓</span>
+                                    : isSuggested
+                                      ? <span className="text-amber-500">⚡</span>
+                                      : <span className="text-gray-300">○</span>
+                                  }
+                                </td>
+                                <td className="px-3 py-2.5 whitespace-nowrap text-gray-600">{l.txDate}</td>
+                                <td className="px-3 py-2.5 max-w-[160px] truncate text-gray-500"
+                                  title={l.description || ''}>
+                                  {l.description || '—'}
+                                  {isUsed && matchedTo && (
+                                    <span className="ml-1 text-green-600">（{matchedTo}）</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-semibold text-blue-700">
+                                  {l.creditAmount.toLocaleString()}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       </main>
 
       {/* 付款明細 Modal */}

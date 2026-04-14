@@ -2773,7 +2773,11 @@ model BnbBookingRecord {
   payVoucher    Decimal  @default(0) @map("pay_voucher") @db.Decimal(12, 2)
   cardFeeRate   Decimal  @default(0) @map("card_fee_rate") @db.Decimal(5, 4)
   cardFee       Decimal  @default(0) @map("card_fee") @db.Decimal(12, 2)
-  paymentFilled Boolean  @default(false) @map("payment_filled")
+  paymentFilled        Boolean  @default(false) @map("payment_filled")
+  // 訂金匯款核對 — 對應到存簿明細行
+  depositBankLineId    Int?     @map("deposit_bank_line_id")
+  depositMatchedAt     DateTime? @map("deposit_matched_at")
+  depositMatchedBy     String?  @map("deposit_matched_by") @db.VarChar(255)
   note          String?  @db.VarChar(500)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -2782,6 +2786,7 @@ model BnbBookingRecord {
   @@index([warehouse])
   @@index([checkInDate])
   @@index([status])
+  @@index([depositBankLineId])
   @@map("bnb_booking_records")
 }
 
