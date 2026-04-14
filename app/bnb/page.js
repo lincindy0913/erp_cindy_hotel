@@ -210,6 +210,9 @@ export default function BnbPage() {
   const [summaryRows,    setSummaryRows]    = useState([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
+  // ── 館別清單 state ────────────────────────────────────────────
+  const [warehouseList, setWarehouseList] = useState([]);
+
   // ── 旅宿網申報 state ─────────────────────────────────────────
   const [declMonth,     setDeclMonth]     = useState(() => new Date().toISOString().slice(0, 7));
   const [declWarehouse, setDeclWarehouse] = useState('民宿');
@@ -220,6 +223,18 @@ export default function BnbPage() {
   });
   const [declSaving, setDeclSaving] = useState(false);
   const [declLoading, setDeclLoading] = useState(false);
+
+  // ── 館別清單 fetch ────────────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/warehouse-departments')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.list) {
+          setWarehouseList(data.list.filter(w => w.type === 'building').map(w => w.name));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // ── 訂房明細 fetch ────────────────────────────────────────────
   const fetchRecords = useCallback(async () => {
@@ -506,8 +521,10 @@ export default function BnbPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
-                  <option value="民宿">民宿</option>
-                  <option value="麗軒">麗軒</option>
+                  {warehouseList.length === 0
+                    ? <option value="民宿">民宿</option>
+                    : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
+                  }
                 </select>
               </div>
               <div>
@@ -720,8 +737,10 @@ export default function BnbPage() {
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">館別</label>
                   <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls + ' w-full'}>
-                    <option value="民宿">民宿</option>
-                    <option value="麗軒">麗軒</option>
+                    {warehouseList.length === 0
+                      ? <option value="民宿">民宿</option>
+                      : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
+                    }
                   </select>
                 </div>
               </div>
