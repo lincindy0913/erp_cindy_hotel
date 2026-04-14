@@ -4,8 +4,84 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import ExportButtons from '@/components/ExportButtons';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
+
+// ── 匯出欄位定義 ──────────────────────────────────────────────────
+const BOOKING_EXPORT_COLS = [
+  { header: '來源',     key: 'source' },
+  { header: '姓名',     key: 'guestName' },
+  { header: '房間',     key: 'roomNo' },
+  { header: '入住日期', key: 'checkInDate' },
+  { header: '退房日期', key: 'checkOutDate' },
+  { header: '房費',     key: 'roomCharge',  format: 'number' },
+  { header: '消費',     key: 'otherCharge', format: 'number' },
+  { header: '訂金匯款', key: 'payDeposit',  format: 'number' },
+  { header: '刷卡',     key: 'payCard',     format: 'number' },
+  { header: '刷卡手續費',key:'cardFee',     format: 'number' },
+  { header: '現金',     key: 'payCash',     format: 'number' },
+  { header: '住宿卷',   key: 'payVoucher',  format: 'number' },
+  { header: '狀態',     key: 'status' },
+  { header: '備註',     key: 'note' },
+];
+
+const MONTHLY_EXPORT_COLS = [
+  { header: '月份',     key: 'month' },
+  { header: '間數',     key: 'rooms',        format: 'number' },
+  { header: '住宿房費', key: 'totalRevenue', format: 'number' },
+  { header: '其他消費', key: 'otherCharge',  format: 'number' },
+  { header: '訂金匯款', key: 'payDeposit',   format: 'number' },
+  { header: '刷卡',     key: 'payCard',      format: 'number' },
+  { header: '現金',     key: 'payCash',      format: 'number' },
+  { header: '住宿卷',   key: 'payVoucher',   format: 'number' },
+  { header: '手續費',   key: 'cardFee',      format: 'number' },
+  { header: '淨收入',   key: 'netRevenue',   format: 'number' },
+];
+
+const PNL_EXPORT_COLS = [
+  { header: '月份',     key: 'month' },
+  { header: '住宿淨收入',key:'netRevenue',    format: 'number' },
+  { header: '其他收入', key: 'otherIncome',   format: 'number' },
+  { header: '收入合計', key: 'incomeTotal',   format: 'number' },
+  { header: '採購支出', key: 'purchaseExpense',format:'number' },
+  { header: '固定費用', key: 'fixedExpense',  format: 'number' },
+  { header: '支出合計', key: 'totalExpense',  format: 'number' },
+  { header: '淨利',     key: 'pnlNetProfit',  format: 'number' },
+];
+
+// ── 列印輔助函式 ──────────────────────────────────────────────────
+function openPrintWindow(title, headers, rows) {
+  const thHtml = headers.map(h => `<th>${h}</th>`).join('');
+  const trHtml = rows.map(r =>
+    `<tr>${r.map(c => `<td>${c ?? ''}</td>`).join('')}</tr>`
+  ).join('');
+  const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8">
+<title>${title}</title>
+<style>
+  body { font-family: '微軟正黑體','Arial',sans-serif; font-size:11px; margin:12px; }
+  h2 { font-size:14px; margin-bottom:6px; }
+  p.sub { font-size:10px; color:#666; margin-bottom:8px; }
+  table { border-collapse:collapse; width:100%; }
+  th,td { border:1px solid #ccc; padding:4px 6px; white-space:nowrap; }
+  th { background:#e8edf8; font-weight:bold; text-align:center; }
+  td { text-align:right; }
+  td:first-child,td:nth-child(2) { text-align:left; }
+  tr:nth-child(even) { background:#f8f9fc; }
+  .footer { margin-top:8px; font-size:9px; color:#aaa; }
+</style></head><body>
+<h2>${title}</h2>
+<p class="sub">列印時間：${new Date().toLocaleString('zh-TW')}</p>
+<table><thead><tr>${thHtml}</tr></thead><tbody>${trHtml}</tbody></table>
+<p class="footer">自在海民宿 ERP 系統</p>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=1100,height=700');
+  if (!w) { alert('請允許彈出視窗以進行列印'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => { w.print(); }, 400);
+}
 const TABS = [
   { key: 'records',    label: '訂房明細' },
   { key: 'import',     label: '雲掌櫃匯入' },
@@ -318,6 +394,22 @@ export default function BnbPage() {
                 </select>
               </div>
               <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
+              <div className="ml-auto flex items-end gap-2">
+                <ExportButtons
+                  data={records}
+                  columns={BOOKING_EXPORT_COLS}
+                  filename={`訂房明細_${filterMonth}`}
+                  title={`訂房明細 ${filterMonth}`}
+                />
+                <button
+                  onClick={() => openPrintWindow(
+                    `訂房明細 ${filterMonth}`,
+                    BOOKING_EXPORT_COLS.map(c => c.header),
+                    records.map(r => BOOKING_EXPORT_COLS.map(c => r[c.key] ?? ''))
+                  )}
+                  className={`${btnCls} text-gray-600`}
+                >列印</button>
+              </div>
             </div>
 
             {/* 摘要卡 */}
@@ -447,12 +539,28 @@ export default function BnbPage() {
         {/* ══ Tab: 月收入總表 ══ */}
         {activeTab === 'monthly' && (
           <div>
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex flex-wrap items-center gap-3 mb-4">
               <label className="text-sm text-gray-600">年份</label>
               <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
+              <div className="ml-auto flex gap-2">
+                <ExportButtons
+                  data={summaryRows}
+                  columns={MONTHLY_EXPORT_COLS}
+                  filename={`月收入總表_${summaryYear}`}
+                  title={`月收入總表 ${summaryYear}`}
+                />
+                <button
+                  onClick={() => openPrintWindow(
+                    `月收入總表 ${summaryYear}`,
+                    MONTHLY_EXPORT_COLS.map(c => c.header),
+                    summaryRows.map(r => MONTHLY_EXPORT_COLS.map(c => r[c.key] ?? ''))
+                  )}
+                  className={`${btnCls} text-gray-600`}
+                >列印</button>
+              </div>
             </div>
 
             {summaryLoading ? (
@@ -522,13 +630,38 @@ export default function BnbPage() {
         {/* ══ Tab: 月收支總表 ══ */}
         {activeTab === 'pnl' && (
           <div>
-            <div className="flex items-center gap-3 mb-4">
+            {(() => {
+              const pnlData = summaryRows.map(r => ({
+                ...r,
+                incomeTotal:  r.netRevenue + (r.otherIncome || 0),
+                pnlNetProfit: r.netRevenue + (r.otherIncome || 0) - r.totalExpense,
+              }));
+              return (
+            <div className="flex flex-wrap items-center gap-3 mb-4">
               <label className="text-sm text-gray-600">年份</label>
               <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
+              <div className="ml-auto flex gap-2">
+                <ExportButtons
+                  data={pnlData}
+                  columns={PNL_EXPORT_COLS}
+                  filename={`月收支總表_${summaryYear}`}
+                  title={`月收支總表 ${summaryYear}`}
+                />
+                <button
+                  onClick={() => openPrintWindow(
+                    `月收支總表 ${summaryYear}`,
+                    PNL_EXPORT_COLS.map(c => c.header),
+                    pnlData.map(r => PNL_EXPORT_COLS.map(c => r[c.key] ?? ''))
+                  )}
+                  className={`${btnCls} text-gray-600`}
+                >列印</button>
+              </div>
             </div>
+              );
+            })()}
 
             {summaryLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
