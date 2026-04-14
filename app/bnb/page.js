@@ -198,6 +198,16 @@ export default function BnbPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [editRecord, setEditRecord] = useState(null);
 
+  // ── 批次填入 state ────────────────────────────────────────────
+  const [selectedIds,   setSelectedIds]   = useState(new Set());
+  const [batchField,    setBatchField]    = useState('payCash');
+  const [batchValue,    setBatchValue]    = useState('');
+  const [batchApplying, setBatchApplying] = useState(false);
+
+  // ── Inline edit state ─────────────────────────────────────────
+  const [inlineEdit,  setInlineEdit]  = useState(null); // { id, field }
+  const [inlineValue, setInlineValue] = useState('');
+
   // ── 雲掌櫃匯入 state ─────────────────────────────────────────
   const [importFile,    setImportFile]    = useState(null);
   const [importMonth,   setImportMonth]   = useState(() => new Date().toISOString().slice(0, 7));
@@ -374,7 +384,9 @@ export default function BnbPage() {
     if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
   }, [activeTab]);
 
-  useEffect(() => { if (activeTab === 'records') fetchRecords(); }, [filterMonth, filterSource, filterStatus]);
+  useEffect(() => {
+    if (activeTab === 'records') { setSelectedIds(new Set()); fetchRecords(); }
+  }, [filterMonth, filterSource, filterStatus]);
   useEffect(() => { if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary(); }, [summaryYear]);
   useEffect(() => { if (activeTab === 'declaration') fetchDecl(); }, [declMonth, declWarehouse]);
 
@@ -396,6 +408,63 @@ export default function BnbPage() {
       setImportFile(null);
     } catch { showToast('匯入失敗', 'error'); }
     finally { setImporting(false); }
+  }
+
+  // ── 批次選取 ──────────────────────────────────────────────────
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    const eligible = records.filter(r => r.status !== '已刪除').map(r => r.id);
+    if (selectedIds.size === eligible.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(eligible));
+    }
+  }
+
+  // ── 批次套用 ──────────────────────────────────────────────────
+  async function handleBatchApply() {
+    if (!selectedIds.size) return;
+    if (batchField !== 'status' && !batchValue && batchValue !== '0') {
+      showToast('請輸入套用數值', 'error'); return;
+    }
+    setBatchApplying(true);
+    try {
+      const payload = batchField === 'status'
+        ? { status: batchValue }
+        : { [batchField]: parseFloat(batchValue) || 0 };
+      await Promise.all([...selectedIds].map(id =>
+        fetch(`/api/bnb/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      ));
+      showToast(`已套用 ${selectedIds.size} 筆`, 'success');
+      setSelectedIds(new Set());
+      setBatchValue('');
+      fetchRecords();
+    } catch { showToast('批次套用失敗', 'error'); }
+    finally { setBatchApplying(false); }
+  }
+
+  // ── Inline 儲存 ───────────────────────────────────────────────
+  async function handleInlineSave(id, field, value) {
+    setInlineEdit(null);
+    const numVal = parseFloat(value) || 0;
+    const res = await fetch(`/api/bnb/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: numVal }),
+    });
+    if (!res.ok) { showToast('儲存失敗', 'error'); fetchRecords(); return; }
+    const updated = await res.json();
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
   }
 
   // ── 刪除記錄 ──────────────────────────────────────────────────
@@ -527,6 +596,40 @@ export default function BnbPage() {
               ))}
             </div>
 
+            {/* 批次行動列 */}
+            {selectedIds.size > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
+                <span className="text-sm font-medium text-amber-800">已選 {selectedIds.size} 筆</span>
+                <select value={batchField} onChange={e => { setBatchField(e.target.value); setBatchValue(''); }}
+                  className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
+                  <option value="payCash">現金</option>
+                  <option value="payDeposit">訂金匯款</option>
+                  <option value="payCard">刷卡</option>
+                  <option value="payVoucher">住宿卷</option>
+                  <option value="status">狀態</option>
+                </select>
+                {batchField === 'status' ? (
+                  <select value={batchValue} onChange={e => setBatchValue(e.target.value)}
+                    className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
+                    <option value="">選擇狀態</option>
+                    <option value="已入住">已入住</option>
+                    <option value="已退房">已退房</option>
+                    <option value="已預訂">已預訂</option>
+                  </select>
+                ) : (
+                  <input type="number" min="0" placeholder="輸入金額" value={batchValue}
+                    onChange={e => setBatchValue(e.target.value)}
+                    className="border rounded-lg px-2 py-1 text-sm w-28 focus:ring-2 focus:ring-amber-400 outline-none" />
+                )}
+                <button onClick={handleBatchApply} disabled={batchApplying}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+                  {batchApplying ? '套用中…' : '套用'}
+                </button>
+                <button onClick={() => setSelectedIds(new Set())}
+                  className="text-xs text-gray-500 hover:underline ml-1">清除選取</button>
+              </div>
+            )}
+
             {/* 表格 */}
             {recLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
@@ -535,6 +638,12 @@ export default function BnbPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
+                      <th className="px-3 py-2">
+                        <input type="checkbox"
+                          checked={selectedIds.size > 0 && selectedIds.size === records.filter(r => r.status !== '已刪除').length}
+                          onChange={toggleSelectAll}
+                          className="rounded cursor-pointer" />
+                      </th>
                       {['來源','姓名','房間','入住','退房','房費','消費','訂金','刷卡','手續費','現金','住宿卷','狀態',''].map(h => (
                         <th key={h} className="px-3 py-2 text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
@@ -542,42 +651,76 @@ export default function BnbPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {records.length === 0 && (
-                      <tr><td colSpan={14} className="text-center py-10 text-gray-400">無資料</td></tr>
+                      <tr><td colSpan={15} className="text-center py-10 text-gray-400">無資料</td></tr>
                     )}
-                    {records.map(r => (
-                      <tr key={r.id} className={`hover:bg-gray-50 ${r.status === '已刪除' ? 'opacity-40' : ''}`}>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[r.source] || SOURCE_COLORS['其他']}`}>{r.source}</span>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap max-w-[140px] truncate">{r.guestName}</td>
-                        <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkInDate}</td>
-                        <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
-                        <td className="px-3 py-2 text-right">{Number(r.roomCharge).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Number(r.otherCharge).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2 text-right text-blue-600">{Number(r.payDeposit) > 0 ? Number(r.payDeposit).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2 text-right text-purple-600">{Number(r.payCard) > 0 ? Number(r.payCard).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2 text-right text-red-400 text-xs">{Number(r.cardFee) > 0 ? Number(r.cardFee).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2 text-right text-green-600">{Number(r.payCash) > 0 ? Number(r.payCash).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2 text-right text-amber-600">{Number(r.payVoucher) > 0 ? Number(r.payVoucher).toLocaleString() : '—'}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>{r.status}</span>
-                          {!r.paymentFilled && r.status !== '已刪除' && (
-                            <span className="ml-1 text-[10px] text-amber-500">未填</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <button onClick={() => setEditRecord(r)}
-                            className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1">
-                            付款
-                          </button>
-                          <button onClick={() => handleDelete(r.id, r.guestName)}
-                            className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">
-                            刪
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {records.map(r => {
+                      const isSelected = selectedIds.has(r.id);
+                      const isDeleted  = r.status === '已刪除';
+
+                      // inline edit cell helper
+                      const editCell = (field, colorCls) => {
+                        const isEditing = inlineEdit?.id === r.id && inlineEdit?.field === field;
+                        const val = Number(r[field]);
+                        if (isEditing) return (
+                          <input autoFocus type="number" min="0" value={inlineValue}
+                            onChange={e => setInlineValue(e.target.value)}
+                            onBlur={() => handleInlineSave(r.id, field, inlineValue)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleInlineSave(r.id, field, inlineValue);
+                              if (e.key === 'Escape') setInlineEdit(null);
+                            }}
+                            className="w-20 border border-indigo-400 rounded px-1 py-0.5 text-xs text-right outline-none ring-1 ring-indigo-400" />
+                        );
+                        return (
+                          <span onClick={() => { if (!isDeleted) { setInlineEdit({ id: r.id, field }); setInlineValue(val || ''); } }}
+                            className={`cursor-pointer hover:underline hover:text-indigo-600 ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
+                            title="點擊編輯">
+                            {val > 0 ? val.toLocaleString() : '—'}
+                          </span>
+                        );
+                      };
+
+                      return (
+                        <tr key={r.id} className={`${isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'} ${isDeleted ? 'opacity-40' : ''}`}>
+                          <td className="px-3 py-2">
+                            {!isDeleted && (
+                              <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
+                                className="rounded cursor-pointer" />
+                            )}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[r.source] || SOURCE_COLORS['其他']}`}>{r.source}</span>
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap max-w-[140px] truncate">{r.guestName}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
+                          <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkInDate}</td>
+                          <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
+                          <td className="px-3 py-2 text-right">{Number(r.roomCharge).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Number(r.otherCharge).toLocaleString() : '—'}</td>
+                          <td className="px-3 py-2 text-right">{editCell('payDeposit', 'text-blue-600')}</td>
+                          <td className="px-3 py-2 text-right">{editCell('payCard', 'text-purple-600')}</td>
+                          <td className="px-3 py-2 text-right text-red-400 text-xs">{Number(r.cardFee) > 0 ? Number(r.cardFee).toLocaleString() : '—'}</td>
+                          <td className="px-3 py-2 text-right">{editCell('payCash', 'text-green-600')}</td>
+                          <td className="px-3 py-2 text-right">{editCell('payVoucher', 'text-amber-600')}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>{r.status}</span>
+                            {!r.paymentFilled && !isDeleted && (
+                              <span className="ml-1 text-[10px] text-amber-500">未填</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <button onClick={() => setEditRecord(r)}
+                              className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1">
+                              付款
+                            </button>
+                            <button onClick={() => handleDelete(r.id, r.guestName)}
+                              className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">
+                              刪
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
