@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
   { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
   { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
+  { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
   { href: '/engineering', label: '工程',      linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
   { href: '/utility-bills', label: '水電費', linkClass: 'link-utility', requiredPermission: null },

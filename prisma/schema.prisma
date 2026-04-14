@@ -2748,3 +2748,64 @@ model AllowanceDetail {
   @@index([allowanceId])
   @@map("allowance_details")
 }
+
+// ============================================
+// 民宿帳 — 訂房記錄 & 月報
+// ============================================
+
+/// 每筆訂房記錄（從雲掌櫃匯入 + 手動補填付款明細）
+model BnbBookingRecord {
+  id            Int      @id @default(autoincrement())
+  importMonth   String   @map("import_month") @db.VarChar(7)    // 2026-03
+  warehouse     String   @default("民宿") @db.VarChar(100)
+  source        String   @db.VarChar(50)                        // 電話 | Booking | 其他
+  guestName     String   @map("guest_name") @db.VarChar(255)
+  roomNo        String?  @map("room_no") @db.VarChar(50)
+  checkInDate   String   @map("check_in_date") @db.VarChar(20)
+  checkOutDate  String   @map("check_out_date") @db.VarChar(20)
+  roomCharge    Decimal  @default(0) @map("room_charge") @db.Decimal(12, 2)
+  otherCharge   Decimal  @default(0) @map("other_charge") @db.Decimal(12, 2)
+  status        String   @default("已入住") @db.VarChar(20)     // 已退房|已入住|已預訂|已刪除
+  // 付款明細（匯入後手動補填）
+  payDeposit    Decimal  @default(0) @map("pay_deposit") @db.Decimal(12, 2)
+  payCard       Decimal  @default(0) @map("pay_card") @db.Decimal(12, 2)
+  payCash       Decimal  @default(0) @map("pay_cash") @db.Decimal(12, 2)
+  payVoucher    Decimal  @default(0) @map("pay_voucher") @db.Decimal(12, 2)
+  cardFeeRate   Decimal  @default(0) @map("card_fee_rate") @db.Decimal(5, 4)
+  cardFee       Decimal  @default(0) @map("card_fee") @db.Decimal(12, 2)
+  paymentFilled Boolean  @default(false) @map("payment_filled")
+  note          String?  @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([importMonth])
+  @@index([warehouse])
+  @@index([checkInDate])
+  @@index([status])
+  @@map("bnb_booking_records")
+}
+
+/// 民宿月報（旅宿網申報 + 收支彙總，一個月一筆）
+model BnbMonthlyReport {
+  id               Int      @id @default(autoincrement())
+  reportMonth      String   @map("report_month") @db.VarChar(7)  // 2026-03
+  warehouse        String   @default("民宿") @db.VarChar(100)
+  // 旅宿網申報欄位
+  avgRoomRate      Decimal? @map("avg_room_rate") @db.Decimal(12, 2)
+  roomSuppliesCost Decimal? @map("room_supplies_cost") @db.Decimal(12, 2)
+  fbExpense        Decimal? @map("fb_expense") @db.Decimal(12, 2)
+  staffCount       Int?     @map("staff_count")
+  salary           Decimal? @db.Decimal(12, 2)
+  businessSource   String?  @map("business_source") @db.VarChar(255)
+  fitGuestCount    Int?     @map("fit_guest_count")
+  // 其他額外收入
+  otherIncome      Decimal  @default(0) @map("other_income") @db.Decimal(12, 2)
+  otherIncomeNote  String?  @map("other_income_note") @db.VarChar(500)
+  note             String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([reportMonth, warehouse])
+  @@index([reportMonth])
+  @@map("bnb_monthly_reports")
+}
