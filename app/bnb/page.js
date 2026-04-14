@@ -505,7 +505,10 @@ export default function BnbPage() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <input type="text" value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls} />
+                <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
+                  <option value="民宿">民宿</option>
+                  <option value="麗軒">麗軒</option>
+                </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">選擇檔案</label>
@@ -716,7 +719,10 @@ export default function BnbPage() {
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <input type="text" value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls + ' w-full'} />
+                  <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls + ' w-full'}>
+                    <option value="民宿">民宿</option>
+                    <option value="麗軒">麗軒</option>
+                  </select>
                 </div>
               </div>
 
