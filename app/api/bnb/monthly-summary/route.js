@@ -110,16 +110,20 @@ export async function GET(request) {
     // 加入月報補充資訊
     for (const [month, rpt] of reportMap) {
       ensureMonth(month);
-      monthlyMap[month].otherIncome    = Number(rpt.otherIncome || 0);
-      monthlyMap[month].otherIncomeNote = rpt.otherIncomeNote || '';
-      monthlyMap[month].avgRoomRate    = rpt.avgRoomRate ? Number(rpt.avgRoomRate) : null;
+      monthlyMap[month].otherIncome      = Number(rpt.otherIncome || 0);
+      monthlyMap[month].otherIncomeNote  = rpt.otherIncomeNote || '';
+      monthlyMap[month].cardTotal        = rpt.cardTotal ? Number(rpt.cardTotal) : null;
+      monthlyMap[month].roomPriceTotal   = rpt.roomPriceTotal ? Number(rpt.roomPriceTotal) : null;
+      monthlyMap[month].subsidizedRooms  = rpt.subsidizedRooms ?? null;
+      monthlyMap[month].avgRoomRate      = rpt.avgRoomRate ? Number(rpt.avgRoomRate) : null;
+      monthlyMap[month].monthlyRoomCount = rpt.monthlyRoomCount ?? null;
       monthlyMap[month].roomSuppliesCost = rpt.roomSuppliesCost ? Number(rpt.roomSuppliesCost) : null;
-      monthlyMap[month].fbExpense      = rpt.fbExpense ? Number(rpt.fbExpense) : null;
-      monthlyMap[month].staffCount     = rpt.staffCount ?? null;
-      monthlyMap[month].salary         = rpt.salary ? Number(rpt.salary) : null;
-      monthlyMap[month].businessSource = rpt.businessSource || '';
-      monthlyMap[month].fitGuestCount  = rpt.fitGuestCount ?? null;
-      monthlyMap[month].reportId       = rpt.id;
+      monthlyMap[month].fbExpense        = rpt.fbExpense ? Number(rpt.fbExpense) : null;
+      monthlyMap[month].staffCount       = rpt.staffCount ?? null;
+      monthlyMap[month].salary           = rpt.salary ? Number(rpt.salary) : null;
+      monthlyMap[month].businessSource   = rpt.businessSource || '';
+      monthlyMap[month].fitGuestCount    = rpt.fitGuestCount ?? null;
+      monthlyMap[month].reportId         = rpt.id;
     }
 
     const rows = Object.values(monthlyMap)

@@ -18,6 +18,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,8 @@ export async function POST(request) {
     if (!/^\d{4}-\d{2}$/.test(importMonth)) {
       return createErrorResponse('VALIDATION_FAILED', '月份格式需為 YYYY-MM', 400);
     }
+
+    await assertBnbMonthOpen(importMonth, warehouse);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileName = file.name || '';

@@ -16,6 +16,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,7 @@ export async function GET(request) {
       select: {
         id: true, guestName: true, checkInDate: true, checkOutDate: true,
         roomCharge: true, payDeposit: true, source: true, status: true,
+        depositDate: true, depositLast5: true,
         depositBankLineId: true, depositMatchedAt: true, depositMatchedBy: true,
         note: true,
       },
@@ -77,23 +79,41 @@ export async function GET(request) {
       bnbRecords.filter(r => r.depositBankLineId).map(r => r.depositBankLineId)
     );
 
-    // ── 4. 自動建議：金額完全相符的配對 ──────────────────────────
-    // 對每筆未配對的 BNB，找金額相同 且 日期在 checkInDate ±7 天 的存簿行
+    // ── 4. 自動建議：金額相符 + 日期/帳號後五碼比對 ────────────
     const unmatchedBnb   = bnbRecords.filter(r => !r.depositBankLineId);
     const unmatchedLines = bankLines.filter(l => !usedLineIds.has(l.id));
+    const usedSuggestionLines = new Set();
 
     const suggestions = [];
     for (const bnb of unmatchedBnb) {
       const depositAmt = Number(bnb.payDeposit);
-      const checkIn    = new Date(bnb.checkInDate);
+      const refDate    = bnb.depositDate ? new Date(bnb.depositDate) : new Date(bnb.checkInDate);
+      const last5      = bnb.depositLast5 || '';
+      let bestMatch = null;
+      let bestScore = -1;
+
       for (const line of unmatchedLines) {
+        if (usedSuggestionLines.has(line.id)) continue;
         if (Number(line.creditAmount) !== depositAmt) continue;
-        const lineDt = new Date(line.txDate);
-        const diffDays = Math.abs((lineDt - checkIn) / 86400000);
-        if (diffDays <= 7) {
-          suggestions.push({ bnbId: bnb.id, bankLineId: line.id, diffDays });
-          break; // 每筆 BNB 只取第一個最近建議
+
+        const lineDt   = new Date(line.txDate);
+        const diffDays = Math.abs((lineDt - refDate) / 86400000);
+        if (diffDays > 14) continue;
+
+        let score = 0;
+        if (last5 && line.description && line.description.includes(last5)) score += 10;
+        if (bnb.depositDate && line.txDate === bnb.depositDate) score += 5;
+        else if (diffDays <= 3) score += 3;
+        else if (diffDays <= 7) score += 1;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = { bnbId: bnb.id, bankLineId: line.id, diffDays: Math.round(diffDays), score };
         }
+      }
+      if (bestMatch) {
+        suggestions.push(bestMatch);
+        usedSuggestionLines.add(bestMatch.bankLineId);
       }
     }
 
@@ -144,6 +164,9 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 bnbId 或 bankLineId', 400);
     }
 
+    const bnbRec = await prisma.bnbBookingRecord.findUnique({ where: { id: parseInt(bnbId) }, select: { importMonth: true, warehouse: true } });
+    if (bnbRec) await assertBnbMonthOpen(bnbRec.importMonth, bnbRec.warehouse);
+
     // 確認 bankLine 存在
     const line = await prisma.bankStatementLine.findUnique({ where: { id: parseInt(bankLineId) } });
     if (!line) return createErrorResponse('NOT_FOUND', '找不到存簿明細行', 404);
@@ -187,6 +210,9 @@ export async function DELETE(request) {
     const { searchParams } = new URL(request.url);
     const bnbId = parseInt(searchParams.get('bnbId'));
     if (!bnbId) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 bnbId', 400);
+
+    const bnbRec = await prisma.bnbBookingRecord.findUnique({ where: { id: bnbId }, select: { importMonth: true, warehouse: true } });
+    if (bnbRec) await assertBnbMonthOpen(bnbRec.importMonth, bnbRec.warehouse);
 
     await prisma.bnbBookingRecord.update({
       where: { id: bnbId },

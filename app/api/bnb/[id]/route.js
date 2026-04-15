@@ -7,6 +7,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,15 +17,23 @@ export async function PATCH(request, { params }) {
 
   try {
     const id   = parseInt(params.id);
+
+    const record = await prisma.bnbBookingRecord.findUnique({ where: { id }, select: { importMonth: true, warehouse: true } });
+    if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆紀錄', 404);
+    await assertBnbMonthOpen(record.importMonth, record.warehouse);
+
     const body = await request.json();
 
-    const { payDeposit, payCard, payCash, payVoucher, cardFeeRate,
+    const { payDeposit, depositDate, depositLast5,
+            payCard, payCash, payVoucher, cardFeeRate,
             status, note, roomCharge, otherCharge, source, guestName,
             roomNo, checkInDate, checkOutDate } = body;
 
     const updateData = {};
-    if (payDeposit  !== undefined) updateData.payDeposit  = parseFloat(payDeposit);
-    if (payCard     !== undefined) updateData.payCard     = parseFloat(payCard);
+    if (payDeposit   !== undefined) updateData.payDeposit   = parseFloat(payDeposit);
+    if (depositDate  !== undefined) updateData.depositDate  = depositDate || null;
+    if (depositLast5 !== undefined) updateData.depositLast5 = depositLast5 || null;
+    if (payCard      !== undefined) updateData.payCard      = parseFloat(payCard);
     if (payCash     !== undefined) updateData.payCash     = parseFloat(payCash);
     if (payVoucher  !== undefined) updateData.payVoucher  = parseFloat(payVoucher);
     if (cardFeeRate !== undefined) updateData.cardFeeRate = parseFloat(cardFeeRate);
@@ -70,6 +79,10 @@ export async function DELETE(request, { params }) {
 
   try {
     const id = parseInt(params.id);
+    const record = await prisma.bnbBookingRecord.findUnique({ where: { id }, select: { importMonth: true, warehouse: true } });
+    if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆紀錄', 404);
+    await assertBnbMonthOpen(record.importMonth, record.warehouse);
+
     await prisma.bnbBookingRecord.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {

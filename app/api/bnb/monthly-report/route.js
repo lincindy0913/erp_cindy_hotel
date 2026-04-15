@@ -7,6 +7,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,20 +37,28 @@ export async function PUT(request) {
 
   try {
     const body = await request.json();
-    const { reportMonth, warehouse = '民宿', avgRoomRate, roomSuppliesCost,
-            fbExpense, staffCount, salary, businessSource, fitGuestCount,
+    const { reportMonth, warehouse = '民宿',
+            cardTotal, roomPriceTotal, subsidizedRooms, avgRoomRate,
+            monthlyRoomCount, roomSuppliesCost, fbExpense,
+            fitGuestCount, staffCount, salary, businessSource,
             otherIncome = 0, otherIncomeNote, note } = body;
 
     if (!reportMonth) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 reportMonth', 400);
 
+    await assertBnbMonthOpen(reportMonth, warehouse);
+
     const data = {
+      cardTotal:        cardTotal        != null ? parseFloat(cardTotal)        : null,
+      roomPriceTotal:   roomPriceTotal   != null ? parseFloat(roomPriceTotal)   : null,
+      subsidizedRooms:  subsidizedRooms  != null ? parseInt(subsidizedRooms)    : null,
       avgRoomRate:      avgRoomRate      != null ? parseFloat(avgRoomRate)      : null,
+      monthlyRoomCount: monthlyRoomCount != null ? parseInt(monthlyRoomCount)   : null,
       roomSuppliesCost: roomSuppliesCost != null ? parseFloat(roomSuppliesCost) : null,
       fbExpense:        fbExpense        != null ? parseFloat(fbExpense)        : null,
+      fitGuestCount:    fitGuestCount    != null ? parseInt(fitGuestCount)      : null,
       staffCount:       staffCount       != null ? parseInt(staffCount)         : null,
       salary:           salary           != null ? parseFloat(salary)           : null,
       businessSource:   businessSource   || null,
-      fitGuestCount:    fitGuestCount    != null ? parseInt(fitGuestCount)      : null,
       otherIncome:      parseFloat(otherIncome) || 0,
       otherIncomeNote:  otherIncomeNote  || null,
       note:             note             || null,

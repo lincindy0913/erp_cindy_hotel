@@ -7,6 +7,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,8 @@ export async function POST(request) {
     if (!importMonth || !source || !guestName || !checkInDate || !checkOutDate) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
+
+    await assertBnbMonthOpen(importMonth, warehouse);
 
     const cardFee = parseFloat(payCard) * parseFloat(cardFeeRate);
 

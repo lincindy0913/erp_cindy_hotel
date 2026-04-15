@@ -59,6 +59,9 @@ COPY --from=builder /app/node_modules/iobuffer ./node_modules/iobuffer
 COPY --from=builder /app/node_modules/pako ./node_modules/pako
 COPY --from=builder /app/node_modules/@babel/runtime ./node_modules/@babel/runtime
 
+# Copy xlsx for Excel parsing (BNB import + OTA reconcile)
+COPY --from=builder /app/node_modules/xlsx ./node_modules/xlsx
+
 # Copy font files if they exist
 COPY --from=builder /app/lib/fonts ./lib/fonts
 
@@ -66,5 +69,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Apply any pending DB migrations, then start (seed is one-time setup only — run manually if needed)
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy 2>/dev/null || true; exec node server.js"]
+# Sync DB schema, then start (seed is one-time setup only — run manually if needed)
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate 2>/dev/null || true; exec node server.js"]
