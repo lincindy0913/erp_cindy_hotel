@@ -35,11 +35,13 @@ export async function GET(request) {
         roomCharge: true, otherCharge: true,
         payDeposit: true, payCard: true, payCash: true, payVoucher: true,
         cardFee: true, source: true,
+        checkInDate: true, checkOutDate: true,
       },
     });
 
     const stats = {
       roomCount: bookings.length,
+      roomNights: 0,
       roomChargeTotal: 0,
       otherChargeTotal: 0,
       payDeposit: 0,
@@ -63,6 +65,15 @@ export async function GET(request) {
       if (b.source === 'Booking') stats.sourceBooking++;
       else if (b.source === '電話') stats.sourcePhone++;
       else stats.sourceOther++;
+
+      if (b.checkInDate && b.checkOutDate) {
+        const inD = new Date(b.checkInDate + 'T00:00:00');
+        const outD = new Date(b.checkOutDate + 'T00:00:00');
+        const nights = Math.max(1, Math.round((outD - inD) / 86400000));
+        stats.roomNights += nights;
+      } else {
+        stats.roomNights += 1;
+      }
     }
 
     stats.revenueTotal = stats.roomChargeTotal + stats.otherChargeTotal;
