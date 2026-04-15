@@ -94,6 +94,7 @@ const TABS = [
   { key: 'declList',   label: '年度申報總覽' },
   { key: 'deposit',    label: '訂金核對' },
   { key: 'otaRecon',   label: 'OTA比對' },
+  { key: 'otaCommission', label: 'OTA傭金' },
 ];
 
 const STATUS_COLORS = {
@@ -320,6 +321,16 @@ export default function BnbPage() {
   const [otaResult,    setOtaResult]    = useState(null);
   const [otaLoading,   setOtaLoading]   = useState(false);
   const [otaViewTab,   setOtaViewTab]   = useState('matched'); // matched | unmatchedOta | unmatchedBnb | cancelled
+  // OTA 傭金確認
+  const [commAmt,        setCommAmt]        = useState('');
+  const [commMethod,     setCommMethod]     = useState('轉帳');
+  const [commNote,       setCommNote]       = useState('');
+  const [commSubmitting, setCommSubmitting] = useState(false);
+  const [commExisting,   setCommExisting]   = useState(null);  // { exists, record, orderStatus }
+  // OTA 傭金歷史列表
+  const [commHistTab,    setCommHistTab]    = useState(false);  // true = show history tab
+  const [commHistRows,   setCommHistRows]   = useState([]);
+  const [commHistLoading,setCommHistLoading]= useState(false);
 
   // ── 鎖帳 state ──────────────────────────────────────────────
   const [lockStatus, setLockStatus]   = useState(null); // { locked, lockedAt, lockedBy }
@@ -486,9 +497,78 @@ export default function BnbPage() {
       const data = await res.json();
       setOtaResult(data);
       setOtaViewTab('matched');
+      setCommAmt(data.summary?.otaCommission > 0 ? String(data.summary.otaCommission) : '');
+      // 查詢是否已有傭金記錄
+      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      try {
+        const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || '民宿' });
+        const chk = await fetch(`/api/bnb/ota-commission?${p}`);
+        if (chk.ok) setCommExisting(await chk.json());
+      } catch {}
     } catch { showToast('OTA 比對失敗', 'error'); }
     finally { setOtaLoading(false); }
   }, [otaFile, otaSource, otaDateFrom, otaDateTo, otaWarehouse]);
+
+  // OTA 傭金：送出應付款
+  const submitCommission = useCallback(async () => {
+    if (!otaResult) return;
+    const amt = Number(commAmt);
+    if (!amt || amt <= 0) { showToast('請輸入有效的傭金金額', 'error'); return; }
+    const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+    setCommSubmitting(true);
+    try {
+      const res = await fetch('/api/bnb/ota-commission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commissionMonth: month,
+          otaSource,
+          warehouse: otaWarehouse || '民宿',
+          commissionAmount: amt,
+          paymentMethod: commMethod,
+          note: commNote,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.message || '送出失敗', 'error'); return; }
+      showToast(`傭金已送出出納（${data.orderNo}）`, 'success');
+      // 重新查狀態
+      const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || '民宿' });
+      const chk = await fetch(`/api/bnb/ota-commission?${p}`);
+      if (chk.ok) setCommExisting(await chk.json());
+    } catch { showToast('送出失敗', 'error'); }
+    finally { setCommSubmitting(false); }
+  }, [otaResult, commAmt, commMethod, commNote, otaSource, otaDateFrom, otaWarehouse]);
+
+  // OTA 傭金：取消
+  const cancelCommission = useCallback(async (id) => {
+    if (!confirm('確定要取消此傭金應付款嗎？出納端的待付款單也會一同取消。')) return;
+    try {
+      const res = await fetch(`/api/bnb/ota-commission?id=${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.message || '取消失敗', 'error'); return; }
+      showToast('已取消傭金應付款', 'success');
+      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || '民宿' });
+      const chk = await fetch(`/api/bnb/ota-commission?${p}`);
+      if (chk.ok) setCommExisting(await chk.json());
+    } catch { showToast('取消失敗', 'error'); }
+  }, [otaSource, otaDateFrom, otaWarehouse]);
+
+  // OTA 傭金歷史列表
+  const fetchCommHistory = useCallback(async () => {
+    setCommHistLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (otaWarehouse) p.set('warehouse', otaWarehouse);
+      const res = await fetch(`/api/bnb/ota-commission?${p}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCommHistRows(data.rows || []);
+      }
+    } catch {}
+    finally { setCommHistLoading(false); }
+  }, [otaWarehouse]);
 
   const fetchDailyRevenue = useCallback(async () => {
     setDrLoading(true);
@@ -576,6 +656,7 @@ export default function BnbPage() {
     if (activeTab === 'declaration') { setDeclSearched(false); setDeclActual(null); }
     if (activeTab === 'declList')    fetchDeclList();
     if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
+    if (activeTab === 'otaCommission') fetchCommHistory();
   }, [activeTab]);
 
   useEffect(() => { fetchLockStatus(filterMonth); }, [filterMonth]);
@@ -2211,6 +2292,69 @@ export default function BnbPage() {
                     ))}
                   </div>
 
+                  {/* 傭金確認送出 */}
+                  <div className="bg-white rounded-xl shadow p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="font-semibold text-gray-700 text-sm">確認傭金 → 送出出納待付款</span>
+                      {commExisting?.exists && commExisting.record?.status !== '已取消' && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          commExisting.orderStatus?.status === '已付款' ? 'bg-green-100 text-green-700'
+                          : commExisting.orderStatus?.status === '已取消' ? 'bg-gray-100 text-gray-500'
+                          : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {commExisting.orderStatus?.status === '已付款' ? '已付款' : '待出納中'} — {commExisting.orderStatus?.orderNo}
+                        </span>
+                      )}
+                    </div>
+                    {commExisting?.exists && commExisting.record?.status !== '已取消' ? (
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                        <span>金額：<strong className="text-gray-800">NT$ {Number(commExisting.record.commissionAmount).toLocaleString()}</strong></span>
+                        <span>付款方式：{commExisting.record.paymentMethod}</span>
+                        <span>廠商：{commExisting.record.supplierName}</span>
+                        {commExisting.record.note && <span>備註：{commExisting.record.note}</span>}
+                        {commExisting.record.status === '待出納' && (
+                          <button onClick={() => cancelCommission(commExisting.record.id)}
+                            className="px-3 py-1 text-xs rounded-lg bg-red-50 text-red-600 hover:bg-red-100">
+                            取消傭金
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">傭金金額（NT$）</label>
+                          <input type="number" min="0" step="1"
+                            className="border rounded-lg px-3 py-1.5 text-sm w-36"
+                            value={commAmt}
+                            onChange={e => setCommAmt(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">付款方式</label>
+                          <select className="border rounded-lg px-3 py-1.5 text-sm"
+                            value={commMethod} onChange={e => setCommMethod(e.target.value)}>
+                            <option value="轉帳">轉帳</option>
+                            <option value="匯款">匯款</option>
+                            <option value="現金">現金</option>
+                            <option value="支票">支票</option>
+                            <option value="信用卡">信用卡</option>
+                            <option value="月結">月結</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">備註</label>
+                          <input type="text" className="border rounded-lg px-3 py-1.5 text-sm w-52"
+                            placeholder="選填"
+                            value={commNote} onChange={e => setCommNote(e.target.value)} />
+                        </div>
+                        <button onClick={submitCommission}
+                          disabled={commSubmitting || !commAmt}
+                          className="px-5 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                          {commSubmitting ? '送出中…' : '送出出納待付款'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {/* 子分頁切換 */}
                   <div className="flex gap-1 mb-3">
                     {[
@@ -2393,6 +2537,98 @@ export default function BnbPage() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* ══ Tab: OTA傭金 ══ */}
+        {activeTab === 'otaCommission' && (
+          <div>
+            <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select className="border rounded-lg px-3 py-1.5 text-sm"
+                  value={otaWarehouse} onChange={e => setOtaWarehouse(e.target.value)}>
+                  <option value="">全部</option>
+                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <button onClick={fetchCommHistory} disabled={commHistLoading}
+                className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                {commHistLoading ? '載入中…' : '重新整理'}
+              </button>
+            </div>
+
+            <div className="bg-white rounded-xl shadow overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr className="text-gray-500">
+                    <th className="px-3 py-2 text-left">月份</th>
+                    <th className="px-3 py-2 text-left">OTA 來源</th>
+                    <th className="px-3 py-2 text-left">館別</th>
+                    <th className="px-3 py-2 text-right">傭金金額</th>
+                    <th className="px-3 py-2 text-left">付款方式</th>
+                    <th className="px-3 py-2 text-left">廠商</th>
+                    <th className="px-3 py-2 text-center">傭金狀態</th>
+                    <th className="px-3 py-2 text-center">出納狀態</th>
+                    <th className="px-3 py-2 text-left">付款單號</th>
+                    <th className="px-3 py-2 text-left">確認者</th>
+                    <th className="px-3 py-2 text-left">備註</th>
+                    <th className="px-3 py-2 text-center">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {commHistLoading && (
+                    <tr><td colSpan={12} className="text-center py-8 text-gray-400">載入中…</td></tr>
+                  )}
+                  {!commHistLoading && commHistRows.length === 0 && (
+                    <tr><td colSpan={12} className="text-center py-8 text-gray-400">尚無傭金記錄</td></tr>
+                  )}
+                  {commHistRows.map(r => {
+                    const statusColor = r.status === '已取消' ? 'bg-gray-100 text-gray-400'
+                      : r.status === '待出納' ? 'bg-amber-100 text-amber-700'
+                      : 'bg-green-100 text-green-700';
+                    const poColor = !r.paymentOrder ? ''
+                      : r.paymentOrder.status === '已付款' ? 'text-green-600 font-semibold'
+                      : r.paymentOrder.status === '已取消' ? 'text-gray-400 line-through'
+                      : 'text-amber-600';
+                    return (
+                      <tr key={r.id} className={`hover:bg-gray-50 ${r.status === '已取消' ? 'opacity-50' : ''}`}>
+                        <td className="px-3 py-2.5 whitespace-nowrap font-mono">{r.commissionMonth}</td>
+                        <td className="px-3 py-2.5">{r.otaSource}</td>
+                        <td className="px-3 py-2.5 text-gray-500">{r.warehouse}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-gray-800">
+                          NT$ {r.commissionAmount.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-600">{r.paymentMethod}</td>
+                        <td className="px-3 py-2.5 text-gray-600">{r.supplierName || '—'}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className={`px-3 py-2.5 text-center text-sm ${poColor}`}>
+                          {r.paymentOrder?.status || '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs font-mono text-gray-400">
+                          {r.paymentOrder?.orderNo || '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-500 text-xs">{r.confirmedBy || '—'}</td>
+                        <td className="px-3 py-2.5 text-gray-400 text-xs max-w-[140px] truncate"
+                          title={r.note}>{r.note || '—'}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          {r.status === '待出納' && (
+                            <button onClick={() => cancelCommission(r.id)}
+                              className="px-2 py-0.5 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100">
+                              取消
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

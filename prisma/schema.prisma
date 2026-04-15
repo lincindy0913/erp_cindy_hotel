@@ -2872,3 +2872,32 @@ model OwnerMonthlyExpense {
   @@index([status])
   @@map("owner_monthly_expenses")
 }
+
+// ============================================
+// 民宿帳 — OTA 傭金確認記錄
+// ============================================
+
+/// OTA 傭金確認記錄 — 比對完成後確認當期傭金並送出應付款
+model BnbOtaCommission {
+  id               Int      @id @default(autoincrement())
+  commissionMonth  String   @map("commission_month") @db.VarChar(7)  // YYYY-MM
+  otaSource        String   @map("ota_source") @db.VarChar(50)       // Booking | Agoda | Expedia
+  warehouse        String   @default("民宿") @db.VarChar(100)
+  commissionAmount Decimal  @map("commission_amount") @db.Decimal(12, 2)
+  paymentMethod    String   @default("轉帳") @map("payment_method") @db.VarChar(50)
+  note             String?  @db.VarChar(500)
+  supplierId       Int?     @map("supplier_id")
+  supplierName     String?  @map("supplier_name") @db.VarChar(255)
+  paymentOrderId   Int?     @map("payment_order_id")
+  status           String   @default("待出納") @db.VarChar(20)       // 待出納 | 已付款 | 已取消
+  confirmedBy      String?  @map("confirmed_by") @db.VarChar(255)
+  confirmedAt      DateTime @default(now()) @map("confirmed_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([commissionMonth, otaSource, warehouse])
+  @@index([commissionMonth])
+  @@index([otaSource])
+  @@index([paymentOrderId])
+  @@map("bnb_ota_commissions")
+}
