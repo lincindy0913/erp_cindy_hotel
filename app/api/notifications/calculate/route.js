@@ -324,25 +324,14 @@ export async function POST(request) {
     }
 
     // ==============================
-    // N09: 庫存偏低 - Product isInStock=true AND currentQuantity < minStockQty
+    // N09: 庫存偏低 - InventoryLowStockCache where currentQty < threshold
     // ==============================
     try {
-      // Check if Product model has minStockQty field by attempting a query
-      // If the field doesn't exist, this will throw and we catch it
-      let lowStockCount = 0;
-      try {
-        const lowStockProducts = await prisma.$queryRaw`
-          SELECT COUNT(*) as cnt FROM products
-          WHERE is_in_stock = true AND is_active = true
-          AND min_stock_qty IS NOT NULL
-          AND current_quantity < min_stock_qty
-        `;
-        lowStockCount = Number(lowStockProducts[0]?.cnt || 0);
-      } catch {
-        // minStockQty / currentQuantity columns may not exist yet, just count in-stock items as info
-        // Skip this notification if the fields don't exist
-        lowStockCount = 0;
-      }
+      const lowStockResult = await prisma.$queryRaw`
+        SELECT COUNT(*) as cnt FROM inventory_low_stock_caches
+        WHERE current_qty < threshold AND threshold > 0
+      `;
+      const lowStockCount = Number(lowStockResult[0]?.cnt || 0);
 
       if (lowStockCount > 0) {
         const def = NOTIFICATION_DEFS.N09;
@@ -568,39 +557,31 @@ export async function POST(request) {
     }
 
     // ==============================
-    // N14: 備份失敗 / 驗證失敗
+    // N14: 備份失敗 / 系統異常警報 — from ErrorAlertLog
     // ==============================
     try {
       const sevenDaysAgo = new Date(today);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const [failedBackups, failedVerifications] = await Promise.all([
-        prisma.backupRecord.count({
-          where: {
-            startedAt: { gte: sevenDaysAgo },
-            status: { in: ['failed', 'corrupted'] },
-          },
-        }),
-        prisma.backupRecord.count({
-          where: {
-            startedAt: { gte: sevenDaysAgo },
-            verifyResult: 'failed',
-          },
-        }),
-      ]);
+      const unresolvedAlerts = await prisma.errorAlertLog.count({
+        where: {
+          occurredAt: { gte: sevenDaysAgo },
+          resolved: false,
+          category: { in: ['backup_failure', 'restore_drill_failure', 'scheduler_failure'] },
+        },
+      });
 
-      const totalIssues = failedBackups + failedVerifications;
-      if (totalIssues > 0) {
+      if (unresolvedAlerts > 0) {
         const def = NOTIFICATION_DEFS.N14;
         notifications.push({
           code: 'N14',
           type: def.type,
           level: def.level,
           title: def.title,
-          message: `最近 7 天有 ${failedBackups} 筆備份失敗、${failedVerifications} 筆驗證失敗`,
-          count: totalIssues,
+          message: `最近 7 天有 ${unresolvedAlerts} 筆系統異常警報未處理`,
+          count: unresolvedAlerts,
           targetUrl: def.targetUrl,
-          metadata: { failedBackups, failedVerifications, lookbackDays: 7 },
+          metadata: { unresolvedAlerts, lookbackDays: 7 },
         });
       }
     } catch (err) {
