@@ -2814,3 +2814,47 @@ model BnbMonthlyReport {
   @@index([reportMonth])
   @@map("bnb_monthly_reports")
 }
+
+// ============================================
+// 業主往來 — 老闆多間公司月底發票彙整
+// ============================================
+
+/// 老闆旗下公司清單（一次性設定）
+model OwnerCompany {
+  id          Int      @id @default(autoincrement())
+  companyName String   @map("company_name") @db.VarChar(100)
+  taxId       String   @unique @map("tax_id") @db.VarChar(20)
+  note        String?  @db.VarChar(500)
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  expenses OwnerMonthlyExpense[]
+
+  @@index([isActive])
+  @@map("owner_companies")
+}
+
+/// 每月每間公司的業主私用發票彙整
+model OwnerMonthlyExpense {
+  id            Int      @id @default(autoincrement())
+  expenseMonth  String   @map("expense_month") @db.VarChar(7)   // YYYY-MM
+  companyId     Int      @map("company_id")
+  totalAmount   Decimal  @default(0) @map("total_amount") @db.Decimal(12, 2)
+  invoiceCount  Int      @default(1) @map("invoice_count")       // 發票張數
+  status        String   @default("待確認") @db.VarChar(20)      // 待確認 | 已確認
+  note          String?  @db.VarChar(500)
+  confirmedBy   String?  @map("confirmed_by") @db.VarChar(255)
+  confirmedAt   DateTime? @map("confirmed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company OwnerCompany @relation(fields: [companyId], references: [id])
+
+  @@unique([expenseMonth, companyId])
+  @@index([expenseMonth])
+  @@index([companyId])
+  @@index([status])
+  @@map("owner_monthly_expenses")
+}
