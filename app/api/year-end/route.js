@@ -54,7 +54,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const { year, rolledOverBy, note } = body;
+    const { year, rolledOverBy, note, preCheckSummary } = body;
 
     if (!year) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供年份', 400);
@@ -94,7 +94,14 @@ export async function POST(request) {
           cashBalance: false,
           profitLoss: false,
           statements: false
-        }
+        },
+        ...(preCheckSummary ? {
+          preCheckResults: {
+            ...preCheckSummary,
+            savedFrom: 'execution_start',
+            savedAt: new Date().toISOString()
+          }
+        } : {})
       }
     });
 
@@ -468,13 +475,19 @@ export async function POST(request) {
       });
 
     } catch (innerError) {
-      // Mark as failed
+      // Mark as failed — preserve any preCheckResults already saved
       await prisma.yearEndRollover.update({
         where: { id: yearEnd.id },
         data: {
           status: '失敗',
           completedSections,
-          note: `結轉失敗: ${innerError.message}`
+          note: `結轉失敗: ${innerError.message}`,
+          preCheckResults: {
+            ...(preCheckSummary || {}),
+            failedAt: new Date().toISOString(),
+            failureReason: innerError.message,
+            completedSections
+          }
         }
       }).catch(() => {});
 

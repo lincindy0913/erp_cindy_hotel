@@ -619,6 +619,8 @@ export async function POST(request) {
     // ==========================================
     // spec13 v9 STEP 9: Auto-generate MonthlyBusinessReport (async, non-blocking)
     // ==========================================
+    let reportGenerationFailed = false;
+    let reportGenerationError = null;
     const reportNo = `RPT-${year}${String(month).padStart(2, '0')}-001`;
     try {
       const purchaseTotal = reports[0]?.data?.totalAmount || 0;
@@ -704,6 +706,8 @@ export async function POST(request) {
       });
     } catch (reportErr) {
       console.error('月結業務報告生成失敗（非阻斷）:', reportErr.message);
+      reportGenerationFailed = true;
+      reportGenerationError = reportErr.message;
     }
 
     await auditFromSession(prisma, auth.session, {
@@ -725,6 +729,7 @@ export async function POST(request) {
       preChecks,
       reports: result.createdReports,
       businessReport: reportNo,
+      ...(reportGenerationFailed && { reportGenerationFailed: true, reportGenerationError }),
       summary: {
         purchaseCount: reports[0]?.data.totalCount || 0,
         purchaseTotal: Math.round(reports[0]?.data.totalAmount || 0),

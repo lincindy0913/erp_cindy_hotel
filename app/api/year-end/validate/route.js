@@ -244,22 +244,39 @@ export async function POST(request) {
     // Valid if all months are locked (warnings are just advisory)
     const valid = allMonthsLocked;
 
+    const summary = {
+      totalMonths: 12,
+      lockedMonths: monthStatuses.filter(m =>
+        m.warehouses.every(w => w.isLocked)
+      ).length,
+      uncollectedAP,
+      unclearedChecks,
+      negativeInventoryCount,
+      unreconciledAccountCount,
+      warehouseCount: warehouses.length
+    };
+
+    // Persist pre-check results to any existing non-completed YearEndRollover for this year
+    if (existing) {
+      await prisma.yearEndRollover.update({
+        where: { id: existing.id },
+        data: {
+          preCheckResults: {
+            valid,
+            checkedAt: new Date().toISOString(),
+            warnings: warnings.map(w => ({ type: w.type, message: w.message, count: w.count })),
+            summary
+          }
+        }
+      }).catch(() => {}); // non-critical
+    }
+
     return NextResponse.json({
       valid,
       alreadyCompleted: false,
       monthStatuses,
       warnings,
-      summary: {
-        totalMonths: 12,
-        lockedMonths: monthStatuses.filter(m =>
-          m.warehouses.every(w => w.isLocked)
-        ).length,
-        uncollectedAP,
-        unclearedChecks,
-        negativeInventoryCount,
-        unreconciledAccountCount,
-        warehouseCount: warehouses.length
-      }
+      summary
     });
   } catch (error) {
     return handleApiError(error);

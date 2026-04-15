@@ -49,6 +49,19 @@ export default function YearEndPage() {
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState(null);
 
+  // Statement viewer modal
+  const [statementModal, setStatementModal] = useState(null); // { loading, data }
+  async function handleViewStatement(statementId) {
+    setStatementModal({ loading: true, data: null });
+    try {
+      const res = await fetch(`/api/year-end/reports/${statementId}`);
+      const data = await res.json();
+      setStatementModal({ loading: false, data });
+    } catch {
+      setStatementModal({ loading: false, data: null });
+    }
+  }
+
   useEffect(() => {
     fetchRecords();
   }, []);
@@ -126,7 +139,8 @@ export default function YearEndPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           year: selectedYear,
-          rolledOverBy: userName
+          rolledOverBy: userName,
+          preCheckSummary: validationResult?.summary || null
         })
       });
       const data = await res.json();
@@ -630,13 +644,14 @@ export default function YearEndPage() {
                                 {detailData && (
                                   <div>
                                     {/* Tabs */}
-                                    <div className="flex gap-1 mb-4 border-b border-violet-200">
+                                    <div className="flex flex-wrap gap-1 mb-4 border-b border-violet-200">
                                       {[
-                                        { key: 'inventory', label: '庫存快照' },
-                                        { key: 'balance', label: '帳戶餘額' },
+                                        { key: 'inventory', label: '庫存快照', statementId: null },
+                                        { key: 'balance', label: '帳戶餘額', statementId: null },
                                         ...detailData.financialStatements.map(s => ({
                                           key: `statement-${s.id}`,
-                                          label: s.statementType
+                                          label: s.statementType,
+                                          statementId: s.id
                                         }))
                                       ].map(tab => (
                                         <button
@@ -1203,10 +1218,18 @@ export default function YearEndPage() {
                           <div className="space-y-2">
                             {executionResult.summary.statements.map((s) => (
                               <div key={s.id} className="flex items-center justify-between p-3 bg-violet-50 rounded-lg border border-violet-200">
-                                <span className="text-sm font-medium text-violet-700">{s.type}</span>
-                                <span className="text-xs text-gray-400">
-                                  {new Date(s.generatedAt).toLocaleString('zh-TW')}
-                                </span>
+                                <div>
+                                  <span className="text-sm font-medium text-violet-700">{s.type}</span>
+                                  <span className="text-xs text-gray-400 ml-2">
+                                    {new Date(s.generatedAt).toLocaleString('zh-TW')}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => handleViewStatement(s.id)}
+                                  className="text-xs text-violet-600 hover:text-violet-800 underline"
+                                >
+                                  查看明細
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -1272,6 +1295,48 @@ export default function YearEndPage() {
           </div>
         )}
       </div>
+
+      {/* ========================================== */}
+      {/* Statement Viewer Modal */}
+      {/* ========================================== */}
+      {statementModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white px-6 py-4 border-b border-violet-200 flex items-center justify-between z-10">
+              <h3 className="text-lg font-bold text-violet-800">
+                {statementModal.data?.statementType || '財務報表'}
+              </h3>
+              <button
+                onClick={() => setStatementModal(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              {statementModal.loading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600"></div>
+                  <span className="ml-3 text-gray-500">載入報表中...</span>
+                </div>
+              )}
+              {!statementModal.loading && statementModal.data && (
+                <>
+                  <div className="text-xs text-gray-400 mb-4">
+                    產生時間：{statementModal.data.generatedAt ? new Date(statementModal.data.generatedAt).toLocaleString('zh-TW') : '-'}
+                    {statementModal.data.generatedBy && ` ｜ 由 ${statementModal.data.generatedBy}`}
+                    {statementModal.data.yearEnd && ` ｜ ${statementModal.data.yearEnd.year} 年度`}
+                  </div>
+                  {renderStatementContent(statementModal.data)}
+                </>
+              )}
+              {!statementModal.loading && !statementModal.data && (
+                <p className="text-gray-500 text-center py-8">載入失敗，請重試</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
