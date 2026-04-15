@@ -38,6 +38,7 @@ export async function GET(request) {
         roomCharge: true, otherCharge: true,
         payDeposit: true, payCard: true, payCash: true, payVoucher: true,
         cardFee: true, status: true,
+        paymentLocked: true, paymentFilled: true,
       },
     });
 
@@ -78,13 +79,13 @@ export async function GET(request) {
         payDeposit: 0, payCard: 0, payCash: 0, payVoucher: 0, cardFee: 0,
         purchaseExpense: 0, fixedExpense: 0,
         otherIncome: 0,
+        lockedCount: 0, filledCount: 0,
       };
     };
 
     for (const b of bookings) {
       ensureMonth(b.importMonth);
       const m = monthlyMap[b.importMonth];
-      const rev = Number(b.roomCharge) + Number(b.otherCharge);
       m.rooms++;
       m.totalRevenue  += Number(b.roomCharge);
       m.otherCharge   += Number(b.otherCharge);
@@ -93,6 +94,8 @@ export async function GET(request) {
       m.payCash       += Number(b.payCash);
       m.payVoucher    += Number(b.payVoucher);
       m.cardFee       += Number(b.cardFee);
+      if (b.paymentLocked) m.lockedCount++;
+      if (b.paymentFilled) m.filledCount++;
     }
 
     for (const p of purchases) {
@@ -130,7 +133,7 @@ export async function GET(request) {
       .sort((a, b) => a.month.localeCompare(b.month))
       .map(m => ({
         ...m,
-        netRevenue:  m.totalRevenue + m.otherCharge + m.otherIncome - m.cardFee,
+        netRevenue:   m.totalRevenue + m.otherCharge - m.cardFee,
         totalExpense: m.purchaseExpense + m.fixedExpense,
         netProfit:    m.totalRevenue + m.otherCharge + m.otherIncome - m.cardFee - m.purchaseExpense - m.fixedExpense,
       }));

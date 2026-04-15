@@ -2901,3 +2901,31 @@ model BnbOtaCommission {
   @@index([paymentOrderId])
   @@map("bnb_ota_commissions")
 }
+
+/// OTA 比對執行記錄 — 每次上傳比對後自動存摘要
+model BnbOtaReconcileLog {
+  id              Int      @id @default(autoincrement())
+  reconcileMonth  String   @map("reconcile_month") @db.VarChar(7)   // YYYY-MM (以 dateFrom 月份為主)
+  otaSource       String   @map("ota_source") @db.VarChar(50)
+  warehouse       String   @default("民宿") @db.VarChar(100)
+  dateFrom        String?  @map("date_from") @db.VarChar(10)
+  dateTo          String?  @map("date_to") @db.VarChar(10)
+  otaRowCount     Int      @map("ota_row_count")
+  bnbRowCount     Int      @map("bnb_row_count")
+  matchedCount    Int      @map("matched_count")
+  unmatchedOtaCnt Int      @map("unmatched_ota_cnt")
+  unmatchedBnbCnt Int      @map("unmatched_bnb_cnt")
+  issueCount      Int      @map("issue_count")
+  cancelledCount  Int      @map("cancelled_count")
+  otaTotal        Decimal  @map("ota_total") @db.Decimal(12, 2)
+  bnbTotal        Decimal  @map("bnb_total") @db.Decimal(12, 2)
+  diff            Decimal  @db.Decimal(12, 2)
+  otaCommission   Decimal  @map("ota_commission") @db.Decimal(12, 2)
+  createdBy       String?  @map("created_by") @db.VarChar(255)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([reconcileMonth])
+  @@index([otaSource])
+  @@index([createdAt])
+  @@map("bnb_ota_reconcile_logs")
+}

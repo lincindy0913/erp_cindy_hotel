@@ -290,24 +290,51 @@ export async function POST(request) {
     const matchedOtaAmt  = matched.reduce((s, m) => s + m.ota.finalAmount, 0);
     const matchedBnbAmt  = matched.reduce((s, m) => s + m.bnb.roomCharge, 0);
 
+    const summary = {
+      otaTotal:        Math.round(otaTotal * 100) / 100,
+      otaCommission:   Math.round(otaCommission * 100) / 100,
+      bnbTotal:        Math.round(bnbTotal * 100) / 100,
+      diff:            Math.round((bnbTotal - otaTotal) * 100) / 100,
+      matchedCount:    matched.length,
+      matchedOtaAmt:   Math.round(matchedOtaAmt * 100) / 100,
+      matchedBnbAmt:   Math.round(matchedBnbAmt * 100) / 100,
+      unmatchedOtaCnt: unmatchedOta.length,
+      unmatchedBnbCnt: unmatchedBnb.length,
+      cancelledCount:  cancelledOta.length,
+      issueCount:      matched.filter(m => m.hasAmtIssue || m.hasNameIssue).length,
+    };
+
+    // 非同步儲存比對記錄（失敗不影響回傳）
+    const reconcileMonth = (dateFrom || minDate || '').substring(0, 7) || new Date().toISOString().substring(0, 7);
+    const userName = auth.session?.user?.name || auth.session?.user?.email || null;
+    prisma.bnbOtaReconcileLog.create({
+      data: {
+        reconcileMonth,
+        otaSource: source,
+        warehouse,
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+        otaRowCount:     filteredOta.length,
+        bnbRowCount:     bnbList.length,
+        matchedCount:    matched.length,
+        unmatchedOtaCnt: unmatchedOta.length,
+        unmatchedBnbCnt: unmatchedBnb.length,
+        issueCount:      summary.issueCount,
+        cancelledCount:  cancelledOta.length,
+        otaTotal:        summary.otaTotal,
+        bnbTotal:        summary.bnbTotal,
+        diff:            summary.diff,
+        otaCommission:   summary.otaCommission,
+        createdBy:       userName,
+      },
+    }).catch(() => {}); // fire-and-forget
+
     return NextResponse.json({
       source,
       dateRange: { from: minDate, to: maxDate },
       otaRowCount: filteredOta.length,
       bnbRowCount: bnbList.length,
-      summary: {
-        otaTotal:        Math.round(otaTotal * 100) / 100,
-        otaCommission:   Math.round(otaCommission * 100) / 100,
-        bnbTotal:        Math.round(bnbTotal * 100) / 100,
-        diff:            Math.round((bnbTotal - otaTotal) * 100) / 100,
-        matchedCount:    matched.length,
-        matchedOtaAmt:   Math.round(matchedOtaAmt * 100) / 100,
-        matchedBnbAmt:   Math.round(matchedBnbAmt * 100) / 100,
-        unmatchedOtaCnt: unmatchedOta.length,
-        unmatchedBnbCnt: unmatchedBnb.length,
-        cancelledCount:  cancelledOta.length,
-        issueCount:      matched.filter(m => m.hasAmtIssue || m.hasNameIssue).length,
-      },
+      summary,
       matched,
       unmatchedOta,
       unmatchedBnb,

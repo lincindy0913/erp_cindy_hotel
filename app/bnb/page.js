@@ -237,8 +237,9 @@ export default function BnbPage() {
   const [records, setRecords]       = useState([]);
   const [recLoading, setRecLoading] = useState(false);
   const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [filterSource, setFilterSource] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterSource,  setFilterSource]  = useState('');
+  const [filterStatus,  setFilterStatus]  = useState('');
+  const [filterPayment, setFilterPayment] = useState(''); // '' | 'unfilled' | 'filled'
   const [editRecord, setEditRecord] = useState(null);
 
   // ── 批次填入 state ────────────────────────────────────────────
@@ -331,6 +332,9 @@ export default function BnbPage() {
   const [commHistTab,    setCommHistTab]    = useState(false);  // true = show history tab
   const [commHistRows,   setCommHistRows]   = useState([]);
   const [commHistLoading,setCommHistLoading]= useState(false);
+  // OTA 比對記錄 (reconcile log)
+  const [reconLogs,      setReconLogs]      = useState([]);
+  const [reconLogsLoading, setReconLogsLoading] = useState(false);
 
   // ── 鎖帳 state ──────────────────────────────────────────────
   const [lockStatus, setLockStatus]   = useState(null); // { locked, lockedAt, lockedBy }
@@ -570,6 +574,21 @@ export default function BnbPage() {
     finally { setCommHistLoading(false); }
   }, [otaWarehouse]);
 
+  // OTA 比對歷史記錄
+  const fetchReconLogs = useCallback(async () => {
+    setReconLogsLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (otaWarehouse) p.set('warehouse', otaWarehouse);
+      const res = await fetch(`/api/bnb/ota-reconcile-log?${p}`);
+      if (res.ok) {
+        const data = await res.json();
+        setReconLogs(data.rows || []);
+      }
+    } catch {}
+    finally { setReconLogsLoading(false); }
+  }, [otaWarehouse]);
+
   const fetchDailyRevenue = useCallback(async () => {
     setDrLoading(true);
     setDrExpandDay(null);
@@ -656,7 +675,7 @@ export default function BnbPage() {
     if (activeTab === 'declaration') { setDeclSearched(false); setDeclActual(null); }
     if (activeTab === 'declList')    fetchDeclList();
     if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
-    if (activeTab === 'otaCommission') fetchCommHistory();
+    if (activeTab === 'otaCommission') { fetchCommHistory(); fetchReconLogs(); }
   }, [activeTab]);
 
   useEffect(() => { fetchLockStatus(filterMonth); }, [filterMonth]);
@@ -845,6 +864,29 @@ export default function BnbPage() {
     finally { setLocking(false); }
   }
 
+  // ── 月底批次鎖帳（全部已填付款）────────────────────────────────
+  async function lockAllFilled() {
+    const eligible = records.filter(r => r.paymentFilled && !r.paymentLocked && r.status !== '已刪除');
+    if (eligible.length === 0) {
+      showToast('無可鎖定的記錄（已全部鎖帳或無已填付款記錄）', 'error');
+      return;
+    }
+    if (!confirm(`確定要鎖定本月 ${eligible.length} 筆已填付款記錄嗎？鎖定後僅有鎖帳權限者可修改付款資料。`)) return;
+    setLocking(true);
+    try {
+      const res = await fetch('/api/bnb/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'lock', ids: eligible.map(r => r.id) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(d.message || '鎖帳失敗', 'error'); return; }
+      showToast(`已鎖帳 ${eligible.length} 筆`, 'success');
+      fetchRecords();
+    } catch { showToast('鎖帳失敗', 'error'); }
+    finally { setLocking(false); }
+  }
+
   // ── 刪除記錄 ──────────────────────────────────────────────────
   async function handleDelete(id, name) {
     if (!confirm(`確定刪除「${name}」的訂房記錄？`)) return;
@@ -902,8 +944,9 @@ export default function BnbPage() {
     acc.voucher  += Number(r.payVoucher);
     acc.cardFee  += Number(r.cardFee);
     acc.unfilled += r.paymentFilled ? 0 : 1;
+    acc.locked   += r.paymentLocked ? 1 : 0;
     return acc;
-  }, { rooms: 0, revenue: 0, deposit: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0 });
+  }, { rooms: 0, revenue: 0, deposit: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0 });
 
   const inputCls = 'border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none';
   const btnCls   = 'px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 transition-colors';
@@ -978,6 +1021,13 @@ export default function BnbPage() {
               </div>
               <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <div className="ml-auto flex items-end gap-2">
+                {canLock && !editMode && (
+                  <button onClick={lockAllFilled} disabled={locking}
+                    title="鎖定本月全部已填付款記錄"
+                    className="px-3 py-1.5 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1">
+                    🔒 全部鎖帳
+                  </button>
+                )}
                 {!editMode ? (
                   <button onClick={enterEditMode}
                     className="px-4 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium">
@@ -1025,13 +1075,39 @@ export default function BnbPage() {
                 { label: '現金', val: NT(recStats.cash) },
                 { label: '住宿卷', val: NT(recStats.voucher) },
                 { label: '刷卡手續費', val: NT(recStats.cardFee) },
-                { label: '未填付款', val: recStats.unfilled, color: recStats.unfilled > 0 ? 'text-amber-600' : '' },
               ].map(c => (
                 <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
                   <p className="text-xs text-gray-500">{c.label}</p>
-                  <p className={`font-bold text-gray-800 text-sm mt-0.5 ${c.color || ''}`}>{c.val}</p>
+                  <p className="font-bold text-gray-800 text-sm mt-0.5">{c.val}</p>
                 </div>
               ))}
+            </div>
+
+            {/* 付款完成度橫幅 */}
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-sm">
+              <span className="text-gray-500">本月共</span>
+              <span className="font-semibold text-gray-800">{recStats.rooms} 筆</span>
+              <span className="text-gray-300">|</span>
+              <button
+                onClick={() => setFilterPayment(filterPayment === 'filled' ? '' : 'filled')}
+                className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'filled' ? 'bg-green-100 text-green-800 font-semibold' : 'text-green-600 hover:bg-green-50'}`}>
+                已填付款 {recStats.rooms - recStats.unfilled}
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                onClick={() => setFilterPayment(filterPayment === 'unfilled' ? '' : 'unfilled')}
+                className={`rounded px-2 py-0.5 transition-colors ${filterPayment === 'unfilled' ? 'bg-amber-100 text-amber-800 font-semibold' : recStats.unfilled > 0 ? 'text-amber-600 hover:bg-amber-50' : 'text-gray-400 cursor-default'}`}
+                disabled={recStats.unfilled === 0}>
+                未填 {recStats.unfilled} 筆
+              </button>
+              <span className="text-gray-300">|</span>
+              <span className="text-slate-500">已鎖帳 <span className={recStats.locked === recStats.rooms && recStats.rooms > 0 ? 'text-green-600 font-semibold' : 'text-slate-700'}>{recStats.locked}</span></span>
+              {filterPayment && (
+                <button onClick={() => setFilterPayment('')}
+                  className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline">
+                  清除篩選
+                </button>
+              )}
             </div>
 
             {/* 批次行動列 */}
@@ -1092,6 +1168,12 @@ export default function BnbPage() {
             ) : (() => {
               // 可編輯的列（未刪除、未鎖定）供 Tab 跳格使用
               const editableRecords = records.filter(r => r.status !== '已刪除' && !r.paymentLocked);
+              // 付款篩選（client-side）
+              const visibleRecords  = filterPayment
+                ? records.filter(r => filterPayment === 'filled' ? r.paymentFilled : !r.paymentFilled)
+                : records;
+              // 逾期未填判斷基準日
+              const today = new Date().toISOString().split('T')[0];
 
               return (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
@@ -1123,15 +1205,18 @@ export default function BnbPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {records.length === 0 && (
-                      <tr><td colSpan={15} className="text-center py-10 text-gray-400">無資料</td></tr>
+                    {visibleRecords.length === 0 && (
+                      <tr><td colSpan={15} className="text-center py-10 text-gray-400">
+                        {filterPayment ? `無${filterPayment === 'filled' ? '已填付款' : '未填付款'}記錄` : '無資料'}
+                      </td></tr>
                     )}
-                    {records.map(r => {
-                      const isSelected    = selectedIds.has(r.id);
-                      const isDeleted     = r.status === '已刪除';
-                      const isLocked      = !!r.paymentLocked;
-                      const inExcelMode   = editMode && !isDeleted && !isLocked;
-                      const isDirty       = dirtyIds.has(r.id);
+                    {visibleRecords.map(r => {
+                      const isSelected      = selectedIds.has(r.id);
+                      const isDeleted       = r.status === '已刪除';
+                      const isLocked        = !!r.paymentLocked;
+                      const inExcelMode     = editMode && !isDeleted && !isLocked;
+                      const isDirty         = dirtyIds.has(r.id);
+                      const isOverdueUnpaid = !isDeleted && !r.paymentFilled && r.checkOutDate && r.checkOutDate < today;
 
                       // ── 一般模式：點擊式 inline edit ────────────────
                       const editCell = (field, colorCls) => {
@@ -1191,7 +1276,7 @@ export default function BnbPage() {
 
                       return (
                         <tr key={r.id} className={`
-                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : 'hover:bg-gray-50'}
+                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : isOverdueUnpaid ? 'bg-red-50' : 'hover:bg-gray-50'}
                           ${isDeleted ? 'opacity-40' : ''}
                           ${editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
                         `}>
@@ -1562,16 +1647,19 @@ export default function BnbPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['月份','間數','住宿房費','其他消費','訂金匯款','刷卡','現金','住宿卷','手續費','淨收入'].map(h => (
+                      {['月份','間數','住宿房費','其他消費','訂金匯款','刷卡','現金','住宿卷','手續費','淨收入','鎖帳'].map(h => (
                         <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {summaryRows.length === 0 && (
-                      <tr><td colSpan={10} className="text-center py-10 text-gray-400">無資料</td></tr>
+                      <tr><td colSpan={11} className="text-center py-10 text-gray-400">無資料</td></tr>
                     )}
-                    {summaryRows.map(r => (
+                    {summaryRows.map(r => {
+                      const lockRatio = r.rooms > 0 ? (r.lockedCount || 0) / r.rooms : 0;
+                      const lockColor = lockRatio === 1 ? 'text-green-600 font-semibold' : lockRatio > 0 ? 'text-amber-600' : 'text-gray-300';
+                      return (
                       <tr key={r.month} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-medium">{r.month}</td>
                         <td className="px-3 py-2 text-right">{r.rooms}</td>
@@ -1583,8 +1671,11 @@ export default function BnbPage() {
                         <td className="px-3 py-2 text-right text-amber-600">{Number(r.payVoucher).toLocaleString()}</td>
                         <td className="px-3 py-2 text-right text-red-400">({Number(r.cardFee).toLocaleString()})</td>
                         <td className="px-3 py-2 text-right font-semibold text-indigo-700">{Number(r.netRevenue).toLocaleString()}</td>
+                        <td className={`px-3 py-2 text-right text-xs ${lockColor}`} title={`${r.lockedCount || 0}/${r.rooms} 筆已鎖帳`}>
+                          {r.lockedCount || 0}/{r.rooms}
+                        </td>
                       </tr>
-                    ))}
+                    );})}
                     {summaryRows.length > 0 && (() => {
                       const tot = summaryRows.reduce((a, r) => ({
                         rooms: a.rooms + r.rooms,
@@ -1609,6 +1700,9 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-right">{Number(tot.payVoucher).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right">({Number(tot.cardFee).toLocaleString()})</td>
                           <td className="px-3 py-2 text-right">{Number(tot.netRevenue).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right text-xs">
+                            {summaryRows.reduce((s, r) => s + (r.lockedCount || 0), 0)}/{tot.rooms}
+                          </td>
                         </tr>
                       );
                     })()}
@@ -1626,7 +1720,7 @@ export default function BnbPage() {
               const pnlData = summaryRows.map(r => ({
                 ...r,
                 incomeTotal:  r.netRevenue + (r.otherIncome || 0),
-                pnlNetProfit: r.netRevenue + (r.otherIncome || 0) - r.totalExpense,
+                pnlNetProfit: r.netProfit,
               }));
               return (
             <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -1683,7 +1777,7 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-right text-red-400">({Number(r.fixedExpense).toLocaleString()})</td>
                           <td className="px-3 py-2 text-right text-red-600">({Number(r.totalExpense).toLocaleString()})</td>
                           <td className={`px-3 py-2 text-right font-bold ${r.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {Number(r.netProfit + (r.otherIncome || 0)).toLocaleString()}
+                            {Number(r.netProfit).toLocaleString()}
                           </td>
                         </tr>
                       );
@@ -2628,6 +2722,71 @@ export default function BnbPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* 比對記錄 */}
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-700">OTA 比對記錄（最近 100 次）</h3>
+                <button onClick={fetchReconLogs} disabled={reconLogsLoading}
+                  className="text-xs text-indigo-600 hover:underline disabled:opacity-50">
+                  {reconLogsLoading ? '載入中…' : '重新整理'}
+                </button>
+              </div>
+              <div className="bg-white rounded-xl shadow overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr className="text-gray-500 text-xs">
+                      <th className="px-3 py-2 text-left">比對時間</th>
+                      <th className="px-3 py-2 text-left">月份</th>
+                      <th className="px-3 py-2 text-left">來源</th>
+                      <th className="px-3 py-2 text-left">館別</th>
+                      <th className="px-3 py-2 text-center">OTA筆</th>
+                      <th className="px-3 py-2 text-center">系統筆</th>
+                      <th className="px-3 py-2 text-center">配對</th>
+                      <th className="px-3 py-2 text-center">OTA未配</th>
+                      <th className="px-3 py-2 text-center">系統未配</th>
+                      <th className="px-3 py-2 text-center">差異筆</th>
+                      <th className="px-3 py-2 text-right">OTA總額</th>
+                      <th className="px-3 py-2 text-right">系統總額</th>
+                      <th className="px-3 py-2 text-right">差異</th>
+                      <th className="px-3 py-2 text-right">佣金</th>
+                      <th className="px-3 py-2 text-left">執行者</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {reconLogsLoading && (
+                      <tr><td colSpan={15} className="text-center py-6 text-gray-400">載入中…</td></tr>
+                    )}
+                    {!reconLogsLoading && reconLogs.length === 0 && (
+                      <tr><td colSpan={15} className="text-center py-6 text-gray-400">尚無比對記錄</td></tr>
+                    )}
+                    {reconLogs.map(r => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">
+                          {new Date(r.createdAt).toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">{r.reconcileMonth}</td>
+                        <td className="px-3 py-2">{r.otaSource}</td>
+                        <td className="px-3 py-2 text-gray-500">{r.warehouse}</td>
+                        <td className="px-3 py-2 text-center">{r.otaRowCount}</td>
+                        <td className="px-3 py-2 text-center">{r.bnbRowCount}</td>
+                        <td className="px-3 py-2 text-center text-green-600 font-semibold">{r.matchedCount}</td>
+                        <td className={`px-3 py-2 text-center ${r.unmatchedOtaCnt > 0 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{r.unmatchedOtaCnt}</td>
+                        <td className={`px-3 py-2 text-center ${r.unmatchedBnbCnt > 0 ? 'text-amber-500 font-semibold' : 'text-gray-400'}`}>{r.unmatchedBnbCnt}</td>
+                        <td className={`px-3 py-2 text-center ${r.issueCount > 0 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{r.issueCount}</td>
+                        <td className="px-3 py-2 text-right text-xs">{r.otaTotal.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-xs">{r.bnbTotal.toLocaleString()}</td>
+                        <td className={`px-3 py-2 text-right text-xs font-semibold ${Math.abs(r.diff) > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                          {r.diff === 0 ? '—' : r.diff > 0 ? `+${r.diff.toLocaleString()}` : r.diff.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-600">{r.otaCommission.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-xs text-gray-400">{r.createdBy || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
