@@ -18,11 +18,21 @@ export async function PATCH(request, { params }) {
   try {
     const id   = parseInt(params.id);
 
-    const record = await prisma.bnbBookingRecord.findUnique({ where: { id }, select: { importMonth: true, warehouse: true } });
+    const record = await prisma.bnbBookingRecord.findUnique({
+      where: { id },
+      select: { importMonth: true, warehouse: true, paymentLocked: true },
+    });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆紀錄', 404);
     await assertBnbMonthOpen(record.importMonth, record.warehouse);
 
     const body = await request.json();
+
+    // 鎖定的付款列，只允許有 BNB_LOCK 權限的人修改付款欄位
+    const isPaymentField = ['payDeposit','depositLast5','payCard','payCash','payVoucher','cardFeeRate'].some(f => f in body);
+    if (record.paymentLocked && isPaymentField) {
+      const lockAuth = await requireAnyPermission([PERMISSIONS.BNB_LOCK, PERMISSIONS.BNB_EDIT]);
+      if (!lockAuth.ok) return createErrorResponse('FORBIDDEN', '此筆已鎖帳，需有鎖帳權限才能修改付款資料', 403);
+    }
 
     const { payDeposit, depositDate, depositLast5,
             payCard, payCash, payVoucher, cardFeeRate,

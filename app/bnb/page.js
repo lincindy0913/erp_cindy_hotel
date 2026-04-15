@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
@@ -219,10 +219,18 @@ function PaymentModal({ record, onClose, onSaved }) {
 }
 
 // ── 主頁面 ────────────────────────────────────────────────────────
+// ── 付款欄位順序（Excel Tab 跳格用）────────────────────────────
+const PAY_FIELDS = ['payDeposit', 'depositLast5', 'payCard', 'payCash', 'payVoucher'];
+
 export default function BnbPage() {
-  useSession();
+  const { data: session } = useSession();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('records');
+
+  // 是否有鎖帳權限
+  const canLock = session?.user?.role === 'admin'
+    || (session?.user?.permissions || []).includes('bnb.lock')
+    || (session?.user?.permissions || []).includes('bnb.edit');
 
   // ── 訂房明細 state ────────────────────────────────────────────
   const [records, setRecords]       = useState([]);
@@ -234,13 +242,20 @@ export default function BnbPage() {
 
   // ── 批次填入 state ────────────────────────────────────────────
   const [selectedIds,   setSelectedIds]   = useState(new Set());
-  const [batchField,    setBatchField]    = useState('payCash');
+  const [batchField,    setBatchField]    = useState('status');
   const [batchValue,    setBatchValue]    = useState('');
   const [batchApplying, setBatchApplying] = useState(false);
 
   // ── Inline edit state ─────────────────────────────────────────
   const [inlineEdit,  setInlineEdit]  = useState(null); // { id, field }
   const [inlineValue, setInlineValue] = useState('');
+
+  // ── Excel 模式 state ──────────────────────────────────────────
+  const [editMode,    setEditMode]    = useState(false);
+  const [editMap,     setEditMap]     = useState({});  // { [id]: { payDeposit, depositLast5, payCard, payCash, payVoucher } }
+  const [dirtyIds,    setDirtyIds]    = useState(new Set());
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [locking,     setLocking]     = useState(false);
 
   // ── 雲掌櫃匯入 state ─────────────────────────────────────────
   const [importFile,    setImportFile]    = useState(null);
@@ -612,20 +627,16 @@ export default function BnbPage() {
 
   // ── 批次套用 ──────────────────────────────────────────────────
   async function handleBatchApply() {
-    if (!selectedIds.size) return;
-    if (batchField !== 'status' && !batchValue && batchValue !== '0') {
-      showToast('請輸入套用數值', 'error'); return;
+    if (!selectedIds.size || !batchValue) {
+      showToast('請選擇狀態', 'error'); return;
     }
     setBatchApplying(true);
     try {
-      const payload = batchField === 'status'
-        ? { status: batchValue }
-        : { [batchField]: parseFloat(batchValue) || 0 };
       await Promise.all([...selectedIds].map(id =>
         fetch(`/api/bnb/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ status: batchValue }),
         })
       ));
       showToast(`已套用 ${selectedIds.size} 筆`, 'success');
@@ -639,20 +650,118 @@ export default function BnbPage() {
   // ── Inline 儲存 ───────────────────────────────────────────────
   async function handleInlineSave(id, field, value) {
     setInlineEdit(null);
-    const numVal = parseFloat(value) || 0;
+    const isText = field === 'depositLast5';
+    const payload = isText ? { [field]: value || null } : { [field]: parseFloat(value) || 0 };
     const res = await fetch(`/api/bnb/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: numVal }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      showToast(err.error || '儲存失敗', 'error');
+      showToast(err.message || err.error || '儲存失敗', 'error');
       fetchRecords();
       return;
     }
     const updated = await res.json();
     setRecords(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+  }
+
+  // ── Excel 模式：進入 ──────────────────────────────────────────
+  function enterEditMode() {
+    const map = {};
+    for (const r of records) {
+      if (r.status === '已刪除' || r.paymentLocked) continue;
+      map[r.id] = {
+        payDeposit:   String(r.payDeposit  > 0 ? r.payDeposit  : ''),
+        depositLast5: r.depositLast5 || '',
+        payCard:      String(r.payCard     > 0 ? r.payCard     : ''),
+        payCash:      String(r.payCash     > 0 ? r.payCash     : ''),
+        payVoucher:   String(r.payVoucher  > 0 ? r.payVoucher  : ''),
+      };
+    }
+    setEditMap(map);
+    setDirtyIds(new Set());
+    setEditMode(true);
+    setInlineEdit(null);
+  }
+
+  function cancelEditMode() {
+    setEditMode(false);
+    setEditMap({});
+    setDirtyIds(new Set());
+  }
+
+  function updateCell(id, field, value) {
+    setEditMap(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+    setDirtyIds(prev => new Set([...prev, id]));
+  }
+
+  function focusPayCell(id, field) {
+    const el = document.getElementById(`pc-${id}-${field}`);
+    if (el) { el.focus(); el.select(); }
+  }
+
+  function handlePayKeyDown(e, rid, field, editableRecords) {
+    if (e.key === 'Escape') { cancelEditMode(); return; }
+    const fieldIdx  = PAY_FIELDS.indexOf(field);
+    const recordIdx = editableRecords.findIndex(x => x.id === rid);
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (fieldIdx < PAY_FIELDS.length - 1) {
+        focusPayCell(rid, PAY_FIELDS[fieldIdx + 1]);
+      } else if (recordIdx < editableRecords.length - 1) {
+        focusPayCell(editableRecords[recordIdx + 1].id, PAY_FIELDS[0]);
+      }
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (recordIdx < editableRecords.length - 1) {
+        focusPayCell(editableRecords[recordIdx + 1].id, field);
+      }
+    }
+  }
+
+  async function saveAllEdits() {
+    const toSave = [...dirtyIds].map(id => ({ id, ...editMap[id] }));
+    if (!toSave.length) { cancelEditMode(); return; }
+    setBatchSaving(true);
+    try {
+      const res = await fetch('/api/bnb/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'savePayment', records: toSave }),
+      });
+      if (!res.ok) { showToast('批次儲存失敗', 'error'); return; }
+      const d = await res.json();
+      const msg = d.skipped > 0 ? `已儲存 ${d.saved} 筆（${d.skipped} 筆鎖定跳過）` : `已儲存 ${d.saved} 筆`;
+      showToast(msg, 'success');
+      cancelEditMode();
+      fetchRecords();
+    } catch { showToast('儲存失敗', 'error'); }
+    finally { setBatchSaving(false); }
+  }
+
+  async function handleLockToggle(action) {
+    if (!selectedIds.size) return;
+    setLocking(true);
+    try {
+      const res = await fetch('/api/bnb/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ids: [...selectedIds] }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.message || (action === 'lock' ? '鎖帳失敗' : '解鎖失敗'), 'error');
+        return;
+      }
+      showToast(action === 'lock' ? `已鎖帳 ${selectedIds.size} 筆` : `已解鎖 ${selectedIds.size} 筆`, 'success');
+      setSelectedIds(new Set());
+      fetchRecords();
+    } catch { showToast('操作失敗', 'error'); }
+    finally { setLocking(false); }
   }
 
   // ── 刪除記錄 ──────────────────────────────────────────────────
@@ -788,6 +897,26 @@ export default function BnbPage() {
               </div>
               <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <div className="ml-auto flex items-end gap-2">
+                {!editMode ? (
+                  <button onClick={enterEditMode}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium">
+                    修改付款
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-300 rounded-lg px-3 py-1.5">
+                    <span className="text-xs text-emerald-700 font-medium">
+                      Excel 模式{dirtyIds.size > 0 ? ` (已修改 ${dirtyIds.size} 筆)` : ''}
+                    </span>
+                    <button onClick={saveAllEdits} disabled={batchSaving}
+                      className="px-3 py-1 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                      {batchSaving ? '儲存中…' : '儲存全部'}
+                    </button>
+                    <button onClick={cancelEditMode}
+                      className="px-3 py-1 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-600">
+                      取消
+                    </button>
+                  </div>
+                )}
                 <ExportButtons
                   data={records}
                   columns={BOOKING_EXPORT_COLS}
@@ -828,53 +957,88 @@ export default function BnbPage() {
             {selectedIds.size > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
                 <span className="text-sm font-medium text-amber-800">已選 {selectedIds.size} 筆</span>
-                <select value={batchField} onChange={e => { setBatchField(e.target.value); setBatchValue(''); }}
-                  className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
-                  <option value="payCash">現金</option>
-                  <option value="payDeposit">訂金匯款</option>
-                  <option value="payCard">刷卡</option>
-                  <option value="payVoucher">住宿卷</option>
-                  <option value="status">狀態</option>
-                </select>
-                {batchField === 'status' ? (
-                  <select value={batchValue} onChange={e => setBatchValue(e.target.value)}
-                    className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
-                    <option value="">選擇狀態</option>
-                    <option value="已入住">已入住</option>
-                    <option value="已退房">已退房</option>
-                    <option value="已預訂">已預訂</option>
-                  </select>
-                ) : (
-                  <input type="number" min="0" placeholder="輸入金額" value={batchValue}
-                    onChange={e => setBatchValue(e.target.value)}
-                    className="border rounded-lg px-2 py-1 text-sm w-28 focus:ring-2 focus:ring-amber-400 outline-none" />
+                {/* 狀態批次套用 */}
+                {!editMode && (
+                  <>
+                    <select value={batchField} onChange={e => { setBatchField(e.target.value); setBatchValue(''); }}
+                      className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
+                      <option value="status">狀態</option>
+                    </select>
+                    <select value={batchValue} onChange={e => setBatchValue(e.target.value)}
+                      className="border rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-amber-400 outline-none">
+                      <option value="">選擇狀態</option>
+                      <option value="已入住">已入住</option>
+                      <option value="已退房">已退房</option>
+                      <option value="已預訂">已預訂</option>
+                    </select>
+                    <button onClick={handleBatchApply} disabled={batchApplying}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+                      {batchApplying ? '套用中…' : '套用'}
+                    </button>
+                    <span className="text-gray-300 text-xs">|</span>
+                  </>
                 )}
-                <button onClick={handleBatchApply} disabled={batchApplying || isLocked}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
-                  {batchApplying ? '套用中…' : '套用'}
-                </button>
+                {/* 鎖帳 / 解鎖（需有鎖帳權限） */}
+                {canLock && !editMode && (
+                  <>
+                    <button onClick={() => handleLockToggle('lock')} disabled={locking}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1">
+                      <span>🔒</span> 鎖帳
+                    </button>
+                    <button onClick={() => handleLockToggle('unlock')} disabled={locking}
+                      className="px-3 py-1.5 text-sm rounded-lg border border-slate-400 text-slate-600 hover:bg-slate-50 disabled:opacity-50 flex items-center gap-1">
+                      <span>🔓</span> 解鎖
+                    </button>
+                  </>
+                )}
                 <button onClick={() => setSelectedIds(new Set())}
-                  className="text-xs text-gray-500 hover:underline ml-1">清除選取</button>
+                  className="text-xs text-gray-500 hover:underline ml-auto">清除選取</button>
+              </div>
+            )}
+
+            {/* Excel 模式提示 */}
+            {editMode && (
+              <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 flex items-center gap-2">
+                <span className="font-medium">Excel 模式：</span>
+                Tab 跳下一格 ／ Enter 跳下一行同欄 ／ Esc 取消編輯模式。訂金欄位含後五碼輸入。
+                <span className="ml-auto text-emerald-500">🔒 灰色鎖定列不可編輯</span>
               </div>
             )}
 
             {/* 表格 */}
             {recLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
-            ) : (
+            ) : (() => {
+              // 可編輯的列（未刪除、未鎖定）供 Tab 跳格使用
+              const editableRecords = records.filter(r => r.status !== '已刪除' && !r.paymentLocked);
+
+              return (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
+                    <tr className={`text-xs ${editMode ? 'bg-emerald-50 text-emerald-800' : 'bg-indigo-50 text-indigo-800'}`}>
                       <th className="px-3 py-2">
                         <input type="checkbox"
                           checked={selectedIds.size > 0 && selectedIds.size === records.filter(r => r.status !== '已刪除').length}
                           onChange={toggleSelectAll}
                           className="rounded cursor-pointer" />
                       </th>
-                      {['來源','姓名','房間','入住','退房','房費','消費','訂金','刷卡','手續費','現金','住宿卷','狀態',''].map(h => (
-                        <th key={h} className="px-3 py-2 text-left font-medium whitespace-nowrap">{h}</th>
-                      ))}
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">來源</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">姓名</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房間</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">入住</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">退房</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房費</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">消費</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        訂金{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
+                      </th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">刷卡</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">手續費</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">現金</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">住宿卷</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">狀態</th>
+                      {!editMode && <th className="px-3 py-2"></th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -882,14 +1046,17 @@ export default function BnbPage() {
                       <tr><td colSpan={15} className="text-center py-10 text-gray-400">無資料</td></tr>
                     )}
                     {records.map(r => {
-                      const isSelected = selectedIds.has(r.id);
-                      const isDeleted  = r.status === '已刪除';
+                      const isSelected    = selectedIds.has(r.id);
+                      const isDeleted     = r.status === '已刪除';
+                      const isLocked      = !!r.paymentLocked;
+                      const inExcelMode   = editMode && !isDeleted && !isLocked;
+                      const isDirty       = dirtyIds.has(r.id);
 
-                      // inline edit cell helper
+                      // ── 一般模式：點擊式 inline edit ────────────────
                       const editCell = (field, colorCls) => {
-                        const isEditing = inlineEdit?.id === r.id && inlineEdit?.field === field;
+                        const isEditing = !editMode && inlineEdit?.id === r.id && inlineEdit?.field === field;
                         const val = Number(r[field]);
-                        if (isEditing && !isLocked) return (
+                        if (isEditing) return (
                           <input autoFocus type="number" min="0" value={inlineValue}
                             onChange={e => setInlineValue(e.target.value)}
                             onBlur={() => handleInlineSave(r.id, field, inlineValue)}
@@ -900,16 +1067,53 @@ export default function BnbPage() {
                             className="w-20 border border-indigo-400 rounded px-1 py-0.5 text-xs text-right outline-none ring-1 ring-indigo-400" />
                         );
                         return (
-                          <span onClick={() => { if (!isDeleted && !isLocked) { setInlineEdit({ id: r.id, field }); setInlineValue(val || ''); } }}
-                            className={`${isLocked ? '' : 'cursor-pointer hover:underline hover:text-indigo-600'} ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
-                            title={isLocked ? '已鎖帳，無法編輯' : '點擊編輯'}>
+                          <span
+                            onClick={() => { if (!isDeleted && !isLocked && !editMode) { setInlineEdit({ id: r.id, field }); setInlineValue(val || ''); } }}
+                            className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : ''} ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
+                            title={isLocked ? '已鎖帳' : editMode ? '' : '點擊編輯'}>
                             {val > 0 ? val.toLocaleString() : '—'}
                           </span>
                         );
                       };
 
+                      // ── Excel 模式：數字 input ───────────────────────
+                      const excelInput = (field, colorBorder) => {
+                        const val = editMap[r.id]?.[field] ?? '';
+                        return (
+                          <input
+                            id={`pc-${r.id}-${field}`}
+                            type="number" min="0"
+                            value={val}
+                            onChange={e => updateCell(r.id, field, e.target.value)}
+                            onFocus={e => e.target.select()}
+                            onKeyDown={e => handlePayKeyDown(e, r.id, field, editableRecords)}
+                            className={`w-20 border rounded px-1.5 py-0.5 text-xs text-right outline-none focus:ring-1 ${colorBorder} ${isDirty ? 'bg-yellow-50' : 'bg-white'}`}
+                          />
+                        );
+                      };
+
+                      const excelTextInput = (field) => {
+                        const val = editMap[r.id]?.[field] ?? '';
+                        return (
+                          <input
+                            id={`pc-${r.id}-${field}`}
+                            type="text" maxLength={5}
+                            value={val}
+                            onChange={e => updateCell(r.id, field, e.target.value)}
+                            onFocus={e => e.target.select()}
+                            onKeyDown={e => handlePayKeyDown(e, r.id, field, editableRecords)}
+                            placeholder="後五碼"
+                            className={`w-16 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-blue-300 border-blue-200 ${isDirty ? 'bg-yellow-50' : 'bg-white'} text-blue-500 font-mono`}
+                          />
+                        );
+                      };
+
                       return (
-                        <tr key={r.id} className={`${isSelected ? 'bg-amber-50' : 'hover:bg-gray-50'} ${isDeleted ? 'opacity-40' : ''}`}>
+                        <tr key={r.id} className={`
+                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : 'hover:bg-gray-50'}
+                          ${isDeleted ? 'opacity-40' : ''}
+                          ${editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
+                        `}>
                           <td className="px-3 py-2">
                             {!isDeleted && (
                               <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
@@ -925,34 +1129,72 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
                           <td className="px-3 py-2 text-right">{Number(r.roomCharge).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Number(r.otherCharge).toLocaleString() : '—'}</td>
-                          <td className="px-3 py-2 text-right">{editCell('payDeposit', 'text-blue-600')}</td>
-                          <td className="px-3 py-2 text-right">{editCell('payCard', 'text-purple-600')}</td>
-                          <td className="px-3 py-2 text-right text-red-400 text-xs">{Number(r.cardFee) > 0 ? Number(r.cardFee).toLocaleString() : '—'}</td>
-                          <td className="px-3 py-2 text-right">{editCell('payCash', 'text-green-600')}</td>
-                          <td className="px-3 py-2 text-right">{editCell('payVoucher', 'text-amber-600')}</td>
+
+                          {/* 訂金 + 後五碼 */}
+                          <td className="px-3 py-1.5 text-right">
+                            {inExcelMode ? (
+                              <div className="flex flex-col gap-0.5 items-end">
+                                {excelInput('payDeposit', 'border-blue-300 focus:ring-blue-300')}
+                                {excelTextInput('depositLast5')}
+                              </div>
+                            ) : (
+                              <div>
+                                {editCell('payDeposit', 'text-blue-600')}
+                                {r.depositLast5 && <div className="text-[10px] text-blue-300 font-mono">{r.depositLast5}</div>}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 刷卡 */}
+                          <td className="px-3 py-1.5 text-right">
+                            {inExcelMode ? excelInput('payCard', 'border-purple-300 focus:ring-purple-300') : editCell('payCard', 'text-purple-600')}
+                          </td>
+
+                          {/* 手續費（唯讀） */}
+                          <td className="px-3 py-2 text-right text-red-400 text-xs">
+                            {Number(r.cardFee) > 0 ? Number(r.cardFee).toLocaleString() : '—'}
+                          </td>
+
+                          {/* 現金 */}
+                          <td className="px-3 py-1.5 text-right">
+                            {inExcelMode ? excelInput('payCash', 'border-green-300 focus:ring-green-300') : editCell('payCash', 'text-green-600')}
+                          </td>
+
+                          {/* 住宿卷 */}
+                          <td className="px-3 py-1.5 text-right">
+                            {inExcelMode ? excelInput('payVoucher', 'border-amber-300 focus:ring-amber-300') : editCell('payVoucher', 'text-amber-600')}
+                          </td>
+
+                          {/* 狀態 + 鎖帳標示 */}
                           <td className="px-3 py-2">
                             <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>{r.status}</span>
-                            {!r.paymentFilled && !isDeleted && (
+                            {isLocked && <span className="ml-1 text-[10px] text-slate-400" title={`鎖帳：${r.paymentLockedBy || ''}`}>🔒</span>}
+                            {!r.paymentFilled && !isDeleted && !isLocked && (
                               <span className="ml-1 text-[10px] text-amber-500">未填</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <button onClick={() => setEditRecord(r)} disabled={isLocked}
-                              className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
-                              付款
-                            </button>
-                            <button onClick={() => handleDelete(r.id, r.guestName)} disabled={isLocked}
-                              className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                              刪
-                            </button>
-                          </td>
+
+                          {/* 操作欄（非 Excel 模式才顯示） */}
+                          {!editMode && (
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <button onClick={() => setEditRecord(r)} disabled={isLocked}
+                                className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
+                                付款
+                              </button>
+                              <button onClick={() => handleDelete(r.id, r.guestName)} disabled={isLocked}
+                                className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                                刪
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
