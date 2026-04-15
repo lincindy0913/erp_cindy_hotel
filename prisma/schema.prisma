@@ -687,6 +687,8 @@ model InvoiceTitle {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  ownerExpenses OwnerMonthlyExpense[]
+
   @@map("invoice_titles")
 }
 
@@ -2820,6 +2822,7 @@ model BnbMonthlyReport {
 // ============================================
 
 /// 老闆旗下公司清單（一次性設定）
+/// 業主往來使用發票抬頭管理（settings/invoice-titles）作為公司來源，此 model 保留備用
 model OwnerCompany {
   id          Int      @id @default(autoincrement())
   companyName String   @map("company_name") @db.VarChar(100)
@@ -2830,31 +2833,29 @@ model OwnerCompany {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  expenses OwnerMonthlyExpense[]
-
   @@index([isActive])
   @@map("owner_companies")
 }
 
-/// 每月每間公司的業主私用發票彙整
+/// 每月每個發票抬頭的業主私用進項發票彙整
 model OwnerMonthlyExpense {
-  id            Int      @id @default(autoincrement())
-  expenseMonth  String   @map("expense_month") @db.VarChar(7)   // YYYY-MM
-  companyId     Int      @map("company_id")
-  totalAmount   Decimal  @default(0) @map("total_amount") @db.Decimal(12, 2)
-  invoiceCount  Int      @default(1) @map("invoice_count")       // 發票張數
-  status        String   @default("待確認") @db.VarChar(20)      // 待確認 | 已確認
-  note          String?  @db.VarChar(500)
-  confirmedBy   String?  @map("confirmed_by") @db.VarChar(255)
-  confirmedAt   DateTime? @map("confirmed_at")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              Int      @id @default(autoincrement())
+  expenseMonth    String   @map("expense_month") @db.VarChar(7)   // YYYY-MM
+  invoiceTitleId  Int      @map("invoice_title_id")
+  totalAmount     Decimal  @default(0) @map("total_amount") @db.Decimal(12, 2)
+  invoiceCount    Int      @default(1) @map("invoice_count")       // 發票張數
+  status          String   @default("待確認") @db.VarChar(20)      // 待確認 | 已確認
+  note            String?  @db.VarChar(500)
+  confirmedBy     String?  @map("confirmed_by") @db.VarChar(255)
+  confirmedAt     DateTime? @map("confirmed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  company OwnerCompany @relation(fields: [companyId], references: [id])
+  invoiceTitle InvoiceTitle @relation(fields: [invoiceTitleId], references: [id])
 
-  @@unique([expenseMonth, companyId])
+  @@unique([expenseMonth, invoiceTitleId])
   @@index([expenseMonth])
-  @@index([companyId])
+  @@index([invoiceTitleId])
   @@index([status])
   @@map("owner_monthly_expenses")
 }

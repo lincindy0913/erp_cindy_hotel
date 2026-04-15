@@ -11,7 +11,7 @@ const NT = v => `NT$ ${Number(v || 0).toLocaleString()}`;
 const TABS = [
   { key: 'monthly',  label: '月結登記' },
   { key: 'yearly',   label: '年度彙整' },
-  { key: 'companies',label: '公司管理' },
+  { key: 'companies',label: '發票抬頭' },
 ];
 
 const EXPORT_COLS = [
@@ -41,14 +41,9 @@ export default function OwnerExpensesPage() {
   const [yearData,    setYearData]    = useState(null);
   const [yearLoading, setYearLoading] = useState(false);
 
-  // ── 公司管理 state ────────────────────────────────────────────
+  // ── 發票抬頭 state ────────────────────────────────────────────
   const [companies,    setCompanies]    = useState([]);
   const [compLoading,  setCompLoading]  = useState(false);
-  const [showAddForm,  setShowAddForm]  = useState(false);
-  const [newComp,      setNewComp]      = useState({ companyName: '', taxId: '', note: '' });
-  const [compSaving,   setCompSaving]   = useState(false);
-  const [editCompId,   setEditCompId]   = useState(null);
-  const [editCompData, setEditCompData] = useState({});
 
   // ── Fetch ─────────────────────────────────────────────────────
   const fetchMonth = useCallback(async () => {
@@ -85,10 +80,10 @@ export default function OwnerExpensesPage() {
   const fetchCompanies = useCallback(async () => {
     setCompLoading(true);
     try {
-      const res = await fetch('/api/owner-companies');
-      if (!res.ok) { showToast('載入公司清單失敗', 'error'); return; }
+      const res = await fetch('/api/settings/invoice-titles');
+      if (!res.ok) { showToast('載入發票抬頭失敗', 'error'); return; }
       setCompanies(await res.json());
-    } catch { showToast('載入公司清單失敗', 'error'); }
+    } catch { showToast('載入發票抬頭失敗', 'error'); }
     finally { setCompLoading(false); }
   }, []);
 
@@ -163,48 +158,6 @@ export default function OwnerExpensesPage() {
     if (!res.ok) { showToast('更新狀態失敗', 'error'); return; }
     showToast(newStatus === '已確認' ? '已確認' : '已取消確認', 'success');
     fetchMonth();
-  }
-
-  // ── 新增公司 ──────────────────────────────────────────────────
-  async function handleAddCompany() {
-    if (!newComp.companyName || !newComp.taxId) { showToast('請填寫公司名稱與統編', 'error'); return; }
-    setCompSaving(true);
-    try {
-      const res = await fetch('/api/owner-companies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newComp),
-      });
-      const d = await res.json();
-      if (!res.ok) { showToast(d.message || '新增失敗', 'error'); return; }
-      showToast('公司已新增', 'success');
-      setNewComp({ companyName: '', taxId: '', note: '' });
-      setShowAddForm(false);
-      fetchCompanies();
-    } catch { showToast('新增失敗', 'error'); }
-    finally { setCompSaving(false); }
-  }
-
-  // ── 編輯公司儲存 ──────────────────────────────────────────────
-  async function handleUpdateCompany(id) {
-    const res = await fetch(`/api/owner-companies/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editCompData),
-    });
-    if (!res.ok) { showToast('更新失敗', 'error'); return; }
-    showToast('已更新', 'success');
-    setEditCompId(null);
-    fetchCompanies();
-  }
-
-  // ── 停用公司 ──────────────────────────────────────────────────
-  async function handleDeactivate(id, name) {
-    if (!confirm(`確定停用「${name}」？歷史記錄不受影響。`)) return;
-    const res = await fetch(`/api/owner-companies/${id}`, { method: 'DELETE' });
-    if (!res.ok) { showToast('停用失敗', 'error'); return; }
-    showToast('已停用', 'success');
-    fetchCompanies();
   }
 
   const inputCls = 'border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none';
@@ -293,7 +246,7 @@ export default function OwnerExpensesPage() {
                   <tbody className="divide-y divide-gray-50">
                     {monthData.rows.length === 0 && (
                       <tr><td colSpan={7} className="text-center py-12 text-gray-400">
-                        尚無公司資料，請先至「公司管理」新增
+                        尚無發票抬頭資料，請至設定頁面新增
                       </td></tr>
                     )}
                     {monthData.rows.map(row => {
@@ -473,119 +426,41 @@ export default function OwnerExpensesPage() {
           </div>
         )}
 
-        {/* ══ Tab: 公司管理 ══ */}
+        {/* ══ Tab: 發票抬頭 ══ */}
         {activeTab === 'companies' && (
           <div className="max-w-2xl">
             <div className="flex justify-between items-center mb-4">
-              <p className="text-sm text-gray-500">登記老闆旗下各公司，月底登記時自動帶入</p>
-              <button onClick={() => setShowAddForm(v => !v)}
-                className="px-4 py-1.5 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700">
-                + 新增公司
-              </button>
+              <p className="text-sm text-gray-500">月結登記的館別來自「設定 → 發票抬頭管理」，如需新增或修改請至設定頁面操作。</p>
+              <a href="/settings?tab=invoice-titles"
+                className="px-4 py-1.5 text-sm rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50 transition-colors">
+                前往設定
+              </a>
             </div>
 
-            {/* 新增表單 */}
-            {showAddForm && (
-              <div className="bg-white rounded-xl shadow-sm border border-purple-100 p-5 mb-4 space-y-3">
-                <h3 className="font-semibold text-gray-800 text-sm">新增公司</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">公司名稱 *</label>
-                    <input type="text" value={newComp.companyName}
-                      onChange={e => setNewComp(p => ({ ...p, companyName: e.target.value }))}
-                      className={inputCls + ' w-full'} placeholder="例：XX股份有限公司" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">統編 *</label>
-                    <input type="text" value={newComp.taxId} maxLength={8}
-                      onChange={e => setNewComp(p => ({ ...p, taxId: e.target.value }))}
-                      className={inputCls + ' w-full'} placeholder="8碼統編" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">備註</label>
-                  <input type="text" value={newComp.note}
-                    onChange={e => setNewComp(p => ({ ...p, note: e.target.value }))}
-                    className={inputCls + ' w-full'} placeholder="例：主要進項：備品" />
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setShowAddForm(false)} className={btnCls}>取消</button>
-                  <button onClick={handleAddCompany} disabled={compSaving}
-                    className="px-4 py-1.5 text-sm rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50">
-                    {compSaving ? '儲存中…' : '新增'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 公司列表 */}
             {compLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
+            ) : companies.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">尚無發票抬頭，請至設定頁面新增</div>
             ) : (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-purple-50 text-purple-800 text-xs">
-                      {['公司名稱','統編','備註','狀態',''].map(h => (
+                      {['發票抬頭','統編','狀態'].map(h => (
                         <th key={h} className="px-4 py-2.5 text-left font-medium">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {companies.length === 0 && (
-                      <tr><td colSpan={5} className="text-center py-12 text-gray-400">尚無公司，點擊「+ 新增公司」開始</td></tr>
-                    )}
                     {companies.map(c => (
                       <tr key={c.id} className={`hover:bg-gray-50 ${!c.isActive ? 'opacity-40' : ''}`}>
-                        {editCompId === c.id ? (
-                          <>
-                            <td className="px-4 py-2">
-                              <input type="text" value={editCompData.companyName ?? c.companyName}
-                                onChange={e => setEditCompData(p => ({ ...p, companyName: e.target.value }))}
-                                className="border rounded px-2 py-1 text-sm w-full" />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input type="text" value={editCompData.taxId ?? c.taxId} maxLength={8}
-                                onChange={e => setEditCompData(p => ({ ...p, taxId: e.target.value }))}
-                                className="border rounded px-2 py-1 text-sm w-24 font-mono" />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input type="text" value={editCompData.note ?? c.note ?? ''}
-                                onChange={e => setEditCompData(p => ({ ...p, note: e.target.value }))}
-                                className="border rounded px-2 py-1 text-sm w-full" />
-                            </td>
-                            <td></td>
-                            <td className="px-4 py-2 whitespace-nowrap flex gap-1.5">
-                              <button onClick={() => handleUpdateCompany(c.id)}
-                                className="text-xs px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700">儲存</button>
-                              <button onClick={() => setEditCompId(null)}
-                                className="text-xs px-2.5 py-1 rounded-lg border hover:bg-gray-50">取消</button>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="px-4 py-3 font-medium text-gray-800">{c.companyName}</td>
-                            <td className="px-4 py-3 text-gray-500 font-mono text-xs">{c.taxId}</td>
-                            <td className="px-4 py-3 text-gray-400 text-xs">{c.note || '—'}</td>
-                            <td className="px-4 py-3">
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                {c.isActive ? '啟用' : '停用'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap flex gap-1.5">
-                              <button onClick={() => { setEditCompId(c.id); setEditCompData({}); }}
-                                className="text-xs px-2.5 py-1 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50">
-                                編輯
-                              </button>
-                              {c.isActive && (
-                                <button onClick={() => handleDeactivate(c.id, c.companyName)}
-                                  className="text-xs px-2.5 py-1 rounded-lg border border-red-200 text-red-400 hover:bg-red-50">
-                                  停用
-                                </button>
-                              )}
-                            </td>
-                          </>
-                        )}
+                        <td className="px-4 py-3 font-medium text-gray-800">{c.title}</td>
+                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">{c.taxId || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {c.isActive ? '啟用' : '停用'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
