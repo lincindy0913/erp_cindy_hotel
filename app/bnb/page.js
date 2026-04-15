@@ -1130,19 +1130,28 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-right">{Number(r.roomCharge).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Number(r.otherCharge).toLocaleString() : '—'}</td>
 
-                          {/* 訂金 + 後五碼 */}
+                          {/* 訂金 + 後五碼（點擊開啟付款 Modal 以填寫日期+後五碼） */}
                           <td className="px-3 py-1.5 text-right">
                             {inExcelMode ? (
                               <div className="flex flex-col gap-0.5 items-end">
                                 {excelInput('payDeposit', 'border-blue-300 focus:ring-blue-300')}
                                 {excelTextInput('depositLast5')}
                               </div>
-                            ) : (
-                              <div>
-                                {editCell('payDeposit', 'text-blue-600')}
-                                {r.depositLast5 && <div className="text-[10px] text-blue-300 font-mono">{r.depositLast5}</div>}
-                              </div>
-                            )}
+                            ) : (() => {
+                              const depVal = Number(r.payDeposit);
+                              return (
+                                <div>
+                                  <span
+                                    onClick={() => { if (!isDeleted && !isLocked && !editMode) setEditRecord(r); }}
+                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : ''} text-blue-600 ${depVal > 0 ? '' : 'text-gray-300'}`}
+                                    title={isLocked ? '已鎖帳' : editMode ? '' : '點擊開啟付款明細'}>
+                                    {depVal > 0 ? depVal.toLocaleString() : '—'}
+                                  </span>
+                                  {r.depositLast5 && <div className="text-[10px] text-blue-300 font-mono">{r.depositLast5}</div>}
+                                  {r.depositDate && <div className="text-[10px] text-blue-300">{r.depositDate}</div>}
+                                </div>
+                              );
+                            })()}
                           </td>
 
                           {/* 刷卡 */}
