@@ -68,6 +68,7 @@ export default function UtilityBillsPage() {
   const [paymentRecords, setPaymentRecords]   = useState([]);
   const [paymentLoading, setPaymentLoading]   = useState(false);
   const [paymentFilter, setPaymentFilter]     = useState({ warehouse: '', year: '', billType: '', status: '' });
+  const [creatingPO, setCreatingPO]           = useState(null); // id of record being processed
 
   // 年度分析 tab state
   const todayRoc = String(new Date().getFullYear() - 1911);
@@ -204,6 +205,28 @@ export default function UtilityBillsPage() {
       setPaymentRecords([]);
     }
     setPaymentLoading(false);
+  }
+
+  async function createPaymentOrder(record) {
+    if (!confirm(`確定為「${record.warehouse} ${record.billYear}年${record.billMonth}月 ${record.billType}」建立付款單？`)) return;
+    setCreatingPO(record.id);
+    try {
+      const res = await fetch(`/api/utility-bills/${record.id}`, { method: 'PATCH' });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.already) {
+          showMessage(`此記錄已有付款單 ${data.orderNo}（${data.status}）`);
+        } else {
+          showMessage(`付款單已建立：${data.orderNo}　NT$${Number(data.totalAmount).toLocaleString()}`);
+        }
+        fetchPaymentRecords();
+      } else {
+        showMessage(data.error || '建立付款單失敗', 'error');
+      }
+    } catch {
+      showMessage('建立付款單失敗', 'error');
+    }
+    setCreatingPO(null);
   }
 
   async function fetchAnalysisRecords() {
@@ -1370,6 +1393,7 @@ export default function UtilityBillsPage() {
                         <th className="px-4 py-2 text-left font-medium">付款單號</th>
                         <th className="px-4 py-2 text-center font-medium">付款狀態</th>
                         <th className="px-4 py-2 text-left font-medium">截止日</th>
+                        <th className="px-4 py-2 text-center font-medium">操作</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1389,7 +1413,7 @@ export default function UtilityBillsPage() {
                               {r.totalAmount != null ? `NT$${Number(r.totalAmount).toLocaleString()}` : <span className="text-gray-300 text-xs">未計算</span>}
                             </td>
                             <td className="px-4 py-2 font-mono text-xs text-gray-600">
-                              {po ? po.orderNo : <span className="text-red-400 text-xs">尚未建立</span>}
+                              {po ? po.orderNo : <span className="text-gray-300 text-xs">—</span>}
                             </td>
                             <td className="px-4 py-2 text-center">
                               {st
@@ -1398,6 +1422,19 @@ export default function UtilityBillsPage() {
                             </td>
                             <td className="px-4 py-2 text-xs text-gray-400">
                               {po?.dueDate || '—'}
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              {!po || po.status === '已取消' ? (
+                                <button
+                                  onClick={() => createPaymentOrder(r)}
+                                  disabled={creatingPO === r.id}
+                                  className="text-xs px-2 py-1 rounded border border-teal-400 text-teal-600 hover:bg-teal-50 disabled:opacity-40 whitespace-nowrap"
+                                >
+                                  {creatingPO === r.id ? '建立中…' : '建立付款單'}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-300">—</span>
+                              )}
                             </td>
                           </tr>
                         );
