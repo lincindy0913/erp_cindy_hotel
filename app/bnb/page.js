@@ -130,6 +130,10 @@ function PaymentModal({ record, onClose, onSaved }) {
   const hasDeposit = Number(form.payDeposit) > 0;
 
   async function handleSave() {
+    const expected = Number(record.roomCharge) + Number(record.otherCharge);
+    if (total > 0 && Math.abs(total - expected) > 0.01) {
+      if (!confirm(`收款合計 NT$${total.toLocaleString()} 與房費+消費 NT$${expected.toLocaleString()} 不符（差額 ${(total - expected) > 0 ? '+' : ''}${(total - expected).toLocaleString()}），確定要儲存嗎？`)) return;
+    }
     setSaving(true);
     try {
       const res = await fetch(`/api/bnb/${record.id}`, {
@@ -205,8 +209,8 @@ function PaymentModal({ record, onClose, onSaved }) {
           <div className="flex justify-between items-center text-xs text-gray-400">
             <span>房費</span><span>NT${Number(record.roomCharge).toLocaleString()}</span>
           </div>
-          {Number(total) !== Number(record.roomCharge) + Number(record.otherCharge) && (
-            <p className="text-xs text-amber-600">⚠ 收款合計與房費+消費（NT${(Number(record.roomCharge)+Number(record.otherCharge)).toLocaleString()}）不符</p>
+          {total > 0 && Math.abs(total - (Number(record.roomCharge) + Number(record.otherCharge))) > 0.01 && (
+            <p className="text-xs text-red-600 font-medium">⚠ 收款合計與房費+消費（NT${(Number(record.roomCharge)+Number(record.otherCharge)).toLocaleString()}）不符，差額 {(total - Number(record.roomCharge) - Number(record.otherCharge)) > 0 ? '+' : ''}NT${(total - Number(record.roomCharge) - Number(record.otherCharge)).toLocaleString()}</p>
           )}
         </div>
         <div className="p-4 flex gap-2 justify-end border-t">
@@ -1029,6 +1033,16 @@ export default function BnbPage() {
       showToast('無可鎖定的記錄（已全部鎖帳或無已填付款記錄）', 'error');
       return;
     }
+    const mismatchList = eligible.filter(r => {
+      const pt = Number(r.payDeposit) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+      const ct = Number(r.roomCharge) + Number(r.otherCharge);
+      return Math.abs(pt - ct) > 0.01;
+    });
+    if (mismatchList.length > 0) {
+      const names = mismatchList.slice(0, 5).map(r => r.guestName).join('、');
+      const extra = mismatchList.length > 5 ? `…等 ${mismatchList.length} 筆` : '';
+      if (!confirm(`以下 ${mismatchList.length} 筆收款金額與房費+消費不符：\n${names}${extra}\n\n是否仍要繼續鎖帳？`)) return;
+    }
     if (!confirm(`確定要鎖定本月 ${eligible.length} 筆已填付款記錄嗎？鎖定後僅有鎖帳權限者可修改付款資料。`)) return;
     setLocking(true);
     try {
@@ -1103,8 +1117,11 @@ export default function BnbPage() {
     acc.cardFee  += Number(r.cardFee);
     acc.unfilled += r.paymentFilled ? 0 : 1;
     acc.locked   += r.paymentLocked ? 1 : 0;
+    const pt = Number(r.payDeposit) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+    const ct = Number(r.roomCharge) + Number(r.otherCharge);
+    if (r.paymentFilled && Math.abs(pt - ct) > 0.01) acc.mismatch++;
     return acc;
-  }, { rooms: 0, revenue: 0, deposit: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0 });
+  }, { rooms: 0, revenue: 0, deposit: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0, mismatch: 0 });
 
   const inputCls = 'border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none';
   const btnCls   = 'px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 transition-colors';
@@ -1235,7 +1252,7 @@ export default function BnbPage() {
             </div>
 
             {/* 摘要卡 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
               {[
                 { label: '筆數', val: recStats.rooms },
                 { label: '房費+消費', val: NT(recStats.revenue) },
@@ -1271,6 +1288,12 @@ export default function BnbPage() {
               </button>
               <span className="text-gray-300">|</span>
               <span className="text-slate-500">已鎖帳 <span className={recStats.locked === recStats.rooms && recStats.rooms > 0 ? 'text-green-600 font-semibold' : 'text-slate-700'}>{recStats.locked}</span></span>
+              {recStats.mismatch > 0 && (
+                <>
+                  <span className="text-gray-300">|</span>
+                  <span className="text-red-500 font-medium">金額不符 {recStats.mismatch} 筆</span>
+                </>
+              )}
               {filterPayment && (
                 <button onClick={() => setFilterPayment('')}
                   className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline">
@@ -1387,7 +1410,10 @@ export default function BnbPage() {
                       const isLocked        = !!r.paymentLocked;
                       const inExcelMode     = editMode && !isDeleted && !isLocked;
                       const isDirty         = dirtyIds.has(r.id);
-                      const isOverdueUnpaid = !isDeleted && !r.paymentFilled && r.checkOutDate && r.checkOutDate < today;
+                      const isOverdueUnpaid = !isDeleted && r.status === '已退房' && !r.paymentFilled && r.checkOutDate && r.checkOutDate < today;
+                      const payTotal        = Number(r.payDeposit) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+                      const chargeTotal     = Number(r.roomCharge) + Number(r.otherCharge);
+                      const paymentMismatch = !isDeleted && r.paymentFilled && Math.abs(payTotal - chargeTotal) > 0.01;
 
                       // ── 一般模式：點擊式 inline edit ────────────────
                       const editCell = (field, colorCls) => {
@@ -1471,7 +1497,7 @@ export default function BnbPage() {
 
                       return (
                         <tr key={r.id} className={`
-                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : isOverdueUnpaid ? 'bg-red-50' : 'hover:bg-gray-50'}
+                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : paymentMismatch ? 'bg-orange-50' : isOverdueUnpaid ? 'bg-red-50' : 'hover:bg-gray-50'}
                           ${isDeleted ? 'opacity-40' : ''}
                           ${editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
                         `}>
@@ -1489,7 +1515,14 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
                           <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkInDate}</td>
                           <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
-                          <td className="px-3 py-2 text-right">{Number(r.roomCharge).toLocaleString()}</td>
+                          <td className={`px-3 py-2 text-right ${paymentMismatch ? 'text-red-600' : ''}`}>
+                            {Number(r.roomCharge).toLocaleString()}
+                            {paymentMismatch && (
+                              <div className="text-[10px] text-red-500 whitespace-nowrap" title={`收款合計 ${payTotal.toLocaleString()} ≠ 房費+消費 ${chargeTotal.toLocaleString()}`}>
+                                差 {(payTotal - chargeTotal) > 0 ? '+' : ''}{(payTotal - chargeTotal).toLocaleString()}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Number(r.otherCharge).toLocaleString() : '—'}</td>
 
                           {/* 訂金 + 後五碼（點擊開啟付款 Modal 以填寫日期+後五碼） */}
@@ -1542,6 +1575,9 @@ export default function BnbPage() {
                             {isLocked && <span className="ml-1 text-[10px] text-slate-400" title={`鎖帳：${r.paymentLockedBy || ''}`}>🔒</span>}
                             {!r.paymentFilled && !isDeleted && !isLocked && (
                               <span className="ml-1 text-[10px] text-amber-500">未填</span>
+                            )}
+                            {paymentMismatch && (
+                              <span className="ml-1 text-[10px] text-red-500" title={`收款 ${payTotal.toLocaleString()} ≠ 費用 ${chargeTotal.toLocaleString()}`}>金額不符</span>
                             )}
                           </td>
 
