@@ -1059,6 +1059,23 @@ export default function BnbPage() {
     finally { setLocking(false); }
   }
 
+  // ── 逐筆解鎖 ─────────────────────────────────────────────────
+  async function handleUnlockRow(id, name) {
+    if (!confirm(`確定解鎖「${name}」的付款鎖定？解鎖後可重新編輯付款資料。`)) return;
+    const res = await fetch(`/api/bnb/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentLocked: false }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || '解鎖失敗', 'error');
+      return;
+    }
+    showToast('已解鎖', 'success');
+    fetchRecords();
+  }
+
   // ── 刪除記錄 ──────────────────────────────────────────────────
   async function handleDelete(id, name) {
     if (!confirm(`確定刪除「${name}」的訂房記錄？`)) return;
@@ -1587,21 +1604,31 @@ export default function BnbPage() {
                           {/* 操作欄（非 Excel 模式才顯示） */}
                           {!editMode && (
                             <td className="px-3 py-2 whitespace-nowrap">
-                              <button onClick={() => setEditBooking(r)} disabled={isLocked}
-                                title="編輯訂房資料"
-                                className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
-                                編輯
-                              </button>
-                              <button onClick={() => setEditRecord(r)} disabled={isLocked}
-                                title="編輯付款明細"
-                                className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
-                                付款
-                              </button>
-                              <button onClick={() => handleDelete(r.id, r.guestName)} disabled={isLocked}
-                                title="刪除此筆訂房"
-                                className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                刪除
-                              </button>
+                              {isLocked ? (
+                                <button onClick={() => handleUnlockRow(r.id, r.guestName)}
+                                  title="解除此筆付款鎖定"
+                                  className="text-xs px-2 py-1 rounded border border-amber-300 text-amber-600 hover:bg-amber-50">
+                                  🔓 解鎖
+                                </button>
+                              ) : (
+                                <>
+                                  <button onClick={() => setEditBooking(r)}
+                                    title="編輯訂房資料"
+                                    className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1">
+                                    編輯
+                                  </button>
+                                  <button onClick={() => setEditRecord(r)}
+                                    title="編輯付款明細"
+                                    className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1">
+                                    付款
+                                  </button>
+                                  <button onClick={() => handleDelete(r.id, r.guestName)}
+                                    title="刪除此筆訂房"
+                                    className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">
+                                    刪除
+                                  </button>
+                                </>
+                              )}
                             </td>
                           )}
                         </tr>

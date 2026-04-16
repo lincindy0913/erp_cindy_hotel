@@ -34,10 +34,16 @@ export async function PATCH(request, { params }) {
       if (!lockAuth.ok) return createErrorResponse('FORBIDDEN', '此筆已鎖帳，需有鎖帳權限才能修改付款資料', 403);
     }
 
+    // 逐筆解鎖需要 BNB_LOCK 權限
+    if (body.paymentLocked === false) {
+      const lockAuth = await requireAnyPermission([PERMISSIONS.BNB_LOCK, PERMISSIONS.BNB_EDIT]);
+      if (!lockAuth.ok) return createErrorResponse('FORBIDDEN', '需有鎖帳權限才能解鎖', 403);
+    }
+
     const { payDeposit, depositDate, depositLast5,
             payCard, payCash, payVoucher, cardFeeRate,
             status, note, roomCharge, otherCharge, source, guestName,
-            roomNo, checkInDate, checkOutDate } = body;
+            roomNo, checkInDate, checkOutDate, paymentLocked } = body;
 
     const updateData = {};
     if (payDeposit   !== undefined) updateData.payDeposit   = parseFloat(payDeposit);
@@ -56,6 +62,11 @@ export async function PATCH(request, { params }) {
     if (roomNo      !== undefined) updateData.roomNo      = roomNo || null;
     if (checkInDate !== undefined) updateData.checkInDate = checkInDate;
     if (checkOutDate !== undefined) updateData.checkOutDate = checkOutDate;
+    if (paymentLocked === false) {
+      updateData.paymentLocked   = false;
+      updateData.paymentLockedAt = null;
+      updateData.paymentLockedBy = null;
+    }
 
     // 重新計算手續費
     if (updateData.payCard !== undefined || updateData.cardFeeRate !== undefined) {
