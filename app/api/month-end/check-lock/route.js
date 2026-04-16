@@ -34,10 +34,8 @@ export async function GET(request) {
     });
 
     if (monthEndStatus) {
-      // 已鎖定：完全禁止修改
-      // 已結帳：月結完成但尚未鎖定，允許繼續修改交易
       return NextResponse.json({
-        locked: monthEndStatus.status === '已鎖定',
+        locked: true,
         status: monthEndStatus.status
       });
     }

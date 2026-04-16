@@ -34,6 +34,21 @@ export async function GET(request) {
       take: 2000,
     });
 
+    // 批次查詢哪些 CashTransaction 已有存簿對帳匹配
+    const allTxIds = [];
+    for (const r of records) {
+      if (r.depositCashTxId) allTxIds.push(r.depositCashTxId);
+      if (r.cashCashTxId)    allTxIds.push(r.cashCashTxId);
+      if (r.cardCashTxId)    allTxIds.push(r.cardCashTxId);
+    }
+    const matchedLines = allTxIds.length
+      ? await prisma.bankStatementLine.findMany({
+          where: { matchedTransactionId: { in: allTxIds }, matchStatus: 'matched' },
+          select: { matchedTransactionId: true },
+        })
+      : [];
+    const matchedSet = new Set(matchedLines.map(l => l.matchedTransactionId));
+
     return NextResponse.json(records.map(r => ({
       ...r,
       roomCharge:  Number(r.roomCharge),
@@ -44,6 +59,9 @@ export async function GET(request) {
       payVoucher:  Number(r.payVoucher),
       cardFeeRate: Number(r.cardFeeRate),
       cardFee:     Number(r.cardFee),
+      depositMatched: r.depositCashTxId ? matchedSet.has(r.depositCashTxId) : false,
+      cashMatched:    r.cashCashTxId    ? matchedSet.has(r.cashCashTxId)    : false,
+      cardMatched:    r.cardCashTxId    ? matchedSet.has(r.cardCashTxId)    : false,
     })));
   } catch (error) {
     return handleApiError(error);

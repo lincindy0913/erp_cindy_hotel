@@ -196,6 +196,51 @@ export async function POST(request) {
     const now = new Date();
 
     // ==========================================
+    // 0. Enforce sequential month-end closing
+    // ==========================================
+    if (month > 1) {
+      const prevUnclosed = await prisma.monthEndStatus.findFirst({
+        where: {
+          year,
+          month: { lt: month },
+          warehouse: warehouse || null,
+          status: { in: ['已結帳', '已鎖定'] },
+        },
+        orderBy: { month: 'desc' },
+      });
+      const lastClosedMonth = prevUnclosed?.month || 0;
+      if (lastClosedMonth < month - 1) {
+        const missingMonth = lastClosedMonth + 1;
+        return createErrorResponse(
+          'VALIDATION_FAILED',
+          `請先完成 ${year}年${missingMonth}月 的月結，才能執行 ${month}月月結（不可跳月）`,
+          400
+        );
+      }
+    } else {
+      const prevYearDec = await prisma.monthEndStatus.findFirst({
+        where: {
+          year: year - 1,
+          month: 12,
+          warehouse: warehouse || null,
+          status: { in: ['已結帳', '已鎖定'] },
+        },
+      });
+      if (!prevYearDec) {
+        const prevYearAny = await prisma.monthEndStatus.findFirst({
+          where: { year: year - 1, warehouse: warehouse || null, status: { in: ['已結帳', '已鎖定'] } },
+        });
+        if (prevYearAny) {
+          return createErrorResponse(
+            'VALIDATION_FAILED',
+            `請先完成 ${year - 1}年12月 的月結，才能執行 ${year}年1月月結（不可跳月）`,
+            400
+          );
+        }
+      }
+    }
+
+    // ==========================================
     // 1. Run pre-checks
     // ==========================================
     const preChecks = [];

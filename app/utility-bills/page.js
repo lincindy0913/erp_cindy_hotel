@@ -6,14 +6,18 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 
 const TABS_ADMIN = [
-  { key: 'parse',   label: '電費單解析',   icon: '⚡', desc: 'OCR 辨識台電帳單' },
-  { key: 'water',   label: '水費單解析',   icon: '💧', desc: 'OCR 辨識台水帳單' },
-  { key: 'list',    label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
-  { key: 'detail',  label: '帳單明細管理', icon: '🗂', desc: '逐筆編輯與刪除' },
+  { key: 'parse',    label: '電費單解析',   icon: '⚡', desc: 'OCR 辨識台電帳單' },
+  { key: 'water',    label: '水費單解析',   icon: '💧', desc: 'OCR 辨識台水帳單' },
+  { key: 'list',     label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+  { key: 'payment',  label: '付款進度',     icon: '💳', desc: '水電費付款單追蹤' },
+  { key: 'analysis', label: '年度分析',     icon: '📊', desc: '使用度數與繳費金額樞紐表' },
+  { key: 'detail',   label: '帳單明細管理', icon: '🗂',  desc: '逐筆編輯與刪除' },
 ];
 const TABS_VIEWER = [
-  { key: 'list',    label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
-  { key: 'detail',  label: '帳單明細管理', icon: '🗂️', desc: '逐筆查詢' },
+  { key: 'list',     label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
+  { key: 'payment',  label: '付款進度',     icon: '💳', desc: '水電費付款單追蹤' },
+  { key: 'analysis', label: '年度分析',     icon: '📊', desc: '使用度數與繳費金額樞紐表' },
+  { key: 'detail',   label: '帳單明細管理', icon: '🗂️', desc: '逐筆查詢' },
 ];
 
 // Fallback — will be replaced by API data on mount
@@ -60,6 +64,18 @@ export default function UtilityBillsPage() {
   const [detailDeleting, setDetailDeleting] = useState(null); // id being deleted
   const [confirmDelete, setConfirmDelete] = useState(null); // record to confirm delete
 
+  // 付款進度 tab state
+  const [paymentRecords, setPaymentRecords]   = useState([]);
+  const [paymentLoading, setPaymentLoading]   = useState(false);
+  const [paymentFilter, setPaymentFilter]     = useState({ warehouse: '', year: '', billType: '', status: '' });
+
+  // 年度分析 tab state
+  const todayRoc = String(new Date().getFullYear() - 1911);
+  const [analysisFilter, setAnalysisFilter] = useState({ warehouse: '', year: todayRoc, billType: '電費' });
+  const [analysisRecords, setAnalysisRecords] = useState([]);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisMode, setAnalysisMode] = useState('usage'); // 'usage' | 'amount'
+
   // 載入主檔館別
   useEffect(() => {
     fetch('/api/warehouse-departments')
@@ -99,6 +115,18 @@ export default function UtilityBillsPage() {
   useEffect(() => {
     if (activeTab === 'detail') fetchDetailRecords();
   }, [activeTab, detailFilter.warehouse, detailFilter.year, detailFilter.billType]);
+
+  useEffect(() => {
+    if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) fetchAnalysisRecords();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'payment') fetchPaymentRecords();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'payment') fetchPaymentRecords();
+  }, [paymentFilter.warehouse, paymentFilter.year, paymentFilter.billType, paymentFilter.status]);
 
   async function fetchRecords() {
     setListLoading(true);
@@ -150,6 +178,76 @@ export default function UtilityBillsPage() {
       showMessage('刪除失敗', 'error');
     }
     setDetailDeleting(null);
+  }
+
+  async function fetchPaymentRecords() {
+    setPaymentLoading(true);
+    try {
+      const params = new URLSearchParams({ withPayment: 'true' });
+      if (paymentFilter.warehouse) params.set('warehouse', paymentFilter.warehouse);
+      if (paymentFilter.year)      params.set('year',      paymentFilter.year);
+      if (paymentFilter.billType)  params.set('billType',  paymentFilter.billType);
+      const res = await fetch(`/api/utility-bills?${params}`);
+      const data = await res.json();
+      let rows = Array.isArray(data) ? data : [];
+      // 前端篩選付款狀態
+      if (paymentFilter.status === 'noPO') {
+        rows = rows.filter(r => !r.paymentOrderId);
+      } else if (paymentFilter.status) {
+        rows = rows.filter(r => r.paymentOrder?.status === paymentFilter.status);
+      }
+      setPaymentRecords(rows);
+    } catch {
+      setPaymentRecords([]);
+    }
+    setPaymentLoading(false);
+  }
+
+  async function fetchAnalysisRecords() {
+    if (!analysisFilter.warehouse || !analysisFilter.year) return;
+    setAnalysisLoading(true);
+    try {
+      const params = new URLSearchParams({
+        warehouse: analysisFilter.warehouse,
+        year: analysisFilter.year,
+        billType: analysisFilter.billType,
+      });
+      const res = await fetch(`/api/utility-bills?${params}`);
+      const data = await res.json();
+      setAnalysisRecords(Array.isArray(data) ? data : []);
+    } catch {
+      setAnalysisRecords([]);
+    }
+    setAnalysisLoading(false);
+  }
+
+  // pivot table 計算：列 = 地址，欄 = 月份 1-12
+  function buildPivot(records, billType, mode) {
+    const labelMap = new Map(); // label → { month: value }
+    for (const r of records) {
+      const month = r.billMonth;
+      let items;
+      try {
+        items = typeof r.summaryJson === 'string' ? JSON.parse(r.summaryJson) : r.summaryJson;
+      } catch { items = []; }
+      if (!Array.isArray(items)) items = [items].filter(Boolean);
+
+      for (const item of items) {
+        const label = billType === '電費'
+          ? (item.地址 || item.電號 || '未知')
+          : (item.用水地址 || '未知');
+
+        const rawValue = mode === 'usage'
+          ? (billType === '電費' ? (item.使用度數 || '0') : (item.本期實用度數 || item.用水度數 || '0'))
+          : (billType === '電費' ? (item.應繳總金額 || item.電費金額 || '0') : (item.總金額 || '0'));
+
+        const value = parseInt(String(rawValue).replace(/,/g, '')) || 0;
+        if (!labelMap.has(label)) labelMap.set(label, {});
+        const row = labelMap.get(label);
+        row[month] = (row[month] || 0) + value;
+      }
+    }
+    return labelMap;
   }
 
   // 從檔名與內文自動判讀 館別、年、月
@@ -516,8 +614,12 @@ export default function UtilityBillsPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showMessage(`已儲存：${meta.warehouse} ${year}年${month}月 ${data.billType}`);
-        setActiveTab('list');
+        const poMsg = data.paymentOrderNo
+          ? `　付款單：${data.paymentOrderNo}（${data.totalAmount ? `NT$${Number(data.totalAmount).toLocaleString()}` : ''}）`
+          : '';
+        showMessage(`已儲存：${meta.warehouse} ${year}年${month}月 ${data.billType}${poMsg}`);
+        setActiveTab('payment');
+        fetchPaymentRecords();
         fetchRecords();
       } else {
         showMessage(data.error || '儲存失敗', 'error');
@@ -1170,6 +1272,292 @@ export default function UtilityBillsPage() {
 
           </div>
         )}
+
+        {/* ══ 付款進度 tab ══ */}
+        {activeTab === 'payment' && (() => {
+          const STATUS_MAP = {
+            '待出納': { label: '待出納', cls: 'bg-amber-100 text-amber-700' },
+            '草稿':   { label: '草稿',   cls: 'bg-gray-100 text-gray-500' },
+            '已出納': { label: '已出納', cls: 'bg-blue-100 text-blue-700' },
+            '已付款': { label: '已付款', cls: 'bg-green-100 text-green-700' },
+            '已取消': { label: '已取消', cls: 'bg-red-100 text-red-400 line-through' },
+          };
+          const totalPending = paymentRecords.filter(r => r.paymentOrder?.status === '待出納').reduce((s, r) => s + (r.totalAmount || 0), 0);
+          const totalPaid    = paymentRecords.filter(r => r.paymentOrder?.status === '已付款').reduce((s, r) => s + (r.totalAmount || 0), 0);
+          const noPO         = paymentRecords.filter(r => !r.paymentOrderId).length;
+
+          return (
+            <div className="space-y-4">
+              {/* 篩選列 */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={paymentFilter.warehouse}
+                    onChange={e => setPaymentFilter(f => ({ ...f, warehouse: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">全部</option>
+                    {WAREHOUSE_OPTIONS.filter(o => o.value).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">年度（民國）</label>
+                  <input type="number" value={paymentFilter.year}
+                    onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
+                    placeholder="例：114" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">類型</label>
+                  <select value={paymentFilter.billType}
+                    onChange={e => setPaymentFilter(f => ({ ...f, billType: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">全部</option>
+                    <option value="電費">電費</option>
+                    <option value="水費">水費</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">付款狀態</label>
+                  <select value={paymentFilter.status}
+                    onChange={e => setPaymentFilter(f => ({ ...f, status: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">全部</option>
+                    <option value="待出納">待出納</option>
+                    <option value="已出納">已出納</option>
+                    <option value="已付款">已付款</option>
+                    <option value="已取消">已取消</option>
+                    <option value="noPO">尚無付款單</option>
+                  </select>
+                </div>
+                <button onClick={fetchPaymentRecords}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700">
+                  重新查詢
+                </button>
+              </div>
+
+              {/* 統計卡 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: '待出納金額', value: `NT$${totalPending.toLocaleString()}`, cls: 'bg-amber-50 border-amber-200 text-amber-700' },
+                  { label: '已付款金額', value: `NT$${totalPaid.toLocaleString()}`, cls: 'bg-green-50 border-green-200 text-green-700' },
+                  { label: '本次查詢筆數', value: `${paymentRecords.length} 筆`, cls: 'bg-gray-50 border-gray-200 text-gray-600' },
+                  { label: '尚無付款單', value: `${noPO} 筆`, cls: noPO > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-200 text-gray-400' },
+                ].map(c => (
+                  <div key={c.label} className={`rounded-xl border p-4 ${c.cls}`}>
+                    <p className="text-xs opacity-70 mb-1">{c.label}</p>
+                    <p className="text-lg font-bold">{c.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* 表格 */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                {paymentLoading ? (
+                  <div className="py-16 text-center text-gray-400">載入中…</div>
+                ) : paymentRecords.length === 0 ? (
+                  <div className="py-16 text-center text-gray-400">查無資料</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-teal-600 text-white text-xs">
+                        <th className="px-4 py-2 text-left font-medium">館別</th>
+                        <th className="px-4 py-2 text-left font-medium">年月</th>
+                        <th className="px-4 py-2 text-left font-medium">類型</th>
+                        <th className="px-4 py-2 text-right font-medium">繳費金額</th>
+                        <th className="px-4 py-2 text-left font-medium">付款單號</th>
+                        <th className="px-4 py-2 text-center font-medium">付款狀態</th>
+                        <th className="px-4 py-2 text-left font-medium">截止日</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {paymentRecords.map(r => {
+                        const po = r.paymentOrder;
+                        const st = po ? (STATUS_MAP[po.status] || { label: po.status, cls: 'bg-gray-100 text-gray-500' }) : null;
+                        return (
+                          <tr key={r.id} className={`hover:bg-gray-50 ${po?.status === '已付款' ? 'opacity-60' : ''}`}>
+                            <td className="px-4 py-2 font-medium text-gray-700">{r.warehouse}</td>
+                            <td className="px-4 py-2 text-gray-600">{r.billYear}年{String(r.billMonth).padStart(2,'0')}月</td>
+                            <td className="px-4 py-2">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${r.billType === '電費' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>
+                                {r.billType === '電費' ? '⚡ 電費' : '💧 水費'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono font-semibold text-gray-800">
+                              {r.totalAmount != null ? `NT$${Number(r.totalAmount).toLocaleString()}` : <span className="text-gray-300 text-xs">未計算</span>}
+                            </td>
+                            <td className="px-4 py-2 font-mono text-xs text-gray-600">
+                              {po ? po.orderNo : <span className="text-red-400 text-xs">尚未建立</span>}
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              {st
+                                ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
+                                : <span className="text-xs text-gray-300">—</span>}
+                            </td>
+                            <td className="px-4 py-2 text-xs text-gray-400">
+                              {po?.dueDate || '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <p className="text-xs text-gray-400 px-1">
+                付款單建立後會自動出現在「出納待支出」清單。如需修改金額或取消，請至「出納」頁面操作。
+              </p>
+            </div>
+          );
+        })()}
+
+        {/* ══ 年度分析 tab ══ */}
+        {activeTab === 'analysis' && (() => {
+          const isElec = analysisFilter.billType === '電費';
+          const pivotMap = buildPivot(analysisRecords, analysisFilter.billType, analysisMode);
+          const labels = [...pivotMap.keys()];
+          const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+          const unitLabel = analysisMode === 'usage' ? (isElec ? '度' : '度') : '元';
+          const colTotals = months.map(m =>
+            [...pivotMap.values()].reduce((s, row) => s + (row[m] || 0), 0)
+          );
+          const grandTotal = colTotals.reduce((a, b) => a + b, 0);
+
+          return (
+            <div className="space-y-4">
+              {/* 篩選列 */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別 <span className="text-red-400">*</span></label>
+                  <select value={analysisFilter.warehouse}
+                    onChange={e => setAnalysisFilter(f => ({ ...f, warehouse: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-w-[120px]">
+                    <option value="">請選擇</option>
+                    {WAREHOUSE_OPTIONS.filter(o => o.value).map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">年度（民國）</label>
+                  <input type="number" value={analysisFilter.year}
+                    onChange={e => setAnalysisFilter(f => ({ ...f, year: e.target.value }))}
+                    placeholder="例：114" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">類型</label>
+                  <select value={analysisFilter.billType}
+                    onChange={e => setAnalysisFilter(f => ({ ...f, billType: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="電費">電費</option>
+                    <option value="水費">水費</option>
+                  </select>
+                </div>
+                <button onClick={fetchAnalysisRecords} disabled={!analysisFilter.warehouse || !analysisFilter.year}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-40">
+                  查詢
+                </button>
+                {/* 模式切換 */}
+                <div className="ml-auto flex items-center gap-1 border rounded-lg overflow-hidden text-sm">
+                  {[['usage','使用度數'],['amount','繳費金額']].map(([val, lbl]) => (
+                    <button key={val} onClick={() => setAnalysisMode(val)}
+                      className={`px-3 py-2 font-medium transition-colors ${analysisMode === val
+                        ? (isElec ? 'bg-amber-500 text-white' : 'bg-sky-500 text-white')
+                        : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 分析標題 */}
+              {analysisRecords.length > 0 && (
+                <p className="text-sm text-gray-500 px-1">
+                  {isElec ? '⚡' : '💧'} {analysisFilter.warehouse} — {analysisFilter.year} 年
+                  {analysisFilter.billType} {analysisMode === 'usage' ? '使用度數' : '繳費金額'}分析
+                  　共 <strong>{analysisRecords.length}</strong> 個月份資料，
+                  <strong>{labels.length}</strong> 條線路/地址
+                </p>
+              )}
+
+              {/* Pivot 表 */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-auto">
+                {analysisLoading ? (
+                  <div className="py-16 text-center text-gray-400">載入中…</div>
+                ) : !analysisFilter.warehouse ? (
+                  <div className="py-16 text-center text-gray-400">請先選擇館別</div>
+                ) : analysisRecords.length === 0 ? (
+                  <div className="py-16 text-center text-gray-400">
+                    查無資料，請確認已上傳並儲存該年度帳單
+                  </div>
+                ) : labels.length === 0 ? (
+                  <div className="py-16 text-center text-gray-400">summaryJson 無法解析地址資訊</div>
+                ) : (
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className={isElec ? 'bg-amber-600 text-white' : 'bg-sky-600 text-white'}>
+                        <th className="px-3 py-2 text-left font-medium whitespace-nowrap sticky left-0 z-10 bg-inherit min-w-[200px]">
+                          列標籤
+                          <span className="block text-[10px] font-normal opacity-75">
+                            加總 — {analysisMode === 'usage' ? '使用度數' : '繳費金額'}
+                          </span>
+                        </th>
+                        {months.map(m => (
+                          <th key={m} className="px-3 py-2 text-right font-medium whitespace-nowrap min-w-[60px]">
+                            {String(m).padStart(2, '0')}
+                          </th>
+                        ))}
+                        <th className="px-3 py-2 text-right font-medium whitespace-nowrap min-w-[72px]">合計</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {labels.map((label, i) => {
+                        const rowData = pivotMap.get(label);
+                        const rowTotal = months.reduce((s, m) => s + (rowData[m] || 0), 0);
+                        return (
+                          <tr key={label} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap sticky left-0 z-10 bg-inherit border-r border-gray-100 max-w-[280px] truncate"
+                              title={label}>{label}</td>
+                            {months.map(m => (
+                              <td key={m} className="px-3 py-1.5 text-right text-gray-700 tabular-nums">
+                                {rowData[m] ? rowData[m].toLocaleString() : ''}
+                              </td>
+                            ))}
+                            <td className="px-3 py-1.5 text-right font-semibold text-gray-800 border-l border-gray-100 tabular-nums">
+                              {rowTotal > 0 ? rowTotal.toLocaleString() : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className={`font-bold border-t-2 ${isElec ? 'border-amber-300 bg-amber-50' : 'border-sky-300 bg-sky-50'}`}>
+                        <td className="px-3 py-2 sticky left-0 z-10 bg-inherit">總計</td>
+                        {colTotals.map((t, i) => (
+                          <td key={i} className="px-3 py-2 text-right tabular-nums">
+                            {t > 0 ? t.toLocaleString() : ''}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-right border-l border-gray-200 tabular-nums">
+                          {grandTotal > 0 ? grandTotal.toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
+
+              {/* 缺資料月份提示 */}
+              {analysisRecords.length > 0 && analysisRecords.length < 12 && (
+                <p className="text-xs text-amber-600 px-1">
+                  提示：目前只有 {analysisRecords.map(r => `${r.billMonth} 月`).join('、')} 的資料，
+                  共 {analysisRecords.length} 個月（年度完整應有 12 個月）
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ══ 帳單明細管理 tab ══ */}
         {activeTab === 'detail' && (

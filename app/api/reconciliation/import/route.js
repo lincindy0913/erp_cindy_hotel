@@ -129,6 +129,19 @@ export async function POST(request) {
       }
     });
 
+    // Pre-load BnB booking data for deposit/cash transactions (帳號後五碼 cross-check)
+    const bnbTxIds = systemTxs
+      .filter(tx => tx.sourceType === 'bnb_deposit' || tx.sourceType === 'bnb_cash')
+      .map(tx => tx.sourceRecordId)
+      .filter(Boolean);
+    const bnbBookings = bnbTxIds.length
+      ? await prisma.bnbBookingRecord.findMany({
+          where: { id: { in: bnbTxIds } },
+          select: { id: true, depositLast5: true, guestName: true },
+        })
+      : [];
+    const bnbMap = new Map(bnbBookings.map(b => [b.id, b]));
+
     // Create BankStatementLine records and attempt auto-match
     let matchedCount = 0;
     const matchedTxIds = new Set();
@@ -140,33 +153,49 @@ export async function POST(request) {
       const creditAmount = parseFloat(line.creditAmount) || 0;
       const netAmount = creditAmount - debitAmount;
 
-      // Auto-match: find system transaction with same date and amount
       let matchedTxId = null;
       let matchedBy = null;
 
+      // Collect date+amount candidates first, then pick the best one
+      const candidates = [];
       for (const tx of systemTxs) {
         if (matchedTxIds.has(tx.id)) continue;
-
         const txAmt = Number(tx.amount);
         const txDate = tx.transactionDate;
-        const lineDate = line.txDate;
+        if (txDate !== line.txDate) continue;
 
-        // Match by date and amount
-        if (txDate === lineDate) {
-          if ((tx.type === '支出' || tx.type === '移轉') && Math.abs(txAmt - debitAmount) < 0.01 && debitAmount > 0) {
-            matchedTxId = tx.id;
-            matchedBy = 'auto';
-            matchedTxIds.add(tx.id);
-            matchedCount++;
-            break;
-          } else if ((tx.type === '收入' || tx.type === '移轉入') && Math.abs(txAmt - creditAmount) < 0.01 && creditAmount > 0) {
-            matchedTxId = tx.id;
-            matchedBy = 'auto';
-            matchedTxIds.add(tx.id);
-            matchedCount++;
-            break;
+        if ((tx.type === '支出' || tx.type === '移轉') && Math.abs(txAmt - debitAmount) < 0.01 && debitAmount > 0) {
+          candidates.push(tx);
+        } else if ((tx.type === '收入' || tx.type === '移轉入') && Math.abs(txAmt - creditAmount) < 0.01 && creditAmount > 0) {
+          candidates.push(tx);
+        }
+      }
+
+      if (candidates.length === 1) {
+        matchedTxId = candidates[0].id;
+        matchedBy = 'auto';
+      } else if (candidates.length > 1) {
+        // Multiple candidates: use depositLast5 / guestName to disambiguate
+        const lineText = `${line.description || ''} ${line.referenceNo || ''}`;
+        let best = null;
+        for (const tx of candidates) {
+          if (tx.sourceType === 'bnb_deposit' || tx.sourceType === 'bnb_cash') {
+            const booking = bnbMap.get(tx.sourceRecordId);
+            if (booking?.depositLast5 && lineText.includes(booking.depositLast5)) {
+              best = tx; break;
+            }
+            if (booking?.guestName && lineText.includes(booking.guestName)) {
+              best = tx; break;
+            }
           }
         }
+        matchedTxId = (best || candidates[0]).id;
+        matchedBy = best ? 'auto_cross' : 'auto';
+      }
+
+      if (matchedTxId) {
+        matchedTxIds.add(matchedTxId);
+        matchedCount++;
       }
 
       lineRecords.push({

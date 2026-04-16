@@ -97,6 +97,7 @@ const TABS = [
   { key: 'deposit',    label: '訂金核對' },
   { key: 'otaRecon',   label: 'OTA比對' },
   { key: 'otaCommission', label: 'OTA傭金' },
+  { key: 'bossWithdraw', label: '老闆收取' },
 ];
 
 const STATUS_COLORS = {
@@ -114,20 +115,38 @@ const SOURCE_COLORS = {
 // ── 子元件：付款編輯 Modal ────────────────────────────────────────
 function PaymentModal({ record, onClose, onSaved }) {
   const { showToast } = useToast();
+
+  // 預設刷卡入帳日 = 退房日 + 1 天
+  const defaultCardSettlement = (() => {
+    if (record.cardSettlementDate) return record.cardSettlementDate;
+    if (record.checkOutDate) {
+      const d = new Date(record.checkOutDate);
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().split('T')[0];
+    }
+    return '';
+  })();
+
   const [form, setForm] = useState({
-    payDeposit:   record.payDeposit   || 0,
-    depositDate:  record.depositDate  || '',
-    depositLast5: record.depositLast5 || '',
-    payCard:      record.payCard      || 0,
-    payCash:      record.payCash      || 0,
-    payVoucher:   record.payVoucher   || 0,
-    cardFeeRate:  record.cardFeeRate  || 0.0165,
-    note:         record.note         || '',
+    payDeposit:         record.payDeposit         || 0,
+    depositDate:        record.depositDate         || '',
+    depositLast5:       record.depositLast5        || '',
+    payCard:            record.payCard             || 0,
+    cardSettlementDate: defaultCardSettlement,
+    payCash:            record.payCash             || 0,
+    cashDestination:    record.cashDestination     || '',
+    cashDepositDate:    record.cashDepositDate      || '',
+    bossWithdrawNote:   record.bossWithdrawNote     || '',
+    payVoucher:         record.payVoucher           || 0,
+    cardFeeRate:        record.cardFeeRate          || 0.0165,
+    note:               record.note                || '',
   });
   const [saving, setSaving] = useState(false);
-  const cardFee = (Number(form.payCard) * Number(form.cardFeeRate)).toFixed(0);
-  const total = Number(form.payDeposit) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);
+  const cardFee   = (Number(form.payCard) * Number(form.cardFeeRate)).toFixed(0);
+  const total     = Number(form.payDeposit) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);
   const hasDeposit = Number(form.payDeposit) > 0;
+  const hasCard    = Number(form.payCard) > 0;
+  const hasCash    = Number(form.payCash) > 0;
 
   async function handleSave() {
     const expected = Number(record.roomCharge) + Number(record.otherCharge);
@@ -139,7 +158,13 @@ function PaymentModal({ record, onClose, onSaved }) {
       const res = await fetch(`/api/bnb/${record.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, cardFeeRate: parseFloat(form.cardFeeRate) }),
+        body: JSON.stringify({
+          ...form,
+          cardFeeRate: parseFloat(form.cardFeeRate),
+          // 僅在現金去向為存帳時傳 cashDepositDate
+          cashDepositDate:  form.cashDestination === '存帳'    ? form.cashDepositDate  : null,
+          bossWithdrawNote: form.cashDestination === '老闆收取' ? form.bossWithdrawNote : null,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -158,7 +183,7 @@ function PaymentModal({ record, onClose, onSaved }) {
           <h3 className="font-semibold text-gray-800">付款明細 — {record.guestName}</h3>
           <p className="text-xs text-gray-400 mt-0.5">{record.checkInDate} ～ {record.checkOutDate}　{record.roomNo || ''}</p>
         </div>
-        <div className="p-5 space-y-3">
+        <div className="p-5 space-y-3 max-h-[72vh] overflow-y-auto">
           <div className="flex items-center gap-3">
             <label className="w-24 text-sm text-gray-600 shrink-0">訂金匯款</label>
             <input type="number" min="0" value={form.payDeposit}
@@ -181,14 +206,75 @@ function PaymentModal({ record, onClose, onSaved }) {
               </div>
             </div>
           )}
-          {[['payCard','刷卡金額'],['payCash','現金'],['payVoucher','住宿卷']].map(([k,label]) => (
-            <div key={k} className="flex items-center gap-3">
-              <label className="w-24 text-sm text-gray-600 shrink-0">{label}</label>
-              <input type="number" min="0" value={form[k]}
-                onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
-                className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+          {/* 刷卡金額 */}
+          <div className="flex items-center gap-3">
+            <label className="w-24 text-sm text-gray-600 shrink-0">刷卡金額</label>
+            <input type="number" min="0" value={form.payCard}
+              onChange={e => setForm(p => ({ ...p, payCard: e.target.value }))}
+              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+          </div>
+          {hasCard && (
+            <div className="ml-2 pl-4 border-l-2 border-purple-200 space-y-2">
+              <div className="flex items-center gap-3">
+                <label className="w-20 text-xs text-purple-600 shrink-0">刷卡入帳日</label>
+                <input type="date" value={form.cardSettlementDate}
+                  onChange={e => setForm(p => ({ ...p, cardSettlementDate: e.target.value }))}
+                  className="flex-1 border border-purple-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
+                <span className="text-xs text-purple-400 whitespace-nowrap">刷卡後1-2天入帳</span>
+              </div>
             </div>
-          ))}
+          )}
+
+          {/* 現金 */}
+          <div className="flex items-center gap-3">
+            <label className="w-24 text-sm text-gray-600 shrink-0">現金</label>
+            <input type="number" min="0" value={form.payCash}
+              onChange={e => setForm(p => ({ ...p, payCash: e.target.value }))}
+              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+          </div>
+          {hasCash && (
+            <div className="ml-2 pl-4 border-l-2 border-green-200 space-y-2">
+              <div className="flex items-center gap-3">
+                <label className="w-20 text-xs text-green-600 shrink-0">現金去向</label>
+                <div className="flex gap-4">
+                  {[['存帳','存入土銀'],['老闆收取','老闆收取']].map(([val, label]) => (
+                    <label key={val} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="cashDestination" value={val}
+                        checked={form.cashDestination === val}
+                        onChange={() => setForm(p => ({ ...p, cashDestination: val }))}
+                        className="accent-green-600" />
+                      <span className="text-sm text-gray-700">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {form.cashDestination === '存帳' && (
+                <div className="flex items-center gap-3">
+                  <label className="w-20 text-xs text-green-600 shrink-0">存款日期</label>
+                  <input type="date" value={form.cashDepositDate}
+                    onChange={e => setForm(p => ({ ...p, cashDepositDate: e.target.value }))}
+                    className="flex-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-300 outline-none" />
+                </div>
+              )}
+              {form.cashDestination === '老闆收取' && (
+                <div className="flex items-center gap-3">
+                  <label className="w-20 text-xs text-green-600 shrink-0">收取備註</label>
+                  <input type="text" value={form.bossWithdrawNote}
+                    onChange={e => setForm(p => ({ ...p, bossWithdrawNote: e.target.value }))}
+                    placeholder="選填，例：老闆 4/15 收"
+                    className="flex-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-300 outline-none" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 住宿券 */}
+          <div className="flex items-center gap-3">
+            <label className="w-24 text-sm text-gray-600 shrink-0">住宿卷</label>
+            <input type="number" min="0" value={form.payVoucher}
+              onChange={e => setForm(p => ({ ...p, payVoucher: e.target.value }))}
+              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+          </div>
           <div className="flex items-center gap-3">
             <label className="w-24 text-sm text-gray-600 shrink-0">手續費率</label>
             <input type="number" step="0.0001" min="0" max="1" value={form.cardFeeRate}
@@ -390,6 +476,12 @@ export default function BnbPage() {
   const [editRecord,    setEditRecord]    = useState(null); // PaymentModal
   const [editBooking,   setEditBooking]   = useState(null); // BookingFormModal (edit)
   const [addBookingOpen,setAddBookingOpen]= useState(false); // BookingFormModal (add)
+
+  // ── 老闆收取 state ────────────────────────────────────────────
+  const [bwData,      setBwData]      = useState(null);
+  const [bwLoading,   setBwLoading]   = useState(false);
+  const [bwMonth,     setBwMonth]     = useState(() => new Date().toISOString().slice(0, 7));
+  const [bwWarehouse, setBwWarehouse] = useState('');
 
   // ── 批次填入 state ────────────────────────────────────────────
   const [selectedIds,   setSelectedIds]   = useState(new Set());
@@ -718,6 +810,18 @@ export default function BnbPage() {
     } catch { showToast('取消失敗', 'error'); }
   }, [otaSource, otaDateFrom, otaWarehouse]);
 
+  // ── 老闆收取記錄 fetch ─────────────────────────────────────────
+  const fetchBossWithdraw = useCallback(async () => {
+    setBwLoading(true);
+    try {
+      const p = new URLSearchParams({ month: bwMonth });
+      if (bwWarehouse) p.set('warehouse', bwWarehouse);
+      const res = await fetch(`/api/bnb/boss-withdraw?${p}`);
+      if (res.ok) setBwData(await res.json());
+    } catch {}
+    finally { setBwLoading(false); }
+  }, [bwMonth, bwWarehouse]);
+
   // OTA 傭金歷史列表
   const fetchCommHistory = useCallback(async () => {
     setCommHistLoading(true);
@@ -835,6 +939,7 @@ export default function BnbPage() {
     if (activeTab === 'declList')    fetchDeclList();
     if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
     if (activeTab === 'otaCommission') { fetchCommHistory(); fetchReconLogs(); }
+    if (activeTab === 'bossWithdraw')  fetchBossWithdraw();
   }, [activeTab]);
 
   useEffect(() => {
@@ -847,6 +952,7 @@ export default function BnbPage() {
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
   useEffect(() => { if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary(); }, [summaryYear]);
   useEffect(() => { if (activeTab === 'declList') fetchDeclList(); }, [dlYear, dlWarehouse]);
+  useEffect(() => { if (activeTab === 'bossWithdraw') fetchBossWithdraw(); }, [bwMonth, bwWarehouse]);
 
   const isLocked = !!lockStatus?.locked;
 
@@ -1410,6 +1516,7 @@ export default function BnbPage() {
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">手續費</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">現金</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">住宿卷</th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">金流</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">狀態</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">備註</th>
                       {!editMode && <th className="px-3 py-2 text-center font-medium whitespace-nowrap">操作</th>}
@@ -1417,7 +1524,7 @@ export default function BnbPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {visibleRecords.length === 0 && (
-                      <tr><td colSpan={17} className="text-center py-10 text-gray-400">
+                      <tr><td colSpan={18} className="text-center py-10 text-gray-400">
                         {filterPayment ? `無${filterPayment === 'filled' ? '已填付款' : '未填付款'}記錄` : '無資料'}
                       </td></tr>
                     )}
@@ -1592,6 +1699,41 @@ export default function BnbPage() {
                           {/* 住宿卷 */}
                           <td className="px-3 py-1.5 text-right">
                             {inExcelMode ? excelInput('payVoucher', 'border-amber-300 focus:ring-amber-300') : editCell('payVoucher', 'text-amber-600')}
+                          </td>
+
+                          {/* 金流狀態 */}
+                          <td className="px-3 py-1.5">
+                            <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
+                              {/* 訂金 */}
+                              {r.depositCashTxId ? (
+                                <span className={`px-1 py-0.5 rounded ${r.depositMatched ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-400'}`}
+                                  title={r.depositMatched ? '訂金已對帳' : '訂金已記帳，待對帳'}>
+                                  匯{r.depositMatched ? '✓' : '…'}
+                                </span>
+                              ) : Number(r.payDeposit) > 0 ? (
+                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="訂金尚未填入匯款日期">匯?</span>
+                              ) : null}
+                              {/* 刷卡 */}
+                              {r.cardCashTxId ? (
+                                <span className={`px-1 py-0.5 rounded ${r.cardMatched ? 'bg-purple-100 text-purple-700' : 'bg-purple-50 text-purple-400'}`}
+                                  title={r.cardMatched ? `刷卡已對帳 (${r.cardSettlementDate || ''})` : `刷卡已記帳，入帳日 ${r.cardSettlementDate || '未填'}`}>
+                                  卡{r.cardMatched ? '✓' : r.cardSettlementDate ? `${r.cardSettlementDate.slice(5)}` : '…'}
+                                </span>
+                              ) : Number(r.payCard) > 0 ? (
+                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="刷卡尚未填入入帳日">卡?</span>
+                              ) : null}
+                              {/* 現金 */}
+                              {r.cashCashTxId ? (
+                                <span className={`px-1 py-0.5 rounded ${r.cashMatched ? 'bg-green-100 text-green-700' : 'bg-green-50 text-green-400'}`}
+                                  title={r.cashMatched ? '現金存帳已對帳' : '現金存帳已記帳，待對帳'}>
+                                  存{r.cashMatched ? '✓' : '…'}
+                                </span>
+                              ) : r.cashDestination === '老闆收取' && Number(r.payCash) > 0 ? (
+                                <span className="px-1 py-0.5 rounded bg-orange-50 text-orange-500" title="老闆收取">老闆</span>
+                              ) : Number(r.payCash) > 0 ? (
+                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="現金尚未設定去向">現?</span>
+                              ) : null}
+                            </div>
                           </td>
 
                           {/* 狀態 + 鎖帳標示 */}
@@ -3161,6 +3303,77 @@ export default function BnbPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ Tab: 老闆收取 ══ */}
+        {activeTab === 'bossWithdraw' && (
+          <div>
+            {/* 篩選列 */}
+            <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">月份</label>
+                <input type="month" value={bwMonth} onChange={e => setBwMonth(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select value={bwWarehouse} onChange={e => setBwWarehouse(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
+                  <option value="">全部</option>
+                  {(warehouseList || [DEFAULT_WAREHOUSE]).map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <button onClick={fetchBossWithdraw}
+                className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+                查詢
+              </button>
+              {bwData && (
+                <div className="ml-auto text-sm text-gray-500">
+                  共 <span className="font-semibold text-gray-800">{(bwData.rows || []).length}</span> 筆，
+                  合計 <span className="font-bold text-orange-600">NT${Number(bwData.total || 0).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* 列表 */}
+            <div className="bg-white rounded-xl shadow overflow-hidden">
+              {bwLoading ? (
+                <div className="text-center py-10 text-gray-400">載入中…</div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-orange-50 text-orange-800 text-xs">
+                      <th className="px-4 py-2 text-left font-medium">日期</th>
+                      <th className="px-4 py-2 text-left font-medium">館別</th>
+                      <th className="px-4 py-2 text-left font-medium">房客姓名</th>
+                      <th className="px-4 py-2 text-right font-medium">金額</th>
+                      <th className="px-4 py-2 text-left font-medium">備註</th>
+                      <th className="px-4 py-2 text-left font-medium">建立時間</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(!bwData || !bwData.rows || bwData.rows.length === 0) && (
+                      <tr><td colSpan={6} className="text-center py-10 text-gray-400">無資料</td></tr>
+                    )}
+                    {(bwData?.rows || []).map(r => (
+                      <tr key={r.id} className="hover:bg-orange-50/40">
+                        <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{r.withdrawDate}</td>
+                        <td className="px-4 py-2 text-gray-400 text-xs">{r.warehouse}</td>
+                        <td className="px-4 py-2 font-medium text-gray-700">{r.guestName || '—'}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-orange-600">
+                          NT${Number(r.amount).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2 text-gray-500 text-xs">{r.note || '—'}</td>
+                        <td className="px-4 py-2 text-gray-300 text-xs whitespace-nowrap">
+                          {r.createdAt ? new Date(r.createdAt).toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}

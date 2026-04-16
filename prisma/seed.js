@@ -423,6 +423,43 @@ async function main() {
     console.log('玉山銀行對帳格式已建立.');
   }
 
+  // ========================
+  // 民宿 CashAccount + CashCategory
+  // ========================
+  const bnbCat = await prisma.cashCategory.findFirst({ where: { systemCode: 'bnb_income' } });
+  if (!bnbCat) {
+    await prisma.cashCategory.create({
+      data: {
+        name: '民宿收入',
+        type: '收入',
+        warehouse: '民宿',
+        isActive: true,
+        isSystemDefault: true,
+        systemCode: 'bnb_income',
+      }
+    });
+    console.log('民宿收入類別已建立.');
+  }
+
+  const bnbBankAcct = await prisma.cashAccount.findFirst({
+    where: { warehouse: '民宿', type: '銀行存款' }
+  });
+  if (!bnbBankAcct) {
+    await prisma.cashAccount.create({
+      data: {
+        accountCode: 'BNB-BANK-001',
+        name: '自在海-土地銀行',
+        type: '銀行存款',
+        warehouse: '民宿',
+        openingBalance: 0,
+        currentBalance: 0,
+        isActive: true,
+        note: '自在海民宿土地銀行帳戶（訂金匯款、現金存帳、刷卡入帳）',
+      }
+    });
+    console.log('自在海-土地銀行帳戶已建立.');
+  }
+
   console.log('Seed completed successfully!');
 }
 

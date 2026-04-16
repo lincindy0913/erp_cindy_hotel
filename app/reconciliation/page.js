@@ -644,6 +644,43 @@ export default function ReconciliationPage() {
         return;
       }
 
+      // 土地銀行 XLS：row0=標題, row1=帳號, row3=查詢期間, row5=表頭(交易日期,交易時間,輸入行別,交易摘要,更正記號,借貸記號,交易金額,餘額,備註), row6+=資料
+      // 日期格式: 0115.03.01 → ROC 0YYY.MM.DD → 去掉前導0 → YYY.MM.DD
+      if (fmt && (fmt.bankName === '土地銀行' || fmt.bankName === '土銀') && isExcel && matrix) {
+        let dataStart = 0;
+        for (let r = 0; r < Math.min(matrix.length, 10); r++) {
+          const first = String(matrix[r]?.[0] || '').trim();
+          if (first === '交易日期' || first === '交易日') { dataStart = r + 1; break; }
+        }
+        if (dataStart === 0) dataStart = 6;
+        for (let i = dataStart; i < matrix.length; i++) {
+          const row = matrix[i];
+          if (!Array.isArray(row) || row.length < 7) continue;
+          const dateRaw = String(row[0] || '').trim();
+          if (!dateRaw || dateRaw === '交易日期') continue;
+          const dm = dateRaw.replace(/^0+/, '').match(/^(\d{2,3})\.(\d{2})\.(\d{2})$/);
+          if (!dm) continue;
+          const year = parseInt(dm[1], 10) + 1911;
+          const txDate = `${year}-${dm[2]}-${dm[3]}`;
+          const debitCredit = String(row[5] || '').trim();
+          const amountStr = parseAmountCiti(row[6]);
+          const debitAmount  = debitCredit === '支出' ? amountStr : '0';
+          const creditAmount = debitCredit === '存入' ? amountStr : '0';
+          const desc = String(row[3] || '').trim();
+          const note = String(row[8] || '').replace(/<br\s*\/?>/gi, ' ').trim();
+          parsed.push({
+            txDate,
+            description: note ? `${desc} ${note}`.trim() : desc,
+            debitAmount,
+            creditAmount,
+            referenceNo: note || '',
+            runningBalance: parseAmountCiti(row[7])
+          });
+        }
+        processResult(parsed);
+        return;
+      }
+
       const text = evt.target.result;
       if (!text && !matrix) return;
       if (fmt && (fmt.bankName === '兆豐銀行' || fmt.bankName === '兆豐' || fmt.bankName === '玉山銀行' || fmt.bankName === '玉山') && !isExcel) {
