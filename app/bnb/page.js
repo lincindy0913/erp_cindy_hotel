@@ -367,7 +367,7 @@ function BookingFormModal({ record, onClose, onSaved, warehouseList }) {
 
 // ── 主頁面 ────────────────────────────────────────────────────────
 // ── 付款欄位順序（Excel Tab 跳格用）────────────────────────────
-const PAY_FIELDS = ['payDeposit', 'depositLast5', 'payCard', 'payCash', 'payVoucher'];
+const PAY_FIELDS = ['payDeposit', 'depositDate', 'depositLast5', 'payCard', 'payCash', 'payVoucher'];
 
 export default function BnbPage() {
   const { data: session } = useSession();
@@ -1547,6 +1547,14 @@ export default function BnbPage() {
                             {inExcelMode ? (
                               <div className="flex flex-col gap-0.5 items-end">
                                 {excelInput('payDeposit', 'border-blue-300 focus:ring-blue-300')}
+                                <input
+                                  id={`pc-${r.id}-depositDate`}
+                                  type="date"
+                                  value={editMap[r.id]?.depositDate ?? (r.depositDate || '')}
+                                  onChange={e => updateCell(r.id, 'depositDate', e.target.value)}
+                                  onKeyDown={e => handlePayKeyDown(e, r.id, 'depositDate', editableRecords)}
+                                  className={`w-32 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 border-blue-200 focus:ring-blue-300 ${(editMap[r.id]?.depositDate !== undefined) ? 'bg-yellow-50' : 'bg-white'} text-blue-500`}
+                                />
                                 {excelTextInput('depositLast5')}
                               </div>
                             ) : (() => {

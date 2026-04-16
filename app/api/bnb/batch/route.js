@@ -66,7 +66,8 @@ export async function PATCH(request) {
         if (existing.paymentLocked) { skipped++; continue; }
 
         const updateData = {};
-        if (rec.payDeposit  !== undefined) updateData.payDeposit  = parseFloat(rec.payDeposit)  || 0;
+        if (rec.payDeposit   !== undefined) updateData.payDeposit   = parseFloat(rec.payDeposit) || 0;
+        if (rec.depositDate  !== undefined) updateData.depositDate  = rec.depositDate  || null;
         if (rec.depositLast5 !== undefined) updateData.depositLast5 = rec.depositLast5 || null;
         if (rec.payCard     !== undefined) updateData.payCard     = parseFloat(rec.payCard)     || 0;
         if (rec.payCash     !== undefined) updateData.payCash     = parseFloat(rec.payCash)     || 0;
