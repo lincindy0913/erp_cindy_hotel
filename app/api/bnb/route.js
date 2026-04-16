@@ -65,24 +65,31 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
 
+    const safeFloat = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+
     await assertBnbMonthOpen(importMonth, warehouse);
 
-    const cardFee = parseFloat(payCard) * parseFloat(cardFeeRate);
+    const pDeposit = safeFloat(payDeposit);
+    const pCard    = safeFloat(payCard);
+    const pCash    = safeFloat(payCash);
+    const pVoucher = safeFloat(payVoucher);
+    const feeRate  = safeFloat(cardFeeRate);
+    const cardFee  = pCard * feeRate;
 
     const record = await prisma.bnbBookingRecord.create({
       data: {
         importMonth, warehouse, source, guestName, roomNo: roomNo || null,
         checkInDate, checkOutDate,
-        roomCharge: parseFloat(roomCharge),
-        otherCharge: parseFloat(otherCharge),
+        roomCharge:  safeFloat(roomCharge),
+        otherCharge: safeFloat(otherCharge),
         status,
-        payDeposit: parseFloat(payDeposit),
-        payCard: parseFloat(payCard),
-        payCash: parseFloat(payCash),
-        payVoucher: parseFloat(payVoucher),
-        cardFeeRate: parseFloat(cardFeeRate),
+        payDeposit:  pDeposit,
+        payCard:     pCard,
+        payCash:     pCash,
+        payVoucher:  pVoucher,
+        cardFeeRate: feeRate,
         cardFee,
-        paymentFilled: (parseFloat(payDeposit) + parseFloat(payCard) + parseFloat(payCash) + parseFloat(payVoucher)) > 0,
+        paymentFilled: (pDeposit + pCard + pCash + pVoucher) > 0,
         note: note || null,
       },
     });

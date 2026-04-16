@@ -14,6 +14,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,6 +114,8 @@ export async function POST(request) {
       return createErrorResponse('INVALID_PARAMETER', '傭金金額無效', 400);
     }
 
+    await assertBnbMonthOpen(commissionMonth, warehouse || '民宿');
+
     // 防止重複送出
     const existing = await prisma.bnbOtaCommission.findUnique({
       where: {
@@ -132,11 +135,17 @@ export async function POST(request) {
     const pm        = paymentMethod || '轉帳';
     const amt       = Number(commissionAmount);
 
-    // 查找對應廠商（名稱含 OTA 來源名，如 "Booking"）
-    const supplier = await prisma.supplier.findFirst({
+    // 查找對應廠商（名稱含 OTA 來源名，如 "Booking"）；找不到時自動建立基本廠商
+    let supplier = await prisma.supplier.findFirst({
       where: { name: { contains: otaSource }, isActive: true },
       select: { id: true, name: true },
     });
+    if (!supplier) {
+      supplier = await prisma.supplier.create({
+        data: { name: otaSource, isActive: true },
+        select: { id: true, name: true },
+      });
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const orderNo = await generatePaymentOrderNo(tx);
@@ -225,6 +234,7 @@ export async function DELETE(request) {
 
     const record = await prisma.bnbOtaCommission.findUnique({ where: { id } });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆傭金記錄', 404);
+    await assertBnbMonthOpen(record.commissionMonth, record.warehouse);
     if (record.status === '已付款') {
       return createErrorResponse('FORBIDDEN', '已付款的傭金無法取消', 400);
     }

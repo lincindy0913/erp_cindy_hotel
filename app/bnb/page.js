@@ -7,9 +7,11 @@ import { useToast } from '@/context/ToastContext';
 import ExportButtons from '@/components/ExportButtons';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
+const DEFAULT_WAREHOUSE = '民宿';
 
 // ── 匯出欄位定義 ──────────────────────────────────────────────────
 const BOOKING_EXPORT_COLS = [
+  { header: '館別',     key: 'warehouse' },
   { header: '來源',     key: 'source' },
   { header: '姓名',     key: 'guestName' },
   { header: '房間',     key: 'roomNo' },
@@ -219,6 +221,146 @@ function PaymentModal({ record, onClose, onSaved }) {
   );
 }
 
+// ── 訂房新增 / 編輯 Modal ────────────────────────────────────────
+function BookingFormModal({ record, onClose, onSaved, warehouseList }) {
+  const { showToast } = useToast();
+  const isEdit = !!record;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const [form, setForm] = useState({
+    importMonth:  record?.importMonth  || todayStr.substring(0, 7),
+    warehouse:    record?.warehouse    || '民宿',
+    source:       record?.source       || '電話',
+    guestName:    record?.guestName    || '',
+    roomNo:       record?.roomNo       || '',
+    checkInDate:  record?.checkInDate  || '',
+    checkOutDate: record?.checkOutDate || '',
+    roomCharge:   record?.roomCharge   > 0 ? String(record.roomCharge) : '',
+    otherCharge:  record?.otherCharge  > 0 ? String(record.otherCharge) : '',
+    status:       record?.status       || '已入住',
+    note:         record?.note         || '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  function handleCheckIn(val) {
+    setForm(p => ({ ...p, checkInDate: val, importMonth: val ? val.substring(0, 7) : p.importMonth }));
+  }
+
+  async function handleSave() {
+    if (!form.guestName.trim()) { showToast('請填寫姓名', 'error'); return; }
+    if (!form.checkInDate || !form.checkOutDate) { showToast('請填寫入住/退房日期', 'error'); return; }
+    if (form.checkInDate >= form.checkOutDate) { showToast('退房日需晚於入住日', 'error'); return; }
+    setSaving(true);
+    try {
+      const url    = isEdit ? `/api/bnb/${record.id}` : '/api/bnb';
+      const method = isEdit ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          roomCharge:  parseFloat(form.roomCharge)  || 0,
+          otherCharge: parseFloat(form.otherCharge) || 0,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || err.error || '儲存失敗', 'error');
+        return;
+      }
+      showToast(isEdit ? '訂房已更新' : '訂房已新增', 'success');
+      onSaved();
+    } finally { setSaving(false); }
+  }
+
+  const inp = 'w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none';
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="p-5 border-b flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800">
+            {isEdit ? `編輯訂房 — ${record.guestName}` : '新增訂房'}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-5 space-y-3 max-h-[72vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">館別</label>
+              <select value={form.warehouse} onChange={e => setForm(p => ({ ...p, warehouse: e.target.value }))} className={inp}>
+                {(warehouseList?.length ? warehouseList : ['民宿']).map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">來源</label>
+              <select value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))} className={inp}>
+                <option value="電話">電話</option>
+                <option value="Booking">Booking</option>
+                <option value="其他">其他</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">姓名 <span className="text-red-400">*</span></label>
+              <input type="text" value={form.guestName} onChange={e => setForm(p => ({ ...p, guestName: e.target.value }))} className={inp} placeholder="房客姓名" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">房間號碼</label>
+              <input type="text" value={form.roomNo} onChange={e => setForm(p => ({ ...p, roomNo: e.target.value }))} className={inp} placeholder="例：101" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">入住日期 <span className="text-red-400">*</span></label>
+              <input type="date" value={form.checkInDate} onChange={e => handleCheckIn(e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">退房日期 <span className="text-red-400">*</span></label>
+              <input type="date" value={form.checkOutDate} onChange={e => setForm(p => ({ ...p, checkOutDate: e.target.value }))} className={inp} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">房費</label>
+              <input type="number" min="0" value={form.roomCharge} onChange={e => setForm(p => ({ ...p, roomCharge: e.target.value }))} className={inp} placeholder="0" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">其他消費</label>
+              <input type="number" min="0" value={form.otherCharge} onChange={e => setForm(p => ({ ...p, otherCharge: e.target.value }))} className={inp} placeholder="0" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">狀態</label>
+              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} className={inp}>
+                <option value="已預訂">已預訂</option>
+                <option value="已入住">已入住</option>
+                <option value="已退房">已退房</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
+              <input type="month" value={form.importMonth} onChange={e => setForm(p => ({ ...p, importMonth: e.target.value }))} className={inp} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">備註</label>
+            <input type="text" value={form.note} onChange={e => setForm(p => ({ ...p, note: e.target.value }))} className={inp} placeholder="選填" />
+          </div>
+        </div>
+        <div className="p-4 flex gap-2 justify-end border-t">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">取消</button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-5 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+            {saving ? '儲存中…' : isEdit ? '更新' : '新增'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 主頁面 ────────────────────────────────────────────────────────
 // ── 付款欄位順序（Excel Tab 跳格用）────────────────────────────
 const PAY_FIELDS = ['payDeposit', 'depositLast5', 'payCard', 'payCash', 'payVoucher'];
@@ -237,10 +379,13 @@ export default function BnbPage() {
   const [records, setRecords]       = useState([]);
   const [recLoading, setRecLoading] = useState(false);
   const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [filterSource,  setFilterSource]  = useState('');
-  const [filterStatus,  setFilterStatus]  = useState('');
+  const [filterSource,    setFilterSource]    = useState('');
+  const [filterStatus,    setFilterStatus]    = useState('');
+  const [filterWarehouse, setFilterWarehouse] = useState('');
   const [filterPayment, setFilterPayment] = useState(''); // '' | 'unfilled' | 'filled'
-  const [editRecord, setEditRecord] = useState(null);
+  const [editRecord,    setEditRecord]    = useState(null); // PaymentModal
+  const [editBooking,   setEditBooking]   = useState(null); // BookingFormModal (edit)
+  const [addBookingOpen,setAddBookingOpen]= useState(false); // BookingFormModal (add)
 
   // ── 批次填入 state ────────────────────────────────────────────
   const [selectedIds,   setSelectedIds]   = useState(new Set());
@@ -262,14 +407,14 @@ export default function BnbPage() {
   // ── 雲掌櫃匯入 state ─────────────────────────────────────────
   const [importFile,    setImportFile]    = useState(null);
   const [importMonth,   setImportMonth]   = useState(() => new Date().toISOString().slice(0, 7));
-  const [importWarehouse, setImportWarehouse] = useState('民宿');
+  const [importWarehouse, setImportWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [importReplace, setImportReplace] = useState(true);
   const [importing,     setImporting]     = useState(false);
   const [importResult,  setImportResult]  = useState(null);
 
   // ── 每日收入 state ──────────────────────────────────────────
   const [drMonth,      setDrMonth]      = useState(() => new Date().toISOString().slice(0, 7));
-  const [drWarehouse,  setDrWarehouse]  = useState('民宿');
+  const [drWarehouse,  setDrWarehouse]  = useState(DEFAULT_WAREHOUSE);
   const [drData,       setDrData]       = useState(null);
   const [drLoading,    setDrLoading]    = useState(false);
   const [drExpandDay,  setDrExpandDay]  = useState(null);
@@ -295,7 +440,7 @@ export default function BnbPage() {
 
   // ── 旅宿網申報 state ─────────────────────────────────────────
   const [declMonth,     setDeclMonth]     = useState(() => new Date().toISOString().slice(0, 7));
-  const [declWarehouse, setDeclWarehouse] = useState('民宿');
+  const [declWarehouse, setDeclWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [declActual,    setDeclActual]    = useState(null);  // 實際資料（auto-computed）
   const [declForm, setDeclForm] = useState({
     cardTotal: '', roomPriceTotal: '', subsidizedRooms: '',
@@ -309,7 +454,7 @@ export default function BnbPage() {
 
   // ── 年度申報總覽 state ─────────────────────────────────────
   const [dlYear,    setDlYear]    = useState(() => new Date().getFullYear().toString());
-  const [dlWarehouse, setDlWarehouse] = useState('民宿');
+  const [dlWarehouse, setDlWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [dlRows,    setDlRows]    = useState([]);
   const [dlLoading, setDlLoading] = useState(false);
 
@@ -317,7 +462,7 @@ export default function BnbPage() {
   const [otaSource,    setOtaSource]    = useState('Booking');
   const [otaDateFrom,  setOtaDateFrom]  = useState('');
   const [otaDateTo,    setOtaDateTo]    = useState('');
-  const [otaWarehouse, setOtaWarehouse] = useState('民宿');
+  const [otaWarehouse, setOtaWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [otaFile,      setOtaFile]      = useState(null);
   const [otaResult,    setOtaResult]    = useState(null);
   const [otaLoading,   setOtaLoading]   = useState(false);
@@ -329,7 +474,6 @@ export default function BnbPage() {
   const [commSubmitting, setCommSubmitting] = useState(false);
   const [commExisting,   setCommExisting]   = useState(null);  // { exists, record, orderStatus }
   // OTA 傭金歷史列表
-  const [commHistTab,    setCommHistTab]    = useState(false);  // true = show history tab
   const [commHistRows,   setCommHistRows]   = useState([]);
   const [commHistLoading,setCommHistLoading]= useState(false);
   // OTA 比對記錄 (reconcile log)
@@ -357,7 +501,7 @@ export default function BnbPage() {
   }, []);
 
   // ── 鎖帳 fetch / toggle ──────────────────────────────────────
-  const fetchLockStatus = useCallback(async (month, warehouse = '民宿') => {
+  const fetchLockStatus = useCallback(async (month, warehouse = DEFAULT_WAREHOUSE) => {
     if (!month) return;
     try {
       const p = new URLSearchParams({ month, warehouse });
@@ -366,28 +510,38 @@ export default function BnbPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const getActiveLockContext = useCallback(() => {
+    switch (activeTab) {
+      case 'import':      return { month: importMonth, warehouse: importWarehouse };
+      case 'declaration': return { month: declMonth,   warehouse: declWarehouse };
+      case 'deposit':     return { month: dmMonth,     warehouse: dmWarehouse || DEFAULT_WAREHOUSE };
+      default:            return { month: filterMonth,  warehouse: DEFAULT_WAREHOUSE };
+    }
+  }, [activeTab, filterMonth, importMonth, importWarehouse, declMonth, declWarehouse, dmMonth, dmWarehouse]);
+
   const toggleLock = useCallback(async () => {
     if (lockLoading) return;
+    const { month, warehouse } = getActiveLockContext();
     const isLocked = lockStatus?.locked;
     const action = isLocked ? '解鎖' : '鎖帳';
-    if (!confirm(`確定要${action}「${filterMonth}」的民宿帳嗎？${isLocked ? '' : '\n鎖帳後所有訂房資料、付款明細、匯入、申報都將無法修改。'}`)) return;
+    if (!confirm(`確定要${action}「${month}（${warehouse}）」的民宿帳嗎？${isLocked ? '' : '\n鎖帳後所有訂房資料、付款明細、匯入、申報都將無法修改。'}`)) return;
     setLockLoading(true);
     try {
-      const p = new URLSearchParams({ month: filterMonth, warehouse: '民宿' });
+      const p = new URLSearchParams({ month, warehouse });
       const res = isLocked
         ? await fetch(`/api/bnb/lock?${p}`, { method: 'DELETE' })
-        : await fetch('/api/bnb/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month: filterMonth, warehouse: '民宿' }) });
+        : await fetch('/api/bnb/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month, warehouse }) });
       if (res.ok) {
         const data = await res.json();
         setLockStatus(data);
-        showToast(`${filterMonth} 已${data.locked ? '鎖帳' : '解鎖'}`, 'success');
+        showToast(`${month} 已${data.locked ? '鎖帳' : '解鎖'}`, 'success');
       } else {
         const err = await res.json().catch(() => ({}));
         showToast(err.error || `${action}失敗`, 'error');
       }
     } catch { showToast(`${action}失敗`, 'error'); }
     finally { setLockLoading(false); }
-  }, [lockStatus, lockLoading, filterMonth]);
+  }, [lockStatus, lockLoading, getActiveLockContext]);
 
   // ── 訂金核對 fetch ────────────────────────────────────────────
   const fetchDepositMatch = useCallback(async () => {
@@ -458,14 +612,15 @@ export default function BnbPage() {
     setRecLoading(true);
     try {
       const p = new URLSearchParams({ month: filterMonth });
-      if (filterSource) p.set('source', filterSource);
-      if (filterStatus) p.set('status', filterStatus);
+      if (filterSource)    p.set('source', filterSource);
+      if (filterStatus)    p.set('status', filterStatus);
+      if (filterWarehouse) p.set('warehouse', filterWarehouse);
       const res = await fetch(`/api/bnb?${p}`);
       if (!res.ok) { showToast('載入訂房記錄失敗', 'error'); return; }
       setRecords(await res.json());
     } catch { showToast('載入訂房記錄失敗', 'error'); }
     finally { setRecLoading(false); }
-  }, [filterMonth, filterSource, filterStatus]);
+  }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
 
   // ── 月彙整 fetch ──────────────────────────────────────────────
   const fetchSummary = useCallback(async () => {
@@ -505,7 +660,7 @@ export default function BnbPage() {
       // 查詢是否已有傭金記錄
       const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
       try {
-        const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || '民宿' });
+        const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
         const chk = await fetch(`/api/bnb/ota-commission?${p}`);
         if (chk.ok) setCommExisting(await chk.json());
       } catch {}
@@ -527,7 +682,7 @@ export default function BnbPage() {
         body: JSON.stringify({
           commissionMonth: month,
           otaSource,
-          warehouse: otaWarehouse || '民宿',
+          warehouse: otaWarehouse || DEFAULT_WAREHOUSE,
           commissionAmount: amt,
           paymentMethod: commMethod,
           note: commNote,
@@ -537,7 +692,7 @@ export default function BnbPage() {
       if (!res.ok) { showToast(data.message || '送出失敗', 'error'); return; }
       showToast(`傭金已送出出納（${data.orderNo}）`, 'success');
       // 重新查狀態
-      const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || '民宿' });
+      const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
       const chk = await fetch(`/api/bnb/ota-commission?${p}`);
       if (chk.ok) setCommExisting(await chk.json());
     } catch { showToast('送出失敗', 'error'); }
@@ -553,7 +708,7 @@ export default function BnbPage() {
       if (!res.ok) { showToast(data.message || '取消失敗', 'error'); return; }
       showToast('已取消傭金應付款', 'success');
       const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
-      const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || '民宿' });
+      const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
       const chk = await fetch(`/api/bnb/ota-commission?${p}`);
       if (chk.ok) setCommExisting(await chk.json());
     } catch { showToast('取消失敗', 'error'); }
@@ -678,11 +833,14 @@ export default function BnbPage() {
     if (activeTab === 'otaCommission') { fetchCommHistory(); fetchReconLogs(); }
   }, [activeTab]);
 
-  useEffect(() => { fetchLockStatus(filterMonth); }, [filterMonth]);
+  useEffect(() => {
+    const ctx = getActiveLockContext();
+    fetchLockStatus(ctx.month, ctx.warehouse);
+  }, [activeTab, filterMonth, importMonth, importWarehouse, declMonth, declWarehouse, dmMonth, dmWarehouse]);
 
   useEffect(() => {
     if (activeTab === 'records') { setSelectedIds(new Set()); fetchRecords(); }
-  }, [filterMonth, filterSource, filterStatus]);
+  }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
   useEffect(() => { if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary(); }, [summaryYear]);
   useEffect(() => { if (activeTab === 'declList') fetchDeclList(); }, [dlYear, dlWarehouse]);
 
@@ -750,7 +908,7 @@ export default function BnbPage() {
   // ── Inline 儲存 ───────────────────────────────────────────────
   async function handleInlineSave(id, field, value) {
     setInlineEdit(null);
-    const isText = field === 'depositLast5';
+    const isText = ['depositLast5', 'note', 'roomNo'].includes(field);
     const payload = isText ? { [field]: value || null } : { [field]: parseFloat(value) || 0 };
     const res = await fetch(`/api/bnb/${id}`, {
       method: 'PATCH',
@@ -976,7 +1134,7 @@ export default function BnbPage() {
             {isLocked && (
               <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                {filterMonth} 已鎖帳
+                {getActiveLockContext().month} 已鎖帳
                 {lockStatus?.lockedBy && <span className="text-gray-400">（{lockStatus.lockedBy}）</span>}
               </span>
             )}
@@ -1019,7 +1177,18 @@ export default function BnbPage() {
                   <option value="已刪除">已刪除</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)} className={inputCls}>
+                  <option value="">全部</option>
+                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
               <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
+              <button onClick={() => setAddBookingOpen(true)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1">
+                + 新增訂房
+              </button>
               <div className="ml-auto flex items-end gap-2">
                 {canLock && !editMode && (
                   <button onClick={lockAllFilled} disabled={locking}
@@ -1186,6 +1355,7 @@ export default function BnbPage() {
                           onChange={toggleSelectAll}
                           className="rounded cursor-pointer" />
                       </th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">館別</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">來源</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">姓名</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">房間</th>
@@ -1201,12 +1371,13 @@ export default function BnbPage() {
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">現金</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">住宿卷</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">狀態</th>
-                      {!editMode && <th className="px-3 py-2"></th>}
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">備註</th>
+                      {!editMode && <th className="px-3 py-2 text-center font-medium whitespace-nowrap">操作</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {visibleRecords.length === 0 && (
-                      <tr><td colSpan={15} className="text-center py-10 text-gray-400">
+                      <tr><td colSpan={17} className="text-center py-10 text-gray-400">
                         {filterPayment ? `無${filterPayment === 'filled' ? '已填付款' : '未填付款'}記錄` : '無資料'}
                       </td></tr>
                     )}
@@ -1274,6 +1445,30 @@ export default function BnbPage() {
                         );
                       };
 
+                      // ── 備註 inline edit ─────────────────────────
+                      const noteCell = () => {
+                        const isEditing = !editMode && inlineEdit?.id === r.id && inlineEdit?.field === 'note';
+                        if (isEditing) return (
+                          <input autoFocus type="text" value={inlineValue}
+                            onChange={e => setInlineValue(e.target.value)}
+                            onBlur={() => handleInlineSave(r.id, 'note', inlineValue)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleInlineSave(r.id, 'note', inlineValue);
+                              if (e.key === 'Escape') setInlineEdit(null);
+                            }}
+                            className="w-28 border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400"
+                          />
+                        );
+                        return (
+                          <span
+                            onClick={() => { if (!isDeleted && !editMode) { setInlineEdit({ id: r.id, field: 'note' }); setInlineValue(r.note || ''); } }}
+                            className={`block max-w-[112px] truncate text-xs ${r.note ? 'text-gray-500 cursor-pointer hover:text-indigo-600' : 'text-gray-200 cursor-pointer'}`}
+                            title={r.note || '點擊新增備註'}>
+                            {r.note || '—'}
+                          </span>
+                        );
+                      };
+
                       return (
                         <tr key={r.id} className={`
                           ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : isOverdueUnpaid ? 'bg-red-50' : 'hover:bg-gray-50'}
@@ -1286,6 +1481,7 @@ export default function BnbPage() {
                                 className="rounded cursor-pointer" />
                             )}
                           </td>
+                          <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap">{r.warehouse}</td>
                           <td className="px-3 py-2 whitespace-nowrap">
                             <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[r.source] || SOURCE_COLORS['其他']}`}>{r.source}</span>
                           </td>
@@ -1349,16 +1545,26 @@ export default function BnbPage() {
                             )}
                           </td>
 
+                          {/* 備註（點擊 inline 編輯） */}
+                          <td className="px-3 py-2">{noteCell()}</td>
+
                           {/* 操作欄（非 Excel 模式才顯示） */}
                           {!editMode && (
                             <td className="px-3 py-2 whitespace-nowrap">
+                              <button onClick={() => setEditBooking(r)} disabled={isLocked}
+                                title="編輯訂房資料"
+                                className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
+                                編輯
+                              </button>
                               <button onClick={() => setEditRecord(r)} disabled={isLocked}
+                                title="編輯付款明細"
                                 className="text-xs px-2 py-1 rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 mr-1 disabled:opacity-40 disabled:cursor-not-allowed">
                                 付款
                               </button>
                               <button onClick={() => handleDelete(r.id, r.guestName)} disabled={isLocked}
+                                title="刪除此筆訂房"
                                 className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                刪
+                                刪除
                               </button>
                             </td>
                           )}
@@ -1391,7 +1597,7 @@ export default function BnbPage() {
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
                   {warehouseList.length === 0
-                    ? <option value="民宿">民宿</option>
+                    ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
                     : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
                   }
                 </select>
@@ -1443,7 +1649,7 @@ export default function BnbPage() {
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
                   {warehouseList.length === 0
-                    ? <option value="民宿">民宿</option>
+                    ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
                     : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
                   }
                 </select>
@@ -1802,7 +2008,7 @@ export default function BnbPage() {
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
                   {warehouseList.length === 0
-                    ? <option value="民宿">民宿</option>
+                    ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
                     : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
                   }
                 </select>
@@ -1975,7 +2181,7 @@ export default function BnbPage() {
               <label className="text-sm text-gray-600">館別</label>
               <select value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
                 {warehouseList.length === 0
-                  ? <option value="民宿">民宿</option>
+                  ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
                   : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
                 }
               </select>
@@ -1995,13 +2201,16 @@ export default function BnbPage() {
                   { header: '員工人數',    key: 'staffCount',       format: 'number' },
                   { header: '薪資',       key: 'salary',           format: 'number' },
                   { header: '業務來源%',   key: 'businessSource' },
+                  { header: '其他收入',    key: 'otherIncome',      format: 'number' },
+                  { header: '收入說明',    key: 'otherIncomeNote' },
+                  { header: '備註',       key: 'note' },
                 ]}
                 filename={`旅宿網申報_${dlYear}`}
                 title={`旅宿網申報 ${dlYear}（${dlWarehouse}）`}
               />
               <button
                 onClick={() => {
-                  const cols = ['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%'];
+                  const cols = ['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%','其他收入','收入說明','備註'];
                   const rows = dlRows.map(r => [
                     r.monthLabel,
                     r.cardTotal != null ? Number(r.cardTotal).toLocaleString() : '',
@@ -2015,6 +2224,9 @@ export default function BnbPage() {
                     r.staffCount ?? '',
                     r.salary != null ? Number(r.salary).toLocaleString() : '',
                     r.businessSource || '',
+                    r.otherIncome ? Number(r.otherIncome).toLocaleString() : '',
+                    r.otherIncomeNote || '',
+                    r.note || '',
                   ]);
                   openPrintWindow(`旅宿網申報 ${dlYear}年（${dlWarehouse}）`, cols, rows);
                 }}
@@ -2029,7 +2241,7 @@ export default function BnbPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%'].map(h => (
+                      {['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%','其他收入','備註'].map(h => (
                         <th key={h} className="px-3 py-2.5 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -2049,6 +2261,8 @@ export default function BnbPage() {
                         <td className="px-3 py-2.5 text-right text-gray-600">{r.staffCount ?? '—'}</td>
                         <td className="px-3 py-2.5 text-right text-gray-700">{r.salary != null ? Number(r.salary).toLocaleString() : '—'}</td>
                         <td className="px-3 py-2.5 text-left text-gray-500 text-xs">{r.businessSource || '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600">{r.otherIncome ? Number(r.otherIncome).toLocaleString() : '—'}</td>
+                        <td className="px-3 py-2.5 text-left text-gray-400 text-xs max-w-[120px] truncate" title={[r.otherIncomeNote, r.note].filter(Boolean).join(' / ')}>{r.note || r.otherIncomeNote || '—'}</td>
                       </tr>
                     ))}
                     {dlRows.length > 0 && (() => {
@@ -2061,7 +2275,8 @@ export default function BnbPage() {
                         fbExpense:       a.fbExpense       + (Number(r.fbExpense) || 0),
                         fitGuestCount:   a.fitGuestCount   + (r.fitGuestCount || 0),
                         salary:          a.salary          + (Number(r.salary) || 0),
-                      }), { cardTotal:0, roomPriceTotal:0, subsidizedRooms:0, monthlyRoomCount:0, roomSuppliesCost:0, fbExpense:0, fitGuestCount:0, salary:0 });
+                        otherIncome:     a.otherIncome     + (Number(r.otherIncome) || 0),
+                      }), { cardTotal:0, roomPriceTotal:0, subsidizedRooms:0, monthlyRoomCount:0, roomSuppliesCost:0, fbExpense:0, fitGuestCount:0, salary:0, otherIncome:0 });
                       return (
                         <tr className="bg-indigo-50 font-bold text-indigo-800">
                           <td className="px-3 py-2.5">合計</td>
@@ -2075,6 +2290,8 @@ export default function BnbPage() {
                           <td className="px-3 py-2.5 text-right">{tot.fitGuestCount}</td>
                           <td className="px-3 py-2.5 text-right">—</td>
                           <td className="px-3 py-2.5 text-right">{tot.salary.toLocaleString()}</td>
+                          <td className="px-3 py-2.5"></td>
+                          <td className="px-3 py-2.5 text-right">{tot.otherIncome ? tot.otherIncome.toLocaleString() : ''}</td>
                           <td className="px-3 py-2.5"></td>
                         </tr>
                       );
@@ -2125,10 +2342,31 @@ export default function BnbPage() {
                   {dmLoading ? '載入中…' : '查詢'}
                 </button>
                 {dmData && (
-                  <button onClick={handleAutoMatch} disabled={dmMatching || !(dmData?.suggestions?.length) || isLocked}
-                    className={`${btnCls} bg-amber-50 text-amber-700 disabled:opacity-40`}>
-                    ⚡ 自動配對{dmData?.suggestions?.length ? `（${dmData.suggestions.length}筆）` : ''}
-                  </button>
+                  <>
+                    <button onClick={handleAutoMatch} disabled={dmMatching || !(dmData?.suggestions?.length) || isLocked}
+                      className={`${btnCls} bg-amber-50 text-amber-700 disabled:opacity-40`}>
+                      ⚡ 自動配對{dmData?.suggestions?.length ? `（${dmData.suggestions.length}筆）` : ''}
+                    </button>
+                    <ExportButtons
+                      data={(dmData?.bnbRecords || []).map(r => ({
+                        ...r,
+                        matchStatus: r.depositBankLineId ? '已配對' : '未配對',
+                        matchedBy: r.depositMatchedBy || '',
+                      }))}
+                      columns={[
+                        { header: '姓名',   key: 'guestName' },
+                        { header: '入住',   key: 'checkInDate' },
+                        { header: '退房',   key: 'checkOutDate' },
+                        { header: '訂金',   key: 'payDeposit',  format: 'number' },
+                        { header: '匯款日期', key: 'depositDate' },
+                        { header: '後五碼',  key: 'depositLast5' },
+                        { header: '配對狀態', key: 'matchStatus' },
+                        { header: '配對者',  key: 'matchedBy' },
+                      ]}
+                      filename={`訂金核對_${dmMonth}`}
+                      title={`訂金核對 ${dmMonth}`}
+                    />
+                  </>
                 )}
               </div>
 
@@ -2315,8 +2553,8 @@ export default function BnbPage() {
                 <select className="border rounded-lg px-3 py-1.5 text-sm"
                   value={otaSource} onChange={e => setOtaSource(e.target.value)}>
                   <option value="Booking">Booking.com</option>
-                  <option value="Agoda">Agoda</option>
-                  <option value="Expedia">Expedia</option>
+                  <option value="Agoda" disabled>Agoda（尚未支援）</option>
+                  <option value="Expedia" disabled>Expedia（尚未支援）</option>
                 </select>
               </div>
               <div>
@@ -2347,6 +2585,47 @@ export default function BnbPage() {
                 className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
                 {otaLoading ? '比對中…' : '開始比對'}
               </button>
+              {otaResult && (
+                <ExportButtons
+                  data={[
+                    ...otaResult.matched.map(m => ({
+                      type: '已配對', arrival: m.ota.arrival, departure: m.ota.departure,
+                      otaName: m.ota.guestName, sysName: m.bnb.guestName, roomNo: m.bnb.roomNo,
+                      otaAmt: m.ota.finalAmount, sysAmt: m.bnb.roomCharge, diff: m.amountDiff,
+                      commission: m.ota.commissionAmt, reservationNo: m.ota.reservationNo,
+                      status: m.hasAmtIssue || m.hasNameIssue ? '有差異' : '吻合',
+                    })),
+                    ...otaResult.unmatchedOta.map(r => ({
+                      type: 'OTA未配對', arrival: r.arrival, departure: r.departure,
+                      otaName: r.guestName, sysName: '', roomNo: '',
+                      otaAmt: r.finalAmount, sysAmt: '', diff: '',
+                      commission: r.commissionAmt, reservationNo: r.reservationNo, status: r.status,
+                    })),
+                    ...otaResult.unmatchedBnb.map(r => ({
+                      type: '系統未配對', arrival: r.checkInDate, departure: r.checkOutDate,
+                      otaName: '', sysName: r.guestName, roomNo: r.roomNo,
+                      otaAmt: '', sysAmt: r.roomCharge, diff: '',
+                      commission: '', reservationNo: '', status: r.status,
+                    })),
+                  ]}
+                  columns={[
+                    { header: '類別', key: 'type' },
+                    { header: '入住', key: 'arrival' },
+                    { header: '退房', key: 'departure' },
+                    { header: 'OTA姓名', key: 'otaName' },
+                    { header: '系統姓名', key: 'sysName' },
+                    { header: '房號', key: 'roomNo' },
+                    { header: 'OTA金額', key: 'otaAmt', format: 'number' },
+                    { header: '系統金額', key: 'sysAmt', format: 'number' },
+                    { header: '差異', key: 'diff', format: 'number' },
+                    { header: '佣金', key: 'commission', format: 'number' },
+                    { header: '訂單號', key: 'reservationNo' },
+                    { header: '狀態', key: 'status' },
+                  ]}
+                  filename={`OTA比對_${otaSource}_${otaDateFrom || 'all'}`}
+                  title={`OTA 比對結果 ${otaSource}`}
+                />
+              )}
             </div>
 
             {/* 比對結果 */}
@@ -2650,6 +2929,30 @@ export default function BnbPage() {
                 className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
                 {commHistLoading ? '載入中…' : '重新整理'}
               </button>
+              {commHistRows.length > 0 && (
+                <ExportButtons
+                  data={commHistRows.map(r => ({
+                    ...r,
+                    poStatus: r.paymentOrder?.status || '',
+                    orderNo: r.paymentOrder?.orderNo || '',
+                  }))}
+                  columns={[
+                    { header: '月份',     key: 'commissionMonth' },
+                    { header: 'OTA來源',  key: 'otaSource' },
+                    { header: '館別',     key: 'warehouse' },
+                    { header: '傭金金額',  key: 'commissionAmount', format: 'number' },
+                    { header: '付款方式',  key: 'paymentMethod' },
+                    { header: '廠商',     key: 'supplierName' },
+                    { header: '傭金狀態',  key: 'status' },
+                    { header: '出納狀態',  key: 'poStatus' },
+                    { header: '付款單號',  key: 'orderNo' },
+                    { header: '確認者',   key: 'confirmedBy' },
+                    { header: '備註',     key: 'note' },
+                  ]}
+                  filename={`OTA傭金_${otaWarehouse || '全部'}`}
+                  title="OTA 傭金記錄"
+                />
+              )}
             </div>
 
             <div className="bg-white rounded-xl shadow overflow-x-auto">
@@ -2799,6 +3102,26 @@ export default function BnbPage() {
           record={editRecord}
           onClose={() => setEditRecord(null)}
           onSaved={() => { setEditRecord(null); fetchRecords(); }}
+        />
+      )}
+
+      {/* 編輯訂房 Modal */}
+      {editBooking && (
+        <BookingFormModal
+          record={editBooking}
+          warehouseList={warehouseList}
+          onClose={() => setEditBooking(null)}
+          onSaved={() => { setEditBooking(null); fetchRecords(); }}
+        />
+      )}
+
+      {/* 新增訂房 Modal */}
+      {addBookingOpen && (
+        <BookingFormModal
+          record={null}
+          warehouseList={warehouseList}
+          onClose={() => setAddBookingOpen(false)}
+          onSaved={() => { setAddBookingOpen(false); fetchRecords(); }}
         />
       )}
     </div>

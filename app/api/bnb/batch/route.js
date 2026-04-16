@@ -18,6 +18,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,21 @@ export async function PATCH(request) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 records', 400);
       }
 
+      // 先收集所有 id，批次查詢月份/館別並檢查月鎖
+      const allIds = records.map(r => parseInt(r.id)).filter(Boolean);
+      const allRecs = await prisma.bnbBookingRecord.findMany({
+        where: { id: { in: allIds } },
+        select: { id: true, importMonth: true, warehouse: true },
+      });
+      const checkedPairs = new Set();
+      for (const r of allRecs) {
+        const key = `${r.importMonth}|${r.warehouse}`;
+        if (!checkedPairs.has(key)) {
+          await assertBnbMonthOpen(r.importMonth, r.warehouse);
+          checkedPairs.add(key);
+        }
+      }
+
       let saved = 0;
       let skipped = 0;
 
@@ -42,7 +58,6 @@ export async function PATCH(request) {
         const id = parseInt(rec.id);
         if (!id) continue;
 
-        // 取得現有記錄，檢查是否鎖定
         const existing = await prisma.bnbBookingRecord.findUnique({
           where: { id },
           select: { paymentLocked: true, payCard: true, cardFeeRate: true },
@@ -84,6 +99,20 @@ export async function PATCH(request) {
       const { ids } = body;
       if (!Array.isArray(ids) || ids.length === 0) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 ids', 400);
+      }
+
+      // 檢查月份鎖
+      const lockRecs = await prisma.bnbBookingRecord.findMany({
+        where: { id: { in: ids.map(Number) } },
+        select: { importMonth: true, warehouse: true },
+      });
+      const lockChecked = new Set();
+      for (const r of lockRecs) {
+        const key = `${r.importMonth}|${r.warehouse}`;
+        if (!lockChecked.has(key)) {
+          await assertBnbMonthOpen(r.importMonth, r.warehouse);
+          lockChecked.add(key);
+        }
       }
 
       const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';

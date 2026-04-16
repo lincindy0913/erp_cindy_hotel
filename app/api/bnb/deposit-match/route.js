@@ -54,9 +54,10 @@ export async function GET(request) {
     });
 
     // ── 2. 銀行存簿入帳明細（creditAmount > 0，該月）──────────────
-    // 日期範圍：月份首日 ～ 月份末日
     const dateFrom = `${month}-01`;
-    const dateTo   = `${month}-31`;
+    const [y, m] = month.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const dateTo  = `${month}-${String(lastDay).padStart(2, '0')}`;
 
     const bankLineWhere = {
       txDate:       { gte: dateFrom, lte: dateTo },
