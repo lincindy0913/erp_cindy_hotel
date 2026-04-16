@@ -42,6 +42,7 @@ export async function GET(request) {
         roomCharge: true,
         otherCharge: true,
         payDeposit: true,
+        payTransfer: true,
         payCard: true,
         payCash: true,
         payVoucher: true,
@@ -63,6 +64,7 @@ export async function GET(request) {
         roomCharge: 0,
         otherCharge: 0,
         payDeposit: 0,
+        payTransfer: 0,
         payCard: 0,
         payCash: 0,
         payVoucher: 0,
@@ -79,6 +81,7 @@ export async function GET(request) {
       entry.roomCharge  += Number(b.roomCharge);
       entry.otherCharge += Number(b.otherCharge);
       entry.payDeposit  += Number(b.payDeposit);
+      entry.payTransfer += Number(b.payTransfer);
       entry.payCard     += Number(b.payCard);
       entry.payCash     += Number(b.payCash);
       entry.payVoucher  += Number(b.payVoucher);
@@ -94,15 +97,16 @@ export async function GET(request) {
     const days = Object.values(dailyMap).sort((a, b) => a.day - b.day);
 
     const totals = days.reduce((acc, d) => ({
-      count:       acc.count       + d.count,
-      roomCharge:  acc.roomCharge  + d.roomCharge,
-      otherCharge: acc.otherCharge + d.otherCharge,
-      payDeposit:  acc.payDeposit  + d.payDeposit,
-      payCard:     acc.payCard     + d.payCard,
-      payCash:     acc.payCash     + d.payCash,
-      payVoucher:  acc.payVoucher  + d.payVoucher,
-      cardFee:     acc.cardFee     + d.cardFee,
-    }), { count: 0, roomCharge: 0, otherCharge: 0, payDeposit: 0, payCard: 0, payCash: 0, payVoucher: 0, cardFee: 0 });
+      count:        acc.count        + d.count,
+      roomCharge:   acc.roomCharge   + d.roomCharge,
+      otherCharge:  acc.otherCharge  + d.otherCharge,
+      payDeposit:   acc.payDeposit   + d.payDeposit,
+      payTransfer:  acc.payTransfer  + d.payTransfer,
+      payCard:      acc.payCard      + d.payCard,
+      payCash:      acc.payCash      + d.payCash,
+      payVoucher:   acc.payVoucher   + d.payVoucher,
+      cardFee:      acc.cardFee      + d.cardFee,
+    }), { count: 0, roomCharge: 0, otherCharge: 0, payDeposit: 0, payTransfer: 0, payCard: 0, payCash: 0, payVoucher: 0, cardFee: 0 });
 
     return NextResponse.json({ month, daysInMonth, days, totals });
   } catch (error) {

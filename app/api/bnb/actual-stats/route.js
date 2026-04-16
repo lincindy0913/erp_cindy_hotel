@@ -33,7 +33,7 @@ export async function GET(request) {
       where,
       select: {
         roomCharge: true, otherCharge: true,
-        payDeposit: true, payCard: true, payCash: true, payVoucher: true,
+        payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true,
         cardFee: true, source: true,
         checkInDate: true, checkOutDate: true,
       },
@@ -45,6 +45,7 @@ export async function GET(request) {
       roomChargeTotal: 0,
       otherChargeTotal: 0,
       payDeposit: 0,
+      payTransfer: 0,
       payCard: 0,
       payCash: 0,
       payVoucher: 0,
@@ -57,7 +58,8 @@ export async function GET(request) {
     for (const b of bookings) {
       stats.roomChargeTotal += Number(b.roomCharge);
       stats.otherChargeTotal += Number(b.otherCharge);
-      stats.payDeposit += Number(b.payDeposit);
+      stats.payDeposit  += Number(b.payDeposit);
+      stats.payTransfer += Number(b.payTransfer);
       stats.payCard += Number(b.payCard);
       stats.payCash += Number(b.payCash);
       stats.payVoucher += Number(b.payVoucher);

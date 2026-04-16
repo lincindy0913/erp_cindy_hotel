@@ -22,6 +22,9 @@ const BOOKING_EXPORT_COLS = [
   { header: '訂金匯款', key: 'payDeposit',  format: 'number' },
   { header: '匯款日期', key: 'depositDate' },
   { header: '帳號後五碼',key: 'depositLast5' },
+  { header: '當天匯款', key: 'payTransfer', format: 'number' },
+  { header: '匯款日期', key: 'transferDate' },
+  { header: '帳號後五碼',key: 'transferLast5' },
   { header: '刷卡',     key: 'payCard',     format: 'number' },
   { header: '刷卡手續費',key:'cardFee',     format: 'number' },
   { header: '現金',     key: 'payCash',     format: 'number' },
@@ -36,6 +39,7 @@ const MONTHLY_EXPORT_COLS = [
   { header: '住宿房費', key: 'totalRevenue', format: 'number' },
   { header: '其他消費', key: 'otherCharge',  format: 'number' },
   { header: '訂金匯款', key: 'payDeposit',   format: 'number' },
+  { header: '當天匯款', key: 'payTransfer',  format: 'number' },
   { header: '刷卡',     key: 'payCard',      format: 'number' },
   { header: '現金',     key: 'payCash',      format: 'number' },
   { header: '住宿卷',   key: 'payVoucher',   format: 'number' },
@@ -131,6 +135,9 @@ function PaymentModal({ record, onClose, onSaved }) {
     payDeposit:         record.payDeposit         || 0,
     depositDate:        record.depositDate         || '',
     depositLast5:       record.depositLast5        || '',
+    payTransfer:        record.payTransfer         || 0,
+    transferDate:       record.transferDate        || '',
+    transferLast5:      record.transferLast5       || '',
     payCard:            record.payCard             || 0,
     cardSettlementDate: defaultCardSettlement,
     payCash:            record.payCash             || 0,
@@ -142,11 +149,12 @@ function PaymentModal({ record, onClose, onSaved }) {
     note:               record.note                || '',
   });
   const [saving, setSaving] = useState(false);
-  const cardFee   = (Number(form.payCard) * Number(form.cardFeeRate)).toFixed(0);
-  const total     = Number(form.payDeposit) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);
-  const hasDeposit = Number(form.payDeposit) > 0;
-  const hasCard    = Number(form.payCard) > 0;
-  const hasCash    = Number(form.payCash) > 0;
+  const cardFee    = (Number(form.payCard) * Number(form.cardFeeRate)).toFixed(0);
+  const total      = Number(form.payDeposit) + Number(form.payTransfer) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);
+  const hasDeposit  = Number(form.payDeposit)  > 0;
+  const hasTransfer = Number(form.payTransfer) > 0;
+  const hasCard     = Number(form.payCard)     > 0;
+  const hasCash     = Number(form.payCash)     > 0;
 
   async function handleSave() {
     const expected = Number(record.roomCharge) + Number(record.otherCharge);
@@ -206,6 +214,30 @@ function PaymentModal({ record, onClose, onSaved }) {
               </div>
             </div>
           )}
+          {/* 當天匯款 */}
+          <div className="flex items-center gap-3">
+            <label className="w-24 text-sm text-gray-600 shrink-0">當天匯款</label>
+            <input type="number" min="0" value={form.payTransfer}
+              onChange={e => setForm(p => ({ ...p, payTransfer: e.target.value }))}
+              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
+          </div>
+          {hasTransfer && (
+            <div className="ml-2 pl-4 border-l-2 border-teal-200 space-y-2">
+              <div className="flex items-center gap-3">
+                <label className="w-20 text-xs text-teal-600 shrink-0">匯款日期</label>
+                <input type="date" value={form.transferDate}
+                  onChange={e => setForm(p => ({ ...p, transferDate: e.target.value }))}
+                  className="flex-1 border border-teal-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="w-20 text-xs text-teal-600 shrink-0">帳號後五碼</label>
+                <input type="text" maxLength={5} placeholder="例：12345" value={form.transferLast5}
+                  onChange={e => setForm(p => ({ ...p, transferLast5: e.target.value.replace(/[^0-9]/g, '').slice(0, 5) }))}
+                  className="w-28 border border-teal-200 rounded-lg px-3 py-1.5 text-sm tracking-widest focus:ring-2 focus:ring-teal-300 outline-none" />
+              </div>
+            </div>
+          )}
+
           {/* 刷卡金額 */}
           <div className="flex items-center gap-3">
             <label className="w-24 text-sm text-gray-600 shrink-0">刷卡金額</label>
@@ -453,7 +485,7 @@ function BookingFormModal({ record, onClose, onSaved, warehouseList }) {
 
 // ── 主頁面 ────────────────────────────────────────────────────────
 // ── 付款欄位順序（Excel Tab 跳格用）────────────────────────────
-const PAY_FIELDS = ['payDeposit', 'depositDate', 'depositLast5', 'payCard', 'payCash', 'payVoucher'];
+const PAY_FIELDS = ['payDeposit', 'depositDate', 'depositLast5', 'payTransfer', 'transferDate', 'transferLast5', 'payCard', 'payCash', 'payVoucher'];
 
 export default function BnbPage() {
   const { data: session } = useSession();
@@ -1018,7 +1050,7 @@ export default function BnbPage() {
   // ── Inline 儲存 ───────────────────────────────────────────────
   async function handleInlineSave(id, field, value) {
     setInlineEdit(null);
-    const isText = ['depositLast5', 'note', 'roomNo'].includes(field);
+    const isText = ['depositLast5', 'transferLast5', 'note', 'roomNo'].includes(field);
     const payload = isText ? { [field]: value || null } : { [field]: parseFloat(value) || 0 };
     const res = await fetch(`/api/bnb/${id}`, {
       method: 'PATCH',
@@ -1041,11 +1073,14 @@ export default function BnbPage() {
     for (const r of records) {
       if (r.status === '已刪除' || r.paymentLocked) continue;
       map[r.id] = {
-        payDeposit:   String(r.payDeposit  > 0 ? r.payDeposit  : ''),
-        depositLast5: r.depositLast5 || '',
-        payCard:      String(r.payCard     > 0 ? r.payCard     : ''),
-        payCash:      String(r.payCash     > 0 ? r.payCash     : ''),
-        payVoucher:   String(r.payVoucher  > 0 ? r.payVoucher  : ''),
+        payDeposit:    String(r.payDeposit   > 0 ? r.payDeposit   : ''),
+        depositLast5:  r.depositLast5 || '',
+        payTransfer:   String(r.payTransfer  > 0 ? r.payTransfer  : ''),
+        transferDate:  r.transferDate  || '',
+        transferLast5: r.transferLast5 || '',
+        payCard:       String(r.payCard      > 0 ? r.payCard      : ''),
+        payCash:       String(r.payCash      > 0 ? r.payCash      : ''),
+        payVoucher:    String(r.payVoucher   > 0 ? r.payVoucher   : ''),
       };
     }
     setEditMap(map);
@@ -1234,17 +1269,18 @@ export default function BnbPage() {
     acc.rooms++;
     acc.revenue  += Number(r.roomCharge) + Number(r.otherCharge);
     acc.deposit  += Number(r.payDeposit);
+    acc.transfer += Number(r.payTransfer);
     acc.card     += Number(r.payCard);
     acc.cash     += Number(r.payCash);
     acc.voucher  += Number(r.payVoucher);
     acc.cardFee  += Number(r.cardFee);
     acc.unfilled += r.paymentFilled ? 0 : 1;
     acc.locked   += r.paymentLocked ? 1 : 0;
-    const pt = Number(r.payDeposit) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+    const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
     const ct = Number(r.roomCharge) + Number(r.otherCharge);
     if (r.paymentFilled && Math.abs(pt - ct) > 0.01) acc.mismatch++;
     return acc;
-  }, { rooms: 0, revenue: 0, deposit: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0, mismatch: 0 });
+  }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0, mismatch: 0 });
 
   const inputCls = 'border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none';
   const btnCls   = 'px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 transition-colors';
@@ -1380,6 +1416,7 @@ export default function BnbPage() {
                 { label: '筆數', val: recStats.rooms },
                 { label: '房費+消費', val: NT(recStats.revenue) },
                 { label: '訂金匯款', val: NT(recStats.deposit) },
+                { label: '當天匯款', val: NT(recStats.transfer) },
                 { label: '刷卡', val: NT(recStats.card) },
                 { label: '現金', val: NT(recStats.cash) },
                 { label: '住宿卷', val: NT(recStats.voucher) },
@@ -1512,6 +1549,9 @@ export default function BnbPage() {
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
                         訂金{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
                       </th>
+                      <th className="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        當天匯款{editMode && <span className="block text-[10px] font-normal opacity-60">後五碼</span>}
+                      </th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">刷卡</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">手續費</th>
                       <th className="px-3 py-2 text-left font-medium whitespace-nowrap">現金</th>
@@ -1524,7 +1564,7 @@ export default function BnbPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {visibleRecords.length === 0 && (
-                      <tr><td colSpan={18} className="text-center py-10 text-gray-400">
+                      <tr><td colSpan={19} className="text-center py-10 text-gray-400">
                         {filterPayment ? `無${filterPayment === 'filled' ? '已填付款' : '未填付款'}記錄` : '無資料'}
                       </td></tr>
                     )}
@@ -1535,7 +1575,7 @@ export default function BnbPage() {
                       const inExcelMode     = editMode && !isDeleted && !isLocked;
                       const isDirty         = dirtyIds.has(r.id);
                       const isOverdueUnpaid = !isDeleted && r.status === '已退房' && !r.paymentFilled && r.checkOutDate && r.checkOutDate < today;
-                      const payTotal        = Number(r.payDeposit) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+                      const payTotal        = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
                       const chargeTotal     = Number(r.roomCharge) + Number(r.otherCharge);
                       const paymentMismatch = !isDeleted && r.paymentFilled && Math.abs(payTotal - chargeTotal) > 0.01;
 
@@ -1681,6 +1721,46 @@ export default function BnbPage() {
                             })()}
                           </td>
 
+                          {/* 當天匯款 */}
+                          <td className="px-3 py-1.5 text-right">
+                            {inExcelMode ? (
+                              <div className="flex flex-col gap-0.5 items-end">
+                                {excelInput('payTransfer', 'border-teal-300 focus:ring-teal-300')}
+                                <input
+                                  id={`pc-${r.id}-transferDate`}
+                                  type="date"
+                                  value={editMap[r.id]?.transferDate ?? (r.transferDate || '')}
+                                  onChange={e => updateCell(r.id, 'transferDate', e.target.value)}
+                                  onKeyDown={e => handlePayKeyDown(e, r.id, 'transferDate', editableRecords)}
+                                  className={`w-32 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 border-teal-200 focus:ring-teal-300 ${(editMap[r.id]?.transferDate !== undefined) ? 'bg-yellow-50' : 'bg-white'} text-teal-500`}
+                                />
+                                <input
+                                  id={`pc-${r.id}-transferLast5`}
+                                  type="text" maxLength={5}
+                                  value={editMap[r.id]?.transferLast5 ?? (r.transferLast5 || '')}
+                                  onChange={e => updateCell(r.id, 'transferLast5', e.target.value)}
+                                  onKeyDown={e => handlePayKeyDown(e, r.id, 'transferLast5', editableRecords)}
+                                  placeholder="後五碼"
+                                  className={`w-16 border rounded px-1.5 py-0.5 text-xs outline-none focus:ring-1 focus:ring-teal-300 border-teal-200 ${isDirty ? 'bg-yellow-50' : 'bg-white'} text-teal-500 font-mono`}
+                                />
+                              </div>
+                            ) : (() => {
+                              const trnVal = Number(r.payTransfer);
+                              return (
+                                <div>
+                                  <span
+                                    onClick={() => { if (!isDeleted && !isLocked && !editMode) setEditRecord(r); }}
+                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : ''} text-teal-600 ${trnVal > 0 ? '' : 'text-gray-300'}`}
+                                    title={isLocked ? '已鎖帳' : editMode ? '' : '點擊開啟付款明細'}>
+                                    {trnVal > 0 ? trnVal.toLocaleString() : '—'}
+                                  </span>
+                                  {r.transferLast5 && <div className="text-[10px] text-teal-300 font-mono">{r.transferLast5}</div>}
+                                  {r.transferDate && <div className="text-[10px] text-teal-300">{r.transferDate}</div>}
+                                </div>
+                              );
+                            })()}
+                          </td>
+
                           {/* 刷卡 */}
                           <td className="px-3 py-1.5 text-right">
                             {inExcelMode ? excelInput('payCard', 'border-purple-300 focus:ring-purple-300') : editCell('payCard', 'text-purple-600')}
@@ -1712,6 +1792,15 @@ export default function BnbPage() {
                                 </span>
                               ) : Number(r.payDeposit) > 0 ? (
                                 <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="訂金尚未填入匯款日期">匯?</span>
+                              ) : null}
+                              {/* 當天匯款 */}
+                              {r.transferCashTxId ? (
+                                <span className={`px-1 py-0.5 rounded ${r.transferMatched ? 'bg-teal-100 text-teal-700' : 'bg-teal-50 text-teal-400'}`}
+                                  title={r.transferMatched ? '當天匯款已對帳' : '當天匯款已記帳，待對帳'}>
+                                  轉{r.transferMatched ? '✓' : '…'}
+                                </span>
+                              ) : Number(r.payTransfer) > 0 ? (
+                                <span className="px-1 py-0.5 rounded bg-gray-50 text-gray-300" title="當天匯款尚未填入匯款日期">轉?</span>
                               ) : null}
                               {/* 刷卡 */}
                               {r.cardCashTxId ? (
@@ -2066,14 +2155,14 @@ export default function BnbPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['月份','間數','住宿房費','其他消費','訂金匯款','刷卡','現金','住宿卷','手續費','淨收入','鎖帳'].map(h => (
+                      {['月份','間數','住宿房費','其他消費','訂金匯款','當天匯款','刷卡','現金','住宿卷','手續費','淨收入','鎖帳'].map(h => (
                         <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {summaryRows.length === 0 && (
-                      <tr><td colSpan={11} className="text-center py-10 text-gray-400">無資料</td></tr>
+                      <tr><td colSpan={12} className="text-center py-10 text-gray-400">無資料</td></tr>
                     )}
                     {summaryRows.map(r => {
                       const lockRatio = r.rooms > 0 ? (r.lockedCount || 0) / r.rooms : 0;
@@ -2085,6 +2174,7 @@ export default function BnbPage() {
                         <td className="px-3 py-2 text-right">{Number(r.totalRevenue).toLocaleString()}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge).toLocaleString()}</td>
                         <td className="px-3 py-2 text-right text-blue-600">{Number(r.payDeposit).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-600">{Number(r.payTransfer).toLocaleString()}</td>
                         <td className="px-3 py-2 text-right text-purple-600">{Number(r.payCard).toLocaleString()}</td>
                         <td className="px-3 py-2 text-right text-green-600">{Number(r.payCash).toLocaleString()}</td>
                         <td className="px-3 py-2 text-right text-amber-600">{Number(r.payVoucher).toLocaleString()}</td>
@@ -2101,12 +2191,13 @@ export default function BnbPage() {
                         totalRevenue: a.totalRevenue + r.totalRevenue,
                         otherCharge: a.otherCharge + r.otherCharge,
                         payDeposit: a.payDeposit + r.payDeposit,
+                        payTransfer: a.payTransfer + (r.payTransfer || 0),
                         payCard: a.payCard + r.payCard,
                         payCash: a.payCash + r.payCash,
                         payVoucher: a.payVoucher + r.payVoucher,
                         cardFee: a.cardFee + r.cardFee,
                         netRevenue: a.netRevenue + r.netRevenue,
-                      }), { rooms:0, totalRevenue:0, otherCharge:0, payDeposit:0, payCard:0, payCash:0, payVoucher:0, cardFee:0, netRevenue:0 });
+                      }), { rooms:0, totalRevenue:0, otherCharge:0, payDeposit:0, payTransfer:0, payCard:0, payCash:0, payVoucher:0, cardFee:0, netRevenue:0 });
                       return (
                         <tr className="bg-indigo-50 font-bold text-indigo-800">
                           <td className="px-3 py-2">總計</td>

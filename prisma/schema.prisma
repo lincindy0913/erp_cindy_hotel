@@ -2775,6 +2775,9 @@ model BnbBookingRecord {
   payDeposit    Decimal  @default(0) @map("pay_deposit") @db.Decimal(12, 2)
   depositDate   String?  @map("deposit_date") @db.VarChar(20)   // 匯款訂金日期 YYYY-MM-DD
   depositLast5  String?  @map("deposit_last5") @db.VarChar(10)  // 訂金匯款帳號後五碼
+  payTransfer   Decimal  @default(0) @map("pay_transfer") @db.Decimal(12, 2) // 當天匯款金額
+  transferDate  String?  @map("transfer_date") @db.VarChar(20)  // 當天匯款日期 YYYY-MM-DD
+  transferLast5 String?  @map("transfer_last5") @db.VarChar(10) // 當天匯款帳號後五碼
   payCard       Decimal  @default(0) @map("pay_card") @db.Decimal(12, 2)
   payCash       Decimal  @default(0) @map("pay_cash") @db.Decimal(12, 2)
   payVoucher    Decimal  @default(0) @map("pay_voucher") @db.Decimal(12, 2)
@@ -2799,6 +2802,7 @@ model BnbBookingRecord {
   cardBankLineId       Int?     @map("card_bank_line_id")                   // 刷卡入帳 → 存簿行
   // 自動產生的 CashTransaction IDs（連動出納系統）
   depositCashTxId      Int?     @map("deposit_cash_tx_id")
+  transferCashTxId     Int?     @map("transfer_cash_tx_id")
   cashCashTxId         Int?     @map("cash_cash_tx_id")
   cardCashTxId         Int?     @map("card_cash_tx_id")
   note          String?  @db.VarChar(500)

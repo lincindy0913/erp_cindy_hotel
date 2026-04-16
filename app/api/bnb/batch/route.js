@@ -66,12 +66,15 @@ export async function PATCH(request) {
         if (existing.paymentLocked) { skipped++; continue; }
 
         const updateData = {};
-        if (rec.payDeposit   !== undefined) updateData.payDeposit   = parseFloat(rec.payDeposit) || 0;
-        if (rec.depositDate  !== undefined) updateData.depositDate  = rec.depositDate  || null;
-        if (rec.depositLast5 !== undefined) updateData.depositLast5 = rec.depositLast5 || null;
-        if (rec.payCard     !== undefined) updateData.payCard     = parseFloat(rec.payCard)     || 0;
-        if (rec.payCash     !== undefined) updateData.payCash     = parseFloat(rec.payCash)     || 0;
-        if (rec.payVoucher  !== undefined) updateData.payVoucher  = parseFloat(rec.payVoucher)  || 0;
+        if (rec.payDeposit    !== undefined) updateData.payDeposit    = parseFloat(rec.payDeposit)  || 0;
+        if (rec.depositDate   !== undefined) updateData.depositDate   = rec.depositDate   || null;
+        if (rec.depositLast5  !== undefined) updateData.depositLast5  = rec.depositLast5  || null;
+        if (rec.payTransfer   !== undefined) updateData.payTransfer   = parseFloat(rec.payTransfer) || 0;
+        if (rec.transferDate  !== undefined) updateData.transferDate  = rec.transferDate  || null;
+        if (rec.transferLast5 !== undefined) updateData.transferLast5 = rec.transferLast5 || null;
+        if (rec.payCard      !== undefined) updateData.payCard      = parseFloat(rec.payCard)     || 0;
+        if (rec.payCash      !== undefined) updateData.payCash      = parseFloat(rec.payCash)     || 0;
+        if (rec.payVoucher   !== undefined) updateData.payVoucher   = parseFloat(rec.payVoucher)  || 0;
 
         // 重新計算手續費
         if (updateData.payCard !== undefined) {
@@ -80,11 +83,12 @@ export async function PATCH(request) {
         }
 
         // 自動標記付款已填
-        const dep = updateData.payDeposit ?? 0;
-        const crd = updateData.payCard    ?? 0;
-        const csh = updateData.payCash    ?? 0;
-        const vch = updateData.payVoucher ?? 0;
-        updateData.paymentFilled = (dep + crd + csh + vch) > 0;
+        const dep = updateData.payDeposit  ?? 0;
+        const trn = updateData.payTransfer ?? 0;
+        const crd = updateData.payCard     ?? 0;
+        const csh = updateData.payCash     ?? 0;
+        const vch = updateData.payVoucher  ?? 0;
+        updateData.paymentFilled = (dep + trn + crd + csh + vch) > 0;
 
         await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
         saved++;

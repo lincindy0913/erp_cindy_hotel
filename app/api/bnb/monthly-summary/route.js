@@ -36,7 +36,7 @@ export async function GET(request) {
       select: {
         importMonth: true,
         roomCharge: true, otherCharge: true,
-        payDeposit: true, payCard: true, payCash: true, payVoucher: true,
+        payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true,
         cardFee: true, status: true,
         paymentLocked: true, paymentFilled: true,
       },
@@ -76,7 +76,7 @@ export async function GET(request) {
       if (!monthlyMap[m]) monthlyMap[m] = {
         month: m,
         rooms: 0, totalRevenue: 0, otherCharge: 0,
-        payDeposit: 0, payCard: 0, payCash: 0, payVoucher: 0, cardFee: 0,
+        payDeposit: 0, payTransfer: 0, payCard: 0, payCash: 0, payVoucher: 0, cardFee: 0,
         purchaseExpense: 0, fixedExpense: 0,
         otherIncome: 0,
         lockedCount: 0, filledCount: 0,
@@ -90,6 +90,7 @@ export async function GET(request) {
       m.totalRevenue  += Number(b.roomCharge);
       m.otherCharge   += Number(b.otherCharge);
       m.payDeposit    += Number(b.payDeposit);
+      m.payTransfer   += Number(b.payTransfer);
       m.payCard       += Number(b.payCard);
       m.payCash       += Number(b.payCash);
       m.payVoucher    += Number(b.payVoucher);

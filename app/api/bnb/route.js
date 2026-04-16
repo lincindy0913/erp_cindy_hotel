@@ -37,9 +37,10 @@ export async function GET(request) {
     // 批次查詢哪些 CashTransaction 已有存簿對帳匹配
     const allTxIds = [];
     for (const r of records) {
-      if (r.depositCashTxId) allTxIds.push(r.depositCashTxId);
-      if (r.cashCashTxId)    allTxIds.push(r.cashCashTxId);
-      if (r.cardCashTxId)    allTxIds.push(r.cardCashTxId);
+      if (r.depositCashTxId)  allTxIds.push(r.depositCashTxId);
+      if (r.transferCashTxId) allTxIds.push(r.transferCashTxId);
+      if (r.cashCashTxId)     allTxIds.push(r.cashCashTxId);
+      if (r.cardCashTxId)     allTxIds.push(r.cardCashTxId);
     }
     const matchedLines = allTxIds.length
       ? await prisma.bankStatementLine.findMany({
@@ -53,15 +54,17 @@ export async function GET(request) {
       ...r,
       roomCharge:  Number(r.roomCharge),
       otherCharge: Number(r.otherCharge),
-      payDeposit:  Number(r.payDeposit),
-      payCard:     Number(r.payCard),
-      payCash:     Number(r.payCash),
-      payVoucher:  Number(r.payVoucher),
-      cardFeeRate: Number(r.cardFeeRate),
-      cardFee:     Number(r.cardFee),
-      depositMatched: r.depositCashTxId ? matchedSet.has(r.depositCashTxId) : false,
-      cashMatched:    r.cashCashTxId    ? matchedSet.has(r.cashCashTxId)    : false,
-      cardMatched:    r.cardCashTxId    ? matchedSet.has(r.cardCashTxId)    : false,
+      payDeposit:   Number(r.payDeposit),
+      payTransfer:  Number(r.payTransfer),
+      payCard:      Number(r.payCard),
+      payCash:      Number(r.payCash),
+      payVoucher:   Number(r.payVoucher),
+      cardFeeRate:  Number(r.cardFeeRate),
+      cardFee:      Number(r.cardFee),
+      depositMatched:  r.depositCashTxId  ? matchedSet.has(r.depositCashTxId)  : false,
+      transferMatched: r.transferCashTxId ? matchedSet.has(r.transferCashTxId) : false,
+      cashMatched:     r.cashCashTxId     ? matchedSet.has(r.cashCashTxId)     : false,
+      cardMatched:     r.cardCashTxId     ? matchedSet.has(r.cardCashTxId)     : false,
     })));
   } catch (error) {
     return handleApiError(error);
