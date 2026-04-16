@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
@@ -1519,6 +1520,11 @@ export default function UtilityBillsPage() {
                   <strong>{labels.length}</strong> 條線路/地址
                 </p>
               )}
+              <p className="text-xs text-gray-500 px-1 -mt-2">
+                若要比對<strong>住宿人數／入住間數</strong>（PMS 日匯入）並看「每人電費」等指標，請至
+                <Link href="/analytics" className="text-teal-700 hover:underline mx-0.5">決策分析</Link>
+                →「<strong>水電與住宿</strong>」分頁，選擇相同館別與民國年後查詢。
+              </p>
 
               {/* Pivot 表 */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-auto">
