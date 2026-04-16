@@ -76,7 +76,7 @@ export default function UtilityBillsPage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMode, setAnalysisMode] = useState('usage'); // 'usage' | 'amount'
 
-  // 載入主檔館別
+  // 載入主檔館別，並自動帶入分析篩選的預設館別
   useEffect(() => {
     fetch('/api/warehouse-departments')
       .then(r => r.json())
@@ -85,14 +85,17 @@ export default function UtilityBillsPage() {
         const all = list.filter(w => w.type === 'building' || w.type === 'warehouse').map(w => w.name);
         if (all.length > 0) {
           setWarehouseOptions([{ value: '', label: '請選擇館別' }, ...all.map(n => ({ value: n, label: n }))]);
+          // 若分析篩選尚未選館別，自動帶入第一個
+          setAnalysisFilter(f => f.warehouse ? f : { ...f, warehouse: all[0] });
         }
       })
       .catch(() => {});
   }, []);
 
-  // If session loads and user is not admin, force to list tab
+  // If session loads and user is not admin, and they are on an admin-only tab, redirect to list
+  const ADMIN_ONLY_TABS = new Set(['parse', 'water']);
   useEffect(() => {
-    if (session && !isAdmin && activeTab !== 'list') setActiveTab('list');
+    if (session && !isAdmin && ADMIN_ONLY_TABS.has(activeTab)) setActiveTab('list');
   }, [session, isAdmin]);
 
   // 檔名或地址關鍵字 → 館別（用於自動判讀）
@@ -118,7 +121,7 @@ export default function UtilityBillsPage() {
 
   useEffect(() => {
     if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) fetchAnalysisRecords();
-  }, [activeTab]);
+  }, [activeTab, analysisFilter.warehouse, analysisFilter.year, analysisFilter.billType]);
 
   useEffect(() => {
     if (activeTab === 'payment') fetchPaymentRecords();
@@ -655,24 +658,23 @@ export default function UtilityBillsPage() {
           </div>
 
           {/* Tab navbar */}
-          <div className="flex gap-1 mt-4">
-            {TABS.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-all ${
-                  activeTab === tab.key
-                    ? 'border-teal-600 bg-teal-50 text-teal-800'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <span className="text-base leading-none">{tab.icon}</span>
-                <span>{tab.label}</span>
-                <span className={`hidden md:inline text-xs font-normal ml-0.5 ${activeTab === tab.key ? 'text-teal-500' : 'text-gray-400'}`}>
-                  {tab.desc}
-                </span>
-              </button>
-            ))}
+          <div className="overflow-x-auto mt-4">
+            <div className="flex gap-1 min-w-max">
+              {TABS.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-t-lg text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+                    activeTab === tab.key
+                      ? 'border-teal-600 bg-teal-50 text-teal-800'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-base leading-none">{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1484,15 +1486,19 @@ export default function UtilityBillsPage() {
               {/* Pivot 表 */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-auto">
                 {analysisLoading ? (
-                  <div className="py-16 text-center text-gray-400">載入中…</div>
+                  <div className="py-16 text-center text-gray-400">查詢中…</div>
                 ) : !analysisFilter.warehouse ? (
-                  <div className="py-16 text-center text-gray-400">請先選擇館別</div>
-                ) : analysisRecords.length === 0 ? (
                   <div className="py-16 text-center text-gray-400">
-                    查無資料，請確認已上傳並儲存該年度帳單
+                    請在上方選擇館別，系統將自動載入資料
+                  </div>
+                ) : analysisRecords.length === 0 ? (
+                  <div className="py-16 text-center text-gray-500">
+                    <div className="text-3xl mb-3">📭</div>
+                    <div className="font-medium">{analysisFilter.warehouse}　{analysisFilter.year} 年　{analysisFilter.billType}</div>
+                    <div className="text-sm mt-1 text-gray-400">查無資料。請先在「電費單解析」或「水費單解析」上傳並儲存帳單。</div>
                   </div>
                 ) : labels.length === 0 ? (
-                  <div className="py-16 text-center text-gray-400">summaryJson 無法解析地址資訊</div>
+                  <div className="py-16 text-center text-gray-400">帳單資料中無法辨識地址，請至「帳單明細管理」手動補填</div>
                 ) : (
                   <table className="w-full text-sm border-collapse">
                     <thead>
