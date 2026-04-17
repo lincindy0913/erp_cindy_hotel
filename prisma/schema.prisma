@@ -71,9 +71,11 @@ model Supplier {
   bankAccount     String?   @map("bank_account") @db.VarChar(100)
   contractDate    String?   @map("contract_date") @db.VarChar(20)
   contractEndDate String?   @map("contract_end_date") @db.VarChar(20)
-  paymentStatus   String?   @default("未付款") @map("payment_status") @db.VarChar(20)
-  remarks         String?   @db.Text
-  sortOrder       Int?      @map("sort_order")
+  paymentStatus    String?   @default("未付款") @map("payment_status") @db.VarChar(20)
+  remarks          String?   @db.Text
+  checkPayee       String?   @map("check_payee") @db.VarChar(255)
+  industryCategory String?   @map("industry_category") @db.VarChar(100)
+  sortOrder        Int?      @map("sort_order")
   isActive        Boolean   @default(true) @map("is_active")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")

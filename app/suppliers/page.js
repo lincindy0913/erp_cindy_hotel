@@ -26,7 +26,10 @@ export default function SuppliersPage() {
     contractDate: '',
     contractEndDate: '',
     paymentStatus: '未付款',
-    remarks: ''
+    remarks: '',
+    checkPayee: '',
+    industryCategory: '',
+    sortOrder: '',
   });
   const [contracts, setContracts] = useState([]);
   const [uploadingContract, setUploadingContract] = useState(false);
@@ -48,7 +51,7 @@ export default function SuppliersPage() {
   const [showTermsManager, setShowTermsManager] = useState(false);
   const [newTermName, setNewTermName] = useState('');
 
-  const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '' };
+  const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '', checkPayee: '', industryCategory: '', sortOrder: '' };
 
   useEffect(() => {
     fetchSuppliers();
@@ -204,6 +207,20 @@ export default function SuppliersPage() {
       case 'name-desc':
         result.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'zh-TW'));
         break;
+      case 'sort-asc':
+        result.sort((a, b) => {
+          if (a.sortOrder == null) return 1;
+          if (b.sortOrder == null) return -1;
+          return a.sortOrder - b.sortOrder;
+        });
+        break;
+      case 'sort-desc':
+        result.sort((a, b) => {
+          if (a.sortOrder == null) return 1;
+          if (b.sortOrder == null) return -1;
+          return b.sortOrder - a.sortOrder;
+        });
+        break;
       case 'date-asc':
         result.sort((a, b) => {
           if (!a.contractDate) return 1;
@@ -320,7 +337,10 @@ export default function SuppliersPage() {
       contractDate: supplier.contractDate ? supplier.contractDate.split('T')[0] : '',
       contractEndDate: supplier.contractEndDate ? supplier.contractEndDate.split('T')[0] : '',
       paymentStatus: supplier.paymentStatus || '未付款',
-      remarks: supplier.remarks || ''
+      remarks: supplier.remarks || '',
+      checkPayee: supplier.checkPayee || '',
+      industryCategory: supplier.industryCategory || '',
+      sortOrder: supplier.sortOrder != null ? String(supplier.sortOrder) : '',
     });
     fetchContracts(supplier.id);
   }
@@ -735,6 +755,27 @@ export default function SuppliersPage() {
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">支票抬頭</label>
+                <input type="text" value={formData.checkPayee}
+                  onChange={(e) => setFormData({ ...formData, checkPayee: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="例如：統一企業股份有限公司" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">行業類別</label>
+                <input type="text" value={formData.industryCategory}
+                  onChange={(e) => setFormData({ ...formData, industryCategory: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="例如：食品、水電、工程" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">顯示順序</label>
+                <input type="number" min="0" value={formData.sortOrder}
+                  onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="數字越小越前面" />
+              </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
                 <textarea value={formData.remarks}
@@ -789,6 +830,14 @@ export default function SuppliersPage() {
                             className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'name-desc' ? 'bg-blue-50 text-blue-600' : ''}`}>
                             Z到A (名稱排序)
                           </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleSortChange('sort-asc'); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'sort-asc' ? 'bg-blue-50 text-blue-600' : ''}`}>
+                            依順序小→大
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleSortChange('sort-desc'); }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${sortType === 'sort-desc' ? 'bg-blue-50 text-blue-600' : ''}`}>
+                            依順序大→小
+                          </button>
                           <div className="border-t border-gray-200 my-1"></div>
                           <div className="px-4 py-2">
                             <label className="block text-xs text-gray-600 mb-1">關鍵字篩選</label>
@@ -832,14 +881,17 @@ export default function SuppliersPage() {
                 </th>
                 <th className="w-[9%] px-2 py-3 text-left text-xs font-medium text-gray-700">合約到期</th>
                 <th className="w-[6%] px-2 py-3 text-left text-xs font-medium text-gray-700">付款狀態</th>
-                <th className="w-[12%] px-2 py-3 text-left text-xs font-medium text-gray-700">備註</th>
-                <th className="w-[6%] px-2 py-3 text-left text-xs font-medium text-gray-700">操作</th>
+                <th className="w-[7%] px-2 py-3 text-left text-xs font-medium text-gray-700">支票抬頭</th>
+                <th className="w-[5%] px-2 py-3 text-left text-xs font-medium text-gray-700">行業類別</th>
+                <th className="w-[4%] px-2 py-3 text-center text-xs font-medium text-gray-700">順序</th>
+                <th className="w-[10%] px-2 py-3 text-left text-xs font-medium text-gray-700">備註</th>
+                <th className="w-[5%] px-2 py-3 text-left text-xs font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {suppliers.length === 0 ? (
                 <tr>
-                  <td colSpan="13" className="px-2 py-8 text-center text-gray-500">
+                  <td colSpan="16" className="px-2 py-8 text-center text-gray-500">
                     尚無廠商資料
                   </td>
                 </tr>
@@ -877,6 +929,9 @@ export default function SuppliersPage() {
                           {supplier.paymentStatus || '未付款'}
                         </span>
                       </td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.checkPayee || ''}>{supplier.checkPayee || '-'}</td>
+                      <td className="px-2 py-2 text-xs truncate" title={supplier.industryCategory || ''}>{supplier.industryCategory || '-'}</td>
+                      <td className="px-2 py-2 text-xs text-center">{supplier.sortOrder != null ? supplier.sortOrder : '-'}</td>
                       <td className="px-2 py-2 text-xs truncate" title={supplier.remarks || ''}>
                         {supplier.remarks || '-'}
                       </td>

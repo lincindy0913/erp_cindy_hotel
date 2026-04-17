@@ -58,7 +58,10 @@ export async function PUT(request, { params }) {
         contractDate: data.contractDate || null,
         contractEndDate: data.contractEndDate || null,
         paymentStatus: data.paymentStatus || '未付款',
-        remarks: data.remarks || null
+        remarks: data.remarks || null,
+        checkPayee: data.checkPayee && String(data.checkPayee).trim() ? String(data.checkPayee).trim() : null,
+        industryCategory: data.industryCategory && String(data.industryCategory).trim() ? String(data.industryCategory).trim() : null,
+        sortOrder: data.sortOrder != null && data.sortOrder !== '' ? parseInt(data.sortOrder) : null,
       }
     });
 
