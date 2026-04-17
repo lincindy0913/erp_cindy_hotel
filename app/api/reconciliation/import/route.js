@@ -1,16 +1,65 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
+
+/** 合併說明、參考號、備註欄供比對（正規化空白與 HTML 換行） */
+function normalizeLineText(line) {
+  const raw = [line.description || '', line.referenceNo || '', line.note || '']
+    .join(' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return raw;
+}
+
+function amountMatchesLine(tx, debitAmount, creditAmount) {
+  const txAmt = Number(tx.amount);
+  if ((tx.type === '支出' || tx.type === '移轉') && debitAmount > 0 && Math.abs(txAmt - debitAmount) < 0.01) {
+    return true;
+  }
+  if ((tx.type === '收入' || tx.type === '移轉入') && creditAmount > 0 && Math.abs(txAmt - creditAmount) < 0.01) {
+    return true;
+  }
+  return false;
+}
+
+function remarkMatchesBooking(booking, lineText) {
+  if (!booking || !lineText) return false;
+  const t = lineText;
+  const d5 = booking.depositLast5 != null ? String(booking.depositLast5).trim() : '';
+  if (d5.length >= 1 && t.includes(d5)) return true;
+  const t5 = booking.transferLast5 != null ? String(booking.transferLast5).trim() : '';
+  if (t5.length >= 1 && t.includes(t5)) return true;
+  const name = booking.guestName != null ? String(booking.guestName).trim() : '';
+  if (name.length >= 1 && t.includes(name)) return true;
+  return false;
+}
+
+function bnbSourceTypes() {
+  return ['bnb_deposit', 'bnb_cash', 'bnb_transfer', 'bnb_card'];
+}
+
+function pickRemarkBest(candidates, lineText, bnbMap) {
+  if (!lineText || candidates.length === 0) return null;
+  const hits = [];
+  for (const tx of candidates) {
+    if (!bnbSourceTypes().includes(tx.sourceType)) continue;
+    const booking = bnbMap.get(tx.sourceRecordId);
+    if (remarkMatchesBooking(booking, lineText)) hits.push(tx);
+  }
+  if (hits.length === 1) return { tx: hits[0], by: 'auto_rmk' };
+  return null;
+}
 
 // POST: Import bank statement
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.RECONCILIATION_CREATE);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const data = await request.json();
     const { accountId, bankFormatId, year, month, fileName, lines } = data;
@@ -29,7 +78,7 @@ export async function POST(request) {
     const today = new Date();
     const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
     const countToday = await prisma.bankStatementImport.count({
-      where: { importNo: { startsWith: `BSI-${dateStr}` } }
+      where: { importNo: { startsWith: `BSI-${dateStr}` } },
     });
     const importNo = `BSI-${dateStr}-${String(countToday + 1).padStart(3, '0')}`;
 
@@ -44,8 +93,8 @@ export async function POST(request) {
         rawFileName: fileName || 'manual_import.csv',
         parseStatus: 'completed',
         totalLines: lines.length,
-        parsedLines: lines.length
-      }
+        parsedLines: lines.length,
+      },
     });
 
     // Create or get BankReconciliation for this account/month
@@ -54,9 +103,9 @@ export async function POST(request) {
         accountId_statementYear_statementMonth: {
           accountId: parseInt(accountId),
           statementYear: parseInt(year),
-          statementMonth: parseInt(month)
-        }
-      }
+          statementMonth: parseInt(month),
+        },
+      },
     });
 
     if (!reconciliation) {
@@ -67,22 +116,22 @@ export async function POST(request) {
       const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
       const txBefore = await prisma.cashTransaction.findMany({
-        where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } }
+        where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } },
       });
 
       let openingBalance = Number(account.openingBalance);
-      txBefore.forEach(tx => {
+      txBefore.forEach((tx) => {
         const amt = Number(tx.amount);
         if (tx.type === '收入' || tx.type === '移轉入') openingBalance += amt;
         else if (tx.type === '支出' || tx.type === '移轉') openingBalance -= amt;
       });
 
       const txInMonth = await prisma.cashTransaction.findMany({
-        where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } }
+        where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } },
       });
 
       let closingBalanceSystem = openingBalance;
-      txInMonth.forEach(tx => {
+      txInMonth.forEach((tx) => {
         const amt = Number(tx.amount);
         if (tx.type === '收入' || tx.type === '移轉入') closingBalanceSystem += amt;
         else if (tx.type === '支出' || tx.type === '移轉') closingBalanceSystem -= amt;
@@ -90,7 +139,7 @@ export async function POST(request) {
 
       const reconDateStr = `${year}${String(month).padStart(2, '0')}`;
       const reconCount = await prisma.bankReconciliation.count({
-        where: { reconciliationNo: { startsWith: `REC-${reconDateStr}` } }
+        where: { reconciliationNo: { startsWith: `REC-${reconDateStr}` } },
       });
       const reconciliationNo = `REC-${reconDateStr}-${String(reconCount + 1).padStart(3, '0')}`;
 
@@ -105,14 +154,14 @@ export async function POST(request) {
           closingBalanceSystem,
           closingBalanceBank: 0,
           difference: closingBalanceSystem,
-          status: 'draft'
-        }
+          status: 'draft',
+        },
       });
     } else {
       // Update import reference
       await prisma.bankReconciliation.update({
         where: { id: reconciliation.id },
-        data: { importId: importRecord.id }
+        data: { importId: importRecord.id },
       });
     }
 
@@ -125,22 +174,22 @@ export async function POST(request) {
     const systemTxs = await prisma.cashTransaction.findMany({
       where: {
         accountId: parseInt(accountId),
-        transactionDate: { gte: monthStart2, lt: monthEnd2 }
-      }
+        transactionDate: { gte: monthStart2, lt: monthEnd2 },
+      },
     });
 
-    // Pre-load BnB booking data for deposit/cash transactions (帳號後五碼 cross-check)
+    // Pre-load BnB booking data（訂金／當天匯款後五碼、房客姓名）
     const bnbTxIds = systemTxs
-      .filter(tx => tx.sourceType === 'bnb_deposit' || tx.sourceType === 'bnb_cash')
-      .map(tx => tx.sourceRecordId)
+      .filter((tx) => bnbSourceTypes().includes(tx.sourceType))
+      .map((tx) => tx.sourceRecordId)
       .filter(Boolean);
     const bnbBookings = bnbTxIds.length
       ? await prisma.bnbBookingRecord.findMany({
           where: { id: { in: bnbTxIds } },
-          select: { id: true, depositLast5: true, guestName: true },
+          select: { id: true, depositLast5: true, transferLast5: true, guestName: true },
         })
       : [];
-    const bnbMap = new Map(bnbBookings.map(b => [b.id, b]));
+    const bnbMap = new Map(bnbBookings.map((b) => [b.id, b]));
 
     // Create BankStatementLine records and attempt auto-match
     let matchedCount = 0;
@@ -152,51 +201,54 @@ export async function POST(request) {
       const debitAmount = parseFloat(line.debitAmount) || 0;
       const creditAmount = parseFloat(line.creditAmount) || 0;
       const netAmount = creditAmount - debitAmount;
+      const lineText = normalizeLineText(line);
 
       let matchedTxId = null;
       let matchedBy = null;
 
-      // Collect date+amount candidates first, then pick the best one
-      const candidates = [];
+      // ── 第一層：同交易日 + 同金額 ─────────────────────────────
+      const candidatesDate = [];
       for (const tx of systemTxs) {
         if (matchedTxIds.has(tx.id)) continue;
-        const txAmt = Number(tx.amount);
-        const txDate = tx.transactionDate;
-        if (txDate !== line.txDate) continue;
-
-        if ((tx.type === '支出' || tx.type === '移轉') && Math.abs(txAmt - debitAmount) < 0.01 && debitAmount > 0) {
-          candidates.push(tx);
-        } else if ((tx.type === '收入' || tx.type === '移轉入') && Math.abs(txAmt - creditAmount) < 0.01 && creditAmount > 0) {
-          candidates.push(tx);
-        }
+        if (tx.transactionDate !== line.txDate) continue;
+        if (amountMatchesLine(tx, debitAmount, creditAmount)) candidatesDate.push(tx);
       }
 
-      if (candidates.length === 1) {
-        matchedTxId = candidates[0].id;
+      if (candidatesDate.length === 1) {
+        matchedTxId = candidatesDate[0].id;
         matchedBy = 'auto';
-      } else if (candidates.length > 1) {
-        // Multiple candidates: use depositLast5 / guestName to disambiguate
-        const lineText = `${line.description || ''} ${line.referenceNo || ''}`;
-        let best = null;
-        for (const tx of candidates) {
-          if (tx.sourceType === 'bnb_deposit' || tx.sourceType === 'bnb_cash') {
-            const booking = bnbMap.get(tx.sourceRecordId);
-            if (booking?.depositLast5 && lineText.includes(booking.depositLast5)) {
-              best = tx; break;
-            }
-            if (booking?.guestName && lineText.includes(booking.guestName)) {
-              best = tx; break;
-            }
-          }
+      } else if (candidatesDate.length > 1) {
+        const picked = pickRemarkBest(candidatesDate, lineText, bnbMap);
+        if (picked) {
+          matchedTxId = picked.tx.id;
+          matchedBy = picked.by;
         }
-        matchedTxId = (best || candidates[0]).id;
-        matchedBy = best ? 'auto_cross' : 'auto';
+        // 多筆同日同額且備註無法唯一區分 → 不自動比對，留人工
+      } else {
+        // ── 第二層：同帳務月份內、金額相符、日期可不同；須備註與民宿欄位吻合且唯一 ──
+        const candidatesAmt = [];
+        for (const tx of systemTxs) {
+          if (matchedTxIds.has(tx.id)) continue;
+          if (amountMatchesLine(tx, debitAmount, creditAmount)) candidatesAmt.push(tx);
+        }
+        const remarkHits = [];
+        for (const tx of candidatesAmt) {
+          if (!bnbSourceTypes().includes(tx.sourceType)) continue;
+          const booking = bnbMap.get(tx.sourceRecordId);
+          if (remarkMatchesBooking(booking, lineText)) remarkHits.push(tx);
+        }
+        if (remarkHits.length === 1) {
+          matchedTxId = remarkHits[0].id;
+          matchedBy = 'auto_rmk_d';
+        }
       }
 
       if (matchedTxId) {
         matchedTxIds.add(matchedTxId);
         matchedCount++;
       }
+
+      const noteVal = line.note != null && String(line.note).trim() !== '' ? String(line.note).trim() : null;
 
       lineRecords.push({
         importId: importRecord.id,
@@ -209,21 +261,22 @@ export async function POST(request) {
         netAmount,
         runningBalance: line.runningBalance ? parseFloat(line.runningBalance) : null,
         referenceNo: line.referenceNo || null,
+        note: noteVal,
         matchStatus: matchedTxId ? 'matched' : 'unprocessed',
         matchedTransactionId: matchedTxId,
         matchedBy,
-        reconciliationId: reconciliation.id
+        reconciliationId: reconciliation.id,
       });
     }
 
     // Batch create lines
     await prisma.bankStatementLine.createMany({
-      data: lineRecords
+      data: lineRecords,
     });
 
     // Update reconciliation line counts
     const totalBankLines = lineRecords.length;
-    const bankOnlyLines = lineRecords.filter(l => l.matchStatus === 'unprocessed').length;
+    const bankOnlyLines = lineRecords.filter((l) => l.matchStatus === 'unprocessed').length;
     const systemOnlyCount = systemTxs.length - matchedCount;
 
     await prisma.bankReconciliation.update({
@@ -232,20 +285,23 @@ export async function POST(request) {
         totalBankLines,
         matchedLines: matchedCount,
         bankOnlyLines,
-        systemOnlyLines: systemOnlyCount
-      }
+        systemOnlyLines: systemOnlyCount,
+      },
     });
 
-    return NextResponse.json({
-      importId: importRecord.id,
-      importNo: importRecord.importNo,
-      reconciliationId: reconciliation.id,
-      totalLines: lines.length,
-      matchedCount,
-      bankOnlyCount: bankOnlyLines,
-      systemOnlyCount,
-      message: `成功匯入 ${lines.length} 筆銀行對帳單，自動比對 ${matchedCount} 筆`
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        importId: importRecord.id,
+        importNo: importRecord.importNo,
+        reconciliationId: reconciliation.id,
+        totalLines: lines.length,
+        matchedCount,
+        bankOnlyCount: bankOnlyLines,
+        systemOnlyCount,
+        message: `成功匯入 ${lines.length} 筆銀行對帳單，自動比對 ${matchedCount} 筆（含備註輔助比對者標記為 auto_rmk / auto_rmk_d）`,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     return handleApiError(error);
   }

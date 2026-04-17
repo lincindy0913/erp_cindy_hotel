@@ -606,14 +606,16 @@ export default function ReconciliationPage() {
           const dateOnly = txDate.slice(0, 10);
           const debitAmount = parseAmountCiti(row[3]);
           const creditAmount = parseAmountCiti(row[4]);
-          const desc = [row[2], row[6]].filter(Boolean).join(' ').trim();
+          const memo = String(row[6] || '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
+          const desc = [row[2], memo].filter(Boolean).join(' ').trim();
           parsed.push({
             txDate: dateOnly,
-            description: desc || row[2] || '',
+            description: memo ? `${row[2] || ''} ｜備註:${memo}`.trim() : (row[2] || ''),
             debitAmount,
             creditAmount,
-            referenceNo: row[6] || '',
-            runningBalance: parseAmountCiti(row[5])
+            referenceNo: memo.slice(0, 100) || '',
+            note: memo || undefined,
+            runningBalance: parseAmountCiti(row[5]),
           });
         }
         processResult(parsed);
@@ -630,14 +632,16 @@ export default function ReconciliationPage() {
           if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
           const debitAmount = parseAmountCiti(row[3]);
           const creditAmount = parseAmountCiti(row[4]);
-          const desc = [row[2], row[6]].filter(Boolean).join(' ').trim();
+          const memo = String(row[7] || '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
+          const desc = [row[2], row[6], memo].filter(Boolean).join(' ').trim();
           parsed.push({
             txDate,
-            description: desc || row[2] || '',
+            description: memo ? `${[row[2], row[6]].filter(Boolean).join(' · ')} ｜備註:${memo}`.trim() : (desc || row[2] || ''),
             debitAmount,
             creditAmount,
-            referenceNo: row[7] || '',
-            runningBalance: parseAmountCiti(row[5])
+            referenceNo: memo.slice(0, 100) || '',
+            note: memo || undefined,
+            runningBalance: parseAmountCiti(row[5]),
           });
         }
         processResult(parsed);
@@ -666,15 +670,19 @@ export default function ReconciliationPage() {
           const amountStr = parseAmountCiti(row[6]);
           const debitAmount  = debitCredit === '支出' ? amountStr : '0';
           const creditAmount = debitCredit === '存入' ? amountStr : '0';
+          const branch = String(row[2] || '').trim();
           const desc = String(row[3] || '').trim();
-          const note = String(row[8] || '').replace(/<br\s*\/?>/gi, ' ').trim();
+          const noteRaw = String(row[8] || '');
+          const noteNorm = noteRaw.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
+          const descLine = [branch, desc].filter(Boolean).join(' · ') || desc;
           parsed.push({
             txDate,
-            description: note ? `${desc} ${note}`.trim() : desc,
+            description: noteNorm ? `${descLine} ｜備註:${noteNorm}` : descLine,
             debitAmount,
             creditAmount,
-            referenceNo: note || '',
-            runningBalance: parseAmountCiti(row[7])
+            referenceNo: noteNorm.slice(0, 100) || '',
+            note: noteNorm || undefined,
+            runningBalance: parseAmountCiti(row[7]),
           });
         }
         processResult(parsed);
@@ -704,14 +712,16 @@ export default function ReconciliationPage() {
           if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate)) continue;
           const debitAmount = parseAmountCiti(cols[3]);
           const creditAmount = parseAmountCiti(cols[4]);
+          const memo = String(cols[6] || '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
           const desc = [cols[2], cols[7]].filter(Boolean).join(' ').trim();
           parsed.push({
             txDate,
-            description: desc || cols[2] || '',
+            description: memo ? `${[cols[2], cols[7]].filter(Boolean).join(' · ')} ｜備註:${memo}`.trim() : (desc || cols[2] || ''),
             debitAmount,
             creditAmount,
-            referenceNo: cols[6] || '',
-            runningBalance: parseAmountCiti(cols[5])
+            referenceNo: memo.slice(0, 100) || '',
+            note: memo || undefined,
+            runningBalance: parseAmountCiti(cols[5]),
           });
         }
         processResult(parsed);
@@ -731,13 +741,15 @@ export default function ReconciliationPage() {
           const debitAmount = parseAmountCiti(cols[1]);
           const creditAmount = parseAmountCiti(cols[2]);
           const desc = [cols[4], cols[5], cols[6]].filter(Boolean).join(' ').trim();
+          const memo = (cols[7] || '').replace(/\t/g, '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
           parsed.push({
             txDate,
-            description: desc || cols[4] || '',
+            description: memo ? `${desc || cols[4] || ''} ｜備註:${memo}`.trim() : (desc || cols[4] || ''),
             debitAmount,
             creditAmount,
-            referenceNo: (cols[7] || '').replace(/\t/g, '').trim(),
-            runningBalance: parseAmountCiti(cols[3])
+            referenceNo: memo.slice(0, 100) || '',
+            note: memo || undefined,
+            runningBalance: parseAmountCiti(cols[3]),
           });
         }
         processResult(parsed);
@@ -766,16 +778,18 @@ export default function ReconciliationPage() {
           const amountRaw = (cols[6] || '0').trim().replace(/,/g, '');
           const amount = amountRaw && !isNaN(parseFloat(amountRaw)) ? amountRaw : '0';
           const balance = (cols[7] || '').trim().replace(/,/g, '');
-          const note = (cols[8] || '').trim();
+          const note = (cols[8] || '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
           const debitAmount = (debitCredit === '支出' || debitCredit === '借') ? amount : '0';
           const creditAmount = (debitCredit === '存入' || debitCredit === '貸') ? amount : '0';
+          const descLine = [cols[2], desc].filter(Boolean).join(' · ').trim() || desc;
           parsed.push({
             txDate,
-            description: note ? `${desc} ${note}`.trim() : desc,
+            description: note ? `${descLine} ｜備註:${note}` : descLine,
             debitAmount,
             creditAmount,
-            referenceNo: cols[2] || '',
-            runningBalance: balance || '0'
+            referenceNo: note ? note.slice(0, 100) : (cols[2] || '').slice(0, 100),
+            note: note || undefined,
+            runningBalance: balance || '0',
           });
         }
         processResult(parsed);
@@ -792,13 +806,15 @@ export default function ReconciliationPage() {
         for (let i = Math.max(1, headerIdx + 1, skip + 1); i < rows.length; i++) {
           const cols = rows[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
           if (cols.length < 4) continue;
+          const memo = (cols[4] || '').trim();
           parsed.push({
             txDate: cols[0] || '',
-            description: cols[1] || '',
+            description: memo ? `${cols[1] || ''} ｜備註:${memo}`.trim() : (cols[1] || ''),
             debitAmount: cols[2] || '0',
             creditAmount: cols[3] || '0',
-            referenceNo: cols[4] || '',
-            runningBalance: cols[5] || ''
+            referenceNo: memo.slice(0, 100) || '',
+            note: memo || undefined,
+            runningBalance: cols[5] || '',
           });
         }
       }
@@ -2447,6 +2463,7 @@ export default function ReconciliationPage() {
                             <tr>
                               <th className="px-2 py-2 text-left">日期</th>
                               <th className="px-2 py-2 text-left">說明</th>
+                              <th className="px-2 py-2 text-left min-w-[100px]">備註</th>
                               <th className="px-2 py-2 text-right">提款</th>
                               <th className="px-2 py-2 text-right">存入</th>
                               <th className="px-2 py-2 text-center">狀態</th>
@@ -2473,8 +2490,11 @@ export default function ReconciliationPage() {
                                   }}
                                 >
                                   <td className="px-2 py-1.5">{line.txDate}</td>
-                                  <td className="px-2 py-1.5 max-w-[140px] truncate" title={line.description}>
+                                  <td className="px-2 py-1.5 max-w-[120px] truncate" title={line.description}>
                                     {line.description || '-'}
+                                  </td>
+                                  <td className="px-2 py-1.5 max-w-[160px] truncate text-gray-600" title={line.note || line.referenceNo || ''}>
+                                    {line.note || line.referenceNo || '—'}
                                   </td>
                                   <td className="px-2 py-1.5 text-right text-red-600">
                                     {line.debitAmount > 0 ? formatMoney(line.debitAmount) : ''}
@@ -2910,6 +2930,7 @@ export default function ReconciliationPage() {
                           <tr className="text-gray-500">
                             <th className="text-left py-1">日期</th>
                             <th className="text-left py-1">說明</th>
+                            <th className="text-left py-1">備註</th>
                             <th className="text-right py-1">提款</th>
                             <th className="text-right py-1">存入</th>
                           </tr>
@@ -2918,13 +2939,14 @@ export default function ReconciliationPage() {
                           {importLines.slice(0, 10).map((line, i) => (
                             <tr key={i} className="border-t">
                               <td className="py-1">{line.txDate}</td>
-                              <td className="py-1 max-w-[120px] truncate">{line.description}</td>
+                              <td className="py-1 max-w-[100px] truncate" title={line.description}>{line.description}</td>
+                              <td className="py-1 max-w-[120px] truncate text-gray-600" title={line.note || line.referenceNo}>{line.note || line.referenceNo || '—'}</td>
                               <td className="py-1 text-right text-red-600">{line.debitAmount !== '0' ? line.debitAmount : ''}</td>
                               <td className="py-1 text-right text-green-600">{line.creditAmount !== '0' ? line.creditAmount : ''}</td>
                             </tr>
                           ))}
                           {importLines.length > 10 && (
-                            <tr><td colSpan={4} className="py-1 text-gray-400">...還有 {importLines.length - 10} 筆</td></tr>
+                            <tr><td colSpan={5} className="py-1 text-gray-400">...還有 {importLines.length - 10} 筆</td></tr>
                           )}
                         </tbody>
                       </table>
