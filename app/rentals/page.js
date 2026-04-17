@@ -1270,6 +1270,7 @@ function RentalsPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-teal-50">
                             <tr>
+                              <th className="text-center px-3 py-2 w-10">序號</th>
                               <th className="text-left px-3 py-2">名稱{sortArrow('name')}</th>
                               <th className="text-left px-3 py-2">地址{sortArrow('address')}</th>
                               <th className="text-left px-3 py-2">類別{sortArrow('unitNo')}</th>
@@ -1285,8 +1286,9 @@ function RentalsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {props.map(p => (
+                            {props.map((p, idx) => (
                               <tr key={p.id} className="border-t hover:bg-gray-50">
+                                <td className="px-3 py-2 text-center text-xs text-gray-400">{idx + 1}</td>
                                 <td className="px-3 py-2 font-medium">{p.name}</td>
                                 <td className="px-3 py-2 text-gray-600">{p.address || '-'}</td>
                                 <td className="px-3 py-2">{p.unitNo || '-'}</td>
