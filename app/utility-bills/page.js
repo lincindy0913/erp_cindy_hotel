@@ -7,18 +7,18 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 
 const TABS_ADMIN = [
-  { key: 'parse',    label: '電費單解析',   icon: '⚡', desc: 'OCR 辨識台電帳單' },
-  { key: 'water',    label: '水費單解析',   icon: '💧', desc: 'OCR 辨識台水帳單' },
-  { key: 'list',     label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
-  { key: 'payment',  label: '付款進度',     icon: '💳', desc: '水電費付款單追蹤' },
-  { key: 'analysis', label: '年度分析',     icon: '📊', desc: '使用度數與繳費金額樞紐表' },
-  { key: 'detail',   label: '帳單明細管理', icon: '🗂',  desc: '逐筆編輯與刪除' },
+  { key: 'list',     label: '帳單記錄', icon: '📋' },
+  { key: 'payment',  label: '付款進度', icon: '💳' },
+  { key: 'analysis', label: '年度分析', icon: '📊' },
+  { key: 'detail',   label: '明細管理', icon: '🗂' },
+  { key: 'parse',    label: '電費解析', icon: '⚡' },
+  { key: 'water',    label: '水費解析', icon: '💧' },
 ];
 const TABS_VIEWER = [
-  { key: 'list',     label: '帳單記錄總覽', icon: '📋', desc: '各館別月份查詢' },
-  { key: 'payment',  label: '付款進度',     icon: '💳', desc: '水電費付款單追蹤' },
-  { key: 'analysis', label: '年度分析',     icon: '📊', desc: '使用度數與繳費金額樞紐表' },
-  { key: 'detail',   label: '帳單明細管理', icon: '🗂️', desc: '逐筆查詢' },
+  { key: 'list',     label: '帳單記錄', icon: '📋' },
+  { key: 'payment',  label: '付款進度', icon: '💳' },
+  { key: 'analysis', label: '年度分析', icon: '📊' },
+  { key: 'detail',   label: '明細管理', icon: '🗂' },
 ];
 
 // Fallback — will be replaced by API data on mount
@@ -36,7 +36,7 @@ export default function UtilityBillsPage() {
   const TABS = isAdmin ? TABS_ADMIN : TABS_VIEWER;
 
   const [WAREHOUSE_OPTIONS, setWarehouseOptions] = useState(WAREHOUSE_OPTIONS_FALLBACK);
-  const [activeTab, setActiveTab] = useState(() => isAdmin ? 'parse' : 'list');
+  const [activeTab, setActiveTab] = useState('list');
   const [message, setMessage] = useState({ text: '', type: '' });
   const [pdfFile, setPdfFile] = useState(null);
   const [startPage, setStartPage] = useState(1);
@@ -78,21 +78,30 @@ export default function UtilityBillsPage() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisMode, setAnalysisMode] = useState('usage'); // 'usage' | 'amount'
 
-  // 載入主檔館別，並自動帶入分析篩選的預設館別
+  // 載入主檔館別，並自動帶入各篩選的預設館別
+  // 依賴 session — session 尚未載入時 API 會回 401，所以等 session 確定後再打
   useEffect(() => {
+    if (!session) return; // 等 session 載入
     fetch('/api/warehouse-departments')
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => {
         const list = Array.isArray(data?.list) ? data.list : [];
-        const all = list.filter(w => w.type === 'building' || w.type === 'warehouse').map(w => w.name);
+        const all = list.filter(w => w.type === 'building').map(w => w.name);
         if (all.length > 0) {
           setWarehouseOptions([{ value: '', label: '請選擇館別' }, ...all.map(n => ({ value: n, label: n }))]);
-          // 若分析篩選尚未選館別，自動帶入第一個
           setAnalysisFilter(f => f.warehouse ? f : { ...f, warehouse: all[0] });
+        } else {
+          // API 返回空 → 使用 fallback
+          const fallback = WAREHOUSE_OPTIONS_FALLBACK.filter(o => o.value).map(o => o.value);
+          setAnalysisFilter(f => f.warehouse ? f : { ...f, warehouse: fallback[0] || '' });
         }
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        // 網路或認證失敗 → 使用 fallback
+        const fallback = WAREHOUSE_OPTIONS_FALLBACK.filter(o => o.value).map(o => o.value);
+        setAnalysisFilter(f => f.warehouse ? f : { ...f, warehouse: fallback[0] || '' });
+      });
+  }, [session]); // 重新依賴 session，session 載入後才執行
 
   // If session loads and user is not admin, and they are on an admin-only tab, redirect to list
   const ADMIN_ONLY_TABS = new Set(['parse', 'water']);
@@ -121,9 +130,19 @@ export default function UtilityBillsPage() {
     if (activeTab === 'detail') fetchDetailRecords();
   }, [activeTab, detailFilter.warehouse, detailFilter.year, detailFilter.billType]);
 
+  // 切換到分析頁時自動查詢（warehouse 已就緒）
   useEffect(() => {
-    if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) fetchAnalysisRecords();
-  }, [activeTab, analysisFilter.warehouse, analysisFilter.year, analysisFilter.billType]);
+    if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) {
+      fetchAnalysisRecords();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 館別 / 年度 / 類型變更且在分析頁時自動查詢
+  useEffect(() => {
+    if (activeTab === 'analysis' && analysisFilter.warehouse && analysisFilter.year) {
+      fetchAnalysisRecords();
+    }
+  }, [analysisFilter.warehouse, analysisFilter.year, analysisFilter.billType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'payment') fetchPaymentRecords();

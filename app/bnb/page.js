@@ -1175,7 +1175,7 @@ export default function BnbPage() {
       return;
     }
     const mismatchList = eligible.filter(r => {
-      const pt = Number(r.payDeposit) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+      const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
       const ct = Number(r.roomCharge) + Number(r.otherCharge);
       return Math.abs(pt - ct) > 0.01;
     });
@@ -1977,6 +1977,7 @@ export default function BnbPage() {
                         { header: '消費',     key: 'otherCharge', format: 'number' },
                         { header: '營收合計', key: 'revenue',     format: 'number' },
                         { header: '訂金',     key: 'payDeposit',  format: 'number' },
+                        { header: '當天匯款', key: 'payTransfer', format: 'number' },
                         { header: '刷卡',     key: 'payCard',     format: 'number' },
                         { header: '現金',     key: 'payCash',     format: 'number' },
                         { header: '住宿卷',   key: 'payVoucher',  format: 'number' },
@@ -1987,24 +1988,25 @@ export default function BnbPage() {
                     />
                     <button
                       onClick={() => {
-                        const cols = ['日期','筆數','房費','消費','營收','訂金','刷卡','現金','住宿卷','手續費'];
+                        const cols = ['日期','筆數','房費','消費','營收','訂金','當天匯款','刷卡','現金','住宿卷','手續費'];
                         const rows = (drData?.days || []).filter(d => d.count > 0).map(d => [
                           `${d.day}日`,
                           d.count,
                           d.roomCharge.toLocaleString(),
                           d.otherCharge > 0 ? d.otherCharge.toLocaleString() : '',
                           (d.roomCharge + d.otherCharge).toLocaleString(),
-                          d.payDeposit > 0 ? d.payDeposit.toLocaleString() : '',
-                          d.payCard > 0 ? d.payCard.toLocaleString() : '',
-                          d.payCash > 0 ? d.payCash.toLocaleString() : '',
-                          d.payVoucher > 0 ? d.payVoucher.toLocaleString() : '',
-                          d.cardFee > 0 ? d.cardFee.toLocaleString() : '',
+                          d.payDeposit  > 0 ? d.payDeposit.toLocaleString()  : '',
+                          d.payTransfer > 0 ? d.payTransfer.toLocaleString() : '',
+                          d.payCard     > 0 ? d.payCard.toLocaleString()     : '',
+                          d.payCash     > 0 ? d.payCash.toLocaleString()     : '',
+                          d.payVoucher  > 0 ? d.payVoucher.toLocaleString()  : '',
+                          d.cardFee     > 0 ? d.cardFee.toLocaleString()     : '',
                         ]);
                         const t = drData.totals;
                         rows.push(['合計', t.count,
                           t.roomCharge.toLocaleString(), t.otherCharge.toLocaleString(),
                           (t.roomCharge + t.otherCharge).toLocaleString(),
-                          t.payDeposit.toLocaleString(), t.payCard.toLocaleString(),
+                          t.payDeposit.toLocaleString(), t.payTransfer.toLocaleString(), t.payCard.toLocaleString(),
                           t.payCash.toLocaleString(), t.payVoucher.toLocaleString(),
                           t.cardFee.toLocaleString(),
                         ]);
@@ -2025,10 +2027,11 @@ export default function BnbPage() {
                   { label: '總筆數',   val: drData.totals.count, color: '' },
                   { label: '房費',     val: NT(drData.totals.roomCharge), color: 'text-indigo-700' },
                   { label: '消費',     val: NT(drData.totals.otherCharge), color: 'text-gray-600' },
-                  { label: '訂金',     val: NT(drData.totals.payDeposit), color: 'text-blue-600' },
-                  { label: '刷卡',     val: NT(drData.totals.payCard), color: 'text-purple-600' },
-                  { label: '現金',     val: NT(drData.totals.payCash), color: 'text-green-600' },
-                  { label: '手續費',   val: NT(drData.totals.cardFee), color: 'text-red-400' },
+                  { label: '訂金',     val: NT(drData.totals.payDeposit),  color: 'text-blue-600' },
+                  { label: '當天匯款', val: NT(drData.totals.payTransfer), color: 'text-teal-600' },
+                  { label: '刷卡',     val: NT(drData.totals.payCard),     color: 'text-purple-600' },
+                  { label: '現金',     val: NT(drData.totals.payCash),     color: 'text-green-600' },
+                  { label: '手續費',   val: NT(drData.totals.cardFee),     color: 'text-red-400' },
                 ].map(c => (
                   <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
                     <p className="text-xs text-gray-500">{c.label}</p>
@@ -2048,7 +2051,7 @@ export default function BnbPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['日期','筆數','房費','消費','營收合計','訂金','刷卡','現金','住宿卷','手續費',''].map(h => (
+                      {['日期','筆數','房費','消費','營收合計','訂金','當天匯款','刷卡','現金','住宿卷','手續費',''].map(h => (
                         <th key={h} className="px-3 py-2.5 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -2073,6 +2076,7 @@ export default function BnbPage() {
                             <td className="px-3 py-2 text-right text-gray-500">{d.otherCharge > 0 ? d.otherCharge.toLocaleString() : '—'}</td>
                             <td className="px-3 py-2 text-right font-semibold">{hasData ? rev.toLocaleString() : '—'}</td>
                             <td className="px-3 py-2 text-right text-blue-600">{d.payDeposit > 0 ? d.payDeposit.toLocaleString() : '—'}</td>
+                            <td className="px-3 py-2 text-right text-teal-600">{d.payTransfer > 0 ? d.payTransfer.toLocaleString() : '—'}</td>
                             <td className="px-3 py-2 text-right text-purple-600">{d.payCard > 0 ? d.payCard.toLocaleString() : '—'}</td>
                             <td className="px-3 py-2 text-right text-green-600">{d.payCash > 0 ? d.payCash.toLocaleString() : '—'}</td>
                             <td className="px-3 py-2 text-right text-amber-600">{d.payVoucher > 0 ? d.payVoucher.toLocaleString() : '—'}</td>
@@ -2089,7 +2093,7 @@ export default function BnbPage() {
                               </td>
                               <td className="px-3 py-1.5 text-right text-xs text-gray-500">{b.roomCharge.toLocaleString()}</td>
                               <td className="px-3 py-1.5 text-xs text-gray-400">{b.roomNo || ''}</td>
-                              <td colSpan={7}></td>
+                              <td colSpan={8}></td>
                             </tr>
                           ))}
                         </React.Fragment>
@@ -2106,6 +2110,7 @@ export default function BnbPage() {
                           <td className="px-3 py-2.5 text-right">{t.otherCharge.toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-right">{(t.roomCharge + t.otherCharge).toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-right">{t.payDeposit.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{t.payTransfer.toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-right">{t.payCard.toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-right">{t.payCash.toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-right">{t.payVoucher.toLocaleString()}</td>
@@ -2205,6 +2210,7 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-right">{Number(tot.totalRevenue).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right">{Number(tot.otherCharge).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right">{Number(tot.payDeposit).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Number(tot.payTransfer).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right">{Number(tot.payCard).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right">{Number(tot.payCash).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right">{Number(tot.payVoucher).toLocaleString()}</td>
@@ -2346,6 +2352,7 @@ export default function BnbPage() {
                           ['每月間數（筆數）', declActual.roomCount,                  'text-gray-800'],
                           ['住宿間數（晚）',   declActual.roomNights,                 'text-teal-700'],
                           ['訂金匯款',        Math.round(declActual.payDeposit),     'text-blue-500'],
+                          ['當天匯款',        Math.round(declActual.payTransfer),    'text-teal-600'],
                           ['現金收入',        Math.round(declActual.payCash),        'text-green-600'],
                           ['住宿卷',          Math.round(declActual.payVoucher),     'text-amber-600'],
                           ['刷卡手續費',      Math.round(declActual.cardFee),        'text-red-400'],
