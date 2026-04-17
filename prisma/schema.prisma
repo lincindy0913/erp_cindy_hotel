@@ -1562,17 +1562,21 @@ model RentalContract {
   renewNotifyDays               Int       @default(60) @map("renew_notify_days")
   specialTerms                  String?   @map("special_terms") @db.Text
   note                          String?   @db.Text
+  previousContractId            Int?      @map("previous_contract_id")
   createdBy                     String?   @map("created_by") @db.VarChar(255)
   createdAt                     DateTime  @default(now()) @map("created_at")
   updatedAt                     DateTime  @updatedAt @map("updated_at")
 
-  property      RentalProperty @relation(fields: [propertyId], references: [id])
-  tenant        TenantMaster   @relation(fields: [tenantId], references: [id])
-  rentalIncomes RentalIncome[]
+  property         RentalProperty  @relation(fields: [propertyId], references: [id])
+  tenant           TenantMaster    @relation(fields: [tenantId], references: [id])
+  rentalIncomes    RentalIncome[]
+  previousContract RentalContract?  @relation("ContractRenewal", fields: [previousContractId], references: [id])
+  renewalContracts RentalContract[] @relation("ContractRenewal")
 
   @@index([propertyId])
   @@index([tenantId])
   @@index([status])
+  @@index([previousContractId])
   @@map("rental_contracts")
 }
 

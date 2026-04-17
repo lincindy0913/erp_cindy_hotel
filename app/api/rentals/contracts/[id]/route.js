@@ -180,6 +180,16 @@ export async function PUT(request, { params }) {
         where: { id: contract.propertyId },
         data: { status: 'rented' }
       });
+      // 若此合約是從舊合約續約而來，且舊合約尚未 expired，自動 expire 舊合約
+      if (existing.previousContractId && existing.status !== 'active') {
+        const prev = await prisma.rentalContract.findUnique({ where: { id: existing.previousContractId } });
+        if (prev && !['expired', 'terminated'].includes(prev.status)) {
+          await prisma.rentalContract.update({
+            where: { id: existing.previousContractId },
+            data: { status: 'expired' }
+          });
+        }
+      }
     } else if (body.status === 'terminated' || body.status === 'expired') {
       // Check if there are other active contracts for this property
       const otherActive = await prisma.rentalContract.count({

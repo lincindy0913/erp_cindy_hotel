@@ -138,10 +138,12 @@ function RentalsPage() {
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
+  const [renewingFromContract, setRenewingFromContract] = useState(null);
   const [contractForm, setContractForm] = useState({
     propertyId: '', tenantId: '', startDate: '', endDate: '',
     monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
-    rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false, specialTerms: '', note: ''
+    rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false,
+    specialTerms: '', note: '', previousContractId: ''
   });
 
   const [showTaxModal, setShowTaxModal] = useState(false);
@@ -526,6 +528,7 @@ function RentalsPage() {
 
   // ==================== CONTRACT CRUD ====================
   function openContractModal(contract = null) {
+    setRenewingFromContract(null);
     if (contract) {
       setEditingContract(contract);
       setContractForm({
@@ -535,16 +538,44 @@ function RentalsPage() {
         depositAmount: contract.depositAmount || '', depositAccountId: contract.depositAccountId || '',
         rentAccountId: contract.rentAccountId || '', accountingSubjectId: contract.accountingSubjectId ? String(contract.accountingSubjectId) : '',
         status: contract.status || 'pending',
-        autoRenew: contract.autoRenew || false, specialTerms: contract.specialTerms || '', note: contract.note || ''
+        autoRenew: contract.autoRenew || false, specialTerms: contract.specialTerms || '', note: contract.note || '',
+        previousContractId: ''
       });
     } else {
       setEditingContract(null);
       setContractForm({
         propertyId: '', tenantId: '', startDate: '', endDate: '',
         monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
-        rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false, specialTerms: '', note: ''
+        rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false,
+        specialTerms: '', note: '', previousContractId: ''
       });
     }
+    setShowContractModal(true);
+  }
+
+  function openRenewalModal(contract) {
+    const nextDay = new Date(contract.endDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextStart = nextDay.toISOString().split('T')[0];
+    setRenewingFromContract(contract);
+    setEditingContract(null);
+    setContractForm({
+      propertyId: contract.propertyId || '',
+      tenantId: contract.tenantId || '',
+      startDate: nextStart,
+      endDate: '',
+      monthlyRent: contract.monthlyRent || '',
+      paymentDueDay: contract.paymentDueDay || '5',
+      depositAmount: contract.depositAmount || '',
+      depositAccountId: contract.depositAccountId || '',
+      rentAccountId: contract.rentAccountId || '',
+      accountingSubjectId: contract.accountingSubjectId ? String(contract.accountingSubjectId) : '',
+      status: 'active',
+      autoRenew: contract.autoRenew || false,
+      specialTerms: contract.specialTerms || '',
+      note: '',
+      previousContractId: contract.id,
+    });
     setShowContractModal(true);
   }
 
@@ -561,6 +592,7 @@ function RentalsPage() {
       const data = await res.json();
       if (!res.ok) return showToast(data?.error?.message || data?.error || '儲存失敗', 'error');
       setShowContractModal(false);
+      setRenewingFromContract(null);
       fetchContracts();
       fetchProperties();
     } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
@@ -1370,7 +1402,10 @@ function RentalsPage() {
 
                         return (
                           <tr key={c.id} className={`border-t hover:bg-gray-50 ${isExpiring ? 'bg-yellow-50' : ''}`}>
-                            <td className="px-3 py-2 font-mono text-xs">{c.contractNo}</td>
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {c.contractNo}
+                              {c.previousContractId && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-teal-100 text-teal-700 font-normal">續</span>}
+                            </td>
                             <td className="px-3 py-2">{c.propertyName}</td>
                             <td className="px-3 py-2">{c.tenantName}</td>
                             <td className="px-3 py-2 text-xs">
@@ -1399,8 +1434,11 @@ function RentalsPage() {
                             <td className="px-3 py-2 text-center">
                               <StatusBadge value={c.status} list={CONTRACT_STATUSES} />
                             </td>
-                            <td className="px-3 py-2 text-center">
+                            <td className="px-3 py-2 text-center whitespace-nowrap">
                               <button onClick={() => openContractModal(c)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
+                              {['active', 'expired'].includes(c.status) && (
+                                <button onClick={() => openRenewalModal(c)} className="text-teal-600 hover:text-teal-800 text-xs mr-2">續約</button>
+                              )}
                               {c.status === 'pending' && (
                                 <button onClick={() => deleteContract(c.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
                               )}
@@ -2087,11 +2125,19 @@ function RentalsPage() {
 
       {/* ==================== MODAL: CONTRACT ==================== */}
       {showContractModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowContractModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowContractModal(false); setRenewingFromContract(null); }}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">{editingContract ? '編輯合約' : '新增合約'}</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4">
+                {renewingFromContract ? '續約' : editingContract ? '編輯合約' : '新增合約'}
+              </h3>
               <div className="grid grid-cols-2 gap-3">
+                {renewingFromContract && (
+                  <div className="col-span-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-sm text-teal-800">
+                    <span className="font-medium">續約自：</span>
+                    {renewingFromContract.contractNo}（{renewingFromContract.propertyName} · {renewingFromContract.tenantName}，舊月租 NT${Number(renewingFromContract.monthlyRent).toLocaleString()}）
+                  </div>
+                )}
                 <div>
                   <label className="text-sm text-gray-600">物業 *</label>
                   <select value={contractForm.propertyId} onChange={e => setContractForm(f => ({ ...f, propertyId: e.target.value }))}
@@ -2183,8 +2229,8 @@ function RentalsPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setShowContractModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{contractSaving ? '儲存中…' : '儲存'}</button>
+                <button onClick={() => { setShowContractModal(false); setRenewingFromContract(null); }} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{contractSaving ? '儲存中…' : (renewingFromContract ? '建立續約合約' : '儲存')}</button>
               </div>
             </div>
           </div>

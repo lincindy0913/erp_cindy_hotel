@@ -94,6 +94,8 @@ export async function POST(request) {
 
     const contractNo = await generateContractNo();
 
+    const newStatus = body.status || 'pending';
+
     const contract = await prisma.rentalContract.create({
       data: {
         contractNo,
@@ -108,11 +110,12 @@ export async function POST(request) {
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         rentAccountId: parseInt(rentAccountId),
         accountingSubjectId: parseInt(accountingSubjectId),
-        status: body.status || 'pending',
+        status: newStatus,
         autoRenew: body.autoRenew || false,
         renewNotifyDays: body.renewNotifyDays || 60,
         specialTerms: body.specialTerms || null,
-        note: body.note || null
+        note: body.note || null,
+        previousContractId: body.previousContractId ? parseInt(body.previousContractId) : null,
       },
       include: {
         property: { select: { id: true, name: true } },
@@ -120,12 +123,18 @@ export async function POST(request) {
       }
     });
 
-    // Update property status to rented if contract is active
-    if (contract.status === 'active') {
+    // 新合約為 active 時，更新物業狀態並將舊合約設為 expired
+    if (newStatus === 'active') {
       await prisma.rentalProperty.update({
         where: { id: parseInt(propertyId) },
         data: { status: 'rented' }
       });
+      if (body.previousContractId) {
+        await prisma.rentalContract.update({
+          where: { id: parseInt(body.previousContractId) },
+          data: { status: 'expired' }
+        });
+      }
     }
 
     return NextResponse.json(contract, { status: 201 });
