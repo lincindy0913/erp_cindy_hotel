@@ -8,6 +8,7 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 const TABS = [
   { key: 'dashboard', label: '對帳儀表板' },
   { key: 'account', label: '帳戶對帳' },
+  { key: 'rental', label: '租金對帳' },
   { key: 'formats', label: '銀行格式管理' },
   { key: 'credit-card', label: '信用卡對帳' }
 ];
@@ -108,6 +109,15 @@ export default function ReconciliationPage() {
   const [formatSaving, setFormatSaving] = useState(false);
   const [ccConfigSaving, setCcConfigSaving] = useState(false);
 
+  // Rental reconciliation tab state
+  const [rentalPayments, setRentalPayments] = useState([]);
+  const [rentalReconLoading, setRentalReconLoading] = useState(false);
+  const [rentalReconYear, setRentalReconYear] = useState(now.getFullYear());
+  const [rentalReconMonth, setRentalReconMonth] = useState(now.getMonth() + 1);
+  const [rentalReconAccountId, setRentalReconAccountId] = useState('');
+  const [rentalReconMethodFilter, setRentalReconMethodFilter] = useState('');
+  const [rentalReconSearch, setRentalReconSearch] = useState('');
+
   // Messages
   const [message, setMessage] = useState({ text: '', type: '' });
 
@@ -165,6 +175,29 @@ export default function ReconciliationPage() {
   useEffect(() => {
     fetchAccounts();
   }, [fetchAccounts]);
+
+  // ---- Rental Reconciliation ----
+  const fetchRentalPayments = useCallback(async () => {
+    setRentalReconLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('year', rentalReconYear);
+      if (rentalReconMonth) params.set('month', rentalReconMonth);
+      if (rentalReconAccountId) params.set('accountId', rentalReconAccountId);
+      if (rentalReconMethodFilter) params.set('paymentMethod', rentalReconMethodFilter);
+      params.set('limit', '500');
+      const res = await fetch(`/api/rentals/payments?${params}`);
+      const data = await res.json();
+      setRentalPayments(data.data || []);
+    } catch (e) {
+      console.error('載入租金付款紀錄失敗:', e);
+    }
+    setRentalReconLoading(false);
+  }, [rentalReconYear, rentalReconMonth, rentalReconAccountId, rentalReconMethodFilter]);
+
+  useEffect(() => {
+    if (activeTab === 'rental') fetchRentalPayments();
+  }, [activeTab, fetchRentalPayments]);
 
   // ---- Formats ----
   const fetchFormats = useCallback(async () => {
@@ -2882,6 +2915,139 @@ export default function ReconciliationPage() {
             )}
           </div>
         )}
+
+        {/* ======== TAB: Rental Reconciliation ======== */}
+        {activeTab === 'rental' && (() => {
+          const filtered = rentalPayments.filter(p => {
+            if (!rentalReconSearch) return true;
+            const q = rentalReconSearch.toLowerCase();
+            return (
+              (p.propertyName || '').toLowerCase().includes(q) ||
+              (p.tenantName || '').toLowerCase().includes(q) ||
+              (p.matchTransferRef || '').toLowerCase().includes(q) ||
+              (p.matchBankAccountName || '').toLowerCase().includes(q)
+            );
+          });
+          const totalAmount = filtered.reduce((s, p) => s + Number(p.amount || 0), 0);
+          const transferCount = filtered.filter(p => p.paymentMethod === 'transfer').length;
+          const transferTotal = filtered.filter(p => p.paymentMethod === 'transfer').reduce((s, p) => s + Number(p.amount || 0), 0);
+          return (
+            <div>
+              {/* Filters */}
+              <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-600">年份</label>
+                    <input type="number" value={rentalReconYear} onChange={e => setRentalReconYear(Number(e.target.value))}
+                      className="border rounded px-2 py-1 w-20 text-sm" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-600">月份</label>
+                    <select value={rentalReconMonth} onChange={e => setRentalReconMonth(e.target.value)}
+                      className="border rounded px-2 py-1 text-sm">
+                      <option value="">全部</option>
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{i + 1} 月</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-600">帳戶</label>
+                    <select value={rentalReconAccountId} onChange={e => setRentalReconAccountId(e.target.value)}
+                      className="border rounded px-2 py-1 text-sm">
+                      <option value="">全部帳戶</option>
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-600">付款方式</label>
+                    <select value={rentalReconMethodFilter} onChange={e => setRentalReconMethodFilter(e.target.value)}
+                      className="border rounded px-2 py-1 text-sm">
+                      <option value="">全部</option>
+                      <option value="transfer">轉帳</option>
+                      <option value="現金">現金</option>
+                      <option value="支票">支票</option>
+                      <option value="匯款">匯款</option>
+                    </select>
+                  </div>
+                  <input type="text" value={rentalReconSearch} onChange={e => setRentalReconSearch(e.target.value)}
+                    placeholder="搜尋物業/租客/轉帳參考號"
+                    className="border rounded px-2 py-1 text-sm w-48" />
+                  <button onClick={fetchRentalPayments} disabled={rentalReconLoading}
+                    className="px-4 py-1.5 bg-violet-600 text-white text-sm rounded hover:bg-violet-700 disabled:opacity-50">
+                    {rentalReconLoading ? '載入中…' : '查詢'}
+                  </button>
+                  <a href="/rentals?tab=cashier" target="_blank"
+                    className="text-xs text-violet-600 underline ml-2">前往收租工作台</a>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className="bg-white rounded-lg shadow-sm border p-3 border-l-4 border-violet-500">
+                  <p className="text-xs text-gray-500">收款筆數</p>
+                  <p className="text-xl font-bold text-violet-700">{filtered.length}</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border p-3 border-l-4 border-green-500">
+                  <p className="text-xs text-gray-500">合計金額</p>
+                  <p className="text-xl font-bold text-green-700">${formatMoney(totalAmount)}</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border p-3 border-l-4 border-blue-500">
+                  <p className="text-xs text-gray-500">轉帳筆數</p>
+                  <p className="text-xl font-bold text-blue-700">{transferCount}</p>
+                  <p className="text-xs text-gray-400">${formatMoney(transferTotal)}</p>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border p-3 border-l-4 border-gray-400">
+                  <p className="text-xs text-gray-500">非轉帳筆數</p>
+                  <p className="text-xl font-bold text-gray-700">{filtered.length - transferCount}</p>
+                  <p className="text-xs text-gray-400">${formatMoney(totalAmount - transferTotal)}</p>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-violet-50 border-b">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">收款日期</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">物業</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">租客</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">年/月</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-gray-600">金額</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">付款方式</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-violet-700">轉帳參考號</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-violet-700">匯款戶名</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">備註</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rentalReconLoading ? (
+                      <tr><td colSpan={9} className="text-center py-10 text-gray-400">載入中…</td></tr>
+                    ) : filtered.length === 0 ? (
+                      <tr><td colSpan={9} className="text-center py-10 text-gray-400">暫無資料</td></tr>
+                    ) : filtered.map(p => (
+                      <tr key={p.id} className="border-t hover:bg-violet-50">
+                        <td className="px-3 py-2 text-gray-700">{p.paymentDate}</td>
+                        <td className="px-3 py-2">{p.propertyName}</td>
+                        <td className="px-3 py-2 text-gray-600">{p.tenantName}</td>
+                        <td className="px-3 py-2 text-gray-500">{p.incomeYear}/{String(p.incomeMonth).padStart(2, '0')}</td>
+                        <td className="px-3 py-2 text-right font-medium text-green-700">${formatMoney(p.amount)}</td>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${p.paymentMethod === 'transfer' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-violet-700">{p.matchTransferRef || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{p.matchBankAccountName || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{p.matchNote || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ======== TAB: Credit Card ======== */}
         {activeTab === 'credit-card' && renderCreditCardTab()}

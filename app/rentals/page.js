@@ -961,29 +961,31 @@ function RentalsPage() {
               <div>
                 {/* Notification banners */}
                 {summary.overdueCount > 0 && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 rounded">
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-3 rounded flex items-center justify-between">
                     <p className="text-red-700 font-medium">
                       有 {summary.overdueCount} 筆租金逾期未收，總金額 ${fmt(summary.overdueAmount)}
                     </p>
+                    <button onClick={() => switchTab('cashier')} className="text-xs text-red-600 underline">前往收租工作台</button>
                   </div>
                 )}
                 {summary.expiringContracts > 0 && (
-                  <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-4 rounded">
+                  <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-3 rounded flex items-center justify-between">
                     <p className="text-yellow-700 font-medium">
                       有 {summary.expiringContracts} 筆合約將於 60 天內到期
                     </p>
+                    <button onClick={() => switchTab('contracts')} className="text-xs text-yellow-600 underline">前往合約管理</button>
                   </div>
                 )}
                 {summary.pendingTaxes > 0 && (
-                  <div className="bg-orange-50 border-l-4 border-orange-500 p-4 mb-4 rounded">
+                  <div className="bg-orange-50 border-l-4 border-orange-500 p-4 mb-3 rounded">
                     <p className="text-orange-700 font-medium">
                       有 {summary.pendingTaxes} 筆稅款待繳納
                     </p>
                   </div>
                 )}
 
-                {/* KPI Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                {/* KPI Cards Row 1 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                   <div className="bg-white rounded-lg shadow p-4 border-l-4 border-teal-500">
                     <p className="text-sm text-gray-500">總物業數</p>
                     <p className="text-2xl font-bold text-teal-700">{summary.totalProperties}</p>
@@ -994,10 +996,12 @@ function RentalsPage() {
                   <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
                     <p className="text-sm text-gray-500">本月應收</p>
                     <p className="text-2xl font-bold text-blue-700">${fmt(summary.thisMonthExpected)}</p>
+                    <p className="text-xs text-gray-400 mt-1">待收 {summary.thisMonthPending ?? '-'} 筆</p>
                   </div>
                   <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
                     <p className="text-sm text-gray-500">本月已收</p>
                     <p className="text-2xl font-bold text-green-700">${fmt(summary.thisMonthCollected)}</p>
+                    <p className="text-xs text-gray-400 mt-1">收款率 {summary.collectionRate ?? 0}%</p>
                   </div>
                   <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
                     <p className="text-sm text-gray-500">逾期未收</p>
@@ -1006,7 +1010,15 @@ function RentalsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {/* KPI Cards Row 2 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500">
+                    <p className="text-sm text-gray-500">本月收款率</p>
+                    <p className="text-2xl font-bold text-indigo-700">{summary.collectionRate ?? 0}%</p>
+                    <div className="mt-2 bg-gray-100 rounded-full h-2">
+                      <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(summary.collectionRate ?? 0, 100)}%` }} />
+                    </div>
+                  </div>
                   <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
                     <p className="text-sm text-gray-500">即將到期合約</p>
                     <p className="text-2xl font-bold text-yellow-700">{summary.expiringContracts}</p>
@@ -1020,6 +1032,81 @@ function RentalsPage() {
                     <p className="text-sm text-gray-500">待付維護費</p>
                     <p className="text-2xl font-bold text-purple-700">{summary.pendingMaintenance}</p>
                   </div>
+                </div>
+
+                {/* Detail lists */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Overdue list */}
+                  {summary.overdueDetails && summary.overdueDetails.length > 0 && (
+                    <div className="bg-white rounded-lg shadow p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-red-700">逾期租金明細</h3>
+                        <button onClick={() => switchTab('cashier')} className="text-xs text-teal-600 underline">前往收租</button>
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-400 border-b">
+                            <th className="text-left pb-1">物業</th>
+                            <th className="text-left pb-1">租客</th>
+                            <th className="text-right pb-1">金額</th>
+                            <th className="text-right pb-1">逾期天數</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summary.overdueDetails.map(d => (
+                            <tr key={d.id} className="border-b border-gray-50 hover:bg-red-50">
+                              <td className="py-1.5 text-gray-700">{d.propertyName}</td>
+                              <td className="py-1.5 text-gray-600">{d.tenantName}</td>
+                              <td className="py-1.5 text-right font-medium text-red-600">${fmt(d.expectedAmount)}</td>
+                              <td className="py-1.5 text-right">
+                                <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{d.daysOverdue}天</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {summary.overdueCount > summary.overdueDetails.length && (
+                        <p className="text-xs text-gray-400 mt-2 text-right">僅顯示前 {summary.overdueDetails.length} 筆，共 {summary.overdueCount} 筆</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Expiring contracts list */}
+                  {summary.expiringContractDetails && summary.expiringContractDetails.length > 0 && (
+                    <div className="bg-white rounded-lg shadow p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-yellow-700">即將到期合約明細</h3>
+                        <button onClick={() => switchTab('contracts')} className="text-xs text-teal-600 underline">前往合約</button>
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-400 border-b">
+                            <th className="text-left pb-1">物業</th>
+                            <th className="text-left pb-1">租客</th>
+                            <th className="text-right pb-1">月租</th>
+                            <th className="text-right pb-1">剩餘天數</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summary.expiringContractDetails.map(c => (
+                            <tr key={c.id} className="border-b border-gray-50 hover:bg-yellow-50">
+                              <td className="py-1.5 text-gray-700">{c.propertyName}</td>
+                              <td className="py-1.5 text-gray-600">{c.tenantName}</td>
+                              <td className="py-1.5 text-right font-medium">${fmt(c.monthlyRent)}</td>
+                              <td className="py-1.5 text-right">
+                                <span className={`px-1.5 py-0.5 rounded ${c.daysUntilExpiry <= 30 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {c.daysUntilExpiry}天
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {summary.expiringContracts > summary.expiringContractDetails.length && (
+                        <p className="text-xs text-gray-400 mt-2 text-right">僅顯示前 {summary.expiringContractDetails.length} 筆，共 {summary.expiringContracts} 筆</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

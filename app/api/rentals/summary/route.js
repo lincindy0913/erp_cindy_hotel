@@ -63,6 +63,34 @@ export async function GET() {
       where: { status: 'pending' }
     });
 
+    // This month pending count
+    const thisMonthPending = thisMonthIncomes.filter(i => i.status === 'pending').length;
+    const collectionRate = thisMonthExpected > 0
+      ? Math.round((thisMonthCollected / thisMonthExpected) * 100)
+      : 0;
+
+    // Overdue detail list (top 8)
+    const overdueDetails = await prisma.rentalIncome.findMany({
+      where: { status: 'pending', dueDate: { lt: today } },
+      include: {
+        property: { select: { name: true } },
+        tenant: { select: { fullName: true, companyName: true, tenantType: true } }
+      },
+      orderBy: { dueDate: 'asc' },
+      take: 8
+    });
+
+    // Expiring contract detail list (top 8, within 30 days first)
+    const expiringContractDetails = await prisma.rentalContract.findMany({
+      where: { status: 'active', endDate: { lte: futureDateStr, gte: today } },
+      include: {
+        property: { select: { name: true } },
+        tenant: { select: { fullName: true, companyName: true, tenantType: true } }
+      },
+      orderBy: { endDate: 'asc' },
+      take: 8
+    });
+
     return NextResponse.json({
       totalProperties,
       rentedCount,
@@ -70,11 +98,31 @@ export async function GET() {
       maintenanceCount,
       thisMonthExpected,
       thisMonthCollected,
+      thisMonthPending,
+      collectionRate,
       overdueCount,
       overdueAmount,
       expiringContracts,
       pendingTaxes,
-      pendingMaintenance
+      pendingMaintenance,
+      overdueDetails: overdueDetails.map(i => ({
+        id: i.id,
+        propertyName: i.property.name,
+        tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName,
+        expectedAmount: Number(i.expectedAmount),
+        dueDate: i.dueDate,
+        incomeYear: i.incomeYear,
+        incomeMonth: i.incomeMonth,
+        daysOverdue: Math.floor((new Date(today) - new Date(i.dueDate)) / 86400000)
+      })),
+      expiringContractDetails: expiringContractDetails.map(c => ({
+        id: c.id,
+        propertyName: c.property.name,
+        tenantName: c.tenant.tenantType === 'company' ? c.tenant.companyName : c.tenant.fullName,
+        endDate: c.endDate,
+        monthlyRent: Number(c.monthlyRent),
+        daysUntilExpiry: Math.floor((new Date(c.endDate) - new Date(today)) / 86400000)
+      }))
     });
   } catch (error) {
     console.error('GET /api/rentals/summary error:', error.message || error);
