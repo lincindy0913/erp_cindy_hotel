@@ -9,6 +9,7 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 const TABS = [
   { key: 'overview', label: '總覽' },
   { key: 'cashier', label: '收租工作台' },
+  { key: 'paymentRecords', label: '付款紀錄' },
   { key: 'tenants', label: '租客管理' },
   { key: 'properties', label: '物業管理' },
   { key: 'contracts', label: '合約管理' },
@@ -134,7 +135,7 @@ function RentalsPage() {
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -179,6 +180,12 @@ function RentalsPage() {
   const [taxSaving, setTaxSaving] = useState(false);
   const [maintenanceSaving, setMaintenanceSaving] = useState(false);
   const [utilitySaving, setUtilitySaving] = useState(false);
+  const [cashierUtilityMap, setCashierUtilityMap] = useState({});
+  const [incomeUtilityForm, setIncomeUtilityForm] = useState({ expectedAmount: '', actualAmount: '' });
+  const [paymentRecords, setPaymentRecords] = useState([]);
+  const [paymentRecordsPagination, setPaymentRecordsPagination] = useState({ page: 1, totalCount: 0, totalPages: 1 });
+  const [paymentFilter, setPaymentFilter] = useState({ year: new Date().getFullYear(), month: '', propertyId: '', accountId: '', paymentMethod: '' });
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [incomePaymentSaving, setIncomePaymentSaving] = useState(false);
 
   const [utilityFilter, setUtilityFilter] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
@@ -208,6 +215,7 @@ function RentalsPage() {
       return;
     }
     if (activeTab === 'utilityIncome') fetchUtilityList();
+    if (activeTab === 'paymentRecords') { fetchPaymentRecords(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'overview') fetchSummary();
     if (activeTab === 'incomeReport') { fetchIncomeReport(); fetchProperties(); }
     if (activeTab === 'operatingReport') { fetchOperatingReport(); fetchProperties(); }
@@ -347,9 +355,21 @@ function RentalsPage() {
       if (incomeFilter.year) params.set('year', incomeFilter.year);
       if (incomeFilter.month) params.set('month', incomeFilter.month);
       if (incomeFilter.status) params.set('status', incomeFilter.status);
-      const res = await fetch(`/api/rentals/income?${params}`);
-      const data = await res.json();
-      setIncomes(Array.isArray(data) ? data : []);
+      const uParams = new URLSearchParams();
+      if (incomeFilter.year) uParams.set('year', incomeFilter.year);
+      if (incomeFilter.month) uParams.set('month', incomeFilter.month);
+      const [incRes, utiRes] = await Promise.all([
+        fetch(`/api/rentals/income?${params}`),
+        fetch(`/api/rentals/utility-income?${uParams}`)
+      ]);
+      const incData = await incRes.json();
+      setIncomes(Array.isArray(incData) ? incData : []);
+      if (utiRes.ok) {
+        const utiData = await utiRes.json();
+        const map = {};
+        (Array.isArray(utiData) ? utiData : []).forEach(u => { map[u.propertyId] = u; });
+        setCashierUtilityMap(map);
+      }
     } catch { setIncomes([]); }
   }
 
@@ -402,6 +422,25 @@ function RentalsPage() {
       const data = await res.json();
       setUtilityList(Array.isArray(data) ? data : []);
     } catch { setUtilityList([]); }
+  }
+
+  async function fetchPaymentRecords(pageNum = 1) {
+    setPaymentLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (paymentFilter.year) params.set('year', paymentFilter.year);
+      if (paymentFilter.month) params.set('month', paymentFilter.month);
+      if (paymentFilter.propertyId) params.set('propertyId', paymentFilter.propertyId);
+      if (paymentFilter.accountId) params.set('accountId', paymentFilter.accountId);
+      if (paymentFilter.paymentMethod) params.set('paymentMethod', paymentFilter.paymentMethod);
+      params.set('page', pageNum);
+      params.set('limit', '100');
+      const res = await fetch(`/api/rentals/payments?${params}`);
+      const data = await res.json();
+      setPaymentRecords(data.data || []);
+      setPaymentRecordsPagination(data.pagination || { page: 1, totalCount: 0, totalPages: 1 });
+    } catch { setPaymentRecords([]); }
+    finally { setPaymentLoading(false); }
   }
 
   async function saveUtility() {
@@ -488,7 +527,7 @@ function RentalsPage() {
         name: property.name || '', address: property.address || '', buildingName: property.buildingName || '',
         unitNo: property.unitNo || '', status: property.status || 'available',
         rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
-        note: property.note || '', publicInterestLandlord: property.publicInterestLandlord || false,
+        note: property.note || '', collectUtilityFee: property.collectUtilityFee || false, publicInterestLandlord: property.publicInterestLandlord || false,
         publicInterestApplicant: property.publicInterestApplicant || '',
         publicInterestNote: property.publicInterestNote || '',
         publicInterestStartDate: property.publicInterestStartDate || '',
@@ -497,7 +536,7 @@ function RentalsPage() {
       });
     } else {
       setEditingProperty(null);
-      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
     }
     setShowPropertyModal(true);
   }
@@ -644,15 +683,25 @@ function RentalsPage() {
     const expected = Number(income.expectedAmount || 0);
     const received = Number(income.actualAmount || 0);
     const remaining = Math.max(0, expected - received);
+    const defaultAccountId = income.accountId || income.rentCollectAccountId || '';
     setIncomePayForm({
       actualAmount: remaining > 0 ? String(remaining) : String(expected),
       actualDate: new Date().toISOString().split('T')[0],
-      accountId: income.accountId || '',
-      paymentMethod: income.paymentMethod || '現金',
+      accountId: defaultAccountId,
+      paymentMethod: income.paymentMethod || '匯款',
       matchTransferRef: '',
       matchBankAccountName: income.matchBankAccountName || '',
       matchNote: ''
     });
+    if (income.collectUtilityFee) {
+      const existingUtility = cashierUtilityMap[income.propertyId];
+      setIncomeUtilityForm({
+        expectedAmount: existingUtility ? String(existingUtility.expectedAmount) : '',
+        actualAmount: ''
+      });
+    } else {
+      setIncomeUtilityForm({ expectedAmount: '', actualAmount: '' });
+    }
   }
 
   function openIncomeEdit(income) {
@@ -672,12 +721,25 @@ function RentalsPage() {
   async function confirmIncomePayment() {
     setIncomePaymentSaving(true);
     try {
-      const method = incomeFormMode === 'edit' ? 'PATCH' : 'PUT';
-      const res = await fetch(`/api/rentals/income/${payingIncomeId}`, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(incomePayForm)
-      });
+      let res;
+      if (incomeFormMode === 'edit') {
+        res = await fetch(`/api/rentals/income/${payingIncomeId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(incomePayForm)
+        });
+      } else {
+        const currentIncome = incomes.find(i => i.id === payingIncomeId);
+        const hasUtility = currentIncome?.collectUtilityFee;
+        const utilityPayload = hasUtility && (incomeUtilityForm.expectedAmount || incomeUtilityForm.actualAmount)
+          ? { expectedAmount: incomeUtilityForm.expectedAmount || '', actualAmount: incomeUtilityForm.actualAmount || '' }
+          : null;
+        res = await fetch(`/api/rentals/income/${payingIncomeId}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rent: incomePayForm, utility: utilityPayload })
+        });
+      }
       const data = await res.json();
       if (!res.ok) return showToast(data.error || (incomeFormMode === 'edit' ? '更新失敗' : '確認失敗'), 'error');
       showToast(incomeFormMode === 'edit' ? '已更新收款資料' : `已確認收款 (${data.status === 'partial' ? '部分收款' : '全額收款'})`, 'success');
@@ -996,13 +1058,19 @@ function RentalsPage() {
                   </button>
                 </div>
 
+                {(() => {
+                  const hasAnyUtility = incomes.some(i => i.collectUtilityFee);
+                  const colSpan = hasAnyUtility ? 11 : 9;
+                  return (
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
                         <SortableTh label="物業" colKey="propertyName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租客" colKey="tenantName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
-                        <SortableTh label="應收" colKey="expectedAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
+                        <SortableTh label="租金應收" colKey="expectedAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
+                        {hasAnyUtility && <th className="text-right px-3 py-2 text-sm font-medium text-blue-700">電費應收</th>}
+                        {hasAnyUtility && <th className="text-right px-3 py-2 text-sm font-medium text-gray-700">合計應收</th>}
                         <SortableTh label="實收" colKey="actualAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
                         <SortableTh label="未收" colKey="remaining" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
                         <SortableTh label="到期日" colKey="dueDate" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
@@ -1013,7 +1081,7 @@ function RentalsPage() {
                     </thead>
                     <tbody>
                       {incomes.length === 0 ? (
-                        <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                        <tr><td colSpan={colSpan} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                       ) : sortedIncomes.map(income => {
                         const isOverdue = income.status === 'pending' && income.dueDate < new Date().toISOString().split('T')[0];
                         const expected = Number(income.expectedAmount || 0);
@@ -1022,11 +1090,26 @@ function RentalsPage() {
                         const paymentList = (income.payments && income.payments.length > 0)
                           ? income.payments.map((p, i) => ({ label: `第${i + 1}次`, amount: Number(p.amount), date: p.paymentDate }))
                           : (income.actualAmount != null && income.actualAmount > 0 ? [{ label: '第1次', amount: Number(income.actualAmount), date: income.actualDate || '-' }] : []);
+                        const utilityRec = income.collectUtilityFee ? cashierUtilityMap[income.propertyId] : null;
+                        const utilityExpected = utilityRec ? Number(utilityRec.expectedAmount) : 0;
+                        const totalExpected = expected + utilityExpected;
                         return (
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
                             <td className="px-3 py-2">{income.propertyName}</td>
                             <td className="px-3 py-2">{income.tenantName}</td>
                             <td className="px-3 py-2 text-right font-medium">${fmt(income.expectedAmount)}</td>
+                            {hasAnyUtility && (
+                              <td className="px-3 py-2 text-right text-blue-700">
+                                {income.collectUtilityFee
+                                  ? (utilityExpected > 0 ? `$${fmt(utilityExpected)}` : <span className="text-gray-400 text-xs">待填</span>)
+                                  : <span className="text-gray-300">—</span>}
+                              </td>
+                            )}
+                            {hasAnyUtility && (
+                              <td className="px-3 py-2 text-right font-semibold">
+                                {income.collectUtilityFee ? `$${fmt(totalExpected)}` : `$${fmt(expected)}`}
+                              </td>
+                            )}
                             <td className="px-3 py-2 text-right">{income.actualAmount ? `$${fmt(income.actualAmount)}` : '-'}</td>
                             <td className="px-3 py-2 text-right font-medium">{remaining > 0 ? `$${fmt(remaining)}` : '-'}</td>
                             <td className="px-3 py-2">{income.dueDate}</td>
@@ -1065,6 +1148,8 @@ function RentalsPage() {
                     </tbody>
                   </table>
                 </div>
+                  );
+                })()}
 
                 {/* Inline payment form */}
                 {payingIncomeId && (() => {
@@ -1073,13 +1158,19 @@ function RentalsPage() {
                   const receivedAmt = Number(currentIncome?.actualAmount || 0);
                   const remainingAmt = Math.max(0, expectedAmt - receivedAmt);
                   const payHistory = currentIncome?.payments || [];
+                  const showUtilitySection = incomeFormMode === 'confirm' && currentIncome?.collectUtilityFee;
+                  const utilityExpectedAmt = Number(incomeUtilityForm.expectedAmount || 0);
+                  const utilityActualAmt = Number(incomeUtilityForm.actualAmount || 0);
+                  const totalExpectedAmt = expectedAmt + utilityExpectedAmt;
                   return (
                   <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
                     <h4 className="font-medium text-teal-800 mb-3">{incomeFormMode === 'edit' ? '編輯收款' : '新增收款'}</h4>
 
                     {/* 收款狀態摘要 */}
-                    <div className="bg-white rounded-lg px-3 py-2 mb-3 flex gap-4 text-sm">
-                      <span>應收：<b className="text-gray-800">${fmt(expectedAmt)}</b></span>
+                    <div className="bg-white rounded-lg px-3 py-2 mb-3 flex gap-4 text-sm flex-wrap">
+                      <span>租金應收：<b className="text-gray-800">${fmt(expectedAmt)}</b></span>
+                      {showUtilitySection && <span>電費應收：<b className="text-blue-700">${fmt(utilityExpectedAmt)}</b></span>}
+                      {showUtilitySection && <span>合計應收：<b className="text-gray-900">${fmt(totalExpectedAmt)}</b></span>}
                       <span>已收：<b className="text-green-700">${fmt(receivedAmt)}</b></span>
                       <span>尚欠：<b className={remainingAmt > 0 ? 'text-red-600' : 'text-green-600'}>${fmt(remainingAmt)}</b></span>
                     </div>
@@ -1130,6 +1221,33 @@ function RentalsPage() {
                           className="w-full border rounded px-2 py-1 text-sm" placeholder="收款備註" />
                       </div>
                     </div>
+
+                    {/* 電費區塊（僅限 confirm 模式且物業有 collectUtilityFee） */}
+                    {showUtilitySection && (
+                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h5 className="text-sm font-medium text-blue-800 mb-2">電費收入（與租金一併入帳）</h5>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-blue-700">電費應收金額</label>
+                            <input type="number" min="0" step="0.01"
+                              value={incomeUtilityForm.expectedAmount}
+                              onChange={e => setIncomeUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))}
+                              className="w-full border border-blue-200 rounded px-2 py-1 text-sm bg-white"
+                              placeholder="本月電費帳單金額" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-blue-700">電費實收金額</label>
+                            <input type="number" min="0" step="0.01"
+                              value={incomeUtilityForm.actualAmount}
+                              onChange={e => setIncomeUtilityForm(f => ({ ...f, actualAmount: e.target.value }))}
+                              className="w-full border border-blue-200 rounded px-2 py-1 text-sm bg-white"
+                              placeholder="留空表示尚未收到電費" />
+                          </div>
+                        </div>
+                        <p className="text-xs text-blue-500 mt-1">※ 電費將使用相同日期與帳戶自動建立金流</p>
+                      </div>
+                    )}
+
                     <div className="mt-3 flex gap-2">
                       <button onClick={confirmIncomePayment} disabled={incomePaymentSaving} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">{incomePaymentSaving ? '處理中…' : (incomeFormMode === 'edit' ? '儲存' : '確認收款')}</button>
                       <button onClick={() => setPayingIncomeId(null)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
@@ -1309,6 +1427,7 @@ function RentalsPage() {
                               <th className="text-center px-3 py-2">狀態{sortArrow('status')}</th>
                               <th className="text-left px-3 py-2">目前租客{sortArrow('tenant')}</th>
                               <th className="text-left px-3 py-2">收租帳戶{sortArrow('account')}</th>
+                              <th className="text-center px-3 py-2">收電費</th>
                               <th className="text-center px-3 py-2">公益出租人{sortArrow('publicInterest')}</th>
                               <th className="text-left px-3 py-2">申請人</th>
                               <th className="text-left px-3 py-2">公益租約期間</th>
@@ -1329,6 +1448,7 @@ function RentalsPage() {
                                 </td>
                                 <td className="px-3 py-2">{p.currentTenantName || '-'}</td>
                                 <td className="px-3 py-2 text-xs text-gray-500">{p.rentCollectAccount?.name || '-'}</td>
+                                <td className="px-3 py-2 text-center">{p.collectUtilityFee ? <span className="text-blue-600 font-medium">是</span> : <span className="text-gray-400">—</span>}</td>
                                 <td className="px-3 py-2 text-center">{p.publicInterestLandlord ? <span className="text-green-600 font-medium">是</span> : <span className="text-gray-400">否</span>}</td>
                                 <td className="px-3 py-2 text-xs text-gray-600" title={p.publicInterestNote || ''}>{p.publicInterestApplicant || <span className="text-gray-300">—</span>}</td>
                                 <td className="px-3 py-2 text-xs text-gray-600">
@@ -1867,6 +1987,115 @@ function RentalsPage() {
               </div>
             )}
 
+            {/* ==================== TAB: 付款紀錄 ==================== */}
+            {activeTab === 'paymentRecords' && (
+              <div>
+                {/* 篩選列 */}
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <label className="text-sm text-gray-600">年份：</label>
+                  <input type="number" value={paymentFilter.year} onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
+                    className="border rounded px-2 py-1 w-24 text-sm" />
+                  <label className="text-sm text-gray-600">月份：</label>
+                  <select value={paymentFilter.month} onChange={e => setPaymentFilter(f => ({ ...f, month: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部月份</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1} 月</option>
+                    ))}
+                  </select>
+                  <label className="text-sm text-gray-600">物業：</label>
+                  <select value={paymentFilter.propertyId} onChange={e => setPaymentFilter(f => ({ ...f, propertyId: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部物業</option>
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <label className="text-sm text-gray-600">帳戶：</label>
+                  <select value={paymentFilter.accountId} onChange={e => setPaymentFilter(f => ({ ...f, accountId: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部帳戶</option>
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <label className="text-sm text-gray-600">付款方式：</label>
+                  <select value={paymentFilter.paymentMethod} onChange={e => setPaymentFilter(f => ({ ...f, paymentMethod: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部</option>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                  </select>
+                  <button onClick={() => fetchPaymentRecords(1)} disabled={paymentLoading}
+                    className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
+                </div>
+
+                {/* 統計摘要 */}
+                {paymentRecords.length > 0 && (
+                  <div className="flex gap-4 mb-3 text-sm">
+                    <span className="bg-teal-50 px-3 py-1.5 rounded-lg">共 <b>{paymentRecordsPagination.totalCount}</b> 筆</span>
+                    <span className="bg-green-50 px-3 py-1.5 rounded-lg text-green-800">
+                      合計實收 <b>NT$ {fmt(paymentRecords.reduce((s, p) => s + p.amount, 0))}</b>
+                      {paymentRecordsPagination.totalPages > 1 && <span className="text-gray-400 ml-1">（本頁）</span>}
+                    </span>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-teal-50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款日期</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">物業</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">租客</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-700">租期</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-700">應收金額</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-700 text-teal-800">實收金額</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-700">次序</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">付款方式</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款帳戶</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">匯款人/備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paymentLoading ? (
+                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">載入中…</td></tr>
+                      ) : paymentRecords.length === 0 ? (
+                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
+                      ) : paymentRecords.map((p, idx) => (
+                        <tr key={p.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                          <td className="px-3 py-2 font-mono text-sm">{p.paymentDate}</td>
+                          <td className="px-3 py-2">{p.propertyName}</td>
+                          <td className="px-3 py-2">{p.tenantName}</td>
+                          <td className="px-3 py-2 text-center text-gray-500">{p.incomeYear}/{String(p.incomeMonth).padStart(2,'0')}</td>
+                          <td className="px-3 py-2 text-right text-gray-500">${fmt(p.expectedAmount)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-teal-700">${fmt(p.amount)}</td>
+                          <td className="px-3 py-2 text-center text-xs text-gray-500">第{p.sequenceNo}次</td>
+                          <td className="px-3 py-2 text-sm">
+                            <span className={`px-2 py-0.5 rounded text-xs ${p.paymentMethod === '匯款' || p.paymentMethod === 'transfer' ? 'bg-blue-100 text-blue-800' : p.paymentMethod === '現金' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '—')}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{accounts.find(a => a.id === p.accountId)?.name || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={[p.matchBankAccountName, p.matchTransferRef, p.matchNote].filter(Boolean).join(' / ')}>
+                            {[p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / ') || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 分頁 */}
+                {paymentRecordsPagination.totalPages > 1 && (
+                  <div className="flex justify-center gap-2 mt-4">
+                    <button disabled={paymentRecordsPagination.page <= 1}
+                      onClick={() => fetchPaymentRecords(paymentRecordsPagination.page - 1)}
+                      className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">上一頁</button>
+                    <span className="px-3 py-1 text-sm text-gray-600">{paymentRecordsPagination.page} / {paymentRecordsPagination.totalPages}</span>
+                    <button disabled={paymentRecordsPagination.page >= paymentRecordsPagination.totalPages}
+                      onClick={() => fetchPaymentRecords(paymentRecordsPagination.page + 1)}
+                      className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">下一頁</button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ==================== TAB: 營運分析報表 ==================== */}
             {activeTab === 'operatingReport' && (
               <div className="rental-report-print-area">
@@ -2064,6 +2293,14 @@ function RentalsPage() {
                   <label className="text-sm text-gray-600">備註</label>
                   <textarea value={propertyForm.note} onChange={e => setPropertyForm(f => ({ ...f, note: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" rows={2} />
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 mb-3">
+                    <input type="checkbox" id="collectUtilityFee" checked={propertyForm.collectUtilityFee}
+                      onChange={e => setPropertyForm(f => ({ ...f, collectUtilityFee: e.target.checked }))} className="rounded" />
+                    <label htmlFor="collectUtilityFee" className="text-sm text-gray-700 font-medium">需向租客收取水電費</label>
+                    <span className="text-xs text-gray-400">（勾選後收租工作台將顯示電費欄）</span>
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-2">

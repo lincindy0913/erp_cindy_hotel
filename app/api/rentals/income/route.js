@@ -26,7 +26,7 @@ export async function GET(request) {
     const incomes = await prisma.rentalIncome.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true } },
+        property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true } },
         contract: { select: { id: true, contractNo: true, monthlyRent: true } },
         payments: { orderBy: { sequenceNo: 'asc' } }
@@ -38,6 +38,8 @@ export async function GET(request) {
       ...i,
       propertyName: i.property.name,
       buildingName: i.property.buildingName,
+      collectUtilityFee: i.property.collectUtilityFee,
+      rentCollectAccountId: i.property.rentCollectAccountId,
       tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName
     }));
 

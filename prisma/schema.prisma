@@ -1480,6 +1480,7 @@ model RentalProperty {
   publicInterestStartDate String?  @map("public_interest_start_date") @db.VarChar(20)
   publicInterestEndDate   String?  @map("public_interest_end_date") @db.VarChar(20)
   publicInterestRent      Decimal? @map("public_interest_rent") @db.Decimal(12, 2)
+  collectUtilityFee     Boolean  @default(false) @map("collect_utility_fee")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 

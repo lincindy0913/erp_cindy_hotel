@@ -64,6 +64,7 @@ export async function PUT(request, { params }) {
         publicInterestStartDate: body.publicInterestStartDate || null,
         publicInterestEndDate: body.publicInterestEndDate || null,
         publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
+        collectUtilityFee: body.collectUtilityFee === true,
       }
     });
 
