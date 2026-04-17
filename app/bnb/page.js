@@ -612,16 +612,29 @@ export default function BnbPage() {
   const [lockStatus, setLockStatus]   = useState(null); // { locked, lockedAt, lockedBy }
   const [lockLoading, setLockLoading] = useState(false);
 
-  // ── 館別清單 + 銀行帳戶 fetch（mount once）────────────────────
+  // ── 館別清單（session 載入後才 fetch，否則會 401）────────────
   useEffect(() => {
+    if (!session) return;
     fetch('/api/warehouse-departments')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.list) {
-          setWarehouseList(data.list.filter(w => w.type === 'building').map(w => w.name));
+          const list = data.list.filter(w => w.type === 'building').map(w => w.name);
+          if (list.length === 0) return;
+          setWarehouseList(list);
+          const first = list[0];
+          setImportWarehouse(prev => prev === DEFAULT_WAREHOUSE ? first : prev);
+          setDrWarehouse(prev    => prev === DEFAULT_WAREHOUSE ? first : prev);
+          setDeclWarehouse(prev  => prev === DEFAULT_WAREHOUSE ? first : prev);
+          setDlWarehouse(prev    => prev === DEFAULT_WAREHOUSE ? first : prev);
+          setOtaWarehouse(prev   => prev === DEFAULT_WAREHOUSE ? first : prev);
         }
       })
       .catch(() => {});
+  }, [session]);
+
+  // ── 銀行帳戶 fetch（mount once）──────────────────────────────
+  useEffect(() => {
     fetch('/api/cashflow/accounts')
       .then(r => r.ok ? r.json() : [])
       .then(data => setDmAccounts(data.filter(a => a.type === '銀行存款' && a.isActive)))
@@ -1898,10 +1911,7 @@ export default function BnbPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
-                  {warehouseList.length === 0
-                    ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
-                    : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
-                  }
+                  {(warehouseList.length ? warehouseList : [importWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
               <div>
@@ -1950,10 +1960,7 @@ export default function BnbPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
-                  {warehouseList.length === 0
-                    ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
-                    : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
-                  }
+                  {(warehouseList.length ? warehouseList : [drWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
               <button onClick={fetchDailyRevenue} disabled={drLoading}
@@ -2317,10 +2324,7 @@ export default function BnbPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
                 <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
-                  {warehouseList.length === 0
-                    ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
-                    : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
-                  }
+                  {(warehouseList.length ? warehouseList : [declWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
               <button onClick={fetchDecl} disabled={declLoading}
@@ -2491,10 +2495,7 @@ export default function BnbPage() {
               </select>
               <label className="text-sm text-gray-600">館別</label>
               <select value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
-                {warehouseList.length === 0
-                  ? <option value={DEFAULT_WAREHOUSE}>{DEFAULT_WAREHOUSE}</option>
-                  : warehouseList.map(w => <option key={w} value={w}>{w}</option>)
-                }
+                {(warehouseList.length ? warehouseList : [dlWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
               </select>
               <button onClick={fetchDeclList} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <ExportButtons
@@ -3420,7 +3421,7 @@ export default function BnbPage() {
                 <select value={bwWarehouse} onChange={e => setBwWarehouse(e.target.value)}
                   className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
                   <option value="">全部</option>
-                  {(warehouseList || [DEFAULT_WAREHOUSE]).map(w => <option key={w} value={w}>{w}</option>)}
+                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
               </div>
               <button onClick={fetchBossWithdraw}
