@@ -96,7 +96,7 @@ export default function ProductDetailPage() {
           <h3 className="text-lg font-semibold mb-4 border-b pb-2">基本資訊</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <span className="text-sm text-gray-500">產品代碼</span>
+              <span className="text-sm text-gray-500">產品編碼</span>
               <p className="font-medium">{product.code}</p>
             </div>
             <div>

@@ -99,6 +99,7 @@ export async function POST(request) {
         isInStock,
         warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
         accountingSubject: data.accountingSubject || '',
+        inventorySubject: data.inventorySubject || null,
         supplierId,
       }
     });

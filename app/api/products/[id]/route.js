@@ -52,6 +52,7 @@ export async function PUT(request, { params }) {
         isInStock,
         warehouseLocation: isInStock ? (data.warehouseLocation || null) : null,
         accountingSubject: data.accountingSubject ?? existing.accountingSubject,
+        inventorySubject: data.inventorySubject !== undefined ? (data.inventorySubject || null) : existing.inventorySubject,
         supplierId: data.supplierId ? parseInt(data.supplierId) : null
       }
     });

@@ -29,6 +29,7 @@ model Product {
   lowStockThreshold Int?     @map("low_stock_threshold") // spec24: 庫存偏低閾值
   warehouseLocation String?  @map("warehouse_location") @db.VarChar(50)
   accountingSubject String?  @map("accounting_subject") @db.VarChar(100)
+  inventorySubject  String?  @map("inventory_subject") @db.VarChar(100)
   supplierId        Int?     @map("supplier_id")
   isActive          Boolean  @default(true) @map("is_active")
   note              String?  @db.Text

@@ -20,6 +20,8 @@ export default function ProductsPage() {
   const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [accountingSearch, setAccountingSearch] = useState('');
   const [showAccountingDropdown, setShowAccountingDropdown] = useState(false);
+  const [inventorySubjectSearch, setInventorySubjectSearch] = useState('');
+  const [showInventorySubjectDropdown, setShowInventorySubjectDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
@@ -43,7 +45,8 @@ export default function ProductsPage() {
     salesPrice: '',
     isInStock: false,
     warehouseLocation: '',
-    accountingSubject: ''
+    accountingSubject: '',
+    inventorySubject: ''
   });
 
   useEffect(() => {
@@ -55,19 +58,19 @@ export default function ProductsPage() {
     localStorage.setItem('warehouseOptions', JSON.stringify(warehouseOptions));
   }, [warehouseOptions]);
 
-  // 點擊外部關閉會計科目下拉選單
+  // 點擊外部關閉會計科目 / 存貨科目下拉選單
   useEffect(() => {
     function handleClickOutside(event) {
-      const dropdown = document.querySelector('.product-accounting-search');
-      if (dropdown && !dropdown.contains(event.target)) {
-        setShowAccountingDropdown(false);
-      }
+      const a = document.querySelector('.product-accounting-search');
+      if (a && !a.contains(event.target)) setShowAccountingDropdown(false);
+      const b = document.querySelector('.product-inventory-subject-search');
+      if (b && !b.contains(event.target)) setShowInventorySubjectDropdown(false);
     }
-    if (showAccountingDropdown) {
+    if (showAccountingDropdown || showInventorySubjectDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showAccountingDropdown]);
+  }, [showAccountingDropdown, showInventorySubjectDropdown]);
 
   async function fetchAccountingSubjects() {
     try {
@@ -80,9 +83,9 @@ export default function ProductsPage() {
     }
   }
 
-  const filteredAccounting = accountingSubjects.filter(a => {
-    if (!accountingSearch.trim()) return true;
-    const keyword = accountingSearch.toLowerCase().trim();
+  const filterAccountingList = (search) => accountingSubjects.filter(a => {
+    if (!search.trim()) return true;
+    const keyword = search.toLowerCase().trim();
     return (
       a.code.includes(keyword) ||
       a.name.toLowerCase().includes(keyword) ||
@@ -90,6 +93,8 @@ export default function ProductsPage() {
       a.subcategory.toLowerCase().includes(keyword)
     );
   });
+  const filteredAccounting = filterAccountingList(accountingSearch);
+  const filteredInventorySubjects = filterAccountingList(inventorySubjectSearch);
 
   function addWarehouseOption() {
     const trimmed = newWarehouse.trim();
@@ -183,9 +188,11 @@ export default function ProductsPage() {
           salesPrice: '',
           isInStock: false,
           warehouseLocation: '',
-          accountingSubject: ''
+          accountingSubject: '',
+          inventorySubject: ''
         });
         setAccountingSearch('');
+        setInventorySubjectSearch('');
         if (!isEditing) {
           // 新增產品後取得最後一頁
           const countRes = await fetch('/api/products?page=1&limit=1');
@@ -220,9 +227,11 @@ export default function ProductsPage() {
       salesPrice: product.salesPrice,
       isInStock: product.isInStock || false,
       warehouseLocation: product.warehouseLocation || '',
-      accountingSubject: product.accountingSubject || ''
+      accountingSubject: product.accountingSubject || '',
+      inventorySubject: product.inventorySubject || ''
     });
     setAccountingSearch(product.accountingSubject || '');
+    setInventorySubjectSearch(product.inventorySubject || '');
   }
 
   async function handleDelete(productId) {
@@ -399,7 +408,7 @@ export default function ProductsPage() {
             <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  產品代碼 *
+                  產品編碼 *
                 </label>
                 <input
                   type="text"
@@ -597,6 +606,63 @@ export default function ProductsPage() {
                   </div>
                 )}
               </div>
+              <div className="relative product-inventory-subject-search">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  存貨科目
+                </label>
+                <input
+                  type="text"
+                  placeholder="輸入代碼或名稱搜尋..."
+                  value={inventorySubjectSearch}
+                  onChange={(e) => {
+                    setInventorySubjectSearch(e.target.value);
+                    setShowInventorySubjectDropdown(true);
+                    if (!e.target.value.trim()) {
+                      setFormData(prev => ({ ...prev, inventorySubject: '' }));
+                    }
+                  }}
+                  onFocus={() => setShowInventorySubjectDropdown(true)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showInventorySubjectDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, inventorySubject: '' }));
+                        setInventorySubjectSearch('');
+                        setShowInventorySubjectDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-400 hover:bg-gray-50 border-b border-gray-100"
+                    >
+                      （不設定）
+                    </button>
+                    {filteredInventorySubjects.length > 0 ? (
+                      filteredInventorySubjects.map(a => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            const display = `${a.code} ${a.name}`;
+                            setFormData(prev => ({ ...prev, inventorySubject: display }));
+                            setInventorySubjectSearch(display);
+                            setShowInventorySubjectDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                            formData.inventorySubject === `${a.code} ${a.name}` ? 'bg-blue-50 text-blue-700' : ''
+                          }`}
+                        >
+                          <span className="font-mono text-purple-600 mr-2">{a.code}</span>
+                          <span className="font-medium">{a.name}</span>
+                          <span className="text-gray-400 ml-2 text-xs">{a.category}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-gray-500">找不到符合的會計科目</div>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="col-span-2 flex justify-end gap-3">
                 <button
                   type="button"
@@ -613,8 +679,10 @@ export default function ProductsPage() {
                       salesPrice: '',
                       isInStock: false,
                       warehouseLocation: '',
-                      accountingSubject: ''
+                      accountingSubject: '',
+                      inventorySubject: ''
                     });
+                    setInventorySubjectSearch('');
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
@@ -694,7 +762,7 @@ export default function ProductsPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">ID</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">代碼</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">編碼</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">名稱</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">類別</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">單位</th>
@@ -703,13 +771,14 @@ export default function ProductsPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">列入庫存</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">倉庫位置</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">存貨科目</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {currentProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="12" className="px-4 py-8 text-center text-gray-500">
                     {totalCount === 0 ? (searchKeyword ? '找不到符合條件的產品' : '尚無產品資料') : '此頁無資料'}
                   </td>
                 </tr>
@@ -726,6 +795,7 @@ export default function ProductsPage() {
                     <td className="px-4 py-3 text-sm">{product.isInStock ? '是' : '否'}</td>
                     <td className="px-4 py-3 text-sm">{product.warehouseLocation || '-'}</td>
                     <td className="px-4 py-3 text-sm">{product.accountingSubject || '-'}</td>
+                    <td className="px-4 py-3 text-sm">{product.inventorySubject || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         {isLoggedIn && (
