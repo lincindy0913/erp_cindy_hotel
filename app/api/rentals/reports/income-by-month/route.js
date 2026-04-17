@@ -84,6 +84,7 @@ export async function GET(request) {
     };
     const utilityWhere = { ...incomeWhere };
 
+    const today = new Date().toISOString().split('T')[0];
     const [incomes, utilityIncomes] = await Promise.all([
       prisma.rentalIncome.findMany({
         where: incomeWhere,
@@ -92,6 +93,7 @@ export async function GET(request) {
           incomeMonth: true,
           actualAmount: true,
           status: true,
+          dueDate: true,
           property: { select: { id: true, name: true, buildingName: true, unitNo: true, address: true } },
           tenant: { select: { fullName: true, companyName: true, tenantType: true } }
         },
@@ -118,11 +120,14 @@ export async function GET(request) {
     const propLabel = (p) => p ? (p.name || [p.buildingName, p.unitNo].filter(Boolean).join(' ') || p.address || `物業#${p.id}`) : '';
     const byProperty = new Map();
     for (const p of propertyList) {
+      const emptyStatus = {};
+      for (let m = 1; m <= 12; m++) emptyStatus[m] = 'empty';
       byProperty.set(p.id, {
         propertyId: p.id,
         propertyLabel: propLabel(p),
         tenantName: null,
         months: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+        monthStatus: { ...emptyStatus },
         total: 0
       });
     }
@@ -133,6 +138,16 @@ export async function GET(request) {
       const amount = paid ? Number(i.actualAmount ?? 0) : 0;
       row.months[i.incomeMonth] = (row.months[i.incomeMonth] || 0) + amount;
       row.total += amount;
+      // Compute cell status: overdue > partial > completed > pending > empty
+      const cellStatus = i.status === 'completed' ? 'completed'
+        : i.status === 'partial' ? 'partial'
+        : (i.dueDate && i.dueDate < today) ? 'overdue'
+        : 'pending';
+      const prev = row.monthStatus[i.incomeMonth];
+      const priority = { empty: 0, pending: 1, completed: 2, partial: 3, overdue: 4 };
+      if ((priority[cellStatus] || 0) > (priority[prev] || 0)) {
+        row.monthStatus[i.incomeMonth] = cellStatus;
+      }
       if (!row.tenantName && i.tenant) {
         row.tenantName = i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName;
       }
@@ -146,7 +161,7 @@ export async function GET(request) {
     }
 
     const rows = Array.from(byProperty.values())
-      .map(r => ({ ...r, months: r.months }))
+      .map(r => ({ ...r, months: r.months, monthStatus: r.monthStatus }))
       .filter(r => r.total > 0 || r.tenantName)
       .sort((a, b) => (a.propertyLabel || '').localeCompare(b.propertyLabel || ''));
 

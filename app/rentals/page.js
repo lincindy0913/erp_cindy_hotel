@@ -17,7 +17,8 @@ const TABS = [
   { key: 'maintenance', label: '維護費' },
   { key: 'utilityIncome', label: '水電收入' },
   { key: 'incomeReport', label: '收入分析報表' },
-  { key: 'operatingReport', label: '營運分析報表' }
+  { key: 'operatingReport', label: '營運分析報表' },
+  { key: 'overdueReport', label: '逾期催繳' }
 ];
 
 const PROPERTY_STATUSES = [
@@ -188,6 +189,17 @@ function RentalsPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [incomePaymentSaving, setIncomePaymentSaving] = useState(false);
 
+  // Overdue report
+  const [overdueReportData, setOverdueReportData] = useState([]);
+  const [overdueReportLoading, setOverdueReportLoading] = useState(false);
+
+  // Bulk utility input
+  const [showBulkUtility, setShowBulkUtility] = useState(false);
+  const [bulkUtilityYear, setBulkUtilityYear] = useState(new Date().getFullYear());
+  const [bulkUtilityMonth, setBulkUtilityMonth] = useState(new Date().getMonth() + 1);
+  const [bulkUtilityEntries, setBulkUtilityEntries] = useState([]);
+  const [bulkUtilitySaving, setBulkUtilitySaving] = useState(false);
+
   const [utilityFilter, setUtilityFilter] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [utilityList, setUtilityList] = useState([]);
   const [showUtilityModal, setShowUtilityModal] = useState(false);
@@ -214,8 +226,9 @@ function RentalsPage() {
       fetchProperties();
       return;
     }
-    if (activeTab === 'utilityIncome') fetchUtilityList();
+    if (activeTab === 'utilityIncome') { fetchUtilityList(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'paymentRecords') { fetchPaymentRecords(); if (properties.length === 0) fetchProperties(); }
+    if (activeTab === 'overdueReport') { fetchOverdueReport(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'overview') fetchSummary();
     if (activeTab === 'incomeReport') { fetchIncomeReport(); fetchProperties(); }
     if (activeTab === 'operatingReport') { fetchOperatingReport(); fetchProperties(); }
@@ -441,6 +454,59 @@ function RentalsPage() {
       setPaymentRecordsPagination(data.pagination || { page: 1, totalCount: 0, totalPages: 1 });
     } catch { setPaymentRecords([]); }
     finally { setPaymentLoading(false); }
+  }
+
+  async function fetchOverdueReport() {
+    setOverdueReportLoading(true);
+    try {
+      const res = await fetch('/api/rentals/income?status=pending');
+      const data = await res.json();
+      const today = new Date().toISOString().split('T')[0];
+      const overdue = (Array.isArray(data) ? data : [])
+        .filter(i => i.dueDate && i.dueDate < today)
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      setOverdueReportData(overdue);
+    } catch { setOverdueReportData([]); }
+    finally { setOverdueReportLoading(false); }
+  }
+
+  async function openBulkUtility() {
+    if (properties.length === 0) await fetchProperties();
+    const utilProps = properties.filter(p => p.collectUtilityFee);
+    const entries = utilProps.map(p => ({ propertyId: p.id, propertyName: p.name, expectedAmount: '' }));
+    setBulkUtilityEntries(entries);
+    setShowBulkUtility(true);
+    // Pre-fill existing records
+    try {
+      const res = await fetch(`/api/rentals/utility-income?year=${bulkUtilityYear}&month=${bulkUtilityMonth}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setBulkUtilityEntries(prev => prev.map(e => {
+          const existing = data.find(u => u.propertyId === e.propertyId);
+          return existing ? { ...e, expectedAmount: String(existing.expectedAmount || '') } : e;
+        }));
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function saveBulkUtility() {
+    setBulkUtilitySaving(true);
+    try {
+      const toSave = bulkUtilityEntries.filter(e => e.expectedAmount !== '' && !isNaN(parseFloat(e.expectedAmount)));
+      let saved = 0;
+      for (const entry of toSave) {
+        const res = await fetch('/api/rentals/utility-income', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ propertyId: entry.propertyId, incomeYear: bulkUtilityYear, incomeMonth: bulkUtilityMonth, expectedAmount: entry.expectedAmount })
+        });
+        if (res.ok) saved++;
+      }
+      showToast(`已儲存 ${saved} 筆電費應收`, 'success');
+      setShowBulkUtility(false);
+      fetchUtilityList();
+    } catch (e) { showToast('儲存失敗: ' + e.message, 'error'); }
+    finally { setBulkUtilitySaving(false); }
   }
 
   async function saveUtility() {
@@ -957,7 +1023,9 @@ function RentalsPage() {
         ) : (
           <>
             {/* ==================== TAB: OVERVIEW ==================== */}
-            {activeTab === 'overview' && summary && (
+            {activeTab === 'overview' && summary && (() => {
+              const thirtyDayCount = (summary.expiringContractDetails || []).filter(c => c.daysUntilExpiry <= 30).length;
+              return (
               <div>
                 {/* Notification banners */}
                 {summary.overdueCount > 0 && (
@@ -965,13 +1033,21 @@ function RentalsPage() {
                     <p className="text-red-700 font-medium">
                       有 {summary.overdueCount} 筆租金逾期未收，總金額 ${fmt(summary.overdueAmount)}
                     </p>
-                    <button onClick={() => switchTab('cashier')} className="text-xs text-red-600 underline">前往收租工作台</button>
+                    <button onClick={() => switchTab('overdueReport')} className="text-xs text-red-600 underline">前往逾期催繳報表</button>
                   </div>
                 )}
-                {summary.expiringContracts > 0 && (
+                {thirtyDayCount > 0 && (
+                  <div className="bg-red-50 border-l-4 border-red-600 p-4 mb-3 rounded flex items-center justify-between">
+                    <p className="text-red-700 font-semibold">
+                      緊急：有 {thirtyDayCount} 筆合約將於 30 天內到期，請儘速處理續約
+                    </p>
+                    <button onClick={() => switchTab('contracts')} className="text-xs text-red-600 underline">前往合約管理</button>
+                  </div>
+                )}
+                {summary.expiringContracts > thirtyDayCount && (
                   <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-3 rounded flex items-center justify-between">
                     <p className="text-yellow-700 font-medium">
-                      有 {summary.expiringContracts} 筆合約將於 60 天內到期
+                      有 {summary.expiringContracts - thirtyDayCount} 筆合約將於 31–60 天內到期
                     </p>
                     <button onClick={() => switchTab('contracts')} className="text-xs text-yellow-600 underline">前往合約管理</button>
                   </div>
@@ -1109,7 +1185,8 @@ function RentalsPage() {
                   )}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ==================== TAB: CASHIER ==================== */}
             {activeTab === 'cashier' && (
@@ -1923,9 +2000,13 @@ function RentalsPage() {
                     {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}月</option>)}
                   </select>
                   <button onClick={fetchUtilityList} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
+                  <button onClick={() => { setBulkUtilityYear(utilityFilter.year); setBulkUtilityMonth(utilityFilter.month); openBulkUtility(); }}
+                    className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 ml-auto">
+                    批次輸入電費
+                  </button>
                   <button onClick={() => { setEditingUtility(null); setUtilityForm({ propertyId: '', incomeYear: utilityFilter.year, incomeMonth: utilityFilter.month, expectedAmount: '', actualAmount: '', actualDate: '', accountId: '', note: '' }); setShowUtilityModal(true); }}
-                    className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
-                    登記水電收入
+                    className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">
+                    單筆登記
                   </button>
                 </div>
                 <p className="text-sm text-gray-600 mb-2">物業每月向租客收取之水電等費用，在此登記為收入。</p>
@@ -1963,6 +2044,54 @@ function RentalsPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* 批次輸入電費 panel */}
+                {showBulkUtility && (
+                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-blue-800">批次輸入電費應收</h4>
+                      <div className="flex items-center gap-2">
+                        <select value={bulkUtilityYear} onChange={e => setBulkUtilityYear(Number(e.target.value))} className="border rounded px-2 py-1 text-sm">
+                          {[new Date().getFullYear(), new Date().getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                        <span className="text-sm text-blue-700">年</span>
+                        <select value={bulkUtilityMonth} onChange={e => setBulkUtilityMonth(Number(e.target.value))} className="border rounded px-2 py-1 text-sm">
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}月</option>)}
+                        </select>
+                        <button onClick={openBulkUtility} className="text-xs text-blue-600 underline">重新載入</button>
+                      </div>
+                    </div>
+                    {bulkUtilityEntries.length === 0 ? (
+                      <p className="text-sm text-gray-500 py-4">無需收電費的物業。請在「物業管理」中勾選「需向租客收取水電費」。</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+                          {bulkUtilityEntries.map((entry, idx) => (
+                            <div key={entry.propertyId} className="flex items-center gap-2 bg-white border rounded px-2 py-1.5">
+                              <span className="text-sm text-gray-700 flex-1 truncate">{entry.propertyName}</span>
+                              <span className="text-xs text-gray-400">$</span>
+                              <input
+                                type="number" min="0" step="1"
+                                value={entry.expectedAmount}
+                                onChange={e => setBulkUtilityEntries(prev => prev.map((en, i) => i === idx ? { ...en, expectedAmount: e.target.value } : en))}
+                                className="w-24 border rounded px-2 py-0.5 text-sm text-right"
+                                placeholder="金額"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-blue-500 mb-3">留空的物業不儲存；已有紀錄的會更新應收金額。</p>
+                        <div className="flex gap-2">
+                          <button onClick={saveBulkUtility} disabled={bulkUtilitySaving}
+                            className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50">
+                            {bulkUtilitySaving ? '儲存中…' : '儲存全部'}
+                          </button>
+                          <button onClick={() => setShowBulkUtility(false)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {/* Modal: 水電收入 */}
                 {showUtilityModal && (
@@ -2073,15 +2202,33 @@ function RentalsPage() {
                           incomeReportData.rows.map(r => (
                             <tr key={r.propertyId} className="hover:bg-gray-50">
                               <td className="px-3 py-2 border border-gray-200">{r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}</td>
-                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
-                                <td key={m} className="text-right px-2 py-2 border border-gray-200">{r.months[m] ? fmt(r.months[m]) : ''}</td>
-                              ))}
+                              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                                const st = r.monthStatus?.[m] || 'empty';
+                                const cellBg = st === 'completed' ? 'bg-green-50 text-green-800'
+                                  : st === 'partial' ? 'bg-orange-50 text-orange-800'
+                                  : st === 'overdue' ? 'bg-red-50 text-red-700 font-semibold'
+                                  : st === 'pending' ? 'bg-yellow-50 text-yellow-800'
+                                  : '';
+                                return (
+                                  <td key={m} className={`text-right px-2 py-2 border border-gray-200 ${cellBg}`}>
+                                    {r.months[m] ? fmt(r.months[m]) : (st !== 'empty' ? <span className="text-xs opacity-60">{st === 'overdue' ? '逾期' : '待收'}</span> : '')}
+                                  </td>
+                                );
+                              })}
                               <td className="text-right px-3 py-2 border border-gray-200 font-semibold">{fmt(r.total)}</td>
                             </tr>
                           ))
                         )}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {!reportLoading && incomeReportData.rows.length > 0 && (
+                  <div className="flex flex-wrap gap-3 mt-2 text-xs no-print">
+                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200" />已收</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-orange-200" />部分收</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-yellow-200" />待收</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-200" />逾期未收</span>
                   </div>
                 )}
               </div>
@@ -2258,6 +2405,91 @@ function RentalsPage() {
                       </tbody>
                     </table>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* ==================== TAB: 逾期催繳報表 ==================== */}
+            {activeTab === 'overdueReport' && (
+              <div className="rental-report-print-area">
+                <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
+                  <h3 className="text-base font-semibold text-gray-800">逾期租金催繳報表</h3>
+                  <span className="text-sm text-gray-500">（所有到期日已過、尚未收款的租金）</span>
+                  <button onClick={fetchOverdueReport} disabled={overdueReportLoading}
+                    className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50 ml-auto">
+                    {overdueReportLoading ? '載入中…' : '重新整理'}
+                  </button>
+                  <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800">列印 / 匯出</button>
+                </div>
+                <h2 className="hidden print:block text-lg font-bold mb-2">逾期租金催繳報表 — 列印日期：{new Date().toLocaleDateString('zh-TW')}</h2>
+
+                {overdueReportLoading ? (
+                  <p className="text-gray-500 py-6 text-center">載入中…</p>
+                ) : overdueReportData.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow py-12 text-center text-gray-400">
+                    目前沒有逾期未收的租金
+                  </div>
+                ) : (
+                  <>
+                    <div className="no-print flex gap-4 mb-3 text-sm">
+                      <span className="bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-medium">
+                        共 {overdueReportData.length} 筆逾期
+                      </span>
+                      <span className="bg-red-50 text-red-700 px-3 py-1.5 rounded-lg">
+                        逾期總金額：<b>${fmt(overdueReportData.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</b>
+                      </span>
+                    </div>
+                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="bg-red-50">
+                          <tr>
+                            <th className="text-left px-3 py-2 border border-gray-200">物業</th>
+                            <th className="text-left px-3 py-2 border border-gray-200">租客</th>
+                            <th className="text-left px-3 py-2 border border-gray-200">聯絡電話</th>
+                            <th className="text-center px-3 py-2 border border-gray-200">租期</th>
+                            <th className="text-right px-3 py-2 border border-gray-200">應收金額</th>
+                            <th className="text-center px-3 py-2 border border-gray-200">到期日</th>
+                            <th className="text-right px-3 py-2 border border-gray-200 text-red-700">逾期天數</th>
+                            <th className="text-center px-3 py-2 border border-gray-200 no-print">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {overdueReportData.map((i, idx) => {
+                            const today = new Date().toISOString().split('T')[0];
+                            const daysOverdue = Math.floor((new Date(today) - new Date(i.dueDate)) / 86400000);
+                            const tenantPhone = i.tenant?.phone || '—';
+                            const tenantName = i.tenantName || (i.tenant?.tenantType === 'company' ? i.tenant?.companyName : i.tenant?.fullName) || '—';
+                            return (
+                              <tr key={i.id} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-red-50/30'}`}>
+                                <td className="px-3 py-2 border border-gray-200">{i.propertyName}</td>
+                                <td className="px-3 py-2 border border-gray-200 font-medium">{tenantName}</td>
+                                <td className="px-3 py-2 border border-gray-200 text-gray-600">{tenantPhone}</td>
+                                <td className="px-3 py-2 border border-gray-200 text-center text-gray-500">{i.incomeYear}/{String(i.incomeMonth).padStart(2,'0')}</td>
+                                <td className="px-3 py-2 border border-gray-200 text-right font-medium">${fmt(i.expectedAmount)}</td>
+                                <td className="px-3 py-2 border border-gray-200 text-center">{i.dueDate}</td>
+                                <td className="px-3 py-2 border border-gray-200 text-right">
+                                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${daysOverdue > 30 ? 'bg-red-200 text-red-800' : 'bg-orange-100 text-orange-800'}`}>
+                                    {daysOverdue} 天
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 border border-gray-200 text-center no-print">
+                                  <button onClick={() => { switchTab('cashier'); }}
+                                    className="text-teal-600 hover:text-teal-800 text-xs underline">
+                                    前往收款
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-red-100 font-semibold">
+                            <td className="px-3 py-2 border border-gray-200" colSpan={4}>合計</td>
+                            <td className="px-3 py-2 border border-gray-200 text-right text-red-700">${fmt(overdueReportData.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</td>
+                            <td className="px-3 py-2 border border-gray-200" colSpan={3}></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             )}

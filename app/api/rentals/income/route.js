@@ -27,7 +27,7 @@ export async function GET(request) {
       where,
       include: {
         property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true } },
-        tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true } },
+        tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true, email: true } },
         contract: { select: { id: true, contractNo: true, monthlyRent: true } },
         payments: { orderBy: { sequenceNo: 'asc' } }
       },
