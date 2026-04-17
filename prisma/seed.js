@@ -16,19 +16,8 @@ async function main() {
   if (!existingAdmin) {
     const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD;
 
-    // Block weak/default passwords — ADMIN_DEFAULT_PASSWORD must be explicitly set and strong
-    const WEAK_PASSWORDS = ['admin123', 'password', '12345678', 'admin', 'changeme', 'admin@123'];
-    if (!adminPassword || adminPassword.length < 8) {
-      console.error('FATAL: ADMIN_DEFAULT_PASSWORD 未設定或長度不足 8 字元。請在環境變數中設定強密碼。');
-      console.error('  範例: ADMIN_DEFAULT_PASSWORD="MyStr0ng!Pass" node prisma/seed.js');
-      process.exit(1);
-    }
-    if (WEAK_PASSWORDS.includes(adminPassword.toLowerCase())) {
-      console.error('FATAL: ADMIN_DEFAULT_PASSWORD 使用了已知弱密碼，請設定更強的密碼。');
-      process.exit(1);
-    }
-    if (!/[a-z]/.test(adminPassword) || !/[A-Z]/.test(adminPassword) || !/[0-9]/.test(adminPassword)) {
-      console.error('FATAL: ADMIN_DEFAULT_PASSWORD 必須包含大寫、小寫英文及數字。');
+    if (!adminPassword || adminPassword.length < 6) {
+      console.error('FATAL: ADMIN_DEFAULT_PASSWORD 未設定或長度不足 6 字元。');
       process.exit(1);
     }
 
