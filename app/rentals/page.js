@@ -203,7 +203,7 @@ function RentalsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'cashier') fetchIncomes();
+    if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'tenants') fetchTenants();
     if (activeTab === 'properties') fetchProperties();
     if (activeTab === 'contracts') fetchContracts();
@@ -683,11 +683,18 @@ function RentalsPage() {
     const expected = Number(income.expectedAmount || 0);
     const received = Number(income.actualAmount || 0);
     const remaining = Math.max(0, expected - received);
-    const defaultAccountId = income.accountId || income.rentCollectAccountId || '';
+    const propertyData = properties.find(p => p.id === income.propertyId);
+    const defaultAccountId = String(
+      income.accountId ||
+      income.rentCollectAccountId ||
+      propertyData?.rentCollectAccountId ||
+      propertyData?.rentCollectAccount?.id ||
+      ''
+    );
     setIncomePayForm({
       actualAmount: remaining > 0 ? String(remaining) : String(expected),
       actualDate: new Date().toISOString().split('T')[0],
-      accountId: defaultAccountId,
+      accountId: defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId,
       paymentMethod: income.paymentMethod || '匯款',
       matchTransferRef: '',
       matchBankAccountName: income.matchBankAccountName || '',
@@ -719,6 +726,12 @@ function RentalsPage() {
   }
 
   async function confirmIncomePayment() {
+    if (!incomePayForm.actualAmount || Number(incomePayForm.actualAmount) <= 0) {
+      return showToast('請填寫實收金額', 'error');
+    }
+    if (!incomePayForm.accountId) {
+      return showToast('請選擇收款帳戶', 'error');
+    }
     setIncomePaymentSaving(true);
     try {
       let res;
