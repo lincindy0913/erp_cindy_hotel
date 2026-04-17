@@ -65,7 +65,7 @@ export async function PUT(request, { params }) {
       ? income.tenant.companyName
       : income.tenant.fullName;
 
-    const transactionNo = await nextCashTransactionNo(tx, actualDate);
+    const transactionNo = await nextCashTransactionNo(prisma, actualDate);
     const categoryId = await getCategoryId(prisma, 'rental_income');
     const category = categoryId
       ? await prisma.cashCategory.findUnique({
@@ -76,7 +76,7 @@ export async function PUT(request, { params }) {
     const accountingSubjectLabel = category?.accountingSubject
       ? `${category.accountingSubject.code || ''} ${category.accountingSubject.name || ''}`.trim()
       : null;
-    const tx = await prisma.cashTransaction.create({
+    const cashTx = await prisma.cashTransaction.create({
       data: {
         transactionNo,
         transactionDate: actualDate,
@@ -103,12 +103,12 @@ export async function PUT(request, { params }) {
         matchTransferRef: matchTransferRef || null,
         matchBankAccountName: matchBankAccountName || null,
         matchNote: body.matchNote || null,
-        cashTransactionId: tx.id,
+        cashTransactionId: cashTx.id,
         confirmedBy: body.confirmedBy || null
       }
     });
 
-    const firstTxId = existingPayments.length > 0 ? income.cashTransactionId : tx.id;
+    const firstTxId = existingPayments.length > 0 ? income.cashTransactionId : cashTx.id;
     await prisma.rentalIncome.update({
       where: { id: incomeId },
       data: {
@@ -120,7 +120,7 @@ export async function PUT(request, { params }) {
         matchBankAccountName: matchBankAccountName || null,
         matchNote: body.matchNote || null,
         status: newStatus,
-        cashTransactionId: firstTxId ?? tx.id,
+        cashTransactionId: firstTxId ?? cashTx.id,
         confirmedAt: new Date(),
         confirmedBy: body.confirmedBy || null
       }
@@ -133,11 +133,11 @@ export async function PUT(request, { params }) {
       targetModule: 'rentals',
       targetRecordId: incomeId,
       beforeState: { status: income.status, actualAmount: Number(income.actualAmount || 0) },
-      afterState: { status: newStatus, actualAmount: newTotal, transactionId: tx.id, sequenceNo: nextSeq },
+      afterState: { status: newStatus, actualAmount: newTotal, transactionId: cashTx.id, sequenceNo: nextSeq },
       note: `租金收款確認 ${income.property?.name} 第${nextSeq}次`,
     });
 
-    return NextResponse.json({ success: true, status: newStatus, transactionId: tx.id, sequenceNo: nextSeq });
+    return NextResponse.json({ success: true, status: newStatus, transactionId: cashTx.id, sequenceNo: nextSeq });
   } catch (error) {
     console.error('PUT /api/rentals/income/[id] error:', error.message || error);
     return handleApiError(error);
