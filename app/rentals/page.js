@@ -18,7 +18,9 @@ const TABS = [
   { key: 'utilityIncome', label: '水電收入' },
   { key: 'incomeReport', label: '收入分析報表' },
   { key: 'operatingReport', label: '營運分析報表' },
-  { key: 'overdueReport', label: '逾期催繳' }
+  { key: 'overdueReport', label: '逾期催繳' },
+  { key: 'depositTracking', label: '押金追蹤' },
+  { key: 'vacancyReport', label: '空置率報表' }
 ];
 
 const PROPERTY_STATUSES = [
@@ -116,6 +118,23 @@ function RentalsPage() {
   const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const maintenanceAnalysis = useMemo(() => {
+    const byCategory = {};
+    const byProperty = {};
+    let total = 0; let paid = 0; let pending = 0;
+    maintenances.forEach(m => {
+      const amt = Number(m.amount || 0);
+      total += amt;
+      if (m.status === 'paid') paid += amt; else pending += amt;
+      byCategory[m.category] = (byCategory[m.category] || 0) + amt;
+      const pname = m.property?.name || `物業#${m.propertyId}`;
+      byProperty[pname] = (byProperty[pname] || 0) + amt;
+    });
+    const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    const propEntries = Object.entries(byProperty).sort((a, b) => b[1] - a[1]);
+    return { total, paid, pending, catEntries, propEntries };
+  }, [maintenances]);
+
   // Search / filter states
   const [tenantSearch, setTenantSearch] = useState('');
   const [propertyFilter, setPropertyFilter] = useState({ buildingName: '', status: '' });
@@ -201,6 +220,25 @@ function RentalsPage() {
   const [editingPaymentForm, setEditingPaymentForm] = useState({ amount: '', paymentDate: '', accountId: '', paymentMethod: '', matchTransferRef: '', matchBankAccountName: '', matchNote: '' });
   const [editingPaymentSaving, setEditingPaymentSaving] = useState(false);
 
+  // Deposit tracking
+  const [depositFilter, setDepositFilter] = useState('all');
+
+  // Vacancy report
+  const [vacancyYear, setVacancyYear] = useState(new Date().getFullYear());
+  const [vacancyData, setVacancyData] = useState({ rows: [], avgVacancy: 0, fullyRented: 0 });
+  const [vacancyLoading, setVacancyLoading] = useState(false);
+
+  // Contract reminders (localStorage-based)
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderThreshold, setReminderThreshold] = useState(60);
+  const [reminderSentDates, setReminderSentDates] = useState({});
+
+  // Batch cashier operations
+  const [selectedIncomeIds, setSelectedIncomeIds] = useState(new Set());
+  const [showBatchPay, setShowBatchPay] = useState(false);
+  const [batchPayForm, setBatchPayForm] = useState({ actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '匯款' });
+  const [batchSaving, setBatchSaving] = useState(false);
+
   // Bulk utility input
   const [showBulkUtility, setShowBulkUtility] = useState(false);
   const [bulkUtilityYear, setBulkUtilityYear] = useState(new Date().getFullYear());
@@ -237,6 +275,8 @@ function RentalsPage() {
     if (activeTab === 'utilityIncome') { fetchUtilityList(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'paymentRecords') { fetchPaymentRecords(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'overdueReport') { fetchOverdueReport(); if (properties.length === 0) fetchProperties(); }
+    if (activeTab === 'depositTracking') { fetchContracts(); if (properties.length === 0) fetchProperties(); }
+    if (activeTab === 'vacancyReport') fetchVacancyReport();
     if (activeTab === 'overview') fetchSummary();
     if (activeTab === 'incomeReport') { fetchIncomeReport(); fetchProperties(); }
     if (activeTab === 'operatingReport') { fetchOperatingReport(); fetchProperties(); }
@@ -252,6 +292,13 @@ function RentalsPage() {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('rental_contract_reminders');
+      if (stored) setReminderSentDates(JSON.parse(stored));
+    } catch { /* ignore */ }
+  }, []);
 
   function buildReportParams() {
     const params = new URLSearchParams();
@@ -513,6 +560,57 @@ function RentalsPage() {
       setOverdueReportData(overdue);
     } catch { setOverdueReportData([]); }
     finally { setOverdueReportLoading(false); }
+  }
+
+  async function fetchVacancyReport() {
+    setVacancyLoading(true);
+    try {
+      const res = await fetch(`/api/rentals/reports/vacancy?year=${vacancyYear}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || data.error);
+      setVacancyData({ rows: data.rows || [], avgVacancy: data.avgVacancy || 0, fullyRented: data.fullyRented || 0 });
+    } catch { setVacancyData({ rows: [], avgVacancy: 0, fullyRented: 0 }); }
+    finally { setVacancyLoading(false); }
+  }
+
+  function markReminderSent(contractId) {
+    const today = new Date().toISOString().split('T')[0];
+    const updated = { ...reminderSentDates, [contractId]: today };
+    setReminderSentDates(updated);
+    try { localStorage.setItem('rental_contract_reminders', JSON.stringify(updated)); } catch { /* ignore */ }
+    showToast('已標記為已提醒', 'success');
+  }
+
+  function clearReminder(contractId) {
+    const updated = { ...reminderSentDates };
+    delete updated[contractId];
+    setReminderSentDates(updated);
+    try { localStorage.setItem('rental_contract_reminders', JSON.stringify(updated)); } catch { /* ignore */ }
+  }
+
+  async function batchConfirmIncomes() {
+    if (!batchPayForm.accountId) return showToast('請選擇帳戶', 'error');
+    const ids = Array.from(selectedIncomeIds);
+    if (ids.length === 0) return;
+    setBatchSaving(true);
+    let success = 0; let failed = 0;
+    try {
+      for (const id of ids) {
+        const income = incomes.find(i => i.id === id);
+        if (!income) continue;
+        const res = await fetch(`/api/rentals/income/${id}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rent: { actualAmount: String(Number(income.expectedAmount) - Number(income.actualAmount || 0)), actualDate: batchPayForm.actualDate, accountId: batchPayForm.accountId, paymentMethod: batchPayForm.paymentMethod, matchTransferRef: '', matchBankAccountName: '', matchNote: '' } })
+        });
+        if (res.ok) success++; else failed++;
+      }
+      showToast(`批次確認完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, 'success');
+      setSelectedIncomeIds(new Set());
+      setShowBatchPay(false);
+      fetchIncomes(); fetchSummary();
+    } catch (e) { showToast('批次操作失敗: ' + e.message, 'error'); }
+    finally { setBatchSaving(false); }
   }
 
   async function openBulkUtility() {
@@ -1297,16 +1395,71 @@ function RentalsPage() {
                   <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
                     產生本月租金
                   </button>
+                  {selectedIncomeIds.size > 0 && (
+                    <button onClick={() => setShowBatchPay(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 ml-auto">
+                      批次確認 ({selectedIncomeIds.size} 筆)
+                    </button>
+                  )}
                 </div>
+
+                {/* 批次確認收款 panel */}
+                {showBatchPay && (
+                  <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-green-800">批次確認收款 — {selectedIncomeIds.size} 筆（全額收款）</h4>
+                      <button onClick={() => setShowBatchPay(false)} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <div>
+                        <label className="text-xs text-gray-600">收款日期</label>
+                        <input type="date" value={batchPayForm.actualDate} onChange={e => setBatchPayForm(f => ({ ...f, actualDate: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">收款帳戶 *</label>
+                        <select value={batchPayForm.accountId} onChange={e => setBatchPayForm(f => ({ ...f, accountId: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-sm">
+                          <option value="">選擇帳戶</option>
+                          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">付款方式</label>
+                        <select value={batchPayForm.paymentMethod} onChange={e => setBatchPayForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-sm">
+                          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-3">※ 批次操作將以「應收金額」為實收，適用於全額收款的情境。</p>
+                    <div className="flex gap-2">
+                      <button onClick={batchConfirmIncomes} disabled={batchSaving}
+                        className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700 disabled:opacity-50">
+                        {batchSaving ? '處理中…' : '確認送出'}
+                      </button>
+                      <button onClick={() => { setShowBatchPay(false); setSelectedIncomeIds(new Set()); }}
+                        className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
+                    </div>
+                  </div>
+                )}
 
                 {(() => {
                   const hasAnyUtility = incomes.some(i => i.collectUtilityFee);
-                  const colSpan = hasAnyUtility ? 11 : 9;
+                  const colSpan = hasAnyUtility ? 12 : 10;
                   return (
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
+                        <th className="px-3 py-2 text-center w-8">
+                          <input type="checkbox"
+                            checked={selectedIncomeIds.size > 0 && incomes.filter(i => i.status === 'pending' || i.status === 'partial').every(i => selectedIncomeIds.has(i.id))}
+                            onChange={e => {
+                              const pending = incomes.filter(i => i.status === 'pending' || i.status === 'partial');
+                              setSelectedIncomeIds(e.target.checked ? new Set(pending.map(i => i.id)) : new Set());
+                            }}
+                          />
+                        </th>
                         <SortableTh label="物業" colKey="propertyName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租客" colKey="tenantName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租金應收" colKey="expectedAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
@@ -1336,6 +1489,18 @@ function RentalsPage() {
                         const totalExpected = expected + utilityExpected;
                         return (
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
+                            <td className="px-3 py-2 text-center">
+                              {(income.status === 'pending' || income.status === 'partial') && (
+                                <input type="checkbox"
+                                  checked={selectedIncomeIds.has(income.id)}
+                                  onChange={e => setSelectedIncomeIds(prev => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(income.id); else next.delete(income.id);
+                                    return next;
+                                  })}
+                                />
+                              )}
+                            </td>
                             <td className="px-3 py-2">{income.propertyName}</td>
                             <td className="px-3 py-2">{income.tenantName}</td>
                             <td className="px-3 py-2 text-right font-medium">${fmt(income.expectedAmount)}</td>
@@ -1782,6 +1947,75 @@ function RentalsPage() {
                   </button>
                 </div>
 
+                {/* 到期提醒管理 */}
+                <div className="mb-4">
+                  <button onClick={() => setReminderOpen(o => !o)}
+                    className="flex items-center gap-2 text-sm font-medium text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 hover:bg-yellow-100">
+                    <span>🔔 到期提醒管理</span>
+                    <span className="text-xs text-yellow-500">{reminderOpen ? '▲ 收起' : '▼ 展開'}</span>
+                  </button>
+                  {reminderOpen && (() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const thresholdDate = new Date(Date.now() + reminderThreshold * 86400000).toISOString().split('T')[0];
+                    const expiring = contracts.filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= thresholdDate)
+                      .sort((a, b) => a.endDate.localeCompare(b.endDate));
+                    return (
+                      <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          <label className="text-sm text-gray-600">提醒天數：</label>
+                          {[30, 45, 60, 90].map(d => (
+                            <button key={d} onClick={() => setReminderThreshold(d)}
+                              className={`text-xs px-3 py-1 rounded-full ${reminderThreshold === d ? 'bg-yellow-500 text-white' : 'bg-white border text-gray-600 hover:bg-yellow-100'}`}>
+                              {d} 天
+                            </button>
+                          ))}
+                          <span className="text-xs text-gray-400 ml-2">共 {expiring.length} 筆合約在 {reminderThreshold} 天內到期</span>
+                        </div>
+                        {expiring.length === 0 ? (
+                          <p className="text-sm text-gray-400 py-2">{reminderThreshold} 天內無即將到期合約</p>
+                        ) : (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-xs text-gray-500 border-b">
+                                <th className="text-left pb-1">物業</th>
+                                <th className="text-left pb-1">租客</th>
+                                <th className="text-right pb-1">到期日</th>
+                                <th className="text-right pb-1">剩餘天數</th>
+                                <th className="text-center pb-1">上次提醒</th>
+                                <th className="text-center pb-1">操作</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {expiring.map(c => {
+                                const days = Math.ceil((new Date(c.endDate) - new Date(today)) / 86400000);
+                                const lastReminder = reminderSentDates[c.id];
+                                return (
+                                  <tr key={c.id} className="border-b border-yellow-100">
+                                    <td className="py-1.5 text-gray-800">{c.propertyName}</td>
+                                    <td className="py-1.5 text-gray-600">{c.tenantName}</td>
+                                    <td className="py-1.5 text-right text-gray-700">{c.endDate}</td>
+                                    <td className="py-1.5 text-right">
+                                      <span className={`text-xs px-1.5 py-0.5 rounded ${days <= 30 ? 'bg-red-100 text-red-700 font-semibold' : 'bg-yellow-100 text-yellow-700'}`}>{days} 天</span>
+                                    </td>
+                                    <td className="py-1.5 text-center text-xs text-gray-400">
+                                      {lastReminder ? lastReminder : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="py-1.5 text-center">
+                                      <button onClick={() => markReminderSent(c.id)}
+                                        className="text-xs text-teal-600 hover:text-teal-800 mr-2">已提醒</button>
+                                      {lastReminder && <button onClick={() => clearReminder(c.id)} className="text-xs text-gray-400 hover:text-gray-600">清除</button>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
@@ -2008,6 +2242,53 @@ function RentalsPage() {
             {/* ==================== TAB: MAINTENANCE ==================== */}
             {activeTab === 'maintenance' && (
               <div>
+                {/* 維護費分析摘要 */}
+                {maintenances.length > 0 && (
+                  <div className="bg-white rounded-lg shadow p-4 mb-4">
+                    <h3 className="font-semibold text-gray-800 mb-3">維護費分析</h3>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="bg-purple-50 rounded-lg p-3 border-l-4 border-purple-500">
+                        <p className="text-xs text-gray-500">合計</p>
+                        <p className="text-xl font-bold text-purple-700">${fmt(maintenanceAnalysis.total)}</p>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-3 border-l-4 border-green-500">
+                        <p className="text-xs text-gray-500">已付</p>
+                        <p className="text-xl font-bold text-green-700">${fmt(maintenanceAnalysis.paid)}</p>
+                      </div>
+                      <div className="bg-yellow-50 rounded-lg p-3 border-l-4 border-yellow-500">
+                        <p className="text-xs text-gray-500">待出納</p>
+                        <p className="text-xl font-bold text-yellow-700">${fmt(maintenanceAnalysis.pending)}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">依類別</h4>
+                        {maintenanceAnalysis.catEntries.map(([cat, amt]) => (
+                          <div key={cat} className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-gray-600 w-16">{cat}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2">
+                              <div className="bg-purple-400 h-2 rounded-full" style={{ width: `${maintenanceAnalysis.total > 0 ? Math.round((amt / maintenanceAnalysis.total) * 100) : 0}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-700 w-20 text-right">${fmt(amt)}</span>
+                            <span className="text-xs text-gray-400 w-10 text-right">{maintenanceAnalysis.total > 0 ? Math.round((amt / maintenanceAnalysis.total) * 100) : 0}%</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">依物業</h4>
+                        {maintenanceAnalysis.propEntries.slice(0, 8).map(([pname, amt]) => (
+                          <div key={pname} className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-gray-600 w-24 truncate" title={pname}>{pname}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2">
+                              <div className="bg-teal-400 h-2 rounded-full" style={{ width: `${maintenanceAnalysis.total > 0 ? Math.round((amt / maintenanceAnalysis.total) * 100) : 0}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-700 w-20 text-right">${fmt(amt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center gap-3 mb-4">
                   <select value={maintenanceFilter.category} onChange={e => setMaintenanceFilter(f => ({ ...f, category: e.target.value }))}
                     className="border rounded px-2 py-1.5 text-sm">
@@ -2612,6 +2893,190 @@ function RentalsPage() {
                         </tbody>
                       </table>
                     </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ==================== TAB: 押金追蹤 ==================== */}
+            {activeTab === 'depositTracking' && (() => {
+              const depositContracts = contracts.filter(c => Number(c.depositAmount) > 0);
+              const filtered = depositFilter === 'all' ? depositContracts
+                : depositFilter === 'pending_receive' ? depositContracts.filter(c => !c.depositReceived)
+                : depositFilter === 'received' ? depositContracts.filter(c => c.depositReceived && !c.depositRefunded)
+                : depositFilter === 'refunded' ? depositContracts.filter(c => c.depositRefunded)
+                : depositContracts;
+              const totalHeld = depositContracts.filter(c => c.depositReceived && !c.depositRefunded)
+                .reduce((s, c) => s + Number(c.depositAmount || 0), 0);
+              const pendingReceive = depositContracts.filter(c => !c.depositReceived).length;
+              const pendingRefund = depositContracts.filter(c => c.depositRefundPaymentOrderId && !c.depositRefunded).length;
+              return (
+                <div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="bg-white rounded-lg shadow p-3 border-l-4 border-teal-500">
+                      <p className="text-xs text-gray-500">合約筆數</p>
+                      <p className="text-xl font-bold text-teal-700">{depositContracts.length}</p>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
+                      <p className="text-xs text-gray-500">目前持有押金</p>
+                      <p className="text-xl font-bold text-green-700">${fmt(totalHeld)}</p>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-3 border-l-4 border-blue-500">
+                      <p className="text-xs text-gray-500">待收押金</p>
+                      <p className="text-xl font-bold text-blue-700">{pendingReceive} 筆</p>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-3 border-l-4 border-orange-500">
+                      <p className="text-xs text-gray-500">待退押金（已申請）</p>
+                      <p className="text-xl font-bold text-orange-700">{pendingRefund} 筆</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mb-3">
+                    {[['all', '全部'], ['pending_receive', '待收押金'], ['received', '已收持有中'], ['refunded', '已退']].map(([v, l]) => (
+                      <button key={v} onClick={() => setDepositFilter(v)}
+                        className={`text-sm px-3 py-1 rounded-full border ${depositFilter === v ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>{l}</button>
+                    ))}
+                  </div>
+                  <div className="bg-white rounded-lg shadow overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-teal-50">
+                        <tr>
+                          <th className="text-left px-3 py-2">合約號</th>
+                          <th className="text-left px-3 py-2">物業</th>
+                          <th className="text-left px-3 py-2">租客</th>
+                          <th className="text-left px-3 py-2">合約期間</th>
+                          <th className="text-right px-3 py-2">月租</th>
+                          <th className="text-right px-3 py-2">押金金額</th>
+                          <th className="text-center px-3 py-2">收款</th>
+                          <th className="text-center px-3 py-2">退款</th>
+                          <th className="text-center px-3 py-2">合約狀態</th>
+                          <th className="text-center px-3 py-2">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.length === 0 ? (
+                          <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                        ) : filtered.map(c => (
+                          <tr key={c.id} className={`border-t hover:bg-gray-50 ${!c.depositReceived ? 'bg-blue-50/30' : c.depositRefunded ? 'bg-gray-50' : ''}`}>
+                            <td className="px-3 py-2 font-mono text-xs">{c.contractNo}</td>
+                            <td className="px-3 py-2">{c.propertyName}</td>
+                            <td className="px-3 py-2">{c.tenantName}</td>
+                            <td className="px-3 py-2 text-xs text-gray-500">{c.startDate} ~ {c.endDate}</td>
+                            <td className="px-3 py-2 text-right">${fmt(c.monthlyRent)}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-teal-700">${fmt(c.depositAmount)}</td>
+                            <td className="px-3 py-2 text-center">
+                              {c.depositReceived
+                                ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">已收</span>
+                                : <button onClick={() => handleDepositAction(c.id, 'depositReceive')} className="text-xs text-blue-600 hover:underline">收押金</button>}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {c.depositRefunded
+                                ? <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">已退</span>
+                                : c.depositRefundPaymentOrderId
+                                  ? <a href="/cashier" className="text-xs text-teal-600 hover:underline">待出納</a>
+                                  : c.depositReceived
+                                    ? <button onClick={() => handleDepositAction(c.id, 'depositRefund')} className="text-xs text-orange-600 hover:underline">退押金</button>
+                                    : <span className="text-gray-300 text-xs">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <StatusBadge value={c.status} list={CONTRACT_STATUSES} />
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <button onClick={() => { switchTab('contracts'); }} className="text-xs text-teal-600 hover:underline">查看合約</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {filtered.length > 0 && (
+                        <tfoot>
+                          <tr className="bg-teal-50 font-semibold">
+                            <td colSpan={5} className="px-3 py-2 text-sm">合計</td>
+                            <td className="px-3 py-2 text-right text-teal-700">${fmt(filtered.reduce((s, c) => s + Number(c.depositAmount || 0), 0))}</td>
+                            <td colSpan={4} />
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ==================== TAB: 空置率報表 ==================== */}
+            {activeTab === 'vacancyReport' && (
+              <div>
+                <div className="flex flex-wrap items-center gap-3 mb-4 no-print">
+                  <label className="text-sm">年份：</label>
+                  <select value={vacancyYear} onChange={e => setVacancyYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                    {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <button onClick={fetchVacancyReport} disabled={vacancyLoading} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
+                  <button onClick={() => window.print()} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800 no-print">列印</button>
+                </div>
+
+                {vacancyLoading ? (
+                  <p className="text-gray-500 text-center py-8">載入中…</p>
+                ) : (
+                  <>
+                    {vacancyData.rows.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3 mb-4">
+                        <div className="bg-white rounded-lg shadow p-3 border-l-4 border-teal-500">
+                          <p className="text-xs text-gray-500">物業總數</p>
+                          <p className="text-xl font-bold text-teal-700">{vacancyData.rows.length}</p>
+                        </div>
+                        <div className="bg-white rounded-lg shadow p-3 border-l-4 border-green-500">
+                          <p className="text-xs text-gray-500">全年出租</p>
+                          <p className="text-xl font-bold text-green-700">{vacancyData.fullyRented} 間</p>
+                        </div>
+                        <div className="bg-white rounded-lg shadow p-3 border-l-4 border-red-500">
+                          <p className="text-xs text-gray-500">平均空置率</p>
+                          <p className="text-xl font-bold text-red-700">{vacancyData.avgVacancy}%</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="bg-teal-50">
+                          <tr>
+                            <th className="text-left px-3 py-2 border border-gray-200">物業</th>
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                              <th key={m} className="text-center px-2 py-2 border border-gray-200 text-xs w-10">{m}月</th>
+                            ))}
+                            <th className="text-right px-3 py-2 border border-gray-200">出租月數</th>
+                            <th className="text-right px-3 py-2 border border-gray-200 text-red-700">空置率</th>
+                            <th className="text-right px-3 py-2 border border-gray-200">平均月租</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vacancyData.rows.length === 0 ? (
+                            <tr><td colSpan={16} className="text-center py-8 text-gray-400">暫無資料，請點擊查詢</td></tr>
+                          ) : vacancyData.rows.map(r => (
+                            <tr key={r.propertyId} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 border border-gray-200 font-medium">{r.propertyLabel}</td>
+                              {r.monthRented.map((rented, idx) => (
+                                <td key={idx} className={`border border-gray-200 text-center text-xs ${rented ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-400'}`}>
+                                  {rented ? '●' : '○'}
+                                </td>
+                              ))}
+                              <td className="px-3 py-2 border border-gray-200 text-right font-semibold">{r.rentedCount}</td>
+                              <td className={`px-3 py-2 border border-gray-200 text-right font-bold ${r.vacancyRate === 0 ? 'text-green-600' : r.vacancyRate >= 50 ? 'text-red-600' : 'text-yellow-600'}`}>
+                                {r.vacancyRate}%
+                              </td>
+                              <td className="px-3 py-2 border border-gray-200 text-right text-gray-600">
+                                {r.avgRent > 0 ? `$${fmt(r.avgRent)}` : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {vacancyData.rows.length > 0 && (
+                      <div className="flex gap-4 mt-2 text-xs no-print">
+                        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-green-200" />出租中</span>
+                        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-red-100" />空置</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
