@@ -127,6 +127,7 @@ export async function GET(request) {
         propertyLabel: propLabel(p),
         tenantName: null,
         months: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
+        monthsExpected: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
         monthStatus: { ...emptyStatus },
         total: 0
       });
@@ -137,6 +138,7 @@ export async function GET(request) {
       const paid = i.status === 'completed' || i.status === 'partial';
       const amount = paid ? Number(i.actualAmount ?? 0) : 0;
       row.months[i.incomeMonth] = (row.months[i.incomeMonth] || 0) + amount;
+      row.monthsExpected[i.incomeMonth] = (row.monthsExpected[i.incomeMonth] || 0) + Number(i.expectedAmount ?? 0);
       row.total += amount;
       // Compute cell status: overdue > partial > completed > pending > empty
       const cellStatus = i.status === 'completed' ? 'completed'
@@ -161,7 +163,7 @@ export async function GET(request) {
     }
 
     const rows = Array.from(byProperty.values())
-      .map(r => ({ ...r, months: r.months, monthStatus: r.monthStatus }))
+      .map(r => ({ ...r, months: r.months, monthsExpected: r.monthsExpected, monthStatus: r.monthStatus }))
       .filter(r => r.total > 0 || r.tenantName)
       .sort((a, b) => (a.propertyLabel || '').localeCompare(b.propertyLabel || ''));
 

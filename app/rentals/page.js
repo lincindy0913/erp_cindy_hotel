@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
@@ -192,6 +192,14 @@ function RentalsPage() {
   // Overdue report
   const [overdueReportData, setOverdueReportData] = useState([]);
   const [overdueReportLoading, setOverdueReportLoading] = useState(false);
+
+  // Confirm dialog (replaces window.confirm)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null, danger: true });
+
+  // Per-payment editing
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
+  const [editingPaymentForm, setEditingPaymentForm] = useState({ amount: '', paymentDate: '', accountId: '', paymentMethod: '', matchTransferRef: '', matchBankAccountName: '', matchNote: '' });
+  const [editingPaymentSaving, setEditingPaymentSaving] = useState(false);
 
   // Bulk utility input
   const [showBulkUtility, setShowBulkUtility] = useState(false);
@@ -456,6 +464,43 @@ function RentalsPage() {
     finally { setPaymentLoading(false); }
   }
 
+  function askConfirm(message, onConfirm, title = '確認操作', danger = true) {
+    setConfirmDialog({ open: true, title, message, onConfirm, danger });
+  }
+
+  function openPaymentEdit(payment) {
+    setEditingPaymentId(payment.id);
+    setEditingPaymentForm({
+      amount: String(payment.amount),
+      paymentDate: payment.paymentDate || '',
+      accountId: String(payment.accountId || ''),
+      paymentMethod: payment.paymentMethod || '匯款',
+      matchTransferRef: payment.matchTransferRef || '',
+      matchBankAccountName: payment.matchBankAccountName || '',
+      matchNote: payment.matchNote || ''
+    });
+  }
+
+  async function savePaymentEdit() {
+    if (!editingPaymentForm.amount || Number(editingPaymentForm.amount) <= 0) return showToast('請填寫金額', 'error');
+    if (!editingPaymentForm.accountId) return showToast('請選擇帳戶', 'error');
+    setEditingPaymentSaving(true);
+    try {
+      const res = await fetch(`/api/rentals/payments/${editingPaymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingPaymentForm)
+      });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || '更新失敗', 'error');
+      showToast('收款已更新', 'success');
+      setEditingPaymentId(null);
+      fetchIncomes();
+      fetchSummary();
+    } catch (e) { showToast('更新失敗: ' + e.message, 'error'); }
+    finally { setEditingPaymentSaving(false); }
+  }
+
   async function fetchOverdueReport() {
     setOverdueReportLoading(true);
     try {
@@ -471,8 +516,17 @@ function RentalsPage() {
   }
 
   async function openBulkUtility() {
-    if (properties.length === 0) await fetchProperties();
-    const utilProps = properties.filter(p => p.collectUtilityFee);
+    // Fetch directly (not from state) so we always have the latest data
+    let propList = properties;
+    if (propList.length === 0) {
+      try {
+        const res = await fetch('/api/rentals/properties');
+        const data = await res.json();
+        propList = Array.isArray(data) ? data : [];
+        setProperties(propList);
+      } catch { propList = []; }
+    }
+    const utilProps = propList.filter(p => p.collectUtilityFee);
     const entries = utilProps.map(p => ({ propertyId: p.id, propertyName: p.name, expectedAmount: '' }));
     setBulkUtilityEntries(entries);
     setShowBulkUtility(true);
@@ -524,14 +578,15 @@ function RentalsPage() {
     finally { setUtilitySaving(false); }
   }
 
-  async function deleteUtility(id) {
-    if (!confirm('確定刪除此筆水電收入？相關現金流紀錄也會一併刪除。')) return;
-    try {
-      const res = await fetch(`/api/rentals/utility-income/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-      fetchUtilityList();
-    } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
+  function deleteUtility(id) {
+    askConfirm('確定刪除此筆水電收入？相關現金流紀錄也會一併刪除。', async () => {
+      try {
+        const res = await fetch(`/api/rentals/utility-income/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+        fetchUtilityList();
+      } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
+    }, '刪除水電收入');
   }
 
   async function fetchMaintenances() {
@@ -575,14 +630,15 @@ function RentalsPage() {
     finally { setTenantSaving(false); }
   }
 
-  async function deleteTenant(id) {
-    if (!confirm('確定要刪除此租客？')) return;
-    try {
-      const res = await fetch(`/api/rentals/tenants/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-      fetchTenants();
-    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+  function deleteTenant(id) {
+    askConfirm('確定要刪除此租客？', async () => {
+      try {
+        const res = await fetch(`/api/rentals/tenants/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+        fetchTenants();
+      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    }, '刪除租客');
   }
 
   // ==================== PROPERTY CRUD ====================
@@ -621,14 +677,15 @@ function RentalsPage() {
     finally { setPropertySaving(false); }
   }
 
-  async function deleteProperty(id) {
-    if (!confirm('確定要刪除此物業？')) return;
-    try {
-      const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-      fetchProperties();
-    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+  function deleteProperty(id) {
+    askConfirm('確定要刪除此物業？此操作無法復原。', async () => {
+      try {
+        const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+        fetchProperties();
+      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    }, '刪除物業');
   }
 
   // ==================== CONTRACT CRUD ====================
@@ -704,18 +761,20 @@ function RentalsPage() {
     finally { setContractSaving(false); }
   }
 
-  async function deleteContract(id) {
-    if (!confirm('確定要刪除此合約？')) return;
-    try {
-      const res = await fetch(`/api/rentals/contracts/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-      fetchContracts();
-    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+  function deleteContract(id) {
+    askConfirm('確定要刪除此合約？', async () => {
+      try {
+        const res = await fetch(`/api/rentals/contracts/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+        fetchContracts();
+      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    }, '刪除合約');
   }
 
-  async function handleDepositAction(contractId, action) {
-    if (!confirm(action === 'depositReceive' ? '確定收取押金？' : '確定退還押金？')) return;
+  function handleDepositAction(contractId, action) {
+    const msg = action === 'depositReceive' ? '確定收取押金？收款後將建立金流紀錄。' : '確定退還押金？退還後將建立支出金流。';
+    askConfirm(msg, async () => {
     try {
       const res = await fetch(`/api/rentals/contracts/${contractId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -726,11 +785,12 @@ function RentalsPage() {
       showToast('操作成功', 'success');
       fetchContracts();
     } catch (err) { showToast('操作失敗: ' + err.message, 'error'); }
+    }, action === 'depositReceive' ? '收取押金' : '退還押金', false);
   }
 
   // ==================== INCOME (CASHIER) ====================
-  async function generateMonthlyIncome() {
-    if (!confirm(`確定產生 ${incomeFilter.year}/${incomeFilter.month} 月份租金紀錄？`)) return;
+  function generateMonthlyIncome() {
+    askConfirm(`確定產生 ${incomeFilter.year}/${incomeFilter.month} 月份租金紀錄？`, async () => {
     try {
       const res = await fetch('/api/rentals/income', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -741,6 +801,7 @@ function RentalsPage() {
       showToast(`已產生 ${data.created} 筆，跳過 ${data.skipped} 筆`, 'success');
       fetchIncomes();
     } catch (err) { showToast('產生失敗: ' + err.message, 'error'); }
+    }, '產生月份租金', false);
   }
 
   function openIncomePayment(income) {
@@ -829,16 +890,17 @@ function RentalsPage() {
     finally { setIncomePaymentSaving(false); }
   }
 
-  async function voidIncomePayment(incomeId) {
-    if (!confirm('確定要作廢此筆收款？金流將沖銷，收租紀錄恢復為待收。')) return;
-    try {
-      const res = await fetch(`/api/rentals/income/${incomeId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || '作廢失敗', 'error');
-      setPayingIncomeId(null);
-      fetchIncomes();
-      fetchSummary();
-    } catch (err) { showToast('作廢失敗: ' + err.message, 'error'); }
+  function voidIncomePayment(incomeId) {
+    askConfirm('確定要作廢此筆收款？金流將沖銷，收租紀錄恢復為待收。', async () => {
+      try {
+        const res = await fetch(`/api/rentals/income/${incomeId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || '作廢失敗', 'error');
+        setPayingIncomeId(null);
+        fetchIncomes();
+        fetchSummary();
+      } catch (err) { showToast('作廢失敗: ' + err.message, 'error'); }
+    }, '作廢收款');
   }
 
   // ==================== TAXES ====================
@@ -905,13 +967,14 @@ function RentalsPage() {
       showToast('已付款的稅款不可刪除', 'error');
       return;
     }
-    if (!confirm(`確定要刪除此筆稅款（${tax.property?.name} ${tax.taxYear} ${tax.taxType}）？`)) return;
-    try {
-      const res = await fetch(`/api/rentals/taxes/${tax.id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.message || data.error || '刪除失敗', 'error');
-      fetchTaxes();
-    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    askConfirm(`確定要刪除此筆稅款（${tax.property?.name} ${tax.taxYear} ${tax.taxType}）？`, async () => {
+      try {
+        const res = await fetch(`/api/rentals/taxes/${tax.id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.message || data.error || '刪除失敗', 'error');
+        fetchTaxes();
+      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    }, '刪除稅款');
   }
 
   // ==================== MAINTENANCE ====================
@@ -968,15 +1031,16 @@ function RentalsPage() {
       showToast('已付款的維護費不可刪除', 'error');
       return;
     }
-    if (!confirm(`確定要刪除此筆維護紀錄嗎？`)) return;
-    try {
-      const res = await fetch(`/api/rentals/maintenance/${m.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json();
-        return showToast(data?.error?.message || data?.error || '刪除失敗', 'error');
-      }
-      fetchMaintenances();
-    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    askConfirm('確定要刪除此筆維護紀錄嗎？', async () => {
+      try {
+        const res = await fetch(`/api/rentals/maintenance/${m.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json();
+          return showToast(data?.error?.message || data?.error || '刪除失敗', 'error');
+        }
+        fetchMaintenances();
+      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+    }, '刪除維護紀錄');
   }
 
   // ==================== HELPER ====================
@@ -1312,9 +1376,6 @@ function RentalsPage() {
                               )}
                               {(income.status === 'completed' || income.status === 'partial') && (
                                 <>
-                                  {paymentList.length <= 1 && (
-                                    <button onClick={() => openIncomeEdit(income)} className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-1">編輯</button>
-                                  )}
                                   <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium">作廢</button>
                                 </>
                               )}
@@ -1433,7 +1494,7 @@ function RentalsPage() {
                     {/* 歷次收款紀錄 */}
                     {payHistory.length > 0 && (
                       <div className="mt-4 border-t border-teal-200 pt-3">
-                        <h5 className="text-sm font-medium text-teal-700 mb-2">歷次收款紀錄</h5>
+                        <h5 className="text-sm font-medium text-teal-700 mb-2">歷次收款紀錄（可個別編輯）</h5>
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="text-gray-500 border-b">
@@ -1443,23 +1504,70 @@ function RentalsPage() {
                               <th className="text-left py-1">帳戶</th>
                               <th className="text-left py-1">付款方式</th>
                               <th className="text-left py-1">備註</th>
+                              <th className="text-center py-1">操作</th>
                             </tr>
                           </thead>
                           <tbody>
                             {payHistory.map((p, i) => (
-                              <tr key={p.id || i} className="border-b border-gray-100">
-                                <td className="py-1 font-medium">第{p.sequenceNo || (i + 1)}次</td>
-                                <td className="py-1">{p.paymentDate || '-'}</td>
-                                <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
-                                <td className="py-1">{accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
-                                <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
-                                <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
-                              </tr>
+                              <React.Fragment key={p.id || i}>
+                                <tr className="border-b border-gray-100">
+                                  <td className="py-1 font-medium">第{p.sequenceNo || (i + 1)}次</td>
+                                  <td className="py-1">{p.paymentDate || '-'}</td>
+                                  <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
+                                  <td className="py-1">{accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
+                                  <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
+                                  <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
+                                  <td className="py-1 text-center">
+                                    {p.id && (editingPaymentId === p.id ? (
+                                      <button onClick={() => setEditingPaymentId(null)} className="text-gray-400 text-xs">取消</button>
+                                    ) : (
+                                      <button onClick={() => openPaymentEdit(p)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">編輯</button>
+                                    ))}
+                                  </td>
+                                </tr>
+                                {p.id && editingPaymentId === p.id && (
+                                  <tr className="bg-blue-50/70">
+                                    <td colSpan={7} className="py-2 px-2">
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                                        <div>
+                                          <label className="text-xs text-gray-500">金額</label>
+                                          <input type="number" value={editingPaymentForm.amount} onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                        </div>
+                                        <div>
+                                          <label className="text-xs text-gray-500">日期</label>
+                                          <input type="date" value={editingPaymentForm.paymentDate} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                        </div>
+                                        <div>
+                                          <label className="text-xs text-gray-500">帳戶</label>
+                                          <select value={editingPaymentForm.accountId} onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
+                                            <option value="">選擇</option>
+                                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <label className="text-xs text-gray-500">付款方式</label>
+                                          <select value={editingPaymentForm.paymentMethod} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
+                                            {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                                          </select>
+                                        </div>
+                                        <div className="col-span-2">
+                                          <label className="text-xs text-gray-500">備註</label>
+                                          <input type="text" value={editingPaymentForm.matchNote} onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button onClick={savePaymentEdit} disabled={editingPaymentSaving} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">{editingPaymentSaving ? '儲存中…' : '儲存'}</button>
+                                        <button onClick={() => setEditingPaymentId(null)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs hover:bg-gray-300">取消</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             ))}
                             <tr className="font-medium bg-teal-100/50">
                               <td className="py-1" colSpan={2}>合計已收</td>
                               <td className="py-1 text-right text-green-700">${fmt(receivedAmt)}</td>
-                              <td className="py-1" colSpan={3}>{remainingAmt > 0 ? <span className="text-red-600">尚欠 ${fmt(remainingAmt)}</span> : <span className="text-green-600">已收齊</span>}</td>
+                              <td className="py-1" colSpan={4}>{remainingAmt > 0 ? <span className="text-red-600">尚欠 ${fmt(remainingAmt)}</span> : <span className="text-green-600">已收齊</span>}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -2204,14 +2312,29 @@ function RentalsPage() {
                               <td className="px-3 py-2 border border-gray-200">{r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}</td>
                               {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
                                 const st = r.monthStatus?.[m] || 'empty';
+                                const actual = r.months[m] || 0;
+                                const expected = r.monthsExpected?.[m] || 0;
                                 const cellBg = st === 'completed' ? 'bg-green-50 text-green-800'
                                   : st === 'partial' ? 'bg-orange-50 text-orange-800'
-                                  : st === 'overdue' ? 'bg-red-50 text-red-700 font-semibold'
+                                  : st === 'overdue' ? 'bg-red-50 text-red-700'
                                   : st === 'pending' ? 'bg-yellow-50 text-yellow-800'
                                   : '';
                                 return (
-                                  <td key={m} className={`text-right px-2 py-2 border border-gray-200 ${cellBg}`}>
-                                    {r.months[m] ? fmt(r.months[m]) : (st !== 'empty' ? <span className="text-xs opacity-60">{st === 'overdue' ? '逾期' : '待收'}</span> : '')}
+                                  <td key={m} className={`text-right px-2 py-2 border border-gray-200 align-top ${cellBg}`}>
+                                    {st === 'completed' && <div className="font-medium">{fmt(actual)}</div>}
+                                    {st === 'partial' && (
+                                      <div>
+                                        <div className="font-medium">{fmt(actual)}</div>
+                                        <div className="text-xs opacity-60">應收 {fmt(expected)}</div>
+                                      </div>
+                                    )}
+                                    {(st === 'pending' || st === 'overdue') && (
+                                      <div>
+                                        <div className="text-xs font-semibold">{st === 'overdue' ? '逾期' : '待收'}</div>
+                                        <div className="text-xs">{fmt(expected)}</div>
+                                      </div>
+                                    )}
+                                    {st === 'empty' && ''}
                                   </td>
                                 );
                               })}
@@ -2496,6 +2619,29 @@ function RentalsPage() {
           </>
         )}
       </div>
+
+      {/* ==================== CONFIRM DIALOG ==================== */}
+      {confirmDialog.open && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70]" onClick={() => setConfirmDialog(d => ({ ...d, open: false }))}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-800 mb-2">{confirmDialog.title}</h3>
+            <p className="text-sm text-gray-600 mb-6 whitespace-pre-line">{confirmDialog.message}</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDialog(d => ({ ...d, open: false }))}
+                className="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
+              >取消</button>
+              <button
+                onClick={() => {
+                  setConfirmDialog(d => ({ ...d, open: false }));
+                  confirmDialog.onConfirm?.();
+                }}
+                className={`px-4 py-2 text-sm text-white rounded-lg ${confirmDialog.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+              >確定</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==================== MODAL: TENANT ==================== */}
       {showTenantModal && (
