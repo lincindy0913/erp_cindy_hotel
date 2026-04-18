@@ -17,22 +17,30 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const month     = searchParams.get('month');     // 2026-03
-    const warehouse = searchParams.get('warehouse');
-    const source    = searchParams.get('source');
-    const status    = searchParams.get('status');
+    const month      = searchParams.get('month');     // 2026-03
+    const warehouse  = searchParams.get('warehouse');
+    const source     = searchParams.get('source');
+    const status     = searchParams.get('status');
+    const guestName  = searchParams.get('guestName');
+    const page       = Math.max(1, parseInt(searchParams.get('page')     || '1'));
+    const pageSize   = Math.min(500, Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
 
     const where = {};
     if (month)     where.importMonth = month;
     if (warehouse) where.warehouse   = warehouse;
     if (source)    where.source      = source;
     if (status)    where.status      = status;
+    if (guestName) where.guestName   = { contains: guestName };
 
-    const records = await prisma.bnbBookingRecord.findMany({
-      where,
-      orderBy: [{ checkInDate: 'desc' }, { id: 'desc' }],
-      take: 2000,
-    });
+    const [total, records] = await prisma.$transaction([
+      prisma.bnbBookingRecord.count({ where }),
+      prisma.bnbBookingRecord.findMany({
+        where,
+        orderBy: [{ checkInDate: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     // 批次查詢哪些 CashTransaction 已有存簿對帳匹配
     const allTxIds = [];
@@ -50,7 +58,7 @@ export async function GET(request) {
       : [];
     const matchedSet = new Set(matchedLines.map(l => l.matchedTransactionId));
 
-    return NextResponse.json(records.map(r => ({
+    const data = records.map(r => ({
       ...r,
       roomCharge:  Number(r.roomCharge),
       otherCharge: Number(r.otherCharge),
@@ -65,7 +73,8 @@ export async function GET(request) {
       transferMatched: r.transferCashTxId ? matchedSet.has(r.transferCashTxId) : false,
       cashMatched:     r.cashCashTxId     ? matchedSet.has(r.cashCashTxId)     : false,
       cardMatched:     r.cardCashTxId     ? matchedSet.has(r.cardCashTxId)     : false,
-    })));
+    }));
+    return NextResponse.json({ data, total, page, pageSize });
   } catch (error) {
     return handleApiError(error);
   }
@@ -84,6 +93,9 @@ export async function POST(request) {
 
     if (!importMonth || !source || !guestName || !checkInDate || !checkOutDate) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
+    }
+    if (checkOutDate <= checkInDate) {
+      return createErrorResponse('INVALID_DATE', '退房日期必須晚於入住日期', 400);
     }
 
     const safeFloat = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };

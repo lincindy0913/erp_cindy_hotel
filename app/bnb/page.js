@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import ExportButtons from '@/components/ExportButtons';
@@ -102,6 +103,11 @@ const TABS = [
   { key: 'otaRecon',   label: 'OTA比對' },
   { key: 'otaCommission', label: 'OTA傭金' },
   { key: 'bossWithdraw', label: '老闆收取' },
+  { key: 'calendar',       label: '訂房日曆' },
+  { key: 'occupancy',      label: '入住率統計' },
+  { key: 'payAudit',       label: '付款稽核' },
+  { key: 'sourceAnalysis', label: '來源分析' },
+  { key: 'guestHistory',   label: '房客歷史' },
 ];
 
 const STATUS_COLORS = {
@@ -109,7 +115,10 @@ const STATUS_COLORS = {
   '已入住': 'bg-green-100 text-green-700',
   '已預訂': 'bg-blue-100 text-blue-700',
   '已刪除': 'bg-red-100 text-red-500',
+  '取消':   'bg-orange-100 text-orange-600',
+  '未入住': 'bg-yellow-100 text-yellow-700',
 };
+function getStatusColor(s) { return STATUS_COLORS[s] ?? 'bg-gray-100 text-gray-600'; }
 const SOURCE_COLORS = {
   'Booking': 'bg-indigo-100 text-indigo-700',
   '電話':    'bg-amber-100 text-amber-700',
@@ -500,6 +509,9 @@ export default function BnbPage() {
   // ── 訂房明細 state ────────────────────────────────────────────
   const [records, setRecords]       = useState([]);
   const [recLoading, setRecLoading] = useState(false);
+  const [recPage,  setRecPage]  = useState(1);
+  const [recTotal, setRecTotal] = useState(0);
+  const REC_PAGE_SIZE = 200;
   const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [filterSource,    setFilterSource]    = useState('');
   const [filterStatus,    setFilterStatus]    = useState('');
@@ -508,6 +520,37 @@ export default function BnbPage() {
   const [editRecord,    setEditRecord]    = useState(null); // PaymentModal
   const [editBooking,   setEditBooking]   = useState(null); // BookingFormModal (edit)
   const [addBookingOpen,setAddBookingOpen]= useState(false); // BookingFormModal (add)
+
+  // ── 入住率統計 state ──────────────────────────────────────────
+  const [occYear,      setOccYear]      = useState(() => new Date().getFullYear().toString());
+  const [occWarehouse, setOccWarehouse] = useState('');
+  const [occData,      setOccData]      = useState(null);
+  const [occLoading,   setOccLoading]   = useState(false);
+
+  // ── 來源分析 state ────────────────────────────────────────────
+  const [saYear,      setSaYear]      = useState(() => new Date().getFullYear().toString());
+  const [saWarehouse, setSaWarehouse] = useState('');
+  const [saData,      setSaData]      = useState(null);
+  const [saLoading,   setSaLoading]   = useState(false);
+
+  // ── 付款稽核 state ────────────────────────────────────────────
+  const [auditMonth,     setAuditMonth]     = useState(() => new Date().toISOString().slice(0, 7));
+  const [auditWarehouse, setAuditWarehouse] = useState('');
+  const [auditData,      setAuditData]      = useState([]);
+  const [auditLoading,   setAuditLoading]   = useState(false);
+
+  // ── 房客歷史 state ────────────────────────────────────────────
+  const [ghSearch,   setGhSearch]   = useState('');
+  const [ghData,     setGhData]     = useState([]);
+  const [ghLoading,  setGhLoading]  = useState(false);
+  const [ghSearched, setGhSearched] = useState(false);
+
+  // ── 訂房日曆 state ────────────────────────────────────────────
+  const [calYear,      setCalYear]      = useState(() => new Date().getFullYear());
+  const [calMonth,     setCalMonth]     = useState(() => new Date().getMonth() + 1);
+  const [calWarehouse, setCalWarehouse] = useState('');
+  const [calData,      setCalData]      = useState([]);
+  const [calLoading,   setCalLoading]   = useState(false);
 
   // ── 老闆收取 state ────────────────────────────────────────────
   const [bwData,      setBwData]      = useState(null);
@@ -551,6 +594,8 @@ export default function BnbPage() {
   const [summaryYear,    setSummaryYear]    = useState(() => new Date().getFullYear().toString());
   const [summaryRows,    setSummaryRows]    = useState([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  /** /api/bnb/monthly-summary 回傳之 fixedExpenseHelp */
+  const [summaryFixedHelp, setSummaryFixedHelp] = useState(null);
 
   // ── 館別清單 state ────────────────────────────────────────────
   const [warehouseList, setWarehouseList] = useState([]);
@@ -749,16 +794,19 @@ export default function BnbPage() {
   }
 
   // ── 訂房明細 fetch ────────────────────────────────────────────
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (page = 1) => {
     setRecLoading(true);
     try {
-      const p = new URLSearchParams({ month: filterMonth });
+      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: '200' });
       if (filterSource)    p.set('source', filterSource);
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
       const res = await fetch(`/api/bnb?${p}`);
       if (!res.ok) { showToast('載入訂房記錄失敗', 'error'); return; }
-      setRecords(await res.json());
+      const json = await res.json();
+      setRecords(json.data ?? json);
+      setRecTotal(json.total ?? (json.data ?? json).length);
+      setRecPage(page);
     } catch { showToast('載入訂房記錄失敗', 'error'); }
     finally { setRecLoading(false); }
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
@@ -768,12 +816,86 @@ export default function BnbPage() {
     setSummaryLoading(true);
     try {
       const res = await fetch(`/api/bnb/monthly-summary?year=${summaryYear}`);
-      if (!res.ok) { showToast('載入月彙整失敗', 'error'); return; }
+      if (!res.ok) {
+        showToast('載入月彙整失敗', 'error');
+        setSummaryFixedHelp(null);
+        return;
+      }
       const data = await res.json();
       setSummaryRows(data.rows || []);
-    } catch { showToast('載入月彙整失敗', 'error'); }
+      setSummaryFixedHelp(data.fixedExpenseHelp ?? null);
+    } catch { showToast('載入月彙整失敗', 'error'); setSummaryFixedHelp(null); }
     finally { setSummaryLoading(false); }
   }, [summaryYear]);
+
+  // ── 入住率統計 fetch ──────────────────────────────────────────
+  const fetchOccupancy = useCallback(async () => {
+    setOccLoading(true);
+    try {
+      const p = new URLSearchParams({ year: occYear });
+      if (occWarehouse) p.set('warehouse', occWarehouse);
+      const res = await fetch(`/api/bnb/occupancy?${p}`);
+      if (res.ok) setOccData(await res.json());
+    } catch { showToast('載入入住率失敗', 'error'); }
+    finally { setOccLoading(false); }
+  }, [occYear, occWarehouse]);
+
+  // ── 來源分析 fetch ────────────────────────────────────────────
+  const fetchSourceAnalysis = useCallback(async () => {
+    setSaLoading(true);
+    try {
+      const p = new URLSearchParams({ year: saYear });
+      if (saWarehouse) p.set('warehouse', saWarehouse);
+      const res = await fetch(`/api/bnb/source-analysis?${p}`);
+      if (res.ok) setSaData(await res.json());
+    } catch { showToast('載入來源分析失敗', 'error'); }
+    finally { setSaLoading(false); }
+  }, [saYear, saWarehouse]);
+
+  // ── 付款稽核 fetch（重用訂房 API 撈全月無篩選資料）─────────────
+  const fetchAudit = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const p = new URLSearchParams({ month: auditMonth, pageSize: '500' });
+      if (auditWarehouse) p.set('warehouse', auditWarehouse);
+      const res = await fetch(`/api/bnb?${p}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const rows = (json.data ?? json).filter(r => r.status !== '已刪除');
+      setAuditData(rows);
+    } catch { showToast('載入付款稽核失敗', 'error'); }
+    finally { setAuditLoading(false); }
+  }, [auditMonth, auditWarehouse]);
+
+  // ── 房客歷史 fetch ────────────────────────────────────────────
+  const fetchGuestHistory = useCallback(async () => {
+    if (!ghSearch.trim()) { showToast('請輸入姓名搜尋', 'error'); return; }
+    setGhLoading(true);
+    setGhSearched(true);
+    try {
+      const p = new URLSearchParams({ guestName: ghSearch.trim(), pageSize: '200' });
+      const res = await fetch(`/api/bnb?${p}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setGhData(json.data ?? json);
+    } catch { showToast('查詢失敗', 'error'); }
+    finally { setGhLoading(false); }
+  }, [ghSearch]);
+
+  // ── 訂房日曆 fetch ────────────────────────────────────────────
+  const fetchCalendar = useCallback(async () => {
+    setCalLoading(true);
+    try {
+      const ym = `${calYear}-${String(calMonth).padStart(2, '0')}`;
+      const p = new URLSearchParams({ month: ym, pageSize: '500' });
+      if (calWarehouse) p.set('warehouse', calWarehouse);
+      const res = await fetch(`/api/bnb?${p}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setCalData(json.data ?? json);
+    } catch { showToast('載入日曆失敗', 'error'); }
+    finally { setCalLoading(false); }
+  }, [calYear, calMonth, calWarehouse]);
 
   // ── 每日收入 fetch ──────────────────────────────────────────
   // ── OTA 比對 執行 ──────────────────────────────────────────
@@ -985,6 +1107,10 @@ export default function BnbPage() {
     if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
     if (activeTab === 'otaCommission') { fetchCommHistory(); fetchReconLogs(); }
     if (activeTab === 'bossWithdraw')  fetchBossWithdraw();
+    if (activeTab === 'occupancy')     fetchOccupancy();
+    if (activeTab === 'sourceAnalysis')fetchSourceAnalysis();
+    if (activeTab === 'payAudit')      fetchAudit();
+    if (activeTab === 'calendar')      fetchCalendar();
   }, [activeTab]);
 
   useEffect(() => {
@@ -997,9 +1123,14 @@ export default function BnbPage() {
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
   useEffect(() => { if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary(); }, [summaryYear]);
   useEffect(() => { if (activeTab === 'declList') fetchDeclList(); }, [dlYear, dlWarehouse]);
-  useEffect(() => { if (activeTab === 'bossWithdraw') fetchBossWithdraw(); }, [bwMonth, bwWarehouse]);
+  useEffect(() => { if (activeTab === 'bossWithdraw')   fetchBossWithdraw();  }, [bwMonth, bwWarehouse]);
+  useEffect(() => { if (activeTab === 'occupancy')      fetchOccupancy();     }, [occYear, occWarehouse]);
+  useEffect(() => { if (activeTab === 'sourceAnalysis') fetchSourceAnalysis();}, [saYear,  saWarehouse]);
+  useEffect(() => { if (activeTab === 'payAudit')       fetchAudit();         }, [auditMonth, auditWarehouse]);
+  useEffect(() => { if (activeTab === 'calendar')       fetchCalendar();      }, [calYear, calMonth, calWarehouse]);
 
-  const isLocked = !!lockStatus?.locked;
+  const isLocked   = !!lockStatus?.locked;
+  const monthLocked = isLocked;
 
   // ── 匯入 ──────────────────────────────────────────────────────
   async function handleImport() {
@@ -1086,14 +1217,15 @@ export default function BnbPage() {
     for (const r of records) {
       if (r.status === '已刪除' || r.paymentLocked) continue;
       map[r.id] = {
-        payDeposit:    String(r.payDeposit   > 0 ? r.payDeposit   : ''),
-        depositLast5:  r.depositLast5 || '',
-        payTransfer:   String(r.payTransfer  > 0 ? r.payTransfer  : ''),
-        transferDate:  r.transferDate  || '',
-        transferLast5: r.transferLast5 || '',
-        payCard:       String(r.payCard      > 0 ? r.payCard      : ''),
-        payCash:       String(r.payCash      > 0 ? r.payCash      : ''),
-        payVoucher:    String(r.payVoucher   > 0 ? r.payVoucher   : ''),
+        payDeposit:      String(r.payDeposit   > 0 ? r.payDeposit   : ''),
+        depositLast5:    r.depositLast5 || '',
+        payTransfer:     String(r.payTransfer  > 0 ? r.payTransfer  : ''),
+        transferDate:    r.transferDate  || '',
+        transferLast5:   r.transferLast5 || '',
+        payCard:         String(r.payCard      > 0 ? r.payCard      : ''),
+        payCash:         String(r.payCash      > 0 ? r.payCash      : ''),
+        cashDestination: r.cashDestination || '',
+        payVoucher:      String(r.payVoucher   > 0 ? r.payVoucher   : ''),
       };
     }
     setEditMap(map);
@@ -1230,16 +1362,37 @@ export default function BnbPage() {
     fetchRecords();
   }
 
-  // ── 刪除記錄 ──────────────────────────────────────────────────
+  // ── 刪除記錄（軟刪除：將狀態改為「已刪除」）──────────────────
   async function handleDelete(id, name) {
-    if (!confirm(`確定刪除「${name}」的訂房記錄？`)) return;
-    const res = await fetch(`/api/bnb/${id}`, { method: 'DELETE' });
+    if (!confirm(`確定刪除「${name}」的訂房記錄？刪除後可點擊「還原」恢復。`)) return;
+    const res = await fetch(`/api/bnb/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: '已刪除' }),
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       showToast(err.error || '刪除失敗', 'error');
       return;
     }
-    showToast('已刪除', 'success');
+    showToast('已刪除（可點擊「還原」恢復）', 'success');
+    fetchRecords();
+  }
+
+  // ── 還原已刪除記錄 ──────────────────────────────────────────
+  async function handleRestore(id, name) {
+    if (!confirm(`確定還原「${name}」的訂房記錄？`)) return;
+    const res = await fetch(`/api/bnb/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: '已退房' }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || '還原失敗', 'error');
+      return;
+    }
+    showToast('已還原', 'success');
     fetchRecords();
   }
 
@@ -1294,6 +1447,20 @@ export default function BnbPage() {
     if (r.paymentFilled && Math.abs(pt - ct) > 0.01) acc.mismatch++;
     return acc;
   }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0, mismatch: 0 });
+
+  // ── 房號分析（依目前 records 頁面資料計算）────────────────────
+  const roomStats = (() => {
+    const map = {};
+    for (const r of records) {
+      if (r.status === '已刪除') continue;
+      const key = r.roomNo || '未指定';
+      if (!map[key]) map[key] = { roomNo: key, bookings: 0, revenue: 0, nights: 0 };
+      map[key].bookings++;
+      map[key].revenue += Number(r.roomCharge) + Number(r.otherCharge);
+      map[key].nights  += Math.max(0, Math.round((new Date(r.checkOutDate) - new Date(r.checkInDate)) / 86400000));
+    }
+    return Object.values(map).sort((a, b) => b.bookings - a.bookings);
+  })();
 
   const inputCls = 'border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none';
   const btnCls   = 'px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 transition-colors';
@@ -1475,6 +1642,23 @@ export default function BnbPage() {
               )}
             </div>
 
+            {/* 房號分析面板（僅有房號資料時顯示） */}
+            {roomStats.length > 1 && (
+              <div className="mb-3 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="text-xs font-semibold text-gray-500 mb-2">房號統計（本頁資料）</div>
+                <div className="flex flex-wrap gap-2">
+                  {roomStats.map(r => (
+                    <div key={r.roomNo} className="text-xs bg-gray-50 rounded-lg px-3 py-1.5 border border-gray-100">
+                      <span className="font-medium text-gray-700">{r.roomNo}</span>
+                      <span className="ml-1.5 text-indigo-500">{r.bookings}筆</span>
+                      <span className="ml-1 text-teal-500">{r.nights}晚</span>
+                      <span className="ml-1 text-emerald-500">NT${r.revenue.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 批次行動列 */}
             {selectedIds.size > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200">
@@ -1584,7 +1768,8 @@ export default function BnbPage() {
                     {visibleRecords.map(r => {
                       const isSelected      = selectedIds.has(r.id);
                       const isDeleted       = r.status === '已刪除';
-                      const isLocked        = !!r.paymentLocked;
+                      const isRowLocked     = !!r.paymentLocked;
+                      const isLocked        = isRowLocked || monthLocked;
                       const inExcelMode     = editMode && !isDeleted && !isLocked;
                       const isDirty         = dirtyIds.has(r.id);
                       const isOverdueUnpaid = !isDeleted && r.status === '已退房' && !r.paymentFilled && r.checkOutDate && r.checkOutDate < today;
@@ -1608,9 +1793,15 @@ export default function BnbPage() {
                         );
                         return (
                           <span
-                            onClick={() => { if (!isDeleted && !isLocked && !editMode) { setInlineEdit({ id: r.id, field }); setInlineValue(val || ''); } }}
-                            className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : ''} ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
-                            title={isLocked ? '已鎖帳' : editMode ? '' : '點擊編輯'}>
+                            onClick={() => {
+                              if (isLocked) {
+                                showToast(monthLocked ? `${filterMonth} 已鎖帳，如需修改請先解鎖該月` : '此筆記錄已鎖帳，請點擊右側「解鎖」按鈕', 'error');
+                                return;
+                              }
+                              if (!isDeleted && !editMode) { setInlineEdit({ id: r.id, field }); setInlineValue(val || ''); }
+                            }}
+                            className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
+                            title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊編輯'}>
                             {val > 0 ? val.toLocaleString() : '—'}
                           </span>
                         );
@@ -1690,7 +1881,13 @@ export default function BnbPage() {
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap max-w-[140px] truncate">{r.guestName}</td>
                           <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
-                          <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkInDate}</td>
+                          <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">
+                            {r.checkInDate}
+                            {r.checkOutDate && r.checkOutDate.substring(0, 7) !== r.importMonth && (
+                              <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-100 text-orange-600 font-medium"
+                                title={`退房日 ${r.checkOutDate} 與入住月 ${r.importMonth} 不同月份；此訂單收入整筆計入入住月`}>跨月</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
                           <td className={`px-3 py-2 text-right ${paymentMismatch ? 'text-red-600' : ''}`}>
                             {Number(r.roomCharge).toLocaleString()}
@@ -1722,9 +1919,12 @@ export default function BnbPage() {
                               return (
                                 <div>
                                   <span
-                                    onClick={() => { if (!isDeleted && !isLocked && !editMode) setEditRecord(r); }}
-                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : ''} text-blue-600 ${depVal > 0 ? '' : 'text-gray-300'}`}
-                                    title={isLocked ? '已鎖帳' : editMode ? '' : '點擊開啟付款明細'}>
+                                    onClick={() => {
+                                      if (isLocked) { showToast(monthLocked ? `${filterMonth} 已鎖帳，如需修改請先解鎖該月` : '此筆記錄已鎖帳，請點擊右側「解鎖」按鈕', 'error'); return; }
+                                      if (!isDeleted && !editMode) setEditRecord(r);
+                                    }}
+                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} text-blue-600 ${depVal > 0 ? '' : 'text-gray-300'}`}
+                                    title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊開啟付款明細'}>
                                     {depVal > 0 ? depVal.toLocaleString() : '—'}
                                   </span>
                                   {r.depositLast5 && <div className="text-[10px] text-blue-300 font-mono">{r.depositLast5}</div>}
@@ -1762,9 +1962,12 @@ export default function BnbPage() {
                               return (
                                 <div>
                                   <span
-                                    onClick={() => { if (!isDeleted && !isLocked && !editMode) setEditRecord(r); }}
-                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : ''} text-teal-600 ${trnVal > 0 ? '' : 'text-gray-300'}`}
-                                    title={isLocked ? '已鎖帳' : editMode ? '' : '點擊開啟付款明細'}>
+                                    onClick={() => {
+                                      if (isLocked) { showToast(monthLocked ? `${filterMonth} 已鎖帳，如需修改請先解鎖該月` : '此筆記錄已鎖帳，請點擊右側「解鎖」按鈕', 'error'); return; }
+                                      if (!isDeleted && !editMode) setEditRecord(r);
+                                    }}
+                                    className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} text-teal-600 ${trnVal > 0 ? '' : 'text-gray-300'}`}
+                                    title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊開啟付款明細'}>
                                     {trnVal > 0 ? trnVal.toLocaleString() : '—'}
                                   </span>
                                   {r.transferLast5 && <div className="text-[10px] text-teal-300 font-mono">{r.transferLast5}</div>}
@@ -1786,7 +1989,19 @@ export default function BnbPage() {
 
                           {/* 現金 */}
                           <td className="px-3 py-1.5 text-right">
-                            {inExcelMode ? excelInput('payCash', 'border-green-300 focus:ring-green-300') : editCell('payCash', 'text-green-600')}
+                            {inExcelMode ? (
+                              <div className="flex flex-col gap-0.5 items-end">
+                                {excelInput('payCash', 'border-green-300 focus:ring-green-300')}
+                                <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none"
+                                  title="勾選表示此現金由老闆直接收取">
+                                  <input type="checkbox"
+                                    checked={(editMap[r.id]?.cashDestination ?? r.cashDestination) === '老闆收取'}
+                                    onChange={e => updateCell(r.id, 'cashDestination', e.target.checked ? '老闆收取' : '')}
+                                    className="w-3 h-3 accent-orange-500 cursor-pointer" />
+                                  <span className={(editMap[r.id]?.cashDestination ?? r.cashDestination) === '老闆收取' ? 'text-orange-600 font-medium' : 'text-gray-400'}>老闆收現</span>
+                                </label>
+                              </div>
+                            ) : editCell('payCash', 'text-green-600')}
                           </td>
 
                           {/* 住宿卷 */}
@@ -1840,8 +2055,9 @@ export default function BnbPage() {
 
                           {/* 狀態 + 鎖帳標示 */}
                           <td className="px-3 py-2">
-                            <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>{r.status}</span>
-                            {isLocked && <span className="ml-1 text-[10px] text-slate-400" title={`鎖帳：${r.paymentLockedBy || ''}`}>🔒</span>}
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${getStatusColor(r.status)}`}>{r.status || '—'}</span>
+                            {isRowLocked && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-red-100 text-red-600 font-medium" title={r.paymentLockedBy ? `鎖帳人：${r.paymentLockedBy}` : '此筆已鎖帳'}>已鎖帳</span>}
+                            {!isRowLocked && monthLocked && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 font-medium" title={`${filterMonth} 整月已鎖帳`}>月鎖</span>}
                             {!r.paymentFilled && !isDeleted && !isLocked && (
                               <span className="ml-1 text-[10px] text-amber-500">未填</span>
                             )}
@@ -1856,7 +2072,13 @@ export default function BnbPage() {
                           {/* 操作欄（非 Excel 模式才顯示） */}
                           {!editMode && (
                             <td className="px-3 py-2 whitespace-nowrap">
-                              {isLocked ? (
+                              {isDeleted ? (
+                                <button onClick={() => handleRestore(r.id, r.guestName)}
+                                  title="還原此筆訂房記錄"
+                                  className="text-xs px-2 py-1 rounded border border-green-300 text-green-600 hover:bg-green-50">
+                                  還原
+                                </button>
+                              ) : isLocked ? (
                                 <button onClick={() => handleUnlockRow(r.id, r.guestName)}
                                   title="解除此筆付款鎖定"
                                   className="text-xs px-2 py-1 rounded border border-amber-300 text-amber-600 hover:bg-amber-50">
@@ -1875,7 +2097,7 @@ export default function BnbPage() {
                                     付款
                                   </button>
                                   <button onClick={() => handleDelete(r.id, r.guestName)}
-                                    title="刪除此筆訂房"
+                                    title="刪除此筆訂房（可還原）"
                                     className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">
                                     刪除
                                   </button>
@@ -1891,6 +2113,24 @@ export default function BnbPage() {
               </div>
               );
             })()}
+            {/* 分頁控制 */}
+            {recTotal > REC_PAGE_SIZE && (
+              <div className="flex items-center justify-between mt-3 px-1">
+                <span className="text-xs text-gray-400">
+                  顯示第 {(recPage - 1) * REC_PAGE_SIZE + 1}–{Math.min(recPage * REC_PAGE_SIZE, recTotal)} 筆，共 {recTotal} 筆
+                </span>
+                <div className="flex gap-1">
+                  <button onClick={() => fetchRecords(recPage - 1)} disabled={recPage <= 1}
+                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                    ← 上一頁
+                  </button>
+                  <button onClick={() => fetchRecords(recPage + 1)} disabled={recPage * REC_PAGE_SIZE >= recTotal}
+                    className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                    下一頁 →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2160,6 +2400,11 @@ export default function BnbPage() {
               </div>
             </div>
 
+            <p className="text-xs text-gray-400 mb-3">
+              ※ 依「入住月份」分組；跨月入住（如月底入住隔月退房）整筆計入入住當月，退房月不另計。訂房明細中標有
+              <span className="mx-1 px-1 py-0.5 rounded bg-orange-100 text-orange-600 text-[10px] font-medium">跨月</span>
+              的訂單即為此情況。
+            </p>
             {summaryLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
             ) : (
@@ -2272,6 +2517,30 @@ export default function BnbPage() {
               );
             })()}
 
+            {!summaryLoading && summaryFixedHelp && (
+              <div className="space-y-2 mb-4 text-sm">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-600">
+                  <span>此表固定費用來自費用管理之共通費用（僅計入<strong>已確認</strong>）。</span>
+                  <Link href="/expenses" className="text-indigo-600 hover:underline font-medium whitespace-nowrap">
+                    前往費用管理
+                  </Link>
+                </div>
+                {(summaryFixedHelp.pendingFixedCount ?? 0) > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                    {summaryYear} 年度尚有 <strong>{summaryFixedHelp.pendingFixedCount}</strong> 筆共通費用紀錄未確認，不會計入上表固定費用；請至費用管理處理。
+                  </div>
+                )}
+                {(summaryFixedHelp.monthsWithZeroFixed?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800">
+                    以下月份有訂房或房費收入，但固定費用為 NT$0，請確認該月是否已建立並確認共通費用：
+                    <span className="ml-1 font-mono text-xs sm:text-sm">
+                      {summaryFixedHelp.monthsWithZeroFixed.join('、')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {summaryLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
             ) : (
@@ -2290,14 +2559,24 @@ export default function BnbPage() {
                     )}
                     {summaryRows.map(r => {
                       const incomeTotal = r.netRevenue + r.otherIncome;
+                      const zeroFixedHint =
+                        summaryFixedHelp?.monthsWithZeroFixed?.includes(r.month) ?? false;
                       return (
-                        <tr key={r.month} className="hover:bg-gray-50">
+                        <tr
+                          key={r.month}
+                          className={`hover:bg-gray-50 ${zeroFixedHint ? 'bg-amber-50/60' : ''}`}
+                        >
                           <td className="px-3 py-2 font-medium">{r.month}</td>
                           <td className="px-3 py-2 text-right text-indigo-700">{Number(r.netRevenue).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherIncome || 0).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right font-semibold">{Number(incomeTotal).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-red-500">({Number(r.purchaseExpense).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right text-red-400">({Number(r.fixedExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-400">
+                            <span>({Number(r.fixedExpense).toLocaleString()})</span>
+                            {zeroFixedHint && (
+                              <span className="block text-[10px] leading-tight text-amber-800 font-normal mt-0.5">可能未登記或未確認</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right text-red-600">({Number(r.totalExpense).toLocaleString()})</td>
                           <td className={`px-3 py-2 text-right font-bold ${r.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {Number(r.netProfit).toLocaleString()}
@@ -3474,6 +3753,428 @@ export default function BnbPage() {
                 </table>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ══ Tab: 訂房日曆 ══ */}
+        {activeTab === 'calendar' && (() => {
+          const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+          const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+          // 統計每天有幾筆入住中的訂單
+          const dayMap = {};
+          for (const r of calData) {
+            if (r.status === '已刪除') continue;
+            const inn  = new Date(r.checkInDate);
+            const out  = new Date(r.checkOutDate);
+            for (let d = new Date(inn); d < out; d.setDate(d.getDate() + 1)) {
+              if (d.getFullYear() === calYear && d.getMonth() + 1 === calMonth) {
+                const key = d.getDate();
+                if (!dayMap[key]) dayMap[key] = [];
+                dayMap[key].push(r);
+              }
+            }
+          }
+          const firstDay = new Date(calYear, calMonth - 1, 1).getDay(); // 0=Sun
+          const cells = [];
+          for (let i = 0; i < firstDay; i++) cells.push(null);
+          for (const d of days) cells.push(d);
+          const weekLabels = ['日','一','二','三','四','五','六'];
+          return (
+            <div className="space-y-4">
+              {/* toolbar */}
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={() => { const d = new Date(calYear, calMonth - 2, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth() + 1); }}
+                  className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">← 上月</button>
+                <span className="font-semibold text-gray-800 text-lg">{calYear} 年 {calMonth} 月</span>
+                <button onClick={() => { const d = new Date(calYear, calMonth, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth() + 1); }}
+                  className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">下月 →</button>
+                <select value={calWarehouse} onChange={e => setCalWarehouse(e.target.value)} className={inputCls}>
+                  <option value="">全館</option>
+                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+                {calLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
+              </div>
+              {/* calendar grid */}
+              <div className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="grid grid-cols-7 border-b">
+                  {weekLabels.map(w => (
+                    <div key={w} className={`py-2 text-center text-xs font-medium ${w === '日' ? 'text-red-400' : w === '六' ? 'text-blue-400' : 'text-gray-500'}`}>{w}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 auto-rows-[minmax(80px,auto)]">
+                  {cells.map((day, idx) => {
+                    if (!day) return <div key={`e${idx}`} className="border-b border-r border-gray-50" />;
+                    const bookings = dayMap[day] || [];
+                    const isToday = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(day).padStart(2,'0')}` === new Date().toISOString().slice(0,10);
+                    const dow = (firstDay + day - 1) % 7;
+                    return (
+                      <div key={day} className={`border-b border-r border-gray-100 p-1.5 ${isToday ? 'bg-indigo-50' : bookings.length > 0 ? 'bg-green-50/40' : ''}`}>
+                        <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-indigo-600' : dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500'}`}>{day}</div>
+                        {bookings.slice(0, 3).map(b => (
+                          <div key={b.id} className="text-[10px] leading-4 px-1 rounded truncate bg-green-100 text-green-700 mb-0.5" title={`${b.guestName} ${b.checkInDate}~${b.checkOutDate}`}>
+                            {b.roomNo ? `${b.roomNo} ` : ''}{b.guestName}
+                          </div>
+                        ))}
+                        {bookings.length > 3 && <div className="text-[10px] text-gray-400">+{bookings.length - 3}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* legend */}
+              <div className="text-xs text-gray-400 flex gap-4">
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" />有訂房</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-50 inline-block" />今日</span>
+                <span>共 {calData.filter(r => r.status !== '已刪除').length} 筆訂房</span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ══ Tab: 入住率統計 ══ */}
+        {activeTab === 'occupancy' && (
+          <div className="space-y-4">
+            {/* toolbar */}
+            <div className="flex flex-wrap items-center gap-3">
+              <input type="number" min="2020" max="2035" value={occYear} onChange={e => setOccYear(e.target.value)}
+                className={inputCls + ' w-24'} placeholder="年度" />
+              <select value={occWarehouse} onChange={e => setOccWarehouse(e.target.value)} className={inputCls}>
+                <option value="">全館</option>
+                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+              <button onClick={fetchOccupancy} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
+              {occLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
+            </div>
+            {occData && (() => {
+              const rows = occData.rows || [];
+              const totalBookings = rows.reduce((s, r) => s + r.bookings, 0);
+              const totalRevenue  = rows.reduce((s, r) => s + r.revenue,  0);
+              const totalNights   = rows.reduce((s, r) => s + r.roomNights, 0);
+              return (
+                <>
+                  {/* KPI */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: '全年訂房數', value: totalBookings, color: 'text-indigo-600' },
+                      { label: '住宿房夜', value: `${totalNights} 晚`, color: 'text-teal-600' },
+                      { label: '全年收入', value: `NT$ ${totalRevenue.toLocaleString()}`, color: 'text-emerald-600' },
+                      { label: '平均住宿天數', value: `${totalBookings > 0 ? (totalNights / totalBookings).toFixed(1) : 0} 晚`, color: 'text-amber-600' },
+                    ].map(k => (
+                      <div key={k.label} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                        <div className="text-xs text-gray-400 mb-1">{k.label}</div>
+                        <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* monthly bar chart */}
+                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-4">月度訂房數與收入</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-xs text-gray-400 border-b">
+                            <th className="text-left py-2 pr-3 font-medium">月份</th>
+                            <th className="text-right py-2 px-2 font-medium">訂房</th>
+                            <th className="text-right py-2 px-2 font-medium">房夜</th>
+                            <th className="text-right py-2 px-2 font-medium">均住</th>
+                            <th className="text-right py-2 px-2 font-medium">收入</th>
+                            <th className="py-2 pl-3 font-medium w-40">訂房比例</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {rows.map(r => {
+                            const pct = totalBookings > 0 ? Math.round(r.bookings / totalBookings * 100) : 0;
+                            return (
+                              <tr key={r.month} className="hover:bg-gray-50">
+                                <td className="py-2 pr-3 text-gray-600 font-medium">{r.month}</td>
+                                <td className="py-2 px-2 text-right text-indigo-600 font-semibold">{r.bookings}</td>
+                                <td className="py-2 px-2 text-right text-teal-600">{r.roomNights}</td>
+                                <td className="py-2 px-2 text-right text-gray-500">{r.avgStay}</td>
+                                <td className="py-2 px-2 text-right text-emerald-600">NT$ {r.revenue.toLocaleString()}</td>
+                                <td className="py-2 pl-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2">
+                                      <div className="bg-indigo-400 rounded-full h-2 transition-all" style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ══ Tab: 付款稽核 ══ */}
+        {activeTab === 'payAudit' && (() => {
+          const unfilled   = auditData.filter(r => !r.paymentFilled);
+          const mismatched = auditData.filter(r => {
+            if (!r.paymentFilled) return false;
+            const pay = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+            const chg = Number(r.roomCharge) + Number(r.otherCharge);
+            return Math.abs(pay - chg) > 0.01;
+          });
+          const ok = auditData.length - unfilled.length - mismatched.length;
+          return (
+            <div className="space-y-4">
+              {/* toolbar */}
+              <div className="flex flex-wrap items-center gap-3">
+                <input type="month" value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className={inputCls} />
+                <select value={auditWarehouse} onChange={e => setAuditWarehouse(e.target.value)} className={inputCls}>
+                  <option value="">全館</option>
+                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+                <button onClick={fetchAudit} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
+                {auditLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
+              </div>
+              {auditData.length > 0 && (
+                <>
+                  {/* summary cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                      <div className="text-xs text-emerald-600 mb-1">付款完整</div>
+                      <div className="text-2xl font-bold text-emerald-700">{ok}</div>
+                      <div className="text-[10px] text-emerald-400 mt-1">{auditData.length > 0 ? Math.round(ok / auditData.length * 100) : 0}%</div>
+                    </div>
+                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                      <div className="text-xs text-amber-600 mb-1">未填付款</div>
+                      <div className="text-2xl font-bold text-amber-700">{unfilled.length}</div>
+                    </div>
+                    <div className="bg-red-50 rounded-xl p-4 border border-red-100">
+                      <div className="text-xs text-red-600 mb-1">金額不符</div>
+                      <div className="text-2xl font-bold text-red-700">{mismatched.length}</div>
+                    </div>
+                  </div>
+                  {/* problem records */}
+                  {(unfilled.length > 0 || mismatched.length > 0) && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="px-5 py-3 bg-red-50 border-b border-red-100">
+                        <h4 className="text-sm font-semibold text-red-700">需處理記錄</h4>
+                      </div>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-xs text-gray-400 border-b bg-gray-50">
+                            <th className="px-4 py-2 text-left font-medium">問題類型</th>
+                            <th className="px-4 py-2 text-left font-medium">館別</th>
+                            <th className="px-4 py-2 text-left font-medium">姓名</th>
+                            <th className="px-4 py-2 text-left font-medium">入住</th>
+                            <th className="px-4 py-2 text-right font-medium">房費</th>
+                            <th className="px-4 py-2 text-right font-medium">已收</th>
+                            <th className="px-4 py-2 text-right font-medium">差額</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {[...unfilled.map(r => ({ ...r, _issue: '未填付款' })), ...mismatched.map(r => ({ ...r, _issue: '金額不符' }))].map(r => {
+                            const pay = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
+                            const chg = Number(r.roomCharge) + Number(r.otherCharge);
+                            return (
+                              <tr key={r.id} className="hover:bg-red-50/30">
+                                <td className="px-4 py-2">
+                                  <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${r._issue === '未填付款' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{r._issue}</span>
+                                </td>
+                                <td className="px-4 py-2 text-gray-400 text-xs">{r.warehouse}</td>
+                                <td className="px-4 py-2 font-medium text-gray-700">{r.guestName}</td>
+                                <td className="px-4 py-2 text-gray-500 text-xs">{r.checkInDate}</td>
+                                <td className="px-4 py-2 text-right">{chg.toLocaleString()}</td>
+                                <td className="px-4 py-2 text-right text-teal-600">{pay.toLocaleString()}</td>
+                                <td className={`px-4 py-2 text-right font-semibold ${Math.abs(pay - chg) > 0.01 ? 'text-red-500' : 'text-gray-300'}`}>
+                                  {pay - chg !== 0 ? (pay - chg > 0 ? '+' : '') + Math.round(pay - chg).toLocaleString() : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {unfilled.length === 0 && mismatched.length === 0 && (
+                    <div className="text-center py-10 text-emerald-600 bg-emerald-50 rounded-xl border border-emerald-100">
+                      ✓ {auditMonth} 全部 {auditData.length} 筆付款資料完整，無異常
+                    </div>
+                  )}
+                </>
+              )}
+              {!auditLoading && auditData.length === 0 && (
+                <div className="text-center py-10 text-gray-400">請選擇月份後點擊查詢</div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ══ Tab: 來源分析 ══ */}
+        {activeTab === 'sourceAnalysis' && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <input type="number" min="2020" max="2035" value={saYear} onChange={e => setSaYear(e.target.value)}
+                className={inputCls + ' w-24'} />
+              <select value={saWarehouse} onChange={e => setSaWarehouse(e.target.value)} className={inputCls}>
+                <option value="">全館</option>
+                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+              <button onClick={fetchSourceAnalysis} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
+              {saLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
+            </div>
+            {saData && (() => {
+              const sources = saData.sources || [];
+              const trend   = saData.trend   || [];
+              const colors  = ['bg-indigo-400','bg-amber-400','bg-teal-400','bg-rose-400','bg-purple-400','bg-green-400'];
+              const maxBookings = Math.max(...sources.map(s => s.bookings), 1);
+              return (
+                <>
+                  {/* KPI */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">總訂房數</div>
+                      <div className="text-2xl font-bold text-indigo-600">{saData.totalBookings}</div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">總收入</div>
+                      <div className="text-2xl font-bold text-emerald-600">NT$ {saData.totalRevenue?.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">來源數</div>
+                      <div className="text-2xl font-bold text-teal-600">{sources.length}</div>
+                    </div>
+                  </div>
+                  {/* source breakdown */}
+                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-4">來源明細</h4>
+                    <div className="space-y-3">
+                      {sources.map((s, i) => (
+                        <div key={s.source} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-gray-700">{s.source}</span>
+                            <span className="text-gray-400 text-xs">{s.bookings} 筆 · {s.bookingPct}% · 均 NT${s.avgRevenue?.toLocaleString()} · 均住 {s.avgStay} 晚</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                              <div className={`${colors[i % colors.length]} rounded-full h-2.5 transition-all`} style={{ width: `${Math.round(s.bookings / maxBookings * 100)}%` }} />
+                            </div>
+                            <span className="text-xs text-emerald-600 w-28 text-right">NT$ {s.revenue?.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* monthly trend table */}
+                  {trend.length > 0 && (
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 overflow-x-auto">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">月度趨勢（訂房數）</h4>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b text-gray-400">
+                            <th className="text-left py-1.5 pr-3 font-medium">月份</th>
+                            {sources.map(s => <th key={s.source} className="text-right py-1.5 px-2 font-medium">{s.source}</th>)}
+                            <th className="text-right py-1.5 pl-2 font-medium text-gray-600">合計</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {trend.map(t => {
+                            const total = sources.reduce((sum, s) => sum + (t[s.source] || 0), 0);
+                            return (
+                              <tr key={t.month} className="hover:bg-gray-50">
+                                <td className="py-1.5 pr-3 text-gray-600 font-medium">{t.month}</td>
+                                {sources.map(s => (
+                                  <td key={s.source} className="py-1.5 px-2 text-right text-indigo-600">{t[s.source] || 0}</td>
+                                ))}
+                                <td className="py-1.5 pl-2 text-right font-semibold text-gray-700">{total}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ══ Tab: 房客歷史 ══ */}
+        {activeTab === 'guestHistory' && (
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <input type="text" value={ghSearch} onChange={e => setGhSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && fetchGuestHistory()}
+                placeholder="輸入房客姓名搜尋…" className={inputCls + ' flex-1 max-w-xs'} />
+              <button onClick={fetchGuestHistory} disabled={ghLoading}
+                className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                {ghLoading ? '搜尋中…' : '搜尋'}
+              </button>
+            </div>
+            {ghSearched && !ghLoading && (
+              ghData.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">找不到「{ghSearch}」的訂房記錄</div>
+              ) : (
+                <>
+                  {/* summary for this guest */}
+                  {(() => {
+                    const nonDel = ghData.filter(r => r.status !== '已刪除');
+                    const rev    = nonDel.reduce((s, r) => s + Number(r.roomCharge) + Number(r.otherCharge), 0);
+                    const nights = nonDel.reduce((s, r) => s + Math.max(0, Math.round((new Date(r.checkOutDate) - new Date(r.checkInDate)) / 86400000)), 0);
+                    return (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                          <div className="text-xs text-gray-400 mb-1">入住次數</div>
+                          <div className="text-2xl font-bold text-indigo-600">{nonDel.length}</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                          <div className="text-xs text-gray-400 mb-1">總住宿天數</div>
+                          <div className="text-2xl font-bold text-teal-600">{nights} 晚</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                          <div className="text-xs text-gray-400 mb-1">消費總額</div>
+                          <div className="text-2xl font-bold text-emerald-600">NT$ {rev.toLocaleString()}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-xs text-gray-400 border-b">
+                          <th className="px-4 py-2 text-left font-medium">入住月</th>
+                          <th className="px-4 py-2 text-left font-medium">館別</th>
+                          <th className="px-4 py-2 text-left font-medium">房號</th>
+                          <th className="px-4 py-2 text-left font-medium">入住日</th>
+                          <th className="px-4 py-2 text-left font-medium">退房日</th>
+                          <th className="px-4 py-2 text-right font-medium">房費</th>
+                          <th className="px-4 py-2 text-left font-medium">來源</th>
+                          <th className="px-4 py-2 text-left font-medium">狀態</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {ghData.map(r => (
+                          <tr key={r.id} className={`hover:bg-gray-50 ${r.status === '已刪除' ? 'opacity-40' : ''}`}>
+                            <td className="px-4 py-2 text-gray-500 text-xs">{r.importMonth}</td>
+                            <td className="px-4 py-2 text-gray-400 text-xs">{r.warehouse}</td>
+                            <td className="px-4 py-2 text-gray-600 text-xs">{r.roomNo || '—'}</td>
+                            <td className="px-4 py-2 text-gray-700">{r.checkInDate}</td>
+                            <td className="px-4 py-2 text-gray-500 text-xs">{r.checkOutDate}</td>
+                            <td className="px-4 py-2 text-right font-medium text-emerald-600">
+                              NT$ {(Number(r.roomCharge) + Number(r.otherCharge)).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-2 text-xs text-gray-500">{r.source}</td>
+                            <td className="px-4 py-2">
+                              <span className={`text-[11px] px-1.5 py-0.5 rounded ${getStatusColor(r.status)}`}>{r.status || '—'}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            )}
+            {!ghSearched && <div className="text-center py-10 text-gray-300">輸入房客姓名後按 Enter 或點擊搜尋</div>}
           </div>
         )}
 

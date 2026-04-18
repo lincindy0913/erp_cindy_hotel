@@ -60,21 +60,24 @@ export async function PATCH(request) {
 
         const existing = await prisma.bnbBookingRecord.findUnique({
           where: { id },
-          select: { paymentLocked: true, payCard: true, cardFeeRate: true },
+          select: { paymentLocked: true, payCard: true, cardFeeRate: true,
+                    payCash: true, cashDestination: true, guestName: true,
+                    warehouse: true, checkInDate: true, checkOutDate: true, bossWithdrawNote: true },
         });
         if (!existing) continue;
         if (existing.paymentLocked) { skipped++; continue; }
 
         const updateData = {};
-        if (rec.payDeposit    !== undefined) updateData.payDeposit    = parseFloat(rec.payDeposit)  || 0;
-        if (rec.depositDate   !== undefined) updateData.depositDate   = rec.depositDate   || null;
-        if (rec.depositLast5  !== undefined) updateData.depositLast5  = rec.depositLast5  || null;
-        if (rec.payTransfer   !== undefined) updateData.payTransfer   = parseFloat(rec.payTransfer) || 0;
-        if (rec.transferDate  !== undefined) updateData.transferDate  = rec.transferDate  || null;
-        if (rec.transferLast5 !== undefined) updateData.transferLast5 = rec.transferLast5 || null;
-        if (rec.payCard      !== undefined) updateData.payCard      = parseFloat(rec.payCard)     || 0;
-        if (rec.payCash      !== undefined) updateData.payCash      = parseFloat(rec.payCash)     || 0;
-        if (rec.payVoucher   !== undefined) updateData.payVoucher   = parseFloat(rec.payVoucher)  || 0;
+        if (rec.payDeposit       !== undefined) updateData.payDeposit       = parseFloat(rec.payDeposit)  || 0;
+        if (rec.depositDate      !== undefined) updateData.depositDate      = rec.depositDate   || null;
+        if (rec.depositLast5     !== undefined) updateData.depositLast5     = rec.depositLast5  || null;
+        if (rec.payTransfer      !== undefined) updateData.payTransfer      = parseFloat(rec.payTransfer) || 0;
+        if (rec.transferDate     !== undefined) updateData.transferDate     = rec.transferDate  || null;
+        if (rec.transferLast5    !== undefined) updateData.transferLast5    = rec.transferLast5 || null;
+        if (rec.payCard          !== undefined) updateData.payCard          = parseFloat(rec.payCard)     || 0;
+        if (rec.payCash          !== undefined) updateData.payCash          = parseFloat(rec.payCash)     || 0;
+        if (rec.cashDestination  !== undefined) updateData.cashDestination  = rec.cashDestination || null;
+        if (rec.payVoucher       !== undefined) updateData.payVoucher       = parseFloat(rec.payVoucher)  || 0;
 
         // 重新計算手續費
         if (updateData.payCard !== undefined) {
@@ -91,6 +94,31 @@ export async function PATCH(request) {
         updateData.paymentFilled = (dep + trn + crd + csh + vch) > 0;
 
         await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
+
+        // 同步 BnbBossWithdraw
+        const finalCash = updateData.payCash          ?? Number(existing.payCash);
+        const finalDest = updateData.cashDestination  ?? existing.cashDestination;
+        if (finalDest === '老闆收取' && finalCash > 0) {
+          const exists = await prisma.bnbBossWithdraw.findFirst({ where: { bookingId: id } });
+          if (!exists) {
+            await prisma.bnbBossWithdraw.create({
+              data: {
+                warehouse:    existing.warehouse,
+                withdrawDate: existing.checkOutDate || existing.checkInDate,
+                amount:       finalCash,
+                bookingId:    id,
+                guestName:    existing.guestName,
+                note:         existing.bossWithdrawNote || null,
+              },
+            });
+          } else if (Number(exists.amount) !== finalCash) {
+            await prisma.bnbBossWithdraw.update({ where: { id: exists.id }, data: { amount: finalCash } });
+          }
+        } else if (finalDest !== '老闆收取') {
+          // 如果取消老闆收取，刪除對應記錄
+          await prisma.bnbBossWithdraw.deleteMany({ where: { bookingId: id } });
+        }
+
         saved++;
       }
 

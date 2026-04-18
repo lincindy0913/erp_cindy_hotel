@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
@@ -11,14 +12,41 @@ const TABS = [
   { key: 'overview',        label: '經營總覽' },
   { key: 'pnl-warehouse',   label: '館別損益' },
   { key: 'pnl-supplier',    label: '廠商損益' },
+  { key: 'pnl-summary',     label: '損益彙總' },
   { key: 'cashflow',        label: '現金流預測' },
   { key: 'procurement',     label: '採購分析' },
   { key: 'payables',        label: '應付帳齡' },
   { key: 'report',          label: '月度報告' },
   { key: 'supplier-items',  label: '廠商採購明細' },
   { key: 'occupancy-cost', label: '住宿成本效益' },
+  { key: 'occupancy-stats', label: '營運入住統計' },
+  { key: 'rental-roi', label: '租賃 ROI' },
   { key: 'utility-occ', label: '水電與住宿' },
 ];
+
+/** URL ?tab= 別名 → 內部分頁 key（例如首頁連結 business-report → 月度報告） */
+const TAB_PARAM_ALIASES = {
+  'business-report': 'report',
+};
+
+const ANALYTICS_TAB_KEYS = new Set(TABS.map((t) => t.key));
+
+function resolveTabFromSearchParam(raw) {
+  if (raw == null || typeof raw !== 'string') return null;
+  const v = raw.trim();
+  if (!v) return null;
+  const mapped = TAB_PARAM_ALIASES[v] ?? TAB_PARAM_ALIASES[v.toLowerCase()] ?? v;
+  return ANALYTICS_TAB_KEYS.has(mapped) ? mapped : null;
+}
+
+async function apiErrorMessage(res) {
+  try {
+    const j = await res.json();
+    return j.error?.message || j.error || j.message || `請求失敗（${res.status}）`;
+  } catch {
+    return `請求失敗（${res.status}）`;
+  }
+}
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const pct = (v) => `${Number(v || 0).toFixed(1)}%`;
@@ -66,10 +94,36 @@ const Bar = ({ value, max, color = 'bg-cyan-500' }) => {
   );
 };
 
-export default function AnalyticsPage() {
+function AnalyticsPageContent() {
   useSession();
   const { showToast } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [activeTab, setActiveTab] = useState('overview');
+
+  const selectTab = useCallback(
+    (key) => {
+      setActiveTab(key);
+      const p = new URLSearchParams(searchParams.toString());
+      p.set('tab', key);
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams]
+  );
+
+  useEffect(() => {
+    const raw = searchParams.get('tab');
+    const resolved = resolveTabFromSearchParam(raw);
+    if (!resolved) return;
+    setActiveTab(resolved);
+    if (raw && raw !== resolved) {
+      const p = new URLSearchParams(searchParams.toString());
+      p.set('tab', resolved);
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false });
+    }
+  }, [searchParams, router, pathname]);
 
   // ── Overview ─────────────────────────────────────────────────
   const [overview, setOverview] = useState(null);
@@ -97,6 +151,20 @@ export default function AnalyticsPage() {
   const [supplierPnlWarehouse, setSupplierPnlWarehouse] = useState('');
   const [supplierPnlSearch, setSupplierPnlSearch] = useState('');
 
+  // ── 損益彙總（整體 P&L，/api/analytics/pnl）────────────────────
+  const [pnlSumStart, setPnlSumStart] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [pnlSumEnd, setPnlSumEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [pnlSumWarehouse, setPnlSumWarehouse] = useState('');
+  const [pnlSummaryData, setPnlSummaryData] = useState(null);
+  const [pnlSummaryLoading, setPnlSummaryLoading] = useState(false);
+
+  // ── 租賃 ROI（/api/analytics/rental-roi）────────────────────────
+  const [rentalRoiYear, setRentalRoiYear] = useState(() => new Date().getFullYear());
+  const [rentalRoiData, setRentalRoiData] = useState(null);
+  const [rentalRoiLoading, setRentalRoiLoading] = useState(false);
+
   // ── Shared dropdown data ───────────────────────────────────────
   const [warehouses, setWarehouses] = useState([]);
   const [suppliersList, setSuppliersList] = useState([]);
@@ -112,10 +180,33 @@ export default function AnalyticsPage() {
   const [riskMonth, setRiskMonth] = useState(() => {
     const n = new Date(); return `${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}`;
   });
+  /** procurement tab: 供應商風險 | 採購結構（品類／排行） */
+  const [procurementSegment, setProcurementSegment] = useState('risk');
+  const [procurementStruct, setProcurementStruct] = useState(null);
+  const [procurementStructLoading, setProcurementStructLoading] = useState(false);
+  const [procStart, setProcStart] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [procEnd, setProcEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [procWarehouse, setProcWarehouse] = useState('');
+  /** 早餐人數 vs 品項採購（procurement-vs-breakfast） */
+  const [pvYearMonth, setPvYearMonth] = useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [pvWarehouse, setPvWarehouse] = useState('');
+  const [pvKeyword, setPvKeyword] = useState('');
+  const [pvData, setPvData] = useState(null);
+  const [pvLoading, setPvLoading] = useState(false);
 
   // ── Payables Aging ────────────────────────────────────────────
   const [payables, setPayables] = useState(null);
   const [payablesLoading, setPayablesLoading] = useState(false);
+  /** payables tab: 營運應付（payables-aging）| 費用單 AP（ap-aging） */
+  const [payablesSegment, setPayablesSegment] = useState('operations');
+  const [apAging, setApAging] = useState(null);
+  const [apAgingLoading, setApAgingLoading] = useState(false);
+  const [apAgingWarehouse, setApAgingWarehouse] = useState('');
 
   // ── Monthly Report ────────────────────────────────────────────
   const [report, setReport] = useState(null);
@@ -146,6 +237,16 @@ export default function AnalyticsPage() {
   const [occCostWarehouse, setOccCostWarehouse] = useState('');
   const [occCostCategory, setOccCostCategory] = useState('');
 
+  // ── 營運入住統計（occupancy-stats API，純 PMS 量體）──────────────
+  const [occStatsStart, setOccStatsStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10);
+  });
+  const [occStatsEnd, setOccStatsEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [occStatsWarehouse, setOccStatsWarehouse] = useState('');
+  const [occStatsGroupBy, setOccStatsGroupBy] = useState('day');
+  const [occStatsPayload, setOccStatsPayload] = useState(null);
+  const [occStatsLoading, setOccStatsLoading] = useState(false);
+
   // ── 水電 vs 住宿（PMS）年度樞紐 ───────────────────────────────
   const [utilOccWarehouse, setUtilOccWarehouse] = useState('');
   const [utilOccRocYear, setUtilOccRocYear] = useState(() => String(new Date().getFullYear() - 1911));
@@ -163,15 +264,25 @@ export default function AnalyticsPage() {
         fetch('/api/analytics/cash-flow-forecast?days=30'),
         fetch('/api/analytics/payables-aging'),
       ]);
+      const failed = [];
+      if (!reportRes.ok) failed.push('月度摘要');
+      if (!cashRes.ok) failed.push('現金流預測');
+      if (!payRes.ok) failed.push('應付帳齡');
+      if (failed.length > 0) {
+        showToast(`經營總覽部分載入失敗：${failed.join('、')}`, 'error');
+      }
       const [rep, cash, pay] = await Promise.all([
         reportRes.ok ? reportRes.json() : null,
         cashRes.ok ? cashRes.json() : null,
         payRes.ok ? payRes.json() : null,
       ]);
       setOverview({ rep, cash, pay });
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      showToast('經營總覽載入失敗，請稍後再試', 'error');
+    }
     setOverviewLoading(false);
-  }, []);
+  }, [showToast]);
 
   const fetchPnl = useCallback(async () => {
     setPnlLoading(true); setPnl(null);
@@ -179,10 +290,18 @@ export default function AnalyticsPage() {
       const p = new URLSearchParams({ startDate: pnlStart, endDate: pnlEnd });
       if (pnlWarehouse.trim()) p.set('warehouse', pnlWarehouse.trim());
       const res = await fetch(`/api/analytics/pnl-by-warehouse?${p}`);
-      if (res.ok) setPnl(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setPnlLoading(false);
+        return;
+      }
+      setPnl(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('館別損益查詢失敗，請稍後再試', 'error');
+    }
     setPnlLoading(false);
-  }, [pnlStart, pnlEnd, pnlWarehouse]);
+  }, [pnlStart, pnlEnd, pnlWarehouse, showToast]);
 
   const fetchSupplierPnl = useCallback(async () => {
     setSupplierPnlLoading(true); setSupplierPnl(null);
@@ -190,10 +309,57 @@ export default function AnalyticsPage() {
       const p = new URLSearchParams({ startDate: supplierPnlStart, endDate: supplierPnlEnd });
       if (supplierPnlWarehouse.trim()) p.set('warehouse', supplierPnlWarehouse.trim());
       const res = await fetch(`/api/analytics/pnl-by-supplier?${p}`);
-      if (res.ok) setSupplierPnl(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setSupplierPnlLoading(false);
+        return;
+      }
+      setSupplierPnl(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('廠商損益查詢失敗，請稍後再試', 'error');
+    }
     setSupplierPnlLoading(false);
-  }, [supplierPnlStart, supplierPnlEnd, supplierPnlWarehouse]);
+  }, [supplierPnlStart, supplierPnlEnd, supplierPnlWarehouse, showToast]);
+
+  const fetchPnlSummary = useCallback(async () => {
+    setPnlSummaryLoading(true);
+    setPnlSummaryData(null);
+    try {
+      const p = new URLSearchParams({ startDate: pnlSumStart, endDate: pnlSumEnd });
+      if (pnlSumWarehouse.trim()) p.set('warehouse', pnlSumWarehouse.trim());
+      const res = await fetch(`/api/analytics/pnl?${p}`);
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setPnlSummaryLoading(false);
+        return;
+      }
+      setPnlSummaryData(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('損益彙總載入失敗，請稍後再試', 'error');
+    }
+    setPnlSummaryLoading(false);
+  }, [pnlSumStart, pnlSumEnd, pnlSumWarehouse, showToast]);
+
+  const fetchRentalRoi = useCallback(async () => {
+    setRentalRoiLoading(true);
+    try {
+      const y = Number(rentalRoiYear);
+      const year = Number.isFinite(y) ? y : new Date().getFullYear();
+      const res = await fetch(`/api/analytics/rental-roi?year=${year}`);
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setRentalRoiLoading(false);
+        return;
+      }
+      setRentalRoiData(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('租賃 ROI 載入失敗，請稍後再試', 'error');
+    }
+    setRentalRoiLoading(false);
+  }, [rentalRoiYear, showToast]);
 
   const fetchPnlTrace = useCallback(async ({ warehouseLabel, flowType, subjectKey }) => {
     setPnlTraceCtx({ warehouseLabel, flowType, subjectKey }); setPnlTrace(null); setPnlTraceLoading(true);
@@ -201,46 +367,175 @@ export default function AnalyticsPage() {
       const p = new URLSearchParams({ startDate: pnlStart, endDate: pnlEnd, flowType, subjectKey });
       p.set('warehouse', warehouseLabel === '未指定館別' ? '__NULL__' : (pnlWarehouse.trim() || warehouseLabel));
       const res = await fetch(`/api/analytics/pnl-by-warehouse/drilldown?${p}`);
-      if (res.ok) setPnlTrace(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setPnlTraceLoading(false);
+        return;
+      }
+      setPnlTrace(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('明細載入失敗，請稍後再試', 'error');
+    }
     setPnlTraceLoading(false);
-  }, [pnlStart, pnlEnd, pnlWarehouse]);
+  }, [pnlStart, pnlEnd, pnlWarehouse, showToast]);
 
   const fetchCashflow = useCallback(async () => {
     setCashflowLoading(true);
     try {
       const res = await fetch(`/api/analytics/cash-flow-forecast?days=${forecastDays}`);
-      if (res.ok) setCashflow(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setCashflowLoading(false);
+        return;
+      }
+      setCashflow(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('現金流預測載入失敗，請稍後再試', 'error');
+    }
     setCashflowLoading(false);
-  }, [forecastDays]);
+  }, [forecastDays, showToast]);
 
   const fetchSupplierRisk = useCallback(async () => {
     setSupplierLoading(true);
     try {
       const res = await fetch(`/api/analytics/supplier-risk?month=${riskMonth}`);
-      if (res.ok) setSupplierRisk(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setSupplierLoading(false);
+        return;
+      }
+      setSupplierRisk(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('採購分析載入失敗，請稍後再試', 'error');
+    }
     setSupplierLoading(false);
-  }, [riskMonth]);
+  }, [riskMonth, showToast]);
 
   const fetchPayables = useCallback(async () => {
     setPayablesLoading(true);
     try {
       const res = await fetch('/api/analytics/payables-aging');
-      if (res.ok) setPayables(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setPayablesLoading(false);
+        return;
+      }
+      setPayables(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('應付帳齡載入失敗，請稍後再試', 'error');
+    }
     setPayablesLoading(false);
-  }, []);
+  }, [showToast]);
+
+  const fetchApAging = useCallback(async () => {
+    setApAgingLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (apAgingWarehouse.trim()) p.set('warehouse', apAgingWarehouse.trim());
+      const qs = p.toString();
+      const res = await fetch(`/api/analytics/ap-aging${qs ? `?${qs}` : ''}`);
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setApAgingLoading(false);
+        return;
+      }
+      setApAging(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('費用單帳齡載入失敗，請稍後再試', 'error');
+    }
+    setApAgingLoading(false);
+  }, [apAgingWarehouse, showToast]);
+
+  const fetchProcurementStruct = useCallback(async () => {
+    setProcurementStructLoading(true);
+    setProcurementStruct(null);
+    try {
+      const p = new URLSearchParams({ startDate: procStart, endDate: procEnd });
+      if (procWarehouse.trim()) p.set('warehouse', procWarehouse.trim());
+      const res = await fetch(`/api/analytics/procurement?${p}`);
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setProcurementStructLoading(false);
+        return;
+      }
+      setProcurementStruct(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('採購結構分析載入失敗，請稍後再試', 'error');
+    }
+    setProcurementStructLoading(false);
+  }, [procStart, procEnd, procWarehouse, showToast]);
+
+  const fetchPvBreakfast = useCallback(async () => {
+    const ym = (pvYearMonth || '').trim().substring(0, 7);
+    if (!ym || ym.length < 7) {
+      showToast('請輸入年月（YYYY-MM，例：2026-03）', 'error');
+      return;
+    }
+    setPvLoading(true);
+    setPvData(null);
+    try {
+      const p = new URLSearchParams({ yearMonth: ym });
+      if (pvWarehouse.trim()) p.set('warehouse', pvWarehouse.trim());
+      if (pvKeyword.trim()) p.set('keyword', pvKeyword.trim());
+      const res = await fetch(`/api/analytics/procurement-vs-breakfast?${p}`);
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setPvLoading(false);
+        return;
+      }
+      setPvData(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('早餐與採購對照載入失敗', 'error');
+    }
+    setPvLoading(false);
+  }, [pvYearMonth, pvWarehouse, pvKeyword, showToast]);
+
+  const fetchOccStats = useCallback(async () => {
+    setOccStatsLoading(true);
+    try {
+      const p = new URLSearchParams({
+        startDate: occStatsStart,
+        endDate: occStatsEnd,
+        groupBy: occStatsGroupBy,
+      });
+      if (occStatsWarehouse.trim()) p.set('warehouse', occStatsWarehouse.trim());
+      const res = await fetch(`/api/analytics/occupancy-stats?${p}`);
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setOccStatsLoading(false);
+        return;
+      }
+      setOccStatsPayload(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('營運入住統計載入失敗', 'error');
+    }
+    setOccStatsLoading(false);
+  }, [occStatsStart, occStatsEnd, occStatsWarehouse, occStatsGroupBy, showToast]);
 
   const fetchReport = useCallback(async () => {
     setReportLoading(true); setReport(null);
     try {
       const res = await fetch(`/api/analytics/business-report?month=${reportMonth}`);
-      if (res.ok) setReport(await res.json());
-    } catch (e) { console.error(e); }
+      if (!res.ok) {
+        showToast(await apiErrorMessage(res), 'error');
+        setReportLoading(false);
+        return;
+      }
+      setReport(await res.json());
+    } catch (e) {
+      console.error(e);
+      showToast('月度報告載入失敗，請稍後再試', 'error');
+    }
     setReportLoading(false);
-  }, [reportMonth]);
+  }, [reportMonth, showToast]);
 
   const fetchSpItems = useCallback(async () => {
     setSpItemsLoading(true); setSpItems(null);
@@ -250,10 +545,10 @@ export default function AnalyticsPage() {
       if (spItemsWarehouse.trim()) p.set('warehouse', spItemsWarehouse.trim());
       const res = await fetch(`/api/analytics/supplier-purchase-items?${p}`);
       if (res.ok) setSpItems(await res.json());
-      else showToast('廠商品項查詢失敗，請稍後再試', 'error');
+      else showToast(await apiErrorMessage(res), 'error');
     } catch (e) { console.error(e); showToast('廠商品項查詢失敗，請稍後再試', 'error'); }
     setSpItemsLoading(false);
-  }, [spItemsStart, spItemsEnd, spItemsSupplierId, spItemsWarehouse]);
+  }, [spItemsStart, spItemsEnd, spItemsSupplierId, spItemsWarehouse, showToast]);
 
   const fetchOccCost = useCallback(async () => {
     setOccCostLoading(true); setOccCost(null);
@@ -263,10 +558,10 @@ export default function AnalyticsPage() {
       if (occCostCategory)  p.set('category',  occCostCategory);
       const res = await fetch(`/api/analytics/occupancy-cost?${p}`);
       if (res.ok) setOccCost(await res.json());
-      else showToast('住宿成本效益查詢失敗，請稍後再試', 'error');
+      else showToast(await apiErrorMessage(res), 'error');
     } catch (e) { console.error(e); showToast('住宿成本效益查詢失敗，請稍後再試', 'error'); }
     setOccCostLoading(false);
-  }, [occCostStart, occCostEnd, occCostWarehouse, occCostCategory]);
+  }, [occCostStart, occCostEnd, occCostWarehouse, occCostCategory, showToast]);
 
   const fetchUtilityOccupancy = useCallback(async () => {
     if (!utilOccWarehouse.trim()) {
@@ -299,8 +594,17 @@ export default function AnalyticsPage() {
     setReportApproving(true);
     try {
       const res = await fetch(`/api/analytics/business-report?month=${reportMonth}`, { method: 'PATCH' });
-      if (res.ok) { const d = await res.json(); setReport(prev => ({ ...prev, report: d.report })); }
-    } catch (e) { console.error(e); }
+      if (res.ok) {
+        const d = await res.json();
+        setReport((prev) => ({ ...prev, report: d.report }));
+        showToast('月度報告已核定', 'success');
+      } else {
+        showToast(await apiErrorMessage(res), 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('核定失敗，請稍後再試', 'error');
+    }
     setReportApproving(false);
   };
 
@@ -328,12 +632,26 @@ export default function AnalyticsPage() {
     if (activeTab === 'overview') fetchOverview();
     if (activeTab === 'pnl-warehouse') fetchPnl();
     if (activeTab === 'pnl-supplier') fetchSupplierPnl();
+    if (activeTab === 'pnl-summary') fetchPnlSummary();
     if (activeTab === 'cashflow') fetchCashflow();
-    if (activeTab === 'procurement') fetchSupplierRisk();
-    if (activeTab === 'payables') fetchPayables();
     if (activeTab === 'report') fetchReport();
     if (activeTab === 'supplier-items') fetchSpItems();
     if (activeTab === 'occupancy-cost') fetchOccCost();
+    if (activeTab === 'occupancy-stats') fetchOccStats();
+    if (activeTab === 'rental-roi') fetchRentalRoi();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'procurement') return;
+    if (procurementSegment === 'risk') fetchSupplierRisk();
+    if (procurementSegment === 'structure') fetchProcurementStruct();
+    if (procurementSegment === 'breakfastCompare') fetchPvBreakfast();
+  }, [activeTab, procurementSegment]);
+
+  useEffect(() => {
+    if (activeTab !== 'payables') return;
+    fetchPayables();
+    fetchApAging();
   }, [activeTab]);
 
   useEffect(() => {
@@ -342,8 +660,6 @@ export default function AnalyticsPage() {
       setUtilOccWarehouse(warehouses[0]);
     }
   }, [activeTab, warehouses, utilOccWarehouse]);
-
-  useEffect(() => { if (activeTab === 'report') fetchReport(); }, [reportMonth]);
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -359,7 +675,7 @@ export default function AnalyticsPage() {
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
+            <button key={t.key} type="button" onClick={() => selectTab(t.key)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === t.key ? 'bg-cyan-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
               }`}>
@@ -371,7 +687,7 @@ export default function AnalyticsPage() {
         {/* ══ 總覽 ══════════════════════════════════════════════ */}
         {activeTab === 'overview' && (
           overviewLoading ? <Loading text="載入經營總覽..." /> :
-          overview ? <OverviewTab data={overview} onTabSwitch={setActiveTab} /> :
+          overview ? <OverviewTab data={overview} onTabSwitch={selectTab} /> :
           <div className="text-center py-12 text-gray-400">無法載入資料</div>
         )}
 
@@ -402,6 +718,7 @@ export default function AnalyticsPage() {
                   查詢
                 </button>
               </div>
+              <p className="mt-3 text-xs text-gray-500">變更日期或館別後請按「查詢」重新計算。</p>
             </div>
 
             {pnlLoading ? <Loading text="計算損益中..." /> :
@@ -446,11 +763,50 @@ export default function AnalyticsPage() {
                   查詢
                 </button>
               </div>
+              <p className="mt-3 text-xs text-gray-500">變更日期、館別或廠商篩選後請按「查詢」重新計算。</p>
             </div>
 
             {supplierPnlLoading ? <Loading text="計算廠商損益中..." /> :
               supplierPnl ? <SupplierPnlTab data={supplierPnl} search={supplierPnlSearch} /> :
               <div className="text-center py-12 text-gray-400">請設定日期範圍後查詢</div>
+            }
+          </div>
+        )}
+
+        {/* ══ 損益彙總（整體 P&L）══════════════════════════════════ */}
+        {activeTab === 'pnl-summary' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input type="date" value={pnlSumStart} onChange={e => setPnlSumStart(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input type="date" value={pnlSumEnd} onChange={e => setPnlSumEnd(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select value={pnlSumWarehouse} onChange={e => setPnlSumWarehouse(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                    <option value="">全部館別</option>
+                    {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <button type="button" onClick={fetchPnlSummary} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                  查詢
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+                將 PMS 收入、進貨（扣折讓）、費用分項加總為<strong>不分館別矩陣</strong>的整體損益；與「館別損益」分頁（依館別展開與鑽取）算法不同。
+              </p>
+            </div>
+            {pnlSummaryLoading ? <Loading text="計算損益彙總中..." /> :
+              pnlSummaryData ? <PnlSummaryTab data={pnlSummaryData} /> :
+              <div className="text-center py-12 text-gray-400">請設定日期後按「查詢」</div>
             }
           </div>
         )}
@@ -484,47 +840,235 @@ export default function AnalyticsPage() {
         {/* ══ 採購分析 ═══════════════════════════════════════════ */}
         {activeTab === 'procurement' && (
           <div className="space-y-5">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-end gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
-                <input type="text" value={riskMonth} onChange={e => setRiskMonth(e.target.value)}
-                  placeholder="202506" maxLength={6}
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
-              </div>
-              <button onClick={fetchSupplierRisk} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
-                查詢
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs text-gray-500 mr-1">檢視：</span>
+              <button
+                type="button"
+                onClick={() => setProcurementSegment('risk')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  procurementSegment === 'risk' ? 'bg-cyan-600 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                供應商風險
               </button>
-              <Link href="/purchasing" className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">
+              <button
+                type="button"
+                onClick={() => setProcurementSegment('structure')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  procurementSegment === 'structure' ? 'bg-cyan-600 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                採購結構分析
+              </button>
+              <button
+                type="button"
+                onClick={() => setProcurementSegment('breakfastCompare')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  procurementSegment === 'breakfastCompare' ? 'bg-cyan-600 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                早餐與採購對照
+              </button>
+              <Link href="/purchasing" className="ml-auto px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">
                 前往採購模組 →
               </Link>
             </div>
-            {supplierLoading ? <Loading text="分析供應商資料中..." /> :
-              supplierRisk ? <ProcurementTab data={supplierRisk} /> :
-              <div className="text-center py-12 text-gray-400">無採購資料</div>
-            }
+
+            {procurementSegment === 'risk' && (
+              <>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
+                    <input type="text" value={riskMonth} onChange={e => setRiskMonth(e.target.value)}
+                      placeholder="202506" maxLength={6}
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                  </div>
+                  <button type="button" onClick={fetchSupplierRisk} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                    查詢
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 px-1">依廠商集中度、採購額與風險規則分析；與「採購結構分析」資料來源不同。</p>
+                {supplierLoading ? <Loading text="分析供應商資料中..." /> :
+                  supplierRisk ? <ProcurementTab data={supplierRisk} /> :
+                  <div className="text-center py-12 text-gray-400">無採購資料</div>
+                }
+              </>
+            )}
+
+            {procurementSegment === 'structure' && (
+              <>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">進貨起始日</label>
+                      <input type="date" value={procStart} onChange={e => setProcStart(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">進貨結束日</label>
+                      <input type="date" value={procEnd} onChange={e => setProcEnd(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                      <select value={procWarehouse} onChange={e => setProcWarehouse(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
+                        <option value="">全部館別</option>
+                        {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </div>
+                    <button type="button" onClick={fetchProcurementStruct} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                      查詢
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500">彙總進貨單明細：前十大廠商、品類占比、月度趨勢；變更條件後請按「查詢」。</p>
+                </div>
+                {procurementStructLoading ? <Loading text="計算採購結構中..." /> :
+                  procurementStruct ? <ProcurementStructureTab data={procurementStruct} /> :
+                  <div className="text-center py-12 text-gray-400">請設定日期後按「查詢」</div>
+                }
+              </>
+            )}
+
+            {procurementSegment === 'breakfastCompare' && (
+              <>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">年月（YYYY-MM）</label>
+                      <input
+                        type="month"
+                        value={pvYearMonth.length >= 7 ? pvYearMonth.substring(0, 7) : pvYearMonth}
+                        onChange={(e) => setPvYearMonth(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                      <select
+                        value={pvWarehouse}
+                        onChange={(e) => setPvWarehouse(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]"
+                      >
+                        <option value="">全部館別</option>
+                        {warehouses.map((w) => (
+                          <option key={w} value={w}>
+                            {w}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="min-w-[180px] flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">品項關鍵字（選填，對應進貨品名／編號）</label>
+                      <input
+                        type="text"
+                        value={pvKeyword}
+                        onChange={(e) => setPvKeyword(e.target.value)}
+                        placeholder="例：牛奶、蛋"
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={fetchPvBreakfast}
+                      className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700"
+                    >
+                      查詢
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+                    比對當月 PMS <strong>早餐人數</strong>與<strong>指定品項進貨數量／金額</strong>；未填關鍵字時僅顯示住宿／早餐量體，採購合計為 0。
+                    資料需已匯入 PMS 日報與進貨單。
+                  </p>
+                </div>
+                {pvLoading ? (
+                  <Loading text="載入早餐與採購對照..." />
+                ) : pvData ? (
+                  <ProcurementVsBreakfastTab data={pvData} />
+                ) : (
+                  <div className="text-center py-12 text-gray-400">請選擇年月後按「查詢」</div>
+                )}
+              </>
+            )}
           </div>
         )}
 
         {/* ══ 應付帳齡 ═══════════════════════════════════════════ */}
         {activeTab === 'payables' && (
-          payablesLoading ? <Loading text="分析應付帳齡中..." /> :
-          payables ? <PayablesTab data={payables} /> :
-          <div className="text-center py-12 text-gray-400">無資料</div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs text-gray-500 mr-1">資料來源：</span>
+              <button
+                type="button"
+                onClick={() => setPayablesSegment('operations')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  payablesSegment === 'operations' ? 'bg-cyan-600 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                營運應付與資金
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayablesSegment('expenseAp')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  payablesSegment === 'expenseAp' ? 'bg-cyan-600 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                費用單應付（AP）
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed px-0.5">
+              <strong>營運應付與資金</strong>：銷貨應付未核銷、支票到期與現金壓力（原「應付帳齡」）。
+              <span className="mx-1.5 text-gray-300">｜</span>
+              <strong>費用單應付（AP）</strong>：費用單狀態非「已完成」之欠款與發票帳齡。
+            </p>
+
+            {payablesSegment === 'operations' && (
+              payablesLoading ? <Loading text="分析應付帳齡中..." /> :
+              payables ? <PayablesTab data={payables} /> :
+              <div className="text-center py-12 text-gray-400">無資料</div>
+            )}
+
+            {payablesSegment === 'expenseAp' && (
+              <>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">館別篩選（選填）</label>
+                    <select value={apAgingWarehouse} onChange={e => setApAgingWarehouse(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]">
+                      <option value="">全部館別</option>
+                      {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                  <button type="button" onClick={fetchApAging} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                    套用並重新載入
+                  </button>
+                </div>
+                {apAgingLoading ? <Loading text="分析費用單帳齡中..." /> :
+                  apAging ? <ExpenseApAgingTab data={apAging} /> :
+                  <div className="text-center py-12 text-gray-400">無資料</div>
+                }
+              </>
+            )}
+          </div>
         )}
 
         {/* ══ 月度報告 ═══════════════════════════════════════════ */}
         {activeTab === 'report' && (
           <div className="space-y-5">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-end gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
-                <input type="text" value={reportMonth} onChange={e => setReportMonth(e.target.value)}
-                  placeholder="202506" maxLength={6}
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
+                  <input type="text" value={reportMonth} onChange={e => setReportMonth(e.target.value)}
+                    placeholder="202506" maxLength={6}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+                </div>
+                <button onClick={fetchReport} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                  載入報告
+                </button>
               </div>
-              <button onClick={fetchReport} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
-                載入報告
-              </button>
+              <p className="mt-3 text-xs text-gray-500">變更月份後請按「載入報告」重新取得資料（僅切換分頁時會自動載入目前輸入之月份）。</p>
             </div>
             {reportLoading ? <Loading text="載入月度報告中..." /> :
               report ? <ReportTab data={report} onApprove={approveReport} approving={reportApproving} /> :
@@ -649,6 +1193,115 @@ export default function AnalyticsPage() {
           </div>
         )}
 
+        {/* ══ 營運入住統計（PMS 量體）══════════════════════════════════ */}
+        {activeTab === 'occupancy-stats' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input
+                    type="date"
+                    value={occStatsStart}
+                    onChange={(e) => setOccStatsStart(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input
+                    type="date"
+                    value={occStatsEnd}
+                    onChange={(e) => setOccStatsEnd(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select
+                    value={occStatsWarehouse}
+                    onChange={(e) => setOccStatsWarehouse(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]"
+                  >
+                    <option value="">全部館別（依日／月分列）</option>
+                    {warehouses.map((w) => (
+                      <option key={w} value={w}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">彙總方式</label>
+                  <select
+                    value={occStatsGroupBy}
+                    onChange={(e) => setOccStatsGroupBy(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                  >
+                    <option value="day">依日</option>
+                    <option value="month">依月</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchOccStats}
+                  className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700"
+                >
+                  查詢
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+                資料來源為 <strong>PMS 匯入批次</strong>（住宿人數、早餐人數、入住間數等）。此頁<strong>不含</strong>採購金額或成本；成本分析請用「住宿成本效益」。
+              </p>
+            </div>
+            {occStatsLoading ? (
+              <Loading text="載入營運入住統計..." />
+            ) : occStatsPayload ? (
+              <OccupancyStatsTab payload={occStatsPayload} />
+            ) : (
+              <div className="text-center py-16 text-gray-400">
+                <p className="text-3xl mb-3">📊</p>
+                <p className="font-medium">請設定日期區間後按「查詢」</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ 租賃 ROI ═══════════════════════════════════════════════ */}
+        {activeTab === 'rental-roi' && (
+          <div className="space-y-5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">會計年度（西元）</label>
+                <input
+                  type="number"
+                  value={rentalRoiYear}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setRentalRoiYear(Number.isFinite(v) ? v : new Date().getFullYear());
+                  }}
+                  min={2000}
+                  max={2100}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                />
+              </div>
+              <button type="button" onClick={fetchRentalRoi} className="px-4 py-1.5 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">
+                查詢
+              </button>
+              <Link href="/rentals" className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">
+                前往租賃模組 →
+              </Link>
+            </div>
+            <p className="text-xs text-gray-500 px-1">
+              依租賃物件、合約月租與當年度每月租金收入紀錄，計算實收、預收與回收率等；無租賃資料時列表為空。
+            </p>
+            {rentalRoiLoading ? <Loading text="載入租賃 ROI..." /> :
+              rentalRoiData ? <RentalRoiTab data={rentalRoiData} /> :
+              <div className="text-center py-12 text-gray-400">請選擇年度後按「查詢」</div>
+            }
+          </div>
+        )}
+
         {/* ══ 水電與住宿（年度樞紐）══════════════════════════════════ */}
         {activeTab === 'utility-occ' && (
           <div className="space-y-5">
@@ -756,6 +1409,20 @@ export default function AnalyticsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AnalyticsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen page-bg-analytics flex items-center justify-center">
+          <Loading text="載入決策分析..." />
+        </div>
+      }
+    >
+      <AnalyticsPageContent />
+    </Suspense>
   );
 }
 
@@ -1336,6 +2003,407 @@ function PayablesTab({ data }) {
                   <td className="px-4 py-2 text-gray-500">{r.invoiceDate}</td>
                   <td className="px-4 py-2 text-right text-red-600 font-semibold">{r.daysOutstanding} 天</td>
                   <td className="px-4 py-2 text-right text-red-600 font-bold">{NT(r.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PnlSummaryTab({ data }) {
+  const s = data.summary || {};
+  const monthly = data.monthly || [];
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <KpiCard label="PMS 收入（貸方）" value={NT(s.revenue)} color="text-blue-700" icon="📈" />
+        <KpiCard label="進貨成本（已扣折讓）" value={NT(s.cogs)} color="text-amber-700" icon="📦" />
+        <KpiCard label="進貨折讓合計" value={NT(s.allowances)} color="text-gray-600" icon="↩️" />
+        <KpiCard label="費用" value={NT(s.expenses)} color="text-orange-700" icon="🧾" />
+        <KpiCard label="毛利" value={NT(s.grossProfit)} color={s.grossProfit >= 0 ? 'text-emerald-700' : 'text-red-600'} icon="◆" />
+        <KpiCard label="淨利" value={NT(s.netProfit)} color={s.netProfit >= 0 ? 'text-cyan-700' : 'text-red-600'} icon="✓" />
+      </div>
+      {monthly.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-gray-50">
+            <p className="font-semibold text-sm text-gray-700">月度彙總</p>
+          </div>
+          <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+            <table className="w-full text-sm min-w-[880px]">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs text-gray-500">月份</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">收入</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">進貨成本</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">折讓</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">費用</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">毛利</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">淨利</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {monthly.map((m) => (
+                  <tr key={m.month} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-800">{m.month}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{NT(m.revenue)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{NT(m.cogs)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-gray-500">{NT(m.allowances)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{NT(m.expenses)}</td>
+                    <td className={`px-4 py-2 text-right tabular-nums font-medium ${m.grossProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{NT(m.grossProfit)}</td>
+                    <td className={`px-4 py-2 text-right tabular-nums font-medium ${m.netProfit >= 0 ? 'text-cyan-700' : 'text-red-600'}`}>{NT(m.netProfit)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RentalRoiTab({ data }) {
+  const sum = data.summary || {};
+  const rows = data.properties || [];
+  const year = data.year;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <KpiCard label="物件數" value={String(sum.totalProperties ?? 0)} color="text-gray-800" icon="🏠" />
+        <KpiCard label={`${year} 實收合計`} value={NT(sum.totalIncome)} color="text-emerald-700" icon="💰" />
+        <KpiCard label={`${year} 應收合計`} value={NT(sum.totalExpected)} color="text-blue-700" icon="📋" />
+        <KpiCard label="整體回收率" value={pct(sum.overallCollectionRate)} color="text-indigo-700" icon="📊" />
+        <KpiCard label="平均 ROI（有月租者）" value={pct(sum.avgRoi)} color="text-cyan-700" icon="📐" />
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <p className="font-semibold text-sm text-gray-700">各物件（{year} 年）</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[960px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">物件</th>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">地址／單位</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">月租</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">實收</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">應收</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">ROI</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">回收率</th>
+                <th className="px-4 py-2 text-center text-xs text-gray-500">狀態</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.length === 0 ? (
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">尚無租賃物件或收入資料</td></tr>
+              ) : rows.map((r) => (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-800">{r.name || '—'}</td>
+                  <td className="px-4 py-2 text-xs text-gray-600 max-w-[220px]">
+                    {[r.buildingName, r.unitNo, r.address].filter(Boolean).join(' ') || '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{NT(r.monthlyRent)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-emerald-700">{NT(r.totalIncome)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{NT(r.expectedIncome)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-medium">{pct(r.roi)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{pct(r.collectionRate)}</td>
+                  <td className="px-4 py-2 text-center text-xs text-gray-600">{r.status || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProcurementVsBreakfastTab({ data }) {
+  const pi = data.productInfo;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="年月" value={data.yearMonth || '—'} color="text-gray-800" icon="📅" sub={`館別：${data.warehouse || '全部'}`} />
+        <KpiCard label="當月早餐人數（PMS）" value={(data.totalBreakfastCount ?? 0).toLocaleString()} color="text-amber-700" icon="🍳" />
+        <KpiCard label="住宿人數（PMS）" value={(data.totalGuestCount ?? 0).toLocaleString()} color="text-blue-700" icon="👥" />
+        <KpiCard label="入住間數（PMS）" value={(data.totalOccupiedRooms ?? 0).toLocaleString()} color="text-cyan-700" icon="🛏" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard
+          label="品項進貨數量"
+          value={data.totalProcurementQty != null ? Number(data.totalProcurementQty).toLocaleString() : '—'}
+          color="text-gray-800"
+          icon="📦"
+          sub={pi ? `${pi.name || ''}${pi.unit ? `（${pi.unit}）` : ''}` : '請輸入關鍵字以匯總進貨明細'}
+        />
+        <KpiCard label="品項進貨金額" value={NT(data.totalProcurementAmount)} color="text-emerald-700" icon="💵" />
+        <KpiCard
+          label="每人早餐耗用量（數量）"
+          value={data.perBreakfastQty != null ? String(data.perBreakfastQty) : '—'}
+          color="text-indigo-700"
+          icon="📐"
+          sub="進貨數量 ÷ 早餐人數"
+        />
+        <KpiCard
+          label="每人早餐耗用金額"
+          value={data.perBreakfastAmount != null ? NT(data.perBreakfastAmount) : '—'}
+          color="text-violet-700"
+          icon="💹"
+          sub="進貨金額 ÷ 早餐人數"
+        />
+      </div>
+      {pi && (
+        <p className="text-xs text-gray-500 px-1">
+          對應品項：{pi.code ? `${pi.code} ` : ''}{pi.name || '—'}（ID {pi.id}）
+        </p>
+      )}
+    </div>
+  );
+}
+
+function OccupancyStatsTab({ payload }) {
+  const { groupBy, data } = payload || {};
+  if (!data || !Array.isArray(data)) {
+    return <div className="text-center py-10 text-gray-400">無資料</div>;
+  }
+
+  if (groupBy === 'month') {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <p className="font-semibold text-sm text-gray-700">依月彙總</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">館別</th>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">年月</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">住宿人數</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">早餐人數</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">入住間數</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">總房數累計</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">天數列數</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.map((row, i) => (
+                <tr key={`${row.warehouse}-${row.yearMonth}-${i}`} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-800">{row.warehouse || '—'}</td>
+                  <td className="px-4 py-2 text-gray-600">{row.yearMonth}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{Number(row.guestCount || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{Number(row.breakfastCount || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{Number(row.occupiedRooms || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{Number(row.roomCount || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right text-gray-500">{row.dayCount ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+        <p className="font-semibold text-sm text-gray-700">依日明細</p>
+        <p className="text-xs text-gray-400">共 {data.length} 筆批次</p>
+      </div>
+      <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+        <table className="w-full text-sm min-w-[800px]">
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">館別</th>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">營業日</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">住宿人數</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">早餐</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">入住間數</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">總房數</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">住房率</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.map((row, i) => (
+              <tr key={`${row.warehouse}-${row.businessDate}-${i}`} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium text-gray-800">{row.warehouse || '—'}</td>
+                <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{row.businessDate || '—'}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{row.guestCount != null ? Number(row.guestCount).toLocaleString() : '—'}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{row.breakfastCount != null ? Number(row.breakfastCount).toLocaleString() : '—'}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{row.occupiedRooms != null ? Number(row.occupiedRooms).toLocaleString() : '—'}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{row.roomCount != null ? Number(row.roomCount).toLocaleString() : '—'}</td>
+                <td className="px-4 py-2 text-right text-gray-600">
+                  {row.occupancyRate != null ? `${Number(row.occupancyRate).toFixed(1)}%` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseApAgingTab({ data }) {
+  const bucketCls = [
+    'text-gray-700 bg-gray-50 border-gray-100',
+    'text-amber-700 bg-amber-50 border-amber-100',
+    'text-orange-700 bg-orange-50 border-orange-100',
+    'text-red-700 bg-red-50 border-red-100',
+  ];
+  const totalAmt = data.totalUnpaid || 0;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="費用單未結總額" value={NT(data.totalUnpaid)} color="text-gray-800" icon="📋" />
+        <KpiCard label="筆數" value={`${data.totalCount ?? 0} 筆`} color="text-cyan-700" icon="📑" />
+      </div>
+      <div>
+        <SectionTitle>帳齡分佈（由發票日起算）</SectionTitle>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {(data.buckets || []).map((b, i) => {
+            const pct = totalAmt > 0 ? ((b.amount / totalAmt) * 100).toFixed(1) : '0';
+            return (
+              <div key={b.range} className={`rounded-xl border p-4 ${bucketCls[i] || bucketCls[0]}`}>
+                <p className="text-xs font-medium opacity-80 mb-1">{b.range}</p>
+                <p className="text-xl font-bold">{NT(b.amount)}</p>
+                <p className="text-xs opacity-70 mt-1">{b.count} 筆 — {pct}%</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {(data.topUnpaid || []).length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-gray-50">
+            <p className="font-semibold text-sm text-gray-700">金額前 20 筆（未結費用單）</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs text-gray-500">發票／單號</th>
+                  <th className="px-4 py-2 text-left text-xs text-gray-500">發票日</th>
+                  <th className="px-4 py-2 text-left text-xs text-gray-500">廠商</th>
+                  <th className="px-4 py-2 text-left text-xs text-gray-500">館別</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">帳齡（天）</th>
+                  <th className="px-4 py-2 text-center text-xs text-gray-500">狀態</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data.topUnpaid.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 font-mono text-xs">{row.invoiceNo || '—'}</td>
+                    <td className="px-4 py-2 text-gray-600">{row.invoiceDate || '—'}</td>
+                    <td className="px-4 py-2">{row.supplierName || '—'}</td>
+                    <td className="px-4 py-2 text-gray-600">{row.warehouse || '—'}</td>
+                    <td className="px-4 py-2 text-right font-medium">{NT(row.amount)}</td>
+                    <td className="px-4 py-2 text-right text-amber-700 font-medium">{row.daysOutstanding}</td>
+                    <td className="px-4 py-2 text-center text-xs text-gray-500">{row.status || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProcurementStructureTab({ data }) {
+  const maxSupp = data.topSuppliers?.[0]?.amount || 1;
+  const maxCat = data.categoryBreakdown?.[0]?.amount || 1;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard label="進貨總額（期間）" value={NT(data.totalAmount)} color="text-gray-800" icon="🛒" />
+        <KpiCard label="進貨單筆數" value={`${data.totalOrders ?? 0} 筆`} color="text-blue-600" icon="📦" />
+        <KpiCard label="前三大廠商集中度" value={pct(data.concentration)} color="text-indigo-700" icon="📊" />
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <p className="font-semibold text-sm text-gray-700">前十大供應商（依進貨金額）</p>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">排名</th>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">供應商</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">佔比</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">單據數</th>
+              <th className="px-4 py-2 w-32 text-xs text-gray-500">分布</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {(data.topSuppliers || []).map((s, i) => (
+              <tr key={s.supplierId ?? i} className="hover:bg-gray-50">
+                <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                <td className="px-4 py-2 font-medium">{s.name}</td>
+                <td className="px-4 py-2 text-right">{NT(s.amount)}</td>
+                <td className="px-4 py-2 text-right">{pct(s.percentage)}</td>
+                <td className="px-4 py-2 text-right text-gray-500">{s.count}</td>
+                <td className="px-4 py-2"><Bar value={s.amount} max={maxSupp} color="bg-cyan-500" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b bg-gray-50">
+          <p className="font-semibold text-sm text-gray-700">品類金額結構（依明細列計）</p>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs text-gray-500">品類</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">占進貨額</th>
+              <th className="px-4 py-2 text-right text-xs text-gray-500">明細列數</th>
+              <th className="px-4 py-2 w-32 text-xs text-gray-500">分布</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {(data.categoryBreakdown || []).map((c) => (
+              <tr key={c.category} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium">{c.category}</td>
+                <td className="px-4 py-2 text-right">{NT(c.amount)}</td>
+                <td className="px-4 py-2 text-right">{pct(c.percentage)}</td>
+                <td className="px-4 py-2 text-right text-gray-500">{c.count}</td>
+                <td className="px-4 py-2"><Bar value={c.amount} max={maxCat} color="bg-indigo-400" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {(data.monthlyTrend || []).length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b bg-gray-50">
+            <p className="font-semibold text-sm text-gray-700">月度進貨趨勢（依進貨單日期）</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs text-gray-500">月份</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
+                <th className="px-4 py-2 text-right text-xs text-gray-500">單據數</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.monthlyTrend.map((m) => (
+                <tr key={m.month} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-medium">{m.month}</td>
+                  <td className="px-4 py-2 text-right">{NT(m.amount)}</td>
+                  <td className="px-4 py-2 text-right text-gray-500">{m.count}</td>
                 </tr>
               ))}
             </tbody>

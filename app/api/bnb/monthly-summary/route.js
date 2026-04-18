@@ -139,7 +139,29 @@ export async function GET(request) {
         netProfit:    m.totalRevenue + m.otherCharge + m.otherIncome - m.cardFee - m.purchaseExpense - m.fixedExpense,
       }));
 
-    return NextResponse.json({ year, rows });
+    // ── 6. 固定費用輔助資訊（前端連結／缺資料提示）──────────────────
+    const pendingWhere = {
+      expenseMonth: { gte: `${year}-01`, lte: `${year}-12` },
+      status: { notIn: ['已確認', '已作廢'] },
+    };
+    if (warehouse) pendingWhere.warehouse = warehouse;
+    const pendingFixedCount = await prisma.commonExpenseRecord.count({ where: pendingWhere });
+
+    const monthsWithZeroFixed = rows
+      .filter((r) =>
+        Number(r.fixedExpense) === 0 &&
+        (r.rooms > 0 || Number(r.totalRevenue) > 0)
+      )
+      .map((r) => r.month);
+
+    return NextResponse.json({
+      year,
+      rows,
+      fixedExpenseHelp: {
+        pendingFixedCount,
+        monthsWithZeroFixed,
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }
