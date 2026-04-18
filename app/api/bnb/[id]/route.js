@@ -70,6 +70,30 @@ async function syncBnbPaymentTx(bookingId) {
   const booking = await prisma.bnbBookingRecord.findUnique({ where: { id: bookingId } });
   if (!booking) return {};
 
+  // 老闆收取現金 → 先獨立處理 BnbBossWithdraw（不依賴銀行帳戶）
+  if (booking.cashDestination === '老闆收取' && Number(booking.payCash) > 0) {
+    const exists = await prisma.bnbBossWithdraw.findFirst({ where: { bookingId } });
+    if (!exists) {
+      await prisma.bnbBossWithdraw.create({
+        data: {
+          warehouse: booking.warehouse,
+          withdrawDate: booking.checkOutDate || booking.checkInDate,
+          amount: Number(booking.payCash),
+          bookingId,
+          guestName: booking.guestName,
+          note: booking.bossWithdrawNote || null,
+        },
+      });
+    } else if (Number(exists.amount) !== Number(booking.payCash)) {
+      await prisma.bnbBossWithdraw.update({
+        where: { id: exists.id },
+        data: { amount: Number(booking.payCash), note: booking.bossWithdrawNote || null },
+      });
+    }
+  } else {
+    await prisma.bnbBossWithdraw.deleteMany({ where: { bookingId } });
+  }
+
   // 找該館別的銀行帳戶（type: 銀行存款）
   const account = await prisma.cashAccount.findFirst({
     where: { warehouse: booking.warehouse, type: '銀行存款', isActive: true },
@@ -143,28 +167,6 @@ async function syncBnbPaymentTx(bookingId) {
       accountId: acctId, categoryId: catId, warehouse: wh,
     });
     if (txId) updates.cardCashTxId = txId;
-  }
-
-  // 老闆收取現金 → 記錄 BnbBossWithdraw（idempotent：同 bookingId 只建一筆）
-  if (booking.cashDestination === '老闆收取' && Number(booking.payCash) > 0) {
-    const exists = await prisma.bnbBossWithdraw.findFirst({ where: { bookingId } });
-    if (!exists) {
-      await prisma.bnbBossWithdraw.create({
-        data: {
-          warehouse: wh,
-          withdrawDate: booking.checkOutDate || booking.checkInDate,
-          amount: Number(booking.payCash),
-          bookingId,
-          guestName: booking.guestName,
-          note: booking.bossWithdrawNote || null,
-        },
-      });
-    } else if (Number(exists.amount) !== Number(booking.payCash)) {
-      await prisma.bnbBossWithdraw.update({
-        where: { id: exists.id },
-        data: { amount: Number(booking.payCash), note: booking.bossWithdrawNote || null },
-      });
-    }
   }
 
   if (Object.keys(updates).length > 0) {
