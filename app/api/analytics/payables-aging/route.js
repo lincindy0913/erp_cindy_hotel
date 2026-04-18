@@ -20,8 +20,11 @@ export async function GET() {
     const unpaidInvoices = await prisma.salesMaster.findMany({
       where: { status: { not: '已核銷' } },
       take: 10000,
-      include: {
-        supplier: { select: { id: true, name: true } },
+      select: {
+        id: true,
+        salesNo: true,
+        invoiceDate: true,
+        totalAmount: true,
       },
     });
 
@@ -39,7 +42,7 @@ export async function GET() {
         invoiceId: inv.id,
         invoiceNo: inv.salesNo,
         invoiceDate: inv.invoiceDate,
-        supplierName: inv.supplier?.name || '',
+        supplierName: '',
         amount,
         daysOutstanding: daysDiff,
       };

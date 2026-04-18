@@ -49,18 +49,28 @@ export async function GET(request) {
       orderBy: { dueDate: 'asc' },
     });
 
-    // Expected outflows: loan repayments
-    const loanWhere = { status: 'active' };
-    const wf4 = applyWarehouseFilter(auth.session, loanWhere);
-    if (!wf4.ok) return wf4.response;
+    // Expected outflows: loan repayments (from scheduled LoanMonthlyRecord)
+    const loanMonthlyWhere = {
+      dueDate: { gte: todayStr, lte: endDateStr },
+      status: { notIn: ['已核實', '已預付'] },
+    };
 
-    const loanRepayments = await prisma.loanMaster.findMany({
-      where: loanWhere,
+    const loanMonthlyRecords = await prisma.loanMonthlyRecord.findMany({
+      where: loanMonthlyWhere,
       take: 1000,
       select: {
-        id: true, loanName: true, monthlyPayment: true, repaymentDay: true,
+        id: true,
+        dueDate: true,
+        estimatedTotal: true,
+        loan: { select: { loanName: true } },
       },
     });
+    const loanRepayments = loanMonthlyRecords.map(r => ({
+      id: r.id,
+      loanName: r.loan?.loanName || '',
+      monthlyPayment: Number(r.estimatedTotal || 0),
+      dueDate: r.dueDate,
+    }));
 
     // Expected inflows: pending checks receivable
     const checksReceivableWhere = {
