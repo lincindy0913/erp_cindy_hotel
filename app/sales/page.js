@@ -36,6 +36,7 @@ function InvoicePageInner() {
   const [searchDateTo, setSearchDateTo] = useState('');
   const [searchInvoiceTitle, setSearchInvoiceTitle] = useState('');
   const [searchWarehouse, setSearchWarehouse] = useState('');
+  const [searchOwnerType, setSearchOwnerType] = useState(''); // '' | 'owner' | 'regular'
 
   // 勾選發票（列印用）
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState(new Set());
@@ -238,6 +239,11 @@ function InvoicePageInner() {
     return supplier ? supplier.name : '未知廠商';
   }
 
+  const ownerTitleSet = useMemo(
+    () => new Set(invoiceTitles.map(t => t.title).filter(Boolean)),
+    [invoiceTitles]
+  );
+
   const filteredInvoicesForList = useMemo(
     () =>
       invoices.filter((inv) => {
@@ -247,9 +253,12 @@ function InvoicePageInner() {
         if (searchDateTo && invDate > searchDateTo) return false;
         if (searchInvoiceTitle && (inv.invoiceTitle || '') !== searchInvoiceTitle) return false;
         if (searchWarehouse && (inv.warehouse || '') !== searchWarehouse) return false;
+        const isOwner = ownerTitleSet.has(inv.invoiceTitle || '');
+        if (searchOwnerType === 'owner' && !isOwner) return false;
+        if (searchOwnerType === 'regular' && isOwner) return false;
         return true;
       }),
-    [invoices, searchSupplier, searchDateFrom, searchDateTo, searchInvoiceTitle, searchWarehouse]
+    [invoices, searchSupplier, searchDateFrom, searchDateTo, searchInvoiceTitle, searchWarehouse, searchOwnerType, ownerTitleSet]
   );
   const { sortKey: saleInvKey, sortDir: saleInvDir, toggleSort: toggleSaleInv } = useColumnSort('invoiceDate', 'desc');
   const sortedInvoicesForList = useMemo(
@@ -1320,19 +1329,26 @@ function InvoicePageInner() {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {statsData.titles
-                          .map(t => ({ title: t, amt: statsData.periodTotal.byTitle[t] || 0 }))
+                          .map(t => ({ title: t, amt: statsData.periodTotal.byTitle[t] || 0, isOwner: ownerTitleSet.has(t) }))
                           .sort((a, b) => b.amt - a.amt)
-                          .map(({ title, amt }) => {
+                          .map(({ title, amt, isOwner }) => {
                             const pct = statsData.periodTotal.total > 0
                               ? (amt / statsData.periodTotal.total * 100).toFixed(1) : '0.0';
                             return (
-                              <tr key={title} className="hover:bg-gray-50">
-                                <td className="px-4 py-2.5 font-medium text-gray-700">{title}</td>
+                              <tr key={title} className={isOwner ? 'bg-purple-50/40 hover:bg-purple-50' : 'hover:bg-gray-50'}>
+                                <td className="px-4 py-2.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium text-gray-700">{title}</span>
+                                    {isOwner && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">老闆私帳</span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">NT$ {amt.toLocaleString()}</td>
                                 <td className="px-4 py-2.5 text-right text-gray-500">{pct}%</td>
                                 <td className="px-4 py-2.5">
                                   <div className="bg-gray-100 rounded-full h-2">
-                                    <div className="h-2 rounded-full bg-blue-400"
+                                    <div className={`h-2 rounded-full ${isOwner ? 'bg-purple-400' : 'bg-blue-400'}`}
                                       style={{ width: `${Math.min(100, parseFloat(pct))}%` }} />
                                   </div>
                                 </td>
@@ -1399,9 +1415,26 @@ function InvoicePageInner() {
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
-            {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse) && (
+            {/* 類型篩選 */}
+            <div className="flex gap-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50">
+              {[
+                { key: '', label: '全部' },
+                { key: 'regular', label: '一般發票' },
+                { key: 'owner', label: '老闆私帳' },
+              ].map(opt => (
+                <button key={opt.key} onClick={() => setSearchOwnerType(opt.key)}
+                  className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
+                    searchOwnerType === opt.key
+                      ? opt.key === 'owner' ? 'bg-purple-600 text-white shadow-sm' : 'bg-white text-gray-700 shadow-sm'
+                      : 'text-gray-500 hover:bg-white hover:text-gray-700'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse || searchOwnerType) && (
               <button
-                onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); setSearchInvoiceTitle(''); setSearchWarehouse(''); }}
+                onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); setSearchInvoiceTitle(''); setSearchWarehouse(''); setSearchOwnerType(''); }}
                 className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
               >
                 清除篩選
@@ -1492,9 +1525,10 @@ function InvoicePageInner() {
               ) : (
                 sortedInvoicesForList.map((invoice, index) => {
                   const isExpanded = expandedInvoices.has(invoice.id);
+                  const isOwner = ownerTitleSet.has(invoice.invoiceTitle || '');
                   return (
                     <Fragment key={invoice.id}>
-                      <tr className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <tr className={isOwner ? 'bg-purple-50/40 hover:bg-purple-50' : index % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'}>
                         <td className="px-3 py-3">
                           <input
                             type="checkbox"
@@ -1509,7 +1543,16 @@ function InvoicePageInner() {
                           />
                         </td>
                         <td className="px-4 py-3 text-sm">{invoice.warehouse || '-'}</td>
-                        <td className="px-4 py-3 text-sm">{invoice.invoiceTitle || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{invoice.invoiceTitle || '-'}</span>
+                            {isOwner && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 whitespace-nowrap">
+                                老闆私帳
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-sm">{invoice.supplierName || '-'}</td>
                         <td className="px-4 py-3 text-sm">{invoice.invoiceNo || invoice.salesNo}</td>
                         <td className="px-4 py-3 text-sm">{invoice.invoiceDate || invoice.salesDate}</td>
