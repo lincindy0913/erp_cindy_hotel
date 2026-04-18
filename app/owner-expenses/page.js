@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
@@ -238,7 +239,7 @@ export default function OwnerExpensesPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-purple-50 text-purple-800 text-xs">
-                      {['公司名稱','統編','金額（NT$）','張數','備註','狀態',''].map(h => (
+                      {['公司名稱','統編','金額（NT$）','張數','備註','狀態','操作','進項發票'].map(h => (
                         <th key={h} className="px-4 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -296,23 +297,33 @@ export default function OwnerExpensesPage() {
                               <span className="text-xs text-gray-300">未填</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap flex gap-1.5">
-                            {!isConfirmed && (
-                              <button onClick={() => saveRow(row)} disabled={isSaving}
-                                className="text-xs px-2.5 py-1 rounded-lg border border-purple-300 text-purple-600 hover:bg-purple-50 disabled:opacity-50">
-                                {isSaving ? '…' : '儲存'}
-                              </button>
-                            )}
-                            {row.expenseId && (
-                              <button onClick={() => toggleConfirm(row)}
-                                className={`text-xs px-2.5 py-1 rounded-lg border ${
-                                  isConfirmed
-                                    ? 'border-gray-300 text-gray-500 hover:bg-gray-50'
-                                    : 'border-green-300 text-green-600 hover:bg-green-50'
-                                }`}>
-                                {isConfirmed ? '取消確認' : '確認'}
-                              </button>
-                            )}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex gap-1.5">
+                              {!isConfirmed && (
+                                <button onClick={() => saveRow(row)} disabled={isSaving}
+                                  className="text-xs px-2.5 py-1 rounded-lg border border-purple-300 text-purple-600 hover:bg-purple-50 disabled:opacity-50">
+                                  {isSaving ? '…' : '儲存'}
+                                </button>
+                              )}
+                              {row.expenseId && (
+                                <button onClick={() => toggleConfirm(row)}
+                                  className={`text-xs px-2.5 py-1 rounded-lg border ${
+                                    isConfirmed
+                                      ? 'border-gray-300 text-gray-500 hover:bg-gray-50'
+                                      : 'border-green-300 text-green-600 hover:bg-green-50'
+                                  }`}>
+                                  {isConfirmed ? '取消確認' : '確認'}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <Link
+                              href={`/sales?month=${month}&invoiceTitle=${encodeURIComponent(row.companyName)}`}
+                              className="text-xs px-2.5 py-1 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 inline-block"
+                            >
+                              查看發票
+                            </Link>
                           </td>
                         </tr>
                       );
@@ -331,7 +342,7 @@ export default function OwnerExpensesPage() {
                         <td className="px-4 py-2.5 text-center text-xs text-purple-600">
                           {monthData.rows.reduce((s, r) => s + (parseInt(editMap[r.companyId]?.invoiceCount) || 0), 0)} 張
                         </td>
-                        <td colSpan={3}></td>
+                        <td colSpan={4}></td>
                       </tr>
                     </tfoot>
                   )}

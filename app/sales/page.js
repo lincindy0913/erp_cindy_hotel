@@ -40,6 +40,12 @@ function InvoicePageInner() {
   // 勾選發票（列印用）
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState(new Set());
 
+  // 月度館別統計 view
+  const [activeView, setActiveView] = useState('list');
+  const [statsYear, setStatsYear] = useState(() => new Date().getFullYear().toString());
+  const [statsData, setStatsData] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
   // 篩選條件
   const [filterData, setFilterData] = useState({
     yearMonth: '', // YYYY-MM
@@ -73,6 +79,32 @@ function InvoicePageInner() {
     fetchInvoices();
     fetchSystemTaxRate();
     fetchInvoiceTitles();
+  }, []);
+
+  async function fetchMonthlyStats() {
+    setStatsLoading(true);
+    try {
+      const res = await fetch(`/api/sales/monthly-stats?year=${statsYear}`);
+      if (res.ok) setStatsData(await res.json());
+    } catch {}
+    setStatsLoading(false);
+  }
+
+  useEffect(() => {
+    if (activeView === 'monthly') fetchMonthlyStats();
+  }, [activeView, statsYear]);
+
+  // 從 URL ?month=YYYY-MM&invoiceTitle=XXX 預設篩選（供業主往來頁跳轉）
+  useEffect(() => {
+    const m = searchParams.get('month');
+    const t = searchParams.get('invoiceTitle');
+    if (m) {
+      setSearchDateFrom(`${m}-01`);
+      const [y, mo] = m.split('-').map(Number);
+      const lastDay = new Date(y, mo, 0).getDate();
+      setSearchDateTo(`${m}-${String(lastDay).padStart(2, '0')}`);
+    }
+    if (t) setSearchInvoiceTitle(t);
   }, []);
 
   async function fetchInvoiceTitles() {
@@ -1111,6 +1143,130 @@ function InvoicePageInner() {
           </div>
         )}
 
+        {/* View toggle */}
+        <div className="flex gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
+          {[{ key: 'list', label: '發票列表' }, { key: 'monthly', label: '月度館別統計' }].map(v => (
+            <button key={v.key} onClick={() => setActiveView(v.key)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === v.key ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+              }`}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ══ 月度館別統計 ══ */}
+        {activeView === 'monthly' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm p-4 flex items-end gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">年度</label>
+                <input type="number" min="2020" max="2099"
+                  value={statsYear}
+                  onChange={e => setStatsYear(e.target.value)}
+                  className="border rounded-lg px-3 py-1.5 text-sm w-28 focus:ring-2 focus:ring-green-400 outline-none"
+                />
+              </div>
+              <button onClick={fetchMonthlyStats}
+                className="px-4 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700">
+                查詢
+              </button>
+            </div>
+
+            {statsLoading ? (
+              <div className="text-center py-16 text-gray-400">統計中…</div>
+            ) : statsData ? (
+              <div className="space-y-4">
+                {/* 館別小計卡 */}
+                {statsData.warehouses.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {statsData.warehouses.map(wh => (
+                      <div key={wh} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                        <p className="text-xs text-gray-500 mb-1">{wh}</p>
+                        <p className="text-lg font-bold text-green-700">
+                          NT$ {(statsData.yearTotal.byWarehouse[wh] || 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">全年合計</p>
+                      </div>
+                    ))}
+                    <div className="bg-green-50 rounded-xl border border-green-200 shadow-sm p-4">
+                      <p className="text-xs text-gray-500 mb-1">全館合計</p>
+                      <p className="text-lg font-bold text-green-800">
+                        NT$ {(statsData.yearTotal.total || 0).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">{statsData.yearTotal.invoiceCount} 張發票</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 月 × 館別 樞紐表 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-green-50 text-green-800 text-xs">
+                        <th className="px-4 py-2.5 text-left font-medium whitespace-nowrap">月份</th>
+                        {statsData.warehouses.map(wh => (
+                          <th key={wh} className="px-4 py-2.5 text-right font-medium whitespace-nowrap">{wh}</th>
+                        ))}
+                        <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">張數</th>
+                        <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">月合計</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {statsData.rows.length === 0 ? (
+                        <tr><td colSpan={statsData.warehouses.length + 3} className="text-center py-12 text-gray-400">此年度無進項發票</td></tr>
+                      ) : statsData.rows.map(row => (
+                        <tr key={row.month} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 font-medium text-gray-700">
+                            <button
+                              onClick={() => { setActiveView('list'); setSearchDateFrom(`${row.month}-01`); const [y, mo] = row.month.split('-').map(Number); setSearchDateTo(`${row.month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`); setSearchInvoiceTitle(''); setSearchWarehouse(''); }}
+                              className="text-green-700 hover:underline"
+                            >
+                              {row.month}
+                            </button>
+                          </td>
+                          {statsData.warehouses.map(wh => (
+                            <td key={wh} className="px-4 py-2.5 text-right text-gray-600">
+                              {(row.byWarehouse[wh] || 0) > 0
+                                ? <button
+                                    onClick={() => { setActiveView('list'); setSearchDateFrom(`${row.month}-01`); const [y, mo] = row.month.split('-').map(Number); setSearchDateTo(`${row.month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`); setSearchWarehouse(wh); setSearchInvoiceTitle(''); }}
+                                    className="text-green-700 hover:underline font-medium"
+                                  >
+                                    {(row.byWarehouse[wh] || 0).toLocaleString()}
+                                  </button>
+                                : <span className="text-gray-300">—</span>
+                              }
+                            </td>
+                          ))}
+                          <td className="px-4 py-2.5 text-right text-gray-400 text-xs">{row.invoiceCount}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-gray-800">
+                            NT$ {row.total.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-green-50 font-semibold text-green-800 text-sm">
+                        <td className="px-4 py-2.5">全年合計</td>
+                        {statsData.warehouses.map(wh => (
+                          <td key={wh} className="px-4 py-2.5 text-right">
+                            {(statsData.yearTotal.byWarehouse[wh] || 0).toLocaleString()}
+                          </td>
+                        ))}
+                        <td className="px-4 py-2.5 text-right text-xs">{statsData.yearTotal.invoiceCount}</td>
+                        <td className="px-4 py-2.5 text-right">NT$ {statsData.yearTotal.total.toLocaleString()}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-16 text-gray-400">請選擇年度後按「查詢」</div>
+            )}
+          </div>
+        )}
+
+        {activeView === 'list' && (<>
         {/* 搜尋列 */}
         <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -1441,6 +1597,7 @@ function InvoicePageInner() {
             </tbody>
           </table>
         </div>
+        </>)}
       </main>
     </div>
   );
