@@ -10,6 +10,7 @@ const MODULE_CODE_MAP = {
   'loans': ['N02', 'N07'],
   'finance': ['N05', 'N06'],
   'cashier': ['N05'],
+  'engineering': ['N05'],
   'pms-income': ['N01', 'N11'],
 };
 

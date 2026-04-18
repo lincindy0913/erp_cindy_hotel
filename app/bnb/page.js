@@ -94,20 +94,25 @@ function openPrintWindow(title, headers, rows) {
 const TABS = [
   { key: 'records',    label: '訂房明細' },
   { key: 'import',     label: '雲掌櫃匯入' },
-  { key: 'dailyRev',   label: '每日收入' },
-  { key: 'monthly',    label: '月收入總表' },
-  { key: 'pnl',        label: '月收支總表' },
+  { key: 'analytics',  label: '分析' },
   { key: 'declaration',label: '旅宿網申報' },
-  { key: 'declList',   label: '年度申報總覽' },
   { key: 'deposit',    label: '訂金核對' },
   { key: 'otaRecon',   label: 'OTA比對' },
   { key: 'otaCommission', label: 'OTA傭金' },
   { key: 'bossWithdraw', label: '老闆收取' },
-  { key: 'calendar',       label: '訂房日曆' },
-  { key: 'occupancy',      label: '入住率統計' },
   { key: 'payAudit',       label: '付款稽核' },
-  { key: 'sourceAnalysis', label: '來源分析' },
   { key: 'guestHistory',   label: '房客歷史' },
+];
+
+/** 分析分頁內子分頁（每日收入、報表與統計） */
+const ANALYTICS_SUB_TABS = [
+  { key: 'dailyRev',       label: '每日收入' },
+  { key: 'monthly',        label: '月收入總表' },
+  { key: 'pnl',            label: '月收支總表' },
+  { key: 'declList',       label: '年度申報總表' },
+  { key: 'sourceAnalysis', label: '來源分析' },
+  { key: 'occupancy',      label: '入住率統計' },
+  { key: 'calendar',       label: '訂房日曆' },
 ];
 
 const STATUS_COLORS = {
@@ -500,6 +505,8 @@ export default function BnbPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('records');
+  /** 分析分頁內子分頁 */
+  const [analyticsSub, setAnalyticsSub] = useState('dailyRev');
 
   // 是否有鎖帳權限
   const canLock = session?.user?.role === 'admin'
@@ -1100,18 +1107,18 @@ export default function BnbPage() {
 
   useEffect(() => {
     if (activeTab === 'records')     fetchRecords();
-    if (activeTab === 'dailyRev')    fetchDailyRevenue();
-    if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary();
+    if (activeTab === 'analytics' && analyticsSub === 'dailyRev') fetchDailyRevenue();
+    if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();
     if (activeTab === 'declaration') { setDeclSearched(false); setDeclActual(null); }
-    if (activeTab === 'declList')    fetchDeclList();
+    if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList();
     if (activeTab === 'deposit' && dmAccountId) fetchDepositMatch();
     if (activeTab === 'otaCommission') { fetchCommHistory(); fetchReconLogs(); }
     if (activeTab === 'bossWithdraw')  fetchBossWithdraw();
-    if (activeTab === 'occupancy')     fetchOccupancy();
-    if (activeTab === 'sourceAnalysis')fetchSourceAnalysis();
+    if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy();
+    if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis();
     if (activeTab === 'payAudit')      fetchAudit();
-    if (activeTab === 'calendar')      fetchCalendar();
-  }, [activeTab]);
+    if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
+  }, [activeTab, analyticsSub]);
 
   useEffect(() => {
     const ctx = getActiveLockContext();
@@ -1121,13 +1128,27 @@ export default function BnbPage() {
   useEffect(() => {
     if (activeTab === 'records') { setSelectedIds(new Set()); fetchRecords(); }
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
-  useEffect(() => { if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary(); }, [summaryYear]);
-  useEffect(() => { if (activeTab === 'declList') fetchDeclList(); }, [dlYear, dlWarehouse]);
-  useEffect(() => { if (activeTab === 'bossWithdraw')   fetchBossWithdraw();  }, [bwMonth, bwWarehouse]);
-  useEffect(() => { if (activeTab === 'occupancy')      fetchOccupancy();     }, [occYear, occWarehouse]);
-  useEffect(() => { if (activeTab === 'sourceAnalysis') fetchSourceAnalysis();}, [saYear,  saWarehouse]);
-  useEffect(() => { if (activeTab === 'payAudit')       fetchAudit();         }, [auditMonth, auditWarehouse]);
-  useEffect(() => { if (activeTab === 'calendar')       fetchCalendar();      }, [calYear, calMonth, calWarehouse]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();
+  }, [summaryYear, activeTab, analyticsSub]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList();
+  }, [dlYear, dlWarehouse, activeTab, analyticsSub]);
+  useEffect(() => { if (activeTab === 'bossWithdraw') fetchBossWithdraw(); }, [bwMonth, bwWarehouse, activeTab]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy();
+  }, [occYear, occWarehouse, activeTab, analyticsSub]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis();
+  }, [saYear, saWarehouse, activeTab, analyticsSub]);
+  useEffect(() => { if (activeTab === 'payAudit') fetchAudit(); }, [auditMonth, auditWarehouse, activeTab]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
+  }, [calYear, calMonth, calWarehouse, activeTab, analyticsSub]);
+
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'dailyRev') fetchDailyRevenue();
+  }, [drMonth, drWarehouse, activeTab, analyticsSub]);
 
   const isLocked   = !!lockStatus?.locked;
   const monthLocked = isLocked;
@@ -1411,8 +1432,8 @@ export default function BnbPage() {
         return;
       }
       showToast('月報已儲存', 'success');
-      if (activeTab === 'monthly' || activeTab === 'pnl') fetchSummary();
-      if (activeTab === 'declList') fetchDeclList();
+      if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();
+      if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList();
     } finally { setDeclSaving(false); }
   }
 
@@ -1504,6 +1525,23 @@ export default function BnbPage() {
             </button>
           </div>
         </div>
+
+        {activeTab === 'analytics' && (
+          <div className="flex flex-wrap gap-1 mb-6 bg-indigo-50/80 rounded-xl border border-indigo-100 p-1.5">
+            {ANALYTICS_SUB_TABS.map(st => (
+              <button
+                key={st.key}
+                type="button"
+                onClick={() => setAnalyticsSub(st.key)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  analyticsSub === st.key ? 'bg-indigo-700 text-white shadow-sm' : 'text-indigo-900/80 hover:bg-white/80'
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ══ Tab: 訂房明細 ══ */}
         {activeTab === 'records' && (
@@ -2189,7 +2227,7 @@ export default function BnbPage() {
         )}
 
         {/* ══ Tab: 每日收入 ══ */}
-        {activeTab === 'dailyRev' && (
+        {activeTab === 'analytics' && analyticsSub === 'dailyRev' && (
           <div>
             {/* 搜尋列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
@@ -2374,7 +2412,7 @@ export default function BnbPage() {
         )}
 
         {/* ══ Tab: 月收入總表 ══ */}
-        {activeTab === 'monthly' && (
+        {activeTab === 'analytics' && analyticsSub === 'monthly' && (
           <div>
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <label className="text-sm text-gray-600">年份</label>
@@ -2482,7 +2520,7 @@ export default function BnbPage() {
         )}
 
         {/* ══ Tab: 月收支總表 ══ */}
-        {activeTab === 'pnl' && (
+        {activeTab === 'analytics' && analyticsSub === 'pnl' && (
           <div>
             {(() => {
               const pnlData = summaryRows.map(r => ({
@@ -2765,7 +2803,7 @@ export default function BnbPage() {
         )}
 
         {/* ══ Tab: 年度申報總覽 ══ */}
-        {activeTab === 'declList' && (
+        {activeTab === 'analytics' && analyticsSub === 'declList' && (
           <div>
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <label className="text-sm text-gray-600">年份</label>
@@ -3757,7 +3795,7 @@ export default function BnbPage() {
         )}
 
         {/* ══ Tab: 訂房日曆 ══ */}
-        {activeTab === 'calendar' && (() => {
+        {activeTab === 'analytics' && analyticsSub === 'calendar' && (() => {
           const daysInMonth = new Date(calYear, calMonth, 0).getDate();
           const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
           // 統計每天有幾筆入住中的訂單
@@ -3832,7 +3870,7 @@ export default function BnbPage() {
         })()}
 
         {/* ══ Tab: 入住率統計 ══ */}
-        {activeTab === 'occupancy' && (
+        {activeTab === 'analytics' && analyticsSub === 'occupancy' && (
           <div className="space-y-4">
             {/* toolbar */}
             <div className="flex flex-wrap items-center gap-3">
@@ -4009,7 +4047,7 @@ export default function BnbPage() {
         })()}
 
         {/* ══ Tab: 來源分析 ══ */}
-        {activeTab === 'sourceAnalysis' && (
+        {activeTab === 'analytics' && analyticsSub === 'sourceAnalysis' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
               <input type="number" min="2020" max="2035" value={saYear} onChange={e => setSaYear(e.target.value)}

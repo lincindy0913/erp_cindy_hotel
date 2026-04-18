@@ -75,6 +75,8 @@ export async function POST(request) {
         address: body.address || null,
         buildingName: body.buildingName || null,
         unitNo: body.unitNo || null,
+        ownerName: body.ownerName || null,
+        houseTaxRegistrationNo: body.houseTaxRegistrationNo || null,
         rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         status: body.status || 'available',

@@ -14,14 +14,40 @@ const TABS = [
   { key: 'properties', label: '物業管理' },
   { key: 'contracts', label: '合約管理' },
   { key: 'taxes', label: '稅款管理' },
+  { key: 'rentFiling', label: '租金申報' },
   { key: 'maintenance', label: '維護費' },
   { key: 'utilityIncome', label: '水電收入' },
-  { key: 'incomeReport', label: '收入分析報表' },
-  { key: 'operatingReport', label: '營運分析報表' },
-  { key: 'overdueReport', label: '逾期催繳' },
-  { key: 'depositTracking', label: '押金追蹤' },
-  { key: 'vacancyReport', label: '空置率報表' }
+  { key: 'analytics', label: '分析報表' }
 ];
+
+/** 舊網址 ?tab=incomeReport 等 → 導向 ?tab=analytics&sub=… */
+const LEGACY_TAB_TO_SUB = {
+  incomeReport: 'income',
+  operatingReport: 'operating',
+  overdueReport: 'overdue',
+  depositTracking: 'deposit',
+  vacancyReport: 'vacancy',
+};
+const VALID_ANALYTICS_SUB = ['income', 'operating', 'overdue', 'deposit', 'vacancy'];
+const ANALYTICS_SUB_LABELS = [
+  { key: 'income', label: '收入分析' },
+  { key: 'operating', label: '營運分析' },
+  { key: 'overdue', label: '逾期催繳' },
+  { key: 'vacancy', label: '空置率' },
+  { key: 'deposit', label: '押金追蹤' },
+];
+
+function resolveRentalsMainTab(tabParam) {
+  if (!tabParam) return 'overview';
+  return LEGACY_TAB_TO_SUB[tabParam] ? 'analytics' : tabParam;
+}
+function resolveRentalsAnalyticsSub(tabParam, sp) {
+  const mapped = LEGACY_TAB_TO_SUB[tabParam];
+  if (mapped) return mapped;
+  const s = sp.get('sub');
+  if (s && VALID_ANALYTICS_SUB.includes(s)) return s;
+  return 'income';
+}
 
 const PROPERTY_STATUSES = [
   { value: 'available', label: '空置', color: 'bg-green-100 text-green-800' },
@@ -73,7 +99,8 @@ function RentalsPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const tabParam = searchParams.get('tab') || 'overview';
-  const [activeTab, setActiveTab] = useState(tabParam);
+  const [activeTab, setActiveTab] = useState(() => resolveRentalsMainTab(tabParam));
+  const [analyticsSub, setAnalyticsSub] = useState(() => resolveRentalsAnalyticsSub(tabParam, searchParams));
 
   // Shared data
   const [summary, setSummary] = useState(null);
@@ -155,7 +182,7 @@ function RentalsPage() {
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '' });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -190,6 +217,19 @@ function RentalsPage() {
   const [incomeReportData, setIncomeReportData] = useState({ year: null, rows: [] });
   const [operatingReportData, setOperatingReportData] = useState({ year: null, rows: [] });
   const [reportLoading, setReportLoading] = useState(false);
+
+  const [rentFilingYear, setRentFilingYear] = useState(new Date().getFullYear());
+  const [rentFilingData, setRentFilingData] = useState({ rows: [], totals: { declaredAnnual: 0, actualAnnual: 0, estimatedHouseTax: 0 } });
+  const [rentFilingLoading, setRentFilingLoading] = useState(false);
+  const [showRentFilingModal, setShowRentFilingModal] = useState(false);
+  const [editingRentFiling, setEditingRentFiling] = useState(null);
+  const [rentFilingForm, setRentFilingForm] = useState({
+    propertyId: '', contractId: '', slotIndex: 0,
+    isPublicInterest: false, lesseeDisplayName: '',
+    declaredMonthlyRent: '', monthsInScope: '12', declaredAnnualIncome: '', estimatedHouseTax: '',
+    status: 'draft', note: '',
+  });
+  const [rentFilingSaving, setRentFilingSaving] = useState(false);
 
   const [taxTableYear, setTaxTableYear] = useState(new Date().getFullYear());
   const [taxTableRows, setTaxTableRows] = useState([]);
@@ -253,12 +293,28 @@ function RentalsPage() {
   const [editingUtility, setEditingUtility] = useState(null);
 
   useEffect(() => {
-    setActiveTab(tabParam);
-  }, [tabParam]);
+    const mapped = LEGACY_TAB_TO_SUB[tabParam];
+    if (mapped) {
+      setActiveTab('analytics');
+      setAnalyticsSub(mapped);
+      router.replace(`/rentals?tab=analytics&sub=${mapped}`, { scroll: false });
+      return;
+    }
+    setActiveTab(resolveRentalsMainTab(tabParam));
+    if (tabParam === 'analytics') {
+      const s = searchParams.get('sub');
+      if (s && VALID_ANALYTICS_SUB.includes(s)) setAnalyticsSub(s);
+    }
+  }, [tabParam, searchParams, router]);
 
   useEffect(() => {
     fetchAll();
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'rentFiling') return;
+    fetchRentFiling();
+  }, [rentFilingYear, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
@@ -274,13 +330,20 @@ function RentalsPage() {
     }
     if (activeTab === 'utilityIncome') { fetchUtilityList(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'paymentRecords') { fetchPaymentRecords(); if (properties.length === 0) fetchProperties(); }
-    if (activeTab === 'overdueReport') { fetchOverdueReport(); if (properties.length === 0) fetchProperties(); }
-    if (activeTab === 'depositTracking') { fetchContracts(); if (properties.length === 0) fetchProperties(); }
-    if (activeTab === 'vacancyReport') fetchVacancyReport();
     if (activeTab === 'overview') fetchSummary();
-    if (activeTab === 'incomeReport') { fetchIncomeReport(); fetchProperties(); }
-    if (activeTab === 'operatingReport') { fetchOperatingReport(); fetchProperties(); }
-  }, [activeTab]);
+    if (activeTab === 'analytics') {
+      if (analyticsSub === 'overdue') { fetchOverdueReport(); if (properties.length === 0) fetchProperties(); }
+      if (analyticsSub === 'deposit') { fetchContracts(); if (properties.length === 0) fetchProperties(); }
+      if (analyticsSub === 'vacancy') fetchVacancyReport();
+      if (analyticsSub === 'income') { fetchIncomeReport(); fetchProperties(); }
+      if (analyticsSub === 'operating') { fetchOperatingReport(); fetchProperties(); }
+    }
+    if (activeTab === 'rentFiling') {
+      fetchRentFiling();
+      if (properties.length === 0) fetchProperties();
+      if (contracts.length === 0) fetchContracts();
+    }
+  }, [activeTab, analyticsSub]);
 
   // 從出納執行回來時自動更新稅款/維護費清單（頁面重新顯示時 refetch）
   useEffect(() => {
@@ -348,7 +411,168 @@ function RentalsPage() {
     }
   }
 
+  async function fetchRentFiling() {
+    setRentFilingLoading(true);
+    try {
+      const res = await fetch(`/api/rentals/rent-filing?year=${rentFilingYear}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.message || data.error);
+      setRentFilingData({
+        rows: data.rows || [],
+        totals: data.totals || { declaredAnnual: 0, actualAnnual: 0, estimatedHouseTax: 0 },
+      });
+    } catch {
+      setRentFilingData({ rows: [], totals: { declaredAnnual: 0, actualAnnual: 0, estimatedHouseTax: 0 } });
+    } finally {
+      setRentFilingLoading(false);
+    }
+  }
+
+  async function seedRentFilingYear() {
+    setRentFilingLoading(true);
+    try {
+      const res = await fetch('/api/rentals/rent-filing/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: rentFilingYear }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || data.message || '建立失敗', 'error');
+      showToast(`已建立 ${data.created} 筆草稿，略過 ${data.skipped} 筆已存在`, 'success');
+      fetchRentFiling();
+    } catch (e) {
+      showToast('建立失敗: ' + e.message, 'error');
+    } finally {
+      setRentFilingLoading(false);
+    }
+  }
+
+  function openRentFilingModalForNew() {
+    setEditingRentFiling(null);
+    setRentFilingForm({
+      propertyId: properties[0]?.id ? String(properties[0].id) : '',
+      contractId: '',
+      slotIndex: 0,
+      isPublicInterest: false,
+      lesseeDisplayName: '',
+      declaredMonthlyRent: '', monthsInScope: '12', declaredAnnualIncome: '', estimatedHouseTax: '',
+      status: 'draft', note: '',
+    });
+    setShowRentFilingModal(true);
+  }
+
+  function openRentFilingModalForEdit(row) {
+    setEditingRentFiling(row);
+    setRentFilingForm({
+      propertyId: String(row.propertyId),
+      contractId: row.contractId != null ? String(row.contractId) : '',
+      slotIndex: row.slotIndex,
+      isPublicInterest: !!row.isPublicInterest,
+      lesseeDisplayName: row.lesseeDisplayName || '',
+      declaredMonthlyRent: row.declaredMonthlyRent != null ? String(row.declaredMonthlyRent) : '',
+      monthsInScope: row.monthsInScope != null ? String(row.monthsInScope) : '12',
+      declaredAnnualIncome: row.declaredAnnualIncome != null ? String(row.declaredAnnualIncome) : '',
+      estimatedHouseTax: row.estimatedHouseTax != null ? String(row.estimatedHouseTax) : '',
+      status: row.status || 'draft',
+      note: row.note || '',
+    });
+    setShowRentFilingModal(true);
+  }
+
+  function nextSlotForProperty(propertyId) {
+    const pid = parseInt(propertyId, 10);
+    const same = rentFilingData.rows.filter((r) => r.propertyId === pid);
+    if (same.length === 0) return 0;
+    return Math.max(...same.map((r) => r.slotIndex)) + 1;
+  }
+
+  async function saveRentFilingFromModal() {
+    if (!rentFilingForm.propertyId) {
+      showToast('請選擇物業', 'error');
+      return;
+    }
+    setRentFilingSaving(true);
+    try {
+      if (editingRentFiling) {
+        const res = await fetch(`/api/rentals/rent-filing/${editingRentFiling.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractId: rentFilingForm.contractId || null,
+            isPublicInterest: rentFilingForm.isPublicInterest,
+            lesseeDisplayName: rentFilingForm.lesseeDisplayName || null,
+            declaredMonthlyRent: rentFilingForm.declaredMonthlyRent,
+            monthsInScope: rentFilingForm.monthsInScope,
+            declaredAnnualIncome: rentFilingForm.declaredAnnualIncome,
+            estimatedHouseTax: rentFilingForm.estimatedHouseTax,
+            status: rentFilingForm.status,
+            note: rentFilingForm.note,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || data.message || '儲存失敗', 'error');
+        showToast('已儲存', 'success');
+      } else {
+        const slot = nextSlotForProperty(rentFilingForm.propertyId);
+        const res = await fetch('/api/rentals/rent-filing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyId: parseInt(rentFilingForm.propertyId, 10),
+            filingYear: rentFilingYear,
+            slotIndex: slot,
+            contractId: rentFilingForm.contractId || null,
+            isPublicInterest: rentFilingForm.isPublicInterest,
+            lesseeDisplayName: rentFilingForm.lesseeDisplayName || null,
+            declaredMonthlyRent: rentFilingForm.declaredMonthlyRent,
+            monthsInScope: rentFilingForm.monthsInScope,
+            declaredAnnualIncome: rentFilingForm.declaredAnnualIncome,
+            estimatedHouseTax: rentFilingForm.estimatedHouseTax,
+            status: rentFilingForm.status,
+            note: rentFilingForm.note,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || data.message || '建立失敗', 'error');
+        showToast('已建立', 'success');
+      }
+      setShowRentFilingModal(false);
+      fetchRentFiling();
+    } catch (e) {
+      showToast('儲存失敗: ' + e.message, 'error');
+    } finally {
+      setRentFilingSaving(false);
+    }
+  }
+
+  function deleteRentFilingRow(row) {
+    askConfirm('確定刪除此筆申報列？', async () => {
+      try {
+        const res = await fetch(`/api/rentals/rent-filing/${row.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json();
+          return showToast(data.error || '刪除失敗', 'error');
+        }
+        fetchRentFiling();
+      } catch (e) {
+        showToast('刪除失敗: ' + e.message, 'error');
+      }
+    }, '刪除申報列');
+  }
+
+  function switchAnalyticsSub(sub) {
+    if (!VALID_ANALYTICS_SUB.includes(sub)) return;
+    setAnalyticsSub(sub);
+    setActiveTab('analytics');
+    router.push(`/rentals?tab=analytics&sub=${sub}`, { scroll: false });
+  }
+
   function switchTab(key) {
+    if (key === 'analytics') {
+      setActiveTab('analytics');
+      router.push(`/rentals?tab=analytics&sub=${analyticsSub}`, { scroll: false });
+      return;
+    }
     setActiveTab(key);
     router.push(`/rentals?tab=${key}`, { scroll: false });
   }
@@ -745,18 +969,18 @@ function RentalsPage() {
       setEditingProperty(property);
       setPropertyForm({
         name: property.name || '', address: property.address || '', buildingName: property.buildingName || '',
-        unitNo: property.unitNo || '', status: property.status || 'available',
+        unitNo: property.unitNo || '', ownerName: property.ownerName || '', houseTaxRegistrationNo: property.houseTaxRegistrationNo || '',
+        status: property.status || 'available',
         rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
         note: property.note || '', collectUtilityFee: property.collectUtilityFee || false, publicInterestLandlord: property.publicInterestLandlord || false,
         publicInterestApplicant: property.publicInterestApplicant || '',
         publicInterestNote: property.publicInterestNote || '',
         publicInterestStartDate: property.publicInterestStartDate || '',
         publicInterestEndDate: property.publicInterestEndDate || '',
-        publicInterestRent: property.publicInterestRent != null ? String(property.publicInterestRent) : '',
       });
     } else {
       setEditingProperty(null);
-      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '' });
     }
     setShowPropertyModal(true);
   }
@@ -1195,7 +1419,7 @@ function RentalsPage() {
                     <p className="text-red-700 font-medium">
                       有 {summary.overdueCount} 筆租金逾期未收，總金額 ${fmt(summary.overdueAmount)}
                     </p>
-                    <button onClick={() => switchTab('overdueReport')} className="text-xs text-red-600 underline">前往逾期催繳報表</button>
+                    <button onClick={() => switchAnalyticsSub('overdue')} className="text-xs text-red-600 underline">前往逾期催繳報表</button>
                   </div>
                 )}
                 {thirtyDayCount > 0 && (
@@ -1881,7 +2105,7 @@ function RentalsPage() {
                               <th className="text-center px-3 py-2">公益出租人{sortArrow('publicInterest')}</th>
                               <th className="text-left px-3 py-2">申請人</th>
                               <th className="text-left px-3 py-2">公益租約期間</th>
-                              <th className="text-right px-3 py-2">公益租金</th>
+                              <th className="text-center px-3 py-2">租金申報</th>
                               <th className="text-left px-3 py-2">備註{sortArrow('note')}</th>
                               <th className="text-center px-3 py-2">操作</th>
                             </tr>
@@ -1906,10 +2130,10 @@ function RentalsPage() {
                                     ? <span>{p.publicInterestStartDate || '—'} ～ {p.publicInterestEndDate || '—'}</span>
                                     : <span className="text-gray-300">—</span>}
                                 </td>
-                                <td className="px-3 py-2 text-xs text-right text-gray-700">
-                                  {p.publicInterestLandlord && p.publicInterestRent != null
-                                    ? `NT$ ${Number(p.publicInterestRent).toLocaleString()}`
-                                    : <span className="text-gray-300">—</span>}
+                                <td className="px-3 py-2 text-center">
+                                  <button type="button" onClick={() => switchTab('rentFiling')} className="text-teal-600 hover:underline text-xs font-medium">
+                                    {p.publicInterestLandlord ? '前往年度申報' : '總表'}
+                                  </button>
                                 </td>
                                 <td className="px-3 py-2 text-xs text-gray-500 max-w-[150px] truncate" title={p.note || ''}>{p.note || '-'}</td>
                                 <td className="px-3 py-2 text-center">
@@ -2239,6 +2463,109 @@ function RentalsPage() {
               </div>
             )}
 
+            {/* ==================== TAB: RENT FILING ==================== */}
+            {activeTab === 'rentFiling' && (
+              <div>
+                <div className="bg-teal-50 border border-teal-100 rounded-lg px-4 py-3 mb-4 text-sm text-teal-900">
+                  <p><strong>年度租金／租賃所得申報總表</strong>（每年一報）。請註記<strong>公益出租人</strong>以利房屋稅／申報類型區別；同一門牌若有兩間承租公司，請新增第二列並填<strong>承租人／租約綁定</strong>以利實收對照。</p>
+                </div>
+                <div className="flex flex-wrap items-end gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">申報／所得年度</label>
+                    <select value={rentFilingYear} onChange={(e) => setRentFilingYear(Number(e.target.value))}
+                      className="border rounded-lg px-3 py-1.5 text-sm">
+                      {[0, 1, 2, 3].map((d) => {
+                        const y = new Date().getFullYear() - d;
+                        return <option key={y} value={y}>{y}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <button type="button" onClick={() => fetchRentFiling()} disabled={rentFilingLoading}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50">
+                    {rentFilingLoading ? '載入…' : '重新整理'}
+                  </button>
+                  <button type="button" onClick={() => seedRentFilingYear()} disabled={rentFilingLoading}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+                    為全部物業建立草稿
+                  </button>
+                  <button type="button" onClick={() => openRentFilingModalForNew()}
+                    className="px-4 py-1.5 text-sm rounded-lg bg-gray-800 text-white hover:bg-gray-900 ml-auto">
+                    新增申報列
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-xl shadow overflow-x-auto mb-4">
+                  <table className="w-full text-sm">
+                    <thead className="bg-teal-50 text-teal-900 text-xs">
+                      <tr>
+                        <th className="px-3 py-2 text-left">列</th>
+                        <th className="px-3 py-2 text-left">物業</th>
+                        <th className="px-3 py-2 text-left">地址</th>
+                        <th className="px-3 py-2 text-left">所有權人／稅籍</th>
+                        <th className="px-3 py-2 text-center">公益</th>
+                        <th className="px-3 py-2 text-left">承租人／抬頭</th>
+                        <th className="px-3 py-2 text-right">申報月租</th>
+                        <th className="px-3 py-2 text-center">月數</th>
+                        <th className="px-3 py-2 text-right">全年申報</th>
+                        <th className="px-3 py-2 text-right">預估房屋稅</th>
+                        <th className="px-3 py-2 text-right">當年實收</th>
+                        <th className="px-3 py-2 text-left">備註</th>
+                        <th className="px-3 py-2 text-center">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rentFilingLoading ? (
+                        <tr><td colSpan={13} className="text-center py-12 text-gray-400">載入中…</td></tr>
+                      ) : rentFilingData.rows.length === 0 ? (
+                        <tr><td colSpan={13} className="text-center py-12 text-gray-400">尚無資料，可使用「為全部物業建立草稿」或「新增申報列」</td></tr>
+                      ) : rentFilingData.rows.map((r) => (
+                        <tr key={r.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 text-xs text-gray-500">{r.slotIndex + 1}</td>
+                          <td className="px-3 py-2 font-medium">{r.propertyName}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600 max-w-[140px]" title={r.address || ''}>{r.address || '—'}</td>
+                          <td className="px-3 py-2 text-xs">
+                            <div>{r.ownerName || '—'}</div>
+                            <div className="text-gray-400 font-mono">{r.houseTaxRegistrationNo || '—'}</div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {r.isPublicInterest ? <span className="text-green-700 font-medium">是</span> : <span className="text-gray-400">否</span>}
+                          </td>
+                          <td className="px-3 py-2 text-xs">
+                            <div>{r.lesseeDisplayName || r.contractLesseeName || '—'}</div>
+                            {r.contractId && <div className="text-gray-400">租約 #{r.contractId}</div>}
+                          </td>
+                          <td className="px-3 py-2 text-right">{r.declaredMonthlyRent != null ? `$${fmt(r.declaredMonthlyRent)}` : '—'}</td>
+                          <td className="px-3 py-2 text-center">{r.monthsInScope ?? '—'}</td>
+                          <td className="px-3 py-2 text-right font-medium">{r.declaredAnnualIncome != null ? `$${fmt(r.declaredAnnualIncome)}` : '—'}</td>
+                          <td className="px-3 py-2 text-right text-amber-800">{r.estimatedHouseTax != null ? `$${fmt(r.estimatedHouseTax)}` : '—'}</td>
+                          <td className="px-3 py-2 text-right text-indigo-700">${fmt(r.actualAnnualIncome)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px]">
+                            {r.incomeSplitHint && <span className="text-amber-700 block">{r.incomeSplitHint}</span>}
+                            {r.note || ''}
+                          </td>
+                          <td className="px-3 py-2 text-center whitespace-nowrap">
+                            <button type="button" className="text-teal-600 hover:underline text-xs mr-2" onClick={() => openRentFilingModalForEdit(r)}>編輯</button>
+                            <button type="button" className="text-red-600 hover:underline text-xs" onClick={() => deleteRentFilingRow(r)}>刪除</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {rentFilingData.rows.length > 0 && (
+                      <tfoot className="bg-gray-50 font-semibold text-sm">
+                        <tr>
+                          <td colSpan={8} className="px-3 py-2 text-right">合計</td>
+                          <td className="px-3 py-2 text-right">${fmt(rentFilingData.totals.declaredAnnual)}</td>
+                          <td className="px-3 py-2 text-right">${fmt(rentFilingData.totals.estimatedHouseTax)}</td>
+                          <td className="px-3 py-2 text-right">${fmt(rentFilingData.totals.actualAnnual)}</td>
+                          <td colSpan={2} />
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* ==================== TAB: MAINTENANCE ==================== */}
             {activeTab === 'maintenance' && (
               <div>
@@ -2544,8 +2871,27 @@ function RentalsPage() {
               </div>
             )}
 
-            {/* ==================== TAB: 收入分析報表 ==================== */}
-            {activeTab === 'incomeReport' && (
+            {/* ==================== TAB: 分析報表（收入／營運／逾期／空置／押金）==================== */}
+            {activeTab === 'analytics' && (
+              <div>
+                <div className="no-print flex flex-wrap gap-2 mb-6 border-b border-gray-100 pb-4">
+                  {ANALYTICS_SUB_LABELS.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => switchAnalyticsSub(key)}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap ${
+                        analyticsSub === key
+                          ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+            {analyticsSub === 'income' && (
               <div className="rental-report-print-area">
                 <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
                   <label className="text-sm">年份：</label>
@@ -2638,117 +2984,7 @@ function RentalsPage() {
               </div>
             )}
 
-            {/* ==================== TAB: 付款紀錄 ==================== */}
-            {activeTab === 'paymentRecords' && (
-              <div>
-                {/* 篩選列 */}
-                <div className="flex flex-wrap items-center gap-3 mb-4">
-                  <label className="text-sm text-gray-600">年份：</label>
-                  <input type="number" value={paymentFilter.year} onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
-                    className="border rounded px-2 py-1 w-24 text-sm" />
-                  <label className="text-sm text-gray-600">月份：</label>
-                  <select value={paymentFilter.month} onChange={e => setPaymentFilter(f => ({ ...f, month: e.target.value }))}
-                    className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部月份</option>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>{i + 1} 月</option>
-                    ))}
-                  </select>
-                  <label className="text-sm text-gray-600">物業：</label>
-                  <select value={paymentFilter.propertyId} onChange={e => setPaymentFilter(f => ({ ...f, propertyId: e.target.value }))}
-                    className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部物業</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <label className="text-sm text-gray-600">帳戶：</label>
-                  <select value={paymentFilter.accountId} onChange={e => setPaymentFilter(f => ({ ...f, accountId: e.target.value }))}
-                    className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部帳戶</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <label className="text-sm text-gray-600">付款方式：</label>
-                  <select value={paymentFilter.paymentMethod} onChange={e => setPaymentFilter(f => ({ ...f, paymentMethod: e.target.value }))}
-                    className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部</option>
-                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
-                  </select>
-                  <button onClick={() => fetchPaymentRecords(1)} disabled={paymentLoading}
-                    className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
-                </div>
-
-                {/* 統計摘要 */}
-                {paymentRecords.length > 0 && (
-                  <div className="flex gap-4 mb-3 text-sm">
-                    <span className="bg-teal-50 px-3 py-1.5 rounded-lg">共 <b>{paymentRecordsPagination.totalCount}</b> 筆</span>
-                    <span className="bg-green-50 px-3 py-1.5 rounded-lg text-green-800">
-                      合計實收 <b>NT$ {fmt(paymentRecords.reduce((s, p) => s + p.amount, 0))}</b>
-                      {paymentRecordsPagination.totalPages > 1 && <span className="text-gray-400 ml-1">（本頁）</span>}
-                    </span>
-                  </div>
-                )}
-
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
-                      <tr>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款日期</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">物業</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">租客</th>
-                        <th className="text-center px-3 py-2 font-medium text-gray-700">租期</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-700">應收金額</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-700 text-teal-800">實收金額</th>
-                        <th className="text-center px-3 py-2 font-medium text-gray-700">次序</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">付款方式</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款帳戶</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">匯款人/備註</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentLoading ? (
-                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">載入中…</td></tr>
-                      ) : paymentRecords.length === 0 ? (
-                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
-                      ) : paymentRecords.map((p, idx) => (
-                        <tr key={p.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                          <td className="px-3 py-2 font-mono text-sm">{p.paymentDate}</td>
-                          <td className="px-3 py-2">{p.propertyName}</td>
-                          <td className="px-3 py-2">{p.tenantName}</td>
-                          <td className="px-3 py-2 text-center text-gray-500">{p.incomeYear}/{String(p.incomeMonth).padStart(2,'0')}</td>
-                          <td className="px-3 py-2 text-right text-gray-500">${fmt(p.expectedAmount)}</td>
-                          <td className="px-3 py-2 text-right font-semibold text-teal-700">${fmt(p.amount)}</td>
-                          <td className="px-3 py-2 text-center text-xs text-gray-500">第{p.sequenceNo}次</td>
-                          <td className="px-3 py-2 text-sm">
-                            <span className={`px-2 py-0.5 rounded text-xs ${p.paymentMethod === '匯款' || p.paymentMethod === 'transfer' ? 'bg-blue-100 text-blue-800' : p.paymentMethod === '現金' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                              {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '—')}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">{accounts.find(a => a.id === p.accountId)?.name || '—'}</td>
-                          <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={[p.matchBankAccountName, p.matchTransferRef, p.matchNote].filter(Boolean).join(' / ')}>
-                            {[p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / ') || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* 分頁 */}
-                {paymentRecordsPagination.totalPages > 1 && (
-                  <div className="flex justify-center gap-2 mt-4">
-                    <button disabled={paymentRecordsPagination.page <= 1}
-                      onClick={() => fetchPaymentRecords(paymentRecordsPagination.page - 1)}
-                      className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">上一頁</button>
-                    <span className="px-3 py-1 text-sm text-gray-600">{paymentRecordsPagination.page} / {paymentRecordsPagination.totalPages}</span>
-                    <button disabled={paymentRecordsPagination.page >= paymentRecordsPagination.totalPages}
-                      onClick={() => fetchPaymentRecords(paymentRecordsPagination.page + 1)}
-                      className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">下一頁</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ==================== TAB: 營運分析報表 ==================== */}
-            {activeTab === 'operatingReport' && (
+            {analyticsSub === 'operating' && (
               <div className="rental-report-print-area">
                 <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
                   <label className="text-sm">年份：</label>
@@ -2813,8 +3049,7 @@ function RentalsPage() {
               </div>
             )}
 
-            {/* ==================== TAB: 逾期催繳報表 ==================== */}
-            {activeTab === 'overdueReport' && (
+            {analyticsSub === 'overdue' && (
               <div className="rental-report-print-area">
                 <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
                   <h3 className="text-base font-semibold text-gray-800">逾期租金催繳報表</h3>
@@ -2898,8 +3133,7 @@ function RentalsPage() {
               </div>
             )}
 
-            {/* ==================== TAB: 押金追蹤 ==================== */}
-            {activeTab === 'depositTracking' && (() => {
+            {analyticsSub === 'deposit' && (() => {
               const depositContracts = contracts.filter(c => Number(c.depositAmount) > 0);
               const filtered = depositFilter === 'all' ? depositContracts
                 : depositFilter === 'pending_receive' ? depositContracts.filter(c => !c.depositReceived)
@@ -3001,8 +3235,7 @@ function RentalsPage() {
               );
             })()}
 
-            {/* ==================== TAB: 空置率報表 ==================== */}
-            {activeTab === 'vacancyReport' && (
+            {analyticsSub === 'vacancy' && (
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-4 no-print">
                   <label className="text-sm">年份：</label>
@@ -3081,6 +3314,112 @@ function RentalsPage() {
                 )}
               </div>
             )}
+              </div>
+            )}
+
+            {/* ==================== TAB: 付款紀錄 ==================== */}
+            {activeTab === 'paymentRecords' && (
+              <div>
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <label className="text-sm text-gray-600">年份：</label>
+                  <input type="number" value={paymentFilter.year} onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
+                    className="border rounded px-2 py-1 w-24 text-sm" />
+                  <label className="text-sm text-gray-600">月份：</label>
+                  <select value={paymentFilter.month} onChange={e => setPaymentFilter(f => ({ ...f, month: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部月份</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1} 月</option>
+                    ))}
+                  </select>
+                  <label className="text-sm text-gray-600">物業：</label>
+                  <select value={paymentFilter.propertyId} onChange={e => setPaymentFilter(f => ({ ...f, propertyId: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部物業</option>
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <label className="text-sm text-gray-600">帳戶：</label>
+                  <select value={paymentFilter.accountId} onChange={e => setPaymentFilter(f => ({ ...f, accountId: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部帳戶</option>
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <label className="text-sm text-gray-600">付款方式：</label>
+                  <select value={paymentFilter.paymentMethod} onChange={e => setPaymentFilter(f => ({ ...f, paymentMethod: e.target.value }))}
+                    className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部</option>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                  </select>
+                  <button onClick={() => fetchPaymentRecords(1)} disabled={paymentLoading}
+                    className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700 disabled:opacity-50">查詢</button>
+                </div>
+                {paymentRecords.length > 0 && (
+                  <div className="flex gap-4 mb-3 text-sm">
+                    <span className="bg-teal-50 px-3 py-1.5 rounded-lg">共 <b>{paymentRecordsPagination.totalCount}</b> 筆</span>
+                    <span className="bg-green-50 px-3 py-1.5 rounded-lg text-green-800">
+                      合計實收 <b>NT$ {fmt(paymentRecords.reduce((s, p) => s + p.amount, 0))}</b>
+                      {paymentRecordsPagination.totalPages > 1 && <span className="text-gray-400 ml-1">（本頁）</span>}
+                    </span>
+                  </div>
+                )}
+                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-teal-50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款日期</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">物業</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">租客</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-700">租期</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-700">應收金額</th>
+                        <th className="text-right px-3 py-2 font-medium text-gray-700 text-teal-800">實收金額</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-700">次序</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">付款方式</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款帳戶</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">匯款人/備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paymentLoading ? (
+                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">載入中…</td></tr>
+                      ) : paymentRecords.length === 0 ? (
+                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
+                      ) : paymentRecords.map((p, idx) => (
+                        <tr key={p.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                          <td className="px-3 py-2 font-mono text-sm">{p.paymentDate}</td>
+                          <td className="px-3 py-2">{p.propertyName}</td>
+                          <td className="px-3 py-2">{p.tenantName}</td>
+                          <td className="px-3 py-2 text-center text-gray-500">{p.incomeYear}/{String(p.incomeMonth).padStart(2,'0')}</td>
+                          <td className="px-3 py-2 text-right text-gray-500">${fmt(p.expectedAmount)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-teal-700">${fmt(p.amount)}</td>
+                          <td className="px-3 py-2 text-center text-xs text-gray-500">第{p.sequenceNo}次</td>
+                          <td className="px-3 py-2 text-sm">
+                            <span className={`px-2 py-0.5 rounded text-xs ${p.paymentMethod === '匯款' || p.paymentMethod === 'transfer' ? 'bg-blue-100 text-blue-800' : p.paymentMethod === '現金' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '—')}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">{accounts.find(a => a.id === p.accountId)?.name || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={[p.matchBankAccountName, p.matchTransferRef, p.matchNote].filter(Boolean).join(' / ')}>
+                            {[p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / ') || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {paymentRecordsPagination.totalPages > 1 && (
+                  <div className="flex justify-center gap-2 mt-4">
+                    <button disabled={paymentRecordsPagination.page <= 1}
+                      onClick={() => fetchPaymentRecords(paymentRecordsPagination.page - 1)}
+                      className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">上一頁</button>
+                    <span className="px-3 py-1 text-sm text-gray-600">{paymentRecordsPagination.page} / {paymentRecordsPagination.totalPages}</span>
+                    <button disabled={paymentRecordsPagination.page >= paymentRecordsPagination.totalPages}
+                      onClick={() => fetchPaymentRecords(paymentRecordsPagination.page + 1)}
+                      className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">下一頁</button>
+                  </div>
+                )}
+              </div>
+            )}
+
           </>
         )}
       </div>
@@ -3182,6 +3521,90 @@ function RentalsPage() {
         </div>
       )}
 
+      {/* ==================== MODAL: RENT FILING ==================== */}
+      {showRentFilingModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowRentFilingModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4">{editingRentFiling ? '編輯申報列' : '新增申報列'}（{rentFilingYear} 年）</h3>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <label className="text-gray-600">物業 *</label>
+                  <select value={rentFilingForm.propertyId} disabled={!!editingRentFiling}
+                    onChange={(e) => setRentFilingForm((f) => ({ ...f, propertyId: e.target.value, contractId: '' }))}
+                    className="w-full border rounded px-3 py-2 mt-1">
+                    <option value="">選擇物業</option>
+                    {properties.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}{p.address ? ` · ${p.address}` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-gray-600">綁定租約（同址多公司時建議指定）</label>
+                  <select value={rentFilingForm.contractId} onChange={(e) => setRentFilingForm((f) => ({ ...f, contractId: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 mt-1">
+                    <option value="">不指定（合計該物業全部實收）</option>
+                    {contracts.filter((c) => !rentFilingForm.propertyId || String(c.propertyId) === rentFilingForm.propertyId).map((c) => (
+                      <option key={c.id} value={c.id}>{c.contractNo} · {getTenantDisplayName(c.tenant)}{c.monthlyRent != null ? ` · NT$${fmt(c.monthlyRent)}` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-gray-600">承租人／公司抬頭（手動註記）</label>
+                  <input type="text" value={rentFilingForm.lesseeDisplayName} onChange={(e) => setRentFilingForm((f) => ({ ...f, lesseeDisplayName: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 mt-1" placeholder="例：OO股份有限公司" />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={rentFilingForm.isPublicInterest} onChange={(e) => setRentFilingForm((f) => ({ ...f, isPublicInterest: e.target.checked }))} />
+                  <span>公益出租人（房屋稅／申報類型註記）</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">申報月租</label>
+                    <input type="number" min="0" value={rentFilingForm.declaredMonthlyRent} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredMonthlyRent: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 mt-1 text-right" />
+                  </div>
+                  <div>
+                    <label className="text-gray-600">申報月數</label>
+                    <input type="number" min="1" max="12" value={rentFilingForm.monthsInScope} onChange={(e) => setRentFilingForm((f) => ({ ...f, monthsInScope: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 mt-1 text-right" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">全年申報金額</label>
+                    <input type="number" min="0" value={rentFilingForm.declaredAnnualIncome} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredAnnualIncome: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 mt-1 text-right" />
+                  </div>
+                  <div>
+                    <label className="text-gray-600">預估房屋稅</label>
+                    <input type="number" min="0" value={rentFilingForm.estimatedHouseTax} onChange={(e) => setRentFilingForm((f) => ({ ...f, estimatedHouseTax: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 mt-1 text-right" placeholder="公益與一般稅率不同" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-600">狀態</label>
+                  <select value={rentFilingForm.status} onChange={(e) => setRentFilingForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 mt-1">
+                    <option value="draft">草稿</option>
+                    <option value="filed">已報稅</option>
+                    <option value="confirmed">已定稿</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-gray-600">備註</label>
+                  <textarea value={rentFilingForm.note} onChange={(e) => setRentFilingForm((f) => ({ ...f, note: e.target.value }))} rows={2} className="w-full border rounded px-3 py-2 mt-1" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setShowRentFilingModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                <button type="button" onClick={() => saveRentFilingFromModal()} disabled={rentFilingSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{rentFilingSaving ? '儲存中…' : '儲存'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ==================== MODAL: PROPERTY ==================== */}
       {showPropertyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPropertyModal(false)}>
@@ -3208,6 +3631,18 @@ function RentalsPage() {
                   <label className="text-sm text-gray-600">地址</label>
                   <input type="text" value={propertyForm.address} onChange={e => setPropertyForm(f => ({ ...f, address: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm text-gray-600">所有權人</label>
+                    <input type="text" value={propertyForm.ownerName || ''} onChange={e => setPropertyForm(f => ({ ...f, ownerName: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 text-sm" placeholder="建物登記所有權人" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">房屋稅稅籍編號</label>
+                    <input type="text" value={propertyForm.houseTaxRegistrationNo || ''} onChange={e => setPropertyForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 text-sm" placeholder="對應房屋稅單" />
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">狀態</label>
@@ -3253,6 +3688,8 @@ function RentalsPage() {
                   </div>
                   {propertyForm.publicInterestLandlord && (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
+                      <p className="text-xs text-green-800"><strong>公益出租</strong>之申報金額、預估房屋稅請至「租金申報」分頁依<strong>所得年度</strong>填寫同一張總表。</p>
+                      <button type="button" onClick={() => { setShowPropertyModal(false); switchTab('rentFiling'); }} className="text-xs text-teal-700 underline font-medium">開啟租金申報 →</button>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="text-xs text-green-700 font-medium block mb-1">申請人名稱</label>
@@ -3261,13 +3698,7 @@ function RentalsPage() {
                             placeholder="申請公益出租人之人名"
                             className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
                         </div>
-                        <div>
-                          <label className="text-xs text-green-700 font-medium block mb-1">公益租金（月）</label>
-                          <input type="number" min="0" value={propertyForm.publicInterestRent}
-                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestRent: e.target.value }))}
-                            placeholder="0"
-                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white text-right" />
-                        </div>
+                        <div />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>

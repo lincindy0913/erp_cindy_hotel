@@ -1470,6 +1470,8 @@ model RentalProperty {
   address               String?  @db.VarChar(500)
   buildingName          String?  @map("building_name") @db.VarChar(100)
   unitNo                String?  @map("unit_no") @db.VarChar(50)
+  ownerName             String?  @map("owner_name") @db.VarChar(255)
+  houseTaxRegistrationNo String? @map("house_tax_registration_no") @db.VarChar(80)
   rentCollectAccountId  Int?     @map("rent_collect_account_id")
   depositAccountId      Int?     @map("deposit_account_id")
   status                String   @default("available") @db.VarChar(20)
@@ -1491,10 +1493,39 @@ model RentalProperty {
   propertyTaxes      PropertyTax[]
   maintenances       RentalMaintenance[]
   utilityIncomes     RentalUtilityIncome[]
+  annualRentFilings  RentalAnnualRentFiling[]
 
   @@index([buildingName])
   @@index([status])
   @@map("rental_properties")
+}
+
+/// 租金／租賃所得年度申報（同一報表列可區分公益與否、同址多承租）
+model RentalAnnualRentFiling {
+  id                   Int       @id @default(autoincrement())
+  propertyId           Int       @map("property_id")
+  contractId           Int?      @map("contract_id")
+  slotIndex            Int       @default(0) @map("slot_index")
+  filingYear           Int       @map("filing_year")
+  isPublicInterest     Boolean   @default(false) @map("is_public_interest")
+  lesseeDisplayName    String?   @map("lessee_display_name") @db.VarChar(255)
+  declaredMonthlyRent  Decimal?  @map("declared_monthly_rent") @db.Decimal(12, 2)
+  monthsInScope        Int?      @map("months_in_scope")
+  declaredAnnualIncome Decimal?  @map("declared_annual_income") @db.Decimal(14, 2)
+  estimatedHouseTax    Decimal?  @map("estimated_house_tax") @db.Decimal(14, 2)
+  status               String    @default("draft") @db.VarChar(20)
+  note                 String?   @db.Text
+  confirmedAt          DateTime? @map("confirmed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  property RentalProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  contract RentalContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@unique([propertyId, filingYear, slotIndex])
+  @@index([filingYear])
+  @@index([contractId])
+  @@map("rental_annual_rent_filings")
 }
 
 model RentalUtilityIncome {
@@ -1574,6 +1605,7 @@ model RentalContract {
   rentalIncomes    RentalIncome[]
   previousContract RentalContract?  @relation("ContractRenewal", fields: [previousContractId], references: [id])
   renewalContracts RentalContract[] @relation("ContractRenewal")
+  annualRentFilings RentalAnnualRentFiling[]
 
   @@index([propertyId])
   @@index([tenantId])

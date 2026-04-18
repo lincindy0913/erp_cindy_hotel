@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, Fragment, Suspense } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import AttachmentSection from '@/components/AttachmentSection';
+import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
@@ -17,6 +19,9 @@ const TABS = [
   { key: 'payments', label: '付款單' },
   { key: 'income', label: '收款管理' },
 ];
+
+const VALID_TAB_KEYS = new Set(TABS.map((t) => t.key));
+const PAY_PAGE_SIZE = 40;
 
 const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
 
@@ -33,8 +38,11 @@ function getActualPaid(po) {
   return Number(po.amount || 0);
 }
 
-export default function EngineeringPage() {
-  const [activeTab, setActiveTab] = useState('projects');
+function EngineeringPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(() => (VALID_TAB_KEYS.has(tabParam) ? tabParam : 'projects'));
   const [projects, setProjects] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -62,6 +70,8 @@ export default function EngineeringPage() {
   const [mgmtView, setMgmtView] = useState('card'); // 'card' | 'table' | 'supplier'
   const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
   const [paymentOrders, setPaymentOrders] = useState([]);
+  /** 儀表板用：全工程案收款累計（不受收款 tab 篩選影響） */
+  const [allIncomesForDash, setAllIncomesForDash] = useState([]);
 
   // 搜尋篩選
   const [searchDateFrom, setSearchDateFrom] = useState('');
@@ -182,6 +192,60 @@ export default function EngineeringPage() {
       }),
     [filteredPaymentOrders, engPayKey, engPayDir]
   );
+
+  const [payPage, setPayPage] = useState(1);
+  useEffect(() => {
+    setPayPage(1);
+  }, [payTab, paySearchDateFrom, paySearchDateTo, paySearchSupplierId, paySearchWarehouse]);
+
+  const pagedPaymentOrders = useMemo(() => {
+    const start = (payPage - 1) * PAY_PAGE_SIZE;
+    return sortedPaymentOrders.slice(start, start + PAY_PAGE_SIZE);
+  }, [sortedPaymentOrders, payPage]);
+
+  const dashboardStats = useMemo(() => {
+    const activeProjects = projects.filter((p) => p.status === '進行中').length;
+    const sumBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
+    const sumClient = projects.reduce((s, p) => s + Number(p.clientContractAmount || 0), 0);
+    const sumVendorContracts = contracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
+    let paidExecuted = 0;
+    for (const o of paymentOrders) {
+      if (o.status === '已執行') paidExecuted += getActualPaid(o);
+    }
+    const sumIncome = allIncomesForDash.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const today = new Date().toISOString().slice(0, 10);
+    const weekLater = new Date();
+    weekLater.setDate(weekLater.getDate() + 7);
+    const weekEnd = weekLater.toISOString().slice(0, 10);
+    let overdueTerms = 0;
+    let dueThisWeek = 0;
+    for (const c of contracts) {
+      for (const t of c.terms || []) {
+        const amt = Number(t.amount || 0);
+        if (amt <= 0) continue;
+        const paid = paymentOrders
+          .filter((po) => String(po.sourceRecordId) === String(t.id) && po.status === '已執行')
+          .reduce((s, po) => s + getActualPaid(po), 0);
+        const remaining = amt - paid;
+        if (remaining <= 0.005) continue;
+        const due = t.dueDate;
+        if (!due) continue;
+        if (due < today) overdueTerms++;
+        else if (due <= weekEnd) dueThisWeek++;
+      }
+    }
+    return {
+      activeProjects,
+      sumBudget,
+      sumClient,
+      sumVendorContracts,
+      paidExecuted,
+      sumIncome,
+      overdueTerms,
+      dueThisWeek,
+      projectCount: projects.length,
+    };
+  }, [projects, contracts, paymentOrders, allIncomesForDash]);
 
   function handlePayPrint() {
     const rows = sortedPaymentOrders;
@@ -311,12 +375,24 @@ export default function EngineeringPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
 
+  function switchEngineeringTab(key) {
+    setActiveTab(key);
+    router.push(`/engineering?tab=${encodeURIComponent(key)}`, { scroll: false });
+  }
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && VALID_TAB_KEYS.has(t)) setActiveTab(t);
+  }, [searchParams]);
+
   useEffect(() => {
     fetchProjects();
     fetchSuppliers();
     fetchProducts();
     fetchWarehouseDepartments();
     fetchContracts();
+    fetchPaymentOrders();
+    refreshDashIncomes();
   }, []);
 
   useEffect(() => {
@@ -405,6 +481,16 @@ export default function EngineeringPage() {
     } catch { setIncomes([]); }
   }
 
+  async function refreshDashIncomes() {
+    try {
+      const res = await fetch('/api/engineering/income');
+      const data = await res.json();
+      setAllIncomesForDash(Array.isArray(data) ? data : []);
+    } catch {
+      setAllIncomesForDash([]);
+    }
+  }
+
   async function handleCreateIncome(e) {
     e.preventDefault();
     if (!incomeForm.projectId || !incomeForm.termName || !incomeForm.amount || !incomeForm.receivedDate) {
@@ -424,6 +510,7 @@ export default function EngineeringPage() {
       setShowIncomeForm(false);
       setIncomeForm({ projectId: '', termName: '', amount: '', receivedDate: new Date().toISOString().split('T')[0], accountId: '', accountingSubject: '41000 工程收入', note: '' });
       fetchIncomes();
+      refreshDashIncomes();
     } catch { showToast('建立收款紀錄失敗', 'error'); }
     setIncomeSaving(false);
   }
@@ -432,7 +519,7 @@ export default function EngineeringPage() {
     if (!confirm('確定要刪除此收款紀錄？對應的現金流交易也會一併刪除。')) return;
     try {
       const res = await fetch(`/api/engineering/income/${id}`, { method: 'DELETE' });
-      if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); }
+      if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); refreshDashIncomes(); }
       else { const err = await res.json(); showToast(err.error?.message || '刪除失敗', 'error'); }
     } catch { showToast('刪除失敗', 'error'); }
   }
@@ -465,6 +552,7 @@ export default function EngineeringPage() {
         showToast('收款紀錄已更新', 'success');
         setEditingIncome(null);
         fetchIncomes();
+        refreshDashIncomes();
       } else {
         const err = await res.json();
         showToast(err.error?.message || '更新失敗', 'error');
@@ -799,6 +887,39 @@ ${projectRows.map(p => `<tr>
     if (w) { w.document.write(html); w.document.close(); }
   }
 
+  function handleExportProjectsCsv() {
+    if (sortedProjects.length === 0) return;
+    const header = ['代碼', '名稱', '業主', '館別', '廠商', '起日', '迄日', '預算', '合約總額', '狀態'];
+    const rows = sortedProjects.map((p) => {
+      const projContracts = contracts.filter((c) => c.projectId === p.id && (!searchSupplierId || String(c.supplierId) === searchSupplierId));
+      const totalContractAmt = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
+      const supplierNames = [...new Set(projContracts.map((c) => c.supplier?.name).filter(Boolean))].join('、');
+      return [
+        p.code || '',
+        p.name || '',
+        p.clientName || '',
+        p.warehouseRef?.name || p.warehouse || '',
+        supplierNames,
+        p.startDate || '',
+        p.endDate || '',
+        Number(p.budget || 0),
+        totalContractAmt,
+        p.status || '',
+      ];
+    });
+    const csvRows = [header.join(',')];
+    rows.forEach((r) => {
+      csvRows.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
+    });
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `工程案列表_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-amber-600" />
@@ -809,9 +930,11 @@ ${projectRows.map(p => `<tr>
           <p className="text-sm text-gray-500 mt-1">營造工程案、廠商合約期數付款、材料使用追蹤（一般人事／廠商請款請至「付款」「費用」）</p>
         </div>
 
+        <EngineeringHeaderInsights stats={dashboardStats} onSwitchTab={switchEngineeringTab} />
+
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow p-1">
           {TABS.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            <button key={tab.key} type="button" onClick={() => switchEngineeringTab(tab.key)}
               className={`flex-1 py-2.5 rounded-md text-sm font-medium ${activeTab === tab.key ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               {tab.label}
             </button>
@@ -851,7 +974,8 @@ ${projectRows.map(p => `<tr>
                 </select>
               </div>
               <button onClick={() => { setSearchDateFrom(''); setSearchDateTo(''); setSearchSupplierId(''); setSearchWarehouse(''); }} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-100">清除</button>
-              <button onClick={handlePrintProjects} className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">列印</button>
+              <button type="button" onClick={handlePrintProjects} className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">列印</button>
+              <button type="button" onClick={handleExportProjectsCsv} className="px-4 py-1.5 bg-white border border-green-600 text-green-700 rounded-lg hover:bg-green-50 text-sm">匯出 CSV</button>
               {(searchDateFrom || searchDateTo || searchSupplierId || searchWarehouse) && (
                 <span className="text-xs text-amber-600">篩選中：{filteredProjects.length} / {projects.length} 筆</span>
               )}
@@ -1499,7 +1623,7 @@ ${projectRows.map(p => `<tr>
               <Link href="/cashier" className="text-sm text-amber-600 hover:underline">→ 至出納執行付款</Link>
               <div className="ml-auto flex gap-2">
                 <button onClick={handlePayPrint} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300">🖨 列印</button>
-                <button onClick={handlePayExportExcel} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300">📥 匯出Excel</button>
+                <button onClick={handlePayExportExcel} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300">📥 匯出 CSV（Excel 可開）</button>
               </div>
             </div>
 
@@ -1574,7 +1698,7 @@ ${projectRows.map(p => `<tr>
                       <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                         {payTab === 'draft' ? '目前無草稿付款單' : payTab === 'pending' ? '目前無待出納的付款單' : payTab === 'executed' ? '目前無已執行的付款單' : '目前無已拒絕的付款單'}
                       </td></tr>
-                    ) : sortedPaymentOrders.map(o => {
+                    ) : pagedPaymentOrders.map(o => {
                       const isExecuted = o.status === '已執行';
                       const isDraft = o.status === '草稿';
                       const isPending = o.status === '待出納';
@@ -1634,6 +1758,36 @@ ${projectRows.map(p => `<tr>
                   </tbody>
                 </table>
               </div>
+              {sortedPaymentOrders.length > PAY_PAGE_SIZE && (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50/80 text-sm">
+                  <span className="text-gray-600">
+                    第 {(payPage - 1) * PAY_PAGE_SIZE + 1}–{Math.min(payPage * PAY_PAGE_SIZE, sortedPaymentOrders.length)} 筆，共 {sortedPaymentOrders.length} 筆
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={payPage <= 1}
+                      onClick={() => setPayPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1 rounded-lg border border-gray-300 bg-white disabled:opacity-40 hover:bg-gray-50"
+                    >
+                      上一頁
+                    </button>
+                    <span className="text-gray-500">
+                      {payPage} / {Math.max(1, Math.ceil(sortedPaymentOrders.length / PAY_PAGE_SIZE))}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={payPage >= Math.ceil(sortedPaymentOrders.length / PAY_PAGE_SIZE)}
+                      onClick={() =>
+                        setPayPage((p) => Math.min(Math.ceil(sortedPaymentOrders.length / PAY_PAGE_SIZE), p + 1))
+                      }
+                      className="px-3 py-1 rounded-lg border border-gray-300 bg-white disabled:opacity-40 hover:bg-gray-50"
+                    >
+                      下一頁
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -2356,5 +2510,13 @@ ${projectRows.map(p => `<tr>
 
       {/* ── Engineering cashier execute modal ── */}
     </div>
+  );
+}
+
+export default function EngineeringPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex justify-center py-24 text-gray-500">載入中…</div>}>
+      <EngineeringPageInner />
+    </Suspense>
   );
 }

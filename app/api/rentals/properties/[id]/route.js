@@ -54,6 +54,8 @@ export async function PUT(request, { params }) {
         address: body.address,
         buildingName: body.buildingName,
         unitNo: body.unitNo,
+        ownerName: body.ownerName != null ? body.ownerName || null : undefined,
+        houseTaxRegistrationNo: body.houseTaxRegistrationNo != null ? body.houseTaxRegistrationNo || null : undefined,
         rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
         status: body.status,
