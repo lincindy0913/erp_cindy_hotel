@@ -226,6 +226,7 @@ model SalesMaster {
   tax              Decimal  @default(0) @db.Decimal(12, 2)
   totalAmount      Decimal  @default(0) @map("total_amount") @db.Decimal(12, 2)
   status           String   @default("待核銷") @db.VarChar(20)
+  invoiceType      String   @default("進貨單") @map("invoice_type") @db.VarChar(20)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -234,6 +235,7 @@ model SalesMaster {
 
   @@index([invoiceNo])
   @@index([invoiceDate])
+  @@index([invoiceType])
   @@map("sales_masters")
 }
 
@@ -1494,10 +1496,29 @@ model RentalProperty {
   maintenances       RentalMaintenance[]
   utilityIncomes     RentalUtilityIncome[]
   annualRentFilings  RentalAnnualRentFiling[]
+  /// 選用：一筆物業對應一筆資產主檔（稅費／維護仍以物業為資料來源，資產頁彙總顯示）
+  asset                Asset?
 
   @@index([buildingName])
   @@index([status])
   @@map("rental_properties")
+}
+
+/// 不動產資產主檔（土地／建物等），可選連動租屋「物業」
+model Asset {
+  id               Int              @id @default(autoincrement())
+  name             String           @db.VarChar(255)
+  assetType        String           @default("BUILDING") @map("asset_type") @db.VarChar(20) // LAND | BUILDING | MIXED | OTHER
+  address          String?          @db.VarChar(500)
+  areaSqm          Decimal?         @map("area_sqm") @db.Decimal(14, 2)
+  notes            String?          @db.Text
+  rentalPropertyId Int?             @unique @map("rental_property_id")
+  rentalProperty   RentalProperty?  @relation(fields: [rentalPropertyId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  @@index([assetType])
+  @@map("assets")
 }
 
 /// 租金／租賃所得年度申報（同一報表列可區分公益與否、同址多承租）

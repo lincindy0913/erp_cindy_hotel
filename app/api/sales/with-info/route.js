@@ -66,6 +66,7 @@ export async function GET(request) {
         tax: Number(invoice.tax),
         totalAmount: Number(invoice.totalAmount),
         status: invoice.status,
+        invoiceType: invoice.invoiceType,
         paymentStatus: getPaymentStatusForInvoice(invoice.id),
         items: invoice.details.map(d => ({
           purchaseItemId: d.purchaseItemId,

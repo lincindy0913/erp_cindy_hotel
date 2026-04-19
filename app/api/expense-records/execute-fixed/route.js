@@ -103,6 +103,23 @@ export async function POST(request) {
       if (anyCheck && (!data.checkNo?.trim() || !data.checkIssueDate || !data.checkDate || !data.checkAccountId)) {
         return createErrorResponse('REQUIRED_FIELD_MISSING', '付款方式為支票時請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 400);
       }
+
+      // 預先檢查重複（不開始建立前先回報）
+      if (!data.allowDuplicate) {
+        const dupWarnings = [];
+        for (const wh of warehouses) {
+          const dup = await prisma.commonExpenseRecord.findFirst({
+            where: { templateId: parseInt(data.templateId), warehouse: wh || null, expenseMonth: data.expenseMonth.trim(), executionType: 'fixed', status: { not: '已作廢' } }
+          });
+          if (dup) dupWarnings.push(`${wh || '未指定館別'} (${dup.recordNo})`);
+        }
+        if (dupWarnings.length > 0) {
+          return createErrorResponse('CONFLICT_UNIQUE',
+            `此範本在 ${data.expenseMonth} 以下館別已有記錄：${dupWarnings.join('、')}，確定要再新增嗎？`,
+            409, { duplicate: true });
+        }
+      }
+
       const created = [];
       for (const wh of warehouses) {
         const whLines = data.entryLines
@@ -126,7 +143,7 @@ export async function POST(request) {
           creditTotal = debitTotal;
         }
         if (Math.abs(debitTotal - creditTotal) > 0.01) continue;
-        const pm = whLines[0].paymentMethod || data.paymentMethod || '月結';
+        const pm = data.paymentMethod === '支票' ? '支票' : (whLines[0].paymentMethod || data.paymentMethod || '月結');
         const accId = whLines[0].accountId ? parseInt(whLines[0].accountId) : null;
         // 從分錄中取得廠商（取第一筆有廠商的分錄）
         const lineWithSupplier = whLines.find(l => l.supplierId);
@@ -510,6 +527,12 @@ export async function POST(request) {
         `借貸不平衡：借方 ${debitTotal.toFixed(2)} ≠ 貸方 ${creditTotal.toFixed(2)}`, 400);
     }
 
+    if (data.paymentMethod === '支票') {
+      if (!data.checkNo?.trim() || !data.checkIssueDate || !data.checkDate || !data.checkAccountId) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '付款方式為支票時請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 400);
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Duplicate check INSIDE transaction
       const duplicate = await tx.commonExpenseRecord.findFirst({
@@ -551,6 +574,38 @@ export async function POST(request) {
           sourceType: 'fixed_expense'
         }
       });
+
+      // 付款方式為支票：建立 Check 記錄並連動支票管理
+      if (singlePm === '支票' && data.checkNo?.trim() && data.checkIssueDate && data.checkDate && data.checkAccountId) {
+        const chkDateStr = (data.checkIssueDate || '').replace(/-/g, '');
+        const chkPrefix = `CHK-${chkDateStr}-`;
+        const existingChks = await tx.check.findMany({ where: { checkNo: { startsWith: chkPrefix } }, select: { checkNo: true } });
+        let maxSeqChk = 0;
+        for (const c of existingChks) {
+          const seq = parseInt(c.checkNo.substring(chkPrefix.length)) || 0;
+          if (seq > maxSeqChk) maxSeqChk = seq;
+        }
+        const internalCheckNo = `${chkPrefix}${String(maxSeqChk + 1).padStart(4, '0')}`;
+        await tx.check.create({
+          data: {
+            checkNo: internalCheckNo,
+            checkType: 'payable',
+            checkNumber: data.checkNo.trim(),
+            amount: debitTotal,
+            issueDate: data.checkIssueDate,
+            dueDate: data.checkDate,
+            status: 'pending',
+            drawerType: 'company',
+            payeeName: template.name || null,
+            warehouse: data.warehouse.trim(),
+            sourceAccountId: parseInt(data.checkAccountId),
+            paymentId: paymentOrder.id,
+            note: data.checkNote?.trim() ? `費用執行 ${orderNo} - ${data.checkNote.trim()}` : `費用執行 - ${orderNo} (${template.name} ${data.warehouse.trim()})`,
+            createdBy: data.createdBy?.trim() || null,
+          }
+        });
+        await tx.paymentOrder.update({ where: { id: paymentOrder.id }, data: { checkNo: data.checkNo.trim() } });
+      }
 
       // 2. Create CommonExpenseRecord
       const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');

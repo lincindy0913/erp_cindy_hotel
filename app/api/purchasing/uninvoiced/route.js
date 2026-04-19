@@ -43,10 +43,32 @@ export async function GET(request) {
     const uninvoicedItems = [];
 
     for (const purchase of purchases) {
-      for (let itemIndex = 0; itemIndex < purchase.details.length; itemIndex++) {
-        const detail = purchase.details[itemIndex];
-        const itemId = `${purchase.id}-${itemIndex}`;
-
+      if (purchase.details.length > 0) {
+        // 有明細記錄：逐項檢查
+        for (let itemIndex = 0; itemIndex < purchase.details.length; itemIndex++) {
+          const detail = purchase.details[itemIndex];
+          const itemId = `${purchase.id}-${itemIndex}`;
+          if (!invoicedItemIds.has(itemId)) {
+            uninvoicedItems.push({
+              id: itemId,
+              purchaseItemId: itemId,
+              purchaseId: purchase.id,
+              purchaseNo: purchase.purchaseNo,
+              purchaseDate: purchase.purchaseDate,
+              warehouse: purchase.warehouse || '',
+              department: purchase.department || '',
+              supplierId: purchase.supplierId,
+              productId: detail.productId,
+              quantity: detail.quantity,
+              unitPrice: Number(detail.unitPrice),
+              note: detail.note || '',
+              subtotal: detail.quantity * Number(detail.unitPrice)
+            });
+          }
+        }
+      } else {
+        // 無明細記錄：以整張進貨單為一筆虛擬品項（purchaseItemId = "${id}-0"）
+        const itemId = `${purchase.id}-0`;
         if (!invoicedItemIds.has(itemId)) {
           uninvoicedItems.push({
             id: itemId,
@@ -57,11 +79,11 @@ export async function GET(request) {
             warehouse: purchase.warehouse || '',
             department: purchase.department || '',
             supplierId: purchase.supplierId,
-            productId: detail.productId,
-            quantity: detail.quantity,
-            unitPrice: Number(detail.unitPrice),
-            note: detail.note || '',
-            subtotal: detail.quantity * Number(detail.unitPrice)
+            productId: null,
+            quantity: 1,
+            unitPrice: Number(purchase.totalAmount),
+            note: '',
+            subtotal: Number(purchase.totalAmount)
           });
         }
       }

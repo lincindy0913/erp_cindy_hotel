@@ -60,6 +60,7 @@ export async function GET(request, { params }) {
       tax: Number(invoice.tax),
       totalAmount: Number(invoice.totalAmount),
       status: invoice.status,
+      invoiceType: invoice.invoiceType,
       items: invoice.details.map(d => ({
         purchaseItemId: d.purchaseItemId,
         purchaseId: d.purchaseId,
@@ -132,6 +133,7 @@ export async function PUT(request, { params }) {
         invoiceNo: data.invoiceNo || existing.invoiceNo,
         invoiceDate: data.invoiceDate || existing.invoiceDate,
         invoiceTitle: data.invoiceTitle !== undefined ? data.invoiceTitle : existing.invoiceTitle,
+        invoiceType: data.invoiceType !== undefined ? data.invoiceType : existing.invoiceType,
         taxType: data.taxType !== undefined ? data.taxType : existing.taxType,
         invoiceAmount: data.invoiceAmount !== undefined ? (data.invoiceAmount ? parseFloat(data.invoiceAmount) : null) : existing.invoiceAmount,
         supplierDiscount: data.supplierDiscount !== undefined ? parseFloat(data.supplierDiscount || 0) : existing.supplierDiscount,
@@ -164,6 +166,7 @@ export async function PUT(request, { params }) {
       invoiceNo: updated.invoiceNo,
       invoiceDate: updated.invoiceDate,
       status: updated.status,
+      invoiceType: updated.invoiceType,
       amount: Number(updated.amount),
       tax: Number(updated.tax),
       totalAmount: Number(updated.totalAmount),

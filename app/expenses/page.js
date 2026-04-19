@@ -947,7 +947,8 @@ export default function ExpensesPage() {
           setSubmitting(false);
           return;
         }
-        if (executeForm.paymentMethod === '支票') {
+        const needsCheckFields = executeForm.paymentMethod === '支票' || lines.some(l => l.paymentMethod === '支票');
+        if (needsCheckFields) {
           if (!executeForm.checkIssueDate || !executeForm.checkDate || !executeForm.checkNo?.trim() || !executeForm.checkAccountId) {
             showToast('付款方式為支票時，請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 'error');
             setSubmitting(false);
@@ -1700,7 +1701,7 @@ export default function ExpensesPage() {
                       )}
 
                       {/* 付款方式為支票時，顯示支票資訊（存檔後連動支票管理） */}
-                      {executeForm.paymentMethod === '支票' && (
+                      {(executeForm.paymentMethod === '支票' || executeForm.entryLines?.some(l => l.paymentMethod === '支票')) && (
                         <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                           <div style={{ fontSize: 16, fontWeight: 600, color: '#b45309', marginBottom: 8 }}>支票資訊（存檔後連動支票管理）</div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1807,13 +1808,21 @@ export default function ExpensesPage() {
                                     <td style={tdStyle}>
                                       <select value={line.paymentMethod || ''}
                                         onChange={e => {
-                                          updateExecuteLine(realIdx, 'paymentMethod', e.target.value);
-                                          if (e.target.value !== '轉帳' && e.target.value !== '匯款') {
-                                            updateExecuteLine(realIdx, 'accountId', '');
-                                          }
-                                          if (e.target.value !== '信用卡' && e.target.value !== '員工代付') {
-                                            updateExecuteLine(realIdx, 'advancedBy', '');
-                                          }
+                                          const newPm = e.target.value;
+                                          setExecuteForm(prev => {
+                                            const newLines = prev.entryLines.map((l, i) => {
+                                              if (i !== realIdx) return l;
+                                              const updated = { ...l, paymentMethod: newPm };
+                                              if (newPm !== '轉帳' && newPm !== '匯款') updated.accountId = '';
+                                              if (newPm !== '信用卡' && newPm !== '員工代付') updated.advancedBy = '';
+                                              return updated;
+                                            });
+                                            return {
+                                              ...prev,
+                                              entryLines: newLines,
+                                              ...(newPm === '支票' ? { paymentMethod: '支票' } : {})
+                                            };
+                                          });
                                         }}
                                         style={{ ...inputStyle, marginBottom: 0 }}>
                                         <option value="">不指定</option>

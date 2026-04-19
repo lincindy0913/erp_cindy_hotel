@@ -32,7 +32,8 @@ export async function GET(request) {
           take: 1
         },
         rentCollectAccount: { select: { id: true, name: true } },
-        depositAccount: { select: { id: true, name: true } }
+        depositAccount: { select: { id: true, name: true } },
+        asset: { select: { id: true, name: true, assetType: true } },
       },
       orderBy: [{ buildingName: 'asc' }, { name: 'asc' }]
     });

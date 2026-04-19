@@ -36,6 +36,22 @@ function InvoicePageInner() {
   const [searchDateTo, setSearchDateTo] = useState('');
   const [searchInvoiceTitle, setSearchInvoiceTitle] = useState('');
   const [searchWarehouse, setSearchWarehouse] = useState('');
+  const [searchInvoiceType, setSearchInvoiceType] = useState('');
+
+  // 報表 view 篩選
+  const [reportDateFrom, setReportDateFrom] = useState('');
+  const [reportDateTo, setReportDateTo] = useState('');
+  const [reportTitle, setReportTitle] = useState('');
+  const [reportWarehouse, setReportWarehouse] = useState('');
+  const [reportType, setReportType] = useState('');
+
+  const INVOICE_SOURCES = ['進貨單', '租屋支出', '業主私帳', '固定費用'];
+  const SOURCE_COLORS = {
+    '進貨單':  { bg: 'bg-gray-100',   text: 'text-gray-700',   border: 'border-gray-300',   dot: 'bg-gray-400'   },
+    '租屋支出': { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300', dot: 'bg-purple-400' },
+    '業主私帳': { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-400' },
+    '固定費用': { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300',   dot: 'bg-blue-400'   },
+  };
 
   // 勾選發票（列印用）
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState(new Set());
@@ -60,6 +76,7 @@ function InvoicePageInner() {
     invoiceNo: '',
     invoiceDate: new Date().toISOString().split('T')[0],
     invoiceTitle: '', // 發票抬頭
+    invoiceType: '進貨單', // 發票類型
     taxType: '應稅', // 營業稅類型
     invoiceAmount: '', // 發票金額（手動輸入）
     supplierDiscount: '0' // 廠商折讓金額（預設0元）
@@ -247,9 +264,10 @@ function InvoicePageInner() {
         if (searchDateTo && invDate > searchDateTo) return false;
         if (searchInvoiceTitle && (inv.invoiceTitle || '') !== searchInvoiceTitle) return false;
         if (searchWarehouse && (inv.warehouse || '') !== searchWarehouse) return false;
+        if (searchInvoiceType && (inv.invoiceType || '進貨單') !== searchInvoiceType) return false;
         return true;
       }),
-    [invoices, searchSupplier, searchDateFrom, searchDateTo, searchInvoiceTitle, searchWarehouse]
+    [invoices, searchSupplier, searchDateFrom, searchDateTo, searchInvoiceTitle, searchWarehouse, searchInvoiceType]
   );
   const { sortKey: saleInvKey, sortDir: saleInvDir, toggleSort: toggleSaleInv } = useColumnSort('invoiceDate', 'desc');
   const sortedInvoicesForList = useMemo(
@@ -427,6 +445,7 @@ function InvoicePageInner() {
           invoiceNo: '',
           invoiceDate: new Date().toISOString().split('T')[0],
           invoiceTitle: '',
+          invoiceType: '進貨單',
           taxType: '應稅',
           invoiceAmount: '',
           supplierDiscount: '0'
@@ -468,6 +487,7 @@ function InvoicePageInner() {
       invoiceNo: invoice.invoiceNo || '',
       invoiceDate: invoice.invoiceDate || new Date().toISOString().split('T')[0],
       invoiceTitle: invoice.invoiceTitle || '',
+      invoiceType: invoice.invoiceType || '進貨單',
       taxType: invoice.taxType || '應稅',
       invoiceAmount: invoice.invoiceAmount != null ? String(invoice.invoiceAmount) : String(invoice.amount || ''),
       supplierDiscount: invoice.supplierDiscount != null ? String(invoice.supplierDiscount) : '0'
@@ -821,10 +841,10 @@ function InvoicePageInner() {
                               </td>
                               <td className="px-3 py-2 text-sm">{item.purchaseDate}</td>
                               <td className="px-3 py-2 text-sm">{getSupplierName(item.supplierId)}</td>
-                              <td className="px-3 py-2 text-sm">{getProductName(item.productId)}</td>
+                              <td className="px-3 py-2 text-sm">{item.productId ? getProductName(item.productId) : '（整張進貨單）'}</td>
                               <td className="px-3 py-2 text-sm">{item.quantity}</td>
-                              <td className="px-3 py-2 text-sm">NT$ {item.unitPrice}</td>
-                              <td className="px-3 py-2 text-sm">NT$ {item.subtotal.toFixed(2)}</td>
+                              <td className="px-3 py-2 text-sm">{item.productId ? `NT$ ${item.unitPrice}` : '—'}</td>
+                              <td className="px-3 py-2 text-sm">NT$ {Number(item.subtotal).toFixed(2)}</td>
                               <td className="px-3 py-2 text-sm text-gray-500">{item.note || '-'}</td>
                             </tr>
                           );
@@ -1014,6 +1034,22 @@ function InvoicePageInner() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
+                    發票類型 *
+                  </label>
+                  <select
+                    required
+                    value={formData.invoiceType}
+                    onChange={(e) => setFormData({ ...formData, invoiceType: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="進貨單">進貨單</option>
+                    <option value="租屋支出">租屋支出</option>
+                    <option value="業主私帳">業主私帳</option>
+                    <option value="固定費用">固定費用</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     發票金額（手動輸入） *
                   </label>
                   <input
@@ -1121,6 +1157,7 @@ function InvoicePageInner() {
                       invoiceNo: '',
                       invoiceDate: new Date().toISOString().split('T')[0],
                       invoiceTitle: '',
+                      invoiceType: '進貨單',
                       taxType: '應稅',
                       invoiceAmount: '',
                       supplierDiscount: '',
@@ -1149,7 +1186,7 @@ function InvoicePageInner() {
 
         {/* View toggle */}
         <div className="flex gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
-          {[{ key: 'list', label: '發票列表' }, { key: 'monthly', label: '月度館別統計' }].map(v => (
+          {[{ key: 'list', label: '發票列表' }, { key: 'report', label: '報表' }, { key: 'monthly', label: '月度館別統計' }].map(v => (
             <button key={v.key} onClick={() => setActiveView(v.key)}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeView === v.key ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
@@ -1158,6 +1195,180 @@ function InvoicePageInner() {
             </button>
           ))}
         </div>
+
+        {/* ══ 報表 ══ */}
+        {activeView === 'report' && (() => {
+          const reportInvoices = invoices.filter(inv => {
+            const d = inv.invoiceDate || '';
+            if (reportDateFrom && d < reportDateFrom) return false;
+            if (reportDateTo   && d > reportDateTo)   return false;
+            if (reportTitle    && (inv.invoiceTitle || '') !== reportTitle) return false;
+            if (reportWarehouse && (inv.warehouse || '') !== reportWarehouse) return false;
+            if (reportType     && (inv.invoiceType || '進貨單') !== reportType) return false;
+            return true;
+          });
+          const grandTotal = reportInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+
+          return (
+          <div className="space-y-4">
+            {/* 篩選列 */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)}
+                    className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)}
+                    className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">發票抬頭</label>
+                  <select value={reportTitle} onChange={e => setReportTitle(e.target.value)}
+                    className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
+                    <option value="">全部抬頭</option>
+                    {invoiceTitles.map(t => <option key={t.id} value={t.title}>{t.title}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">來源</label>
+                  <select value={reportType} onChange={e => setReportType(e.target.value)}
+                    className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
+                    <option value="">全部來源</option>
+                    {INVOICE_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select value={reportWarehouse} onChange={e => setReportWarehouse(e.target.value)}
+                    className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
+                    <option value="">全部館別</option>
+                    <option value="麗格">麗格</option>
+                    <option value="麗軒">麗軒</option>
+                    <option value="民宿">民宿</option>
+                  </select>
+                </div>
+                {(reportDateFrom || reportDateTo || reportTitle || reportWarehouse || reportType) && (
+                  <button onClick={() => { setReportDateFrom(''); setReportDateTo(''); setReportTitle(''); setReportWarehouse(''); setReportType(''); }}
+                    className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg border">
+                    清除
+                  </button>
+                )}
+                <div className="ml-auto text-right">
+                  <div className="text-xs text-gray-400">共 {reportInvoices.length} 筆</div>
+                  <div className="text-lg font-bold text-green-700">NT$ {grandTotal.toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI by source */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {INVOICE_SOURCES.map(src => {
+                const rows = reportInvoices.filter(i => (i.invoiceType || '進貨單') === src);
+                const total = rows.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+                const pct = grandTotal > 0 ? Math.round(total / grandTotal * 100) : 0;
+                const c = SOURCE_COLORS[src];
+                return (
+                  <div key={src} className={`rounded-xl border ${c.border} bg-white shadow-sm p-4`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                      <p className={`text-xs font-medium ${c.text}`}>{src}</p>
+                    </div>
+                    <p className="text-base font-bold text-gray-800">NT$ {total.toLocaleString()}</p>
+                    <div className="mt-2 bg-gray-100 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${c.dot}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">{rows.length} 筆 · {pct}%</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 明細報表 - 依來源分組 */}
+            {reportInvoices.length === 0 ? (
+              <div className="text-center py-16 text-gray-400 bg-white rounded-xl border">無符合條件的發票</div>
+            ) : (
+              <div className="space-y-4">
+                {(reportType ? [reportType] : INVOICE_SOURCES).map(src => {
+                  const rows = reportInvoices.filter(i => (i.invoiceType || '進貨單') === src);
+                  if (rows.length === 0) return null;
+                  const subTotal = rows.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+                  const c = SOURCE_COLORS[src];
+                  return (
+                    <div key={src} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                      {/* 群組標題 */}
+                      <div className={`px-4 py-2.5 border-b ${c.bg} flex items-center justify-between`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text} border ${c.border}`}>{src}</span>
+                          <span className="text-xs text-gray-500">{rows.length} 筆</span>
+                        </div>
+                        <span className={`text-sm font-bold ${c.text}`}>NT$ {subTotal.toLocaleString()}</span>
+                      </div>
+                      {/* 明細表 */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-500 text-xs border-b">
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">館別</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">發票抬頭</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">廠商</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">發票號碼</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">日期</th>
+                              <th className="px-4 py-2 text-right font-medium whitespace-nowrap">金額</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">付款狀態</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {rows.map((inv, idx) => (
+                              <tr key={inv.id} className={idx % 2 === 1 ? 'bg-gray-50/40' : ''}>
+                                <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{inv.warehouse || '－'}</td>
+                                <td className="px-4 py-2 text-gray-700 whitespace-nowrap">{inv.invoiceTitle || '－'}</td>
+                                <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{inv.supplierName || '－'}</td>
+                                <td className="px-4 py-2 font-medium whitespace-nowrap">{inv.invoiceNo || inv.salesNo}</td>
+                                <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{inv.invoiceDate}</td>
+                                <td className="px-4 py-2 text-right font-semibold tabular-nums whitespace-nowrap">NT$ {Number(inv.totalAmount || 0).toLocaleString()}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                    inv.paymentStatus === '已付款' ? 'bg-green-100 text-green-800' :
+                                    inv.paymentStatus === '待出納' ? 'bg-yellow-100 text-yellow-800' :
+                                    inv.paymentStatus === '草稿'   ? 'bg-gray-100 text-gray-600' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>{inv.paymentStatus || '未付款'}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-gray-200 font-semibold text-gray-700">
+                              <td colSpan="5" className="px-4 py-2 text-right text-xs">小計（{rows.length} 筆）</td>
+                              <td className="px-4 py-2 text-right tabular-nums">NT$ {subTotal.toLocaleString()}</td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* 總計 */}
+                <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-semibold text-green-800">期間合計</span>
+                    <span className="ml-3 text-xs text-green-600">{reportInvoices.length} 張發票</span>
+                    {(reportDateFrom || reportDateTo) && (
+                      <span className="ml-2 text-xs text-gray-400">{reportDateFrom || '—'} ～ {reportDateTo || '—'}</span>
+                    )}
+                  </div>
+                  <span className="text-xl font-bold text-green-800">NT$ {grandTotal.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          );
+        })()}
 
         {/* ══ 月度館別統計 ══ */}
         {activeView === 'monthly' && (
@@ -1251,7 +1462,7 @@ function InvoicePageInner() {
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {statsData.rows.length === 0 ? (
-                          <tr><td colSpan={statsData.warehouses.length + 3} className="text-center py-12 text-gray-400">此期間無進項發票</td></tr>
+                          <tr><td colSpan={statsData.warehouses.length + 3} className="text-center py-12 text-gray-400">此期間無進項發票（或請確認資料類型篩選）</td></tr>
                         ) : statsData.rows.map((row, idx) => {
                           const jumpToList = (wh) => {
                             const [y, mo] = row.month.split('-').map(Number);
@@ -1381,6 +1592,17 @@ function InvoicePageInner() {
               <option value="麗軒">麗軒</option>
               <option value="民宿">民宿</option>
             </select>
+            <select
+              value={searchInvoiceType}
+              onChange={(e) => setSearchInvoiceType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">全部來源</option>
+              <option value="進貨單">進貨單</option>
+              <option value="租屋支出">租屋支出</option>
+              <option value="業主私帳">業主私帳</option>
+              <option value="固定費用">固定費用</option>
+            </select>
             <div className="flex items-center gap-2">
               <label className="text-sm text-gray-600">起始日期</label>
               <input
@@ -1399,9 +1621,9 @@ function InvoicePageInner() {
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
-            {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse) && (
+            {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse || searchInvoiceType) && (
               <button
-                onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); setSearchInvoiceTitle(''); setSearchWarehouse(''); }}
+                onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); setSearchInvoiceTitle(''); setSearchWarehouse(''); setSearchInvoiceType(''); }}
                 className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
               >
                 清除篩選
@@ -1466,6 +1688,7 @@ function InvoicePageInner() {
                 <SortableTh label="發票日期" colKey="invoiceDate" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
                 <SortableTh label="品項數" colKey="itemCount" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
                 <SortableTh label="總金額" colKey="totalAmount" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" align="right" />
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">類型</th>
                 <SortableTh label="付款狀態" colKey="paymentStatus" sortKey={saleInvKey} sortDir={saleInvDir} onSort={toggleSaleInv} className="px-4 py-3" />
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
@@ -1473,19 +1696,19 @@ function InvoicePageInner() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
                     載入中...
                   </td>
                 </tr>
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
                     尚無發票資料
                   </td>
                 </tr>
               ) : filteredInvoicesForList.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
                     無符合篩選的發票
                   </td>
                 </tr>
@@ -1516,6 +1739,12 @@ function InvoicePageInner() {
                         <td className="px-4 py-3 text-sm">{invoice.items ? invoice.items.length : 0} 項</td>
                         <td className="px-4 py-3 text-sm font-semibold">
                           NT$ {parseFloat(invoice.totalAmount || invoice.amount + invoice.tax || 0).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          {invoice.invoiceType === '業主私帳' && <span className="px-2 py-1 rounded text-xs bg-orange-100 text-orange-800">業主私帳</span>}
+                          {invoice.invoiceType === '租屋支出' && <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">租屋支出</span>}
+                          {invoice.invoiceType === '固定費用' && <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">固定費用</span>}
+                          {(!invoice.invoiceType || invoice.invoiceType === '進貨單') && <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">進貨單</span>}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-1 rounded text-xs ${
@@ -1564,7 +1793,7 @@ function InvoicePageInner() {
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan="10" className="px-4 py-4">
+                          <td colSpan="11" className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 發票基本資訊 */}
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4 border-b border-gray-300">

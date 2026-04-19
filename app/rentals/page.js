@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
@@ -2096,6 +2097,7 @@ function RentalsPage() {
                             <tr>
                               <th className="text-center px-3 py-2 w-10">序號</th>
                               <th className="text-left px-3 py-2">名稱{sortArrow('name')}</th>
+                              <th className="text-left px-3 py-2">資產</th>
                               <th className="text-left px-3 py-2">地址{sortArrow('address')}</th>
                               <th className="text-left px-3 py-2">類別{sortArrow('unitNo')}</th>
                               <th className="text-center px-3 py-2">狀態{sortArrow('status')}</th>
@@ -2115,6 +2117,17 @@ function RentalsPage() {
                               <tr key={p.id} className="border-t hover:bg-gray-50">
                                 <td className="px-3 py-2 text-center text-xs text-gray-400">{idx + 1}</td>
                                 <td className="px-3 py-2 font-medium">{p.name}</td>
+                                <td className="px-3 py-2 text-xs">
+                                  {p.asset ? (
+                                    <Link href={`/assets?id=${p.asset.id}`} className="text-teal-700 hover:underline font-medium">
+                                      {p.asset.name}
+                                    </Link>
+                                  ) : (
+                                    <Link href={`/assets?linkProperty=${p.id}`} className="text-gray-400 hover:text-teal-700 hover:underline">
+                                      建立／綁定
+                                    </Link>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2 text-gray-600">{p.address || '-'}</td>
                                 <td className="px-3 py-2">{p.unitNo || '-'}</td>
                                 <td className="px-3 py-2 text-center">

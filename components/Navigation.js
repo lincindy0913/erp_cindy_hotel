@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
   { href: '/owner-expenses', label: '業主往來', linkClass: 'link-pms-income', requiredPermission: 'owner_expense.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
+  { href: '/assets', label: '資產管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
   { href: '/engineering', label: '工程',      linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
   { href: '/utility-bills', label: '水電費', linkClass: 'link-utility', requiredPermission: null },
   { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },

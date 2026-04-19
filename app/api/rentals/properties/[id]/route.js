@@ -24,7 +24,8 @@ export async function GET(request, { params }) {
         rentCollectAccount: { select: { id: true, name: true } },
         depositAccount: { select: { id: true, name: true } },
         propertyTaxes: { orderBy: { taxYear: 'desc' } },
-        maintenances: { orderBy: { maintenanceDate: 'desc' } }
+        maintenances: { orderBy: { maintenanceDate: 'desc' } },
+        asset: { select: { id: true, name: true, assetType: true } },
       }
     });
 

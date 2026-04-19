@@ -58,6 +58,7 @@ export async function GET(request) {
       tax: Number(s.tax),
       totalAmount: Number(s.totalAmount),
       status: s.status,
+      invoiceType: s.invoiceType,
       paymentStatus: getPaymentStatusForInvoice(s.id),
       items: s.details.map(d => ({
         purchaseItemId: d.purchaseItemId,
@@ -113,6 +114,7 @@ export async function POST(request) {
           invoiceNo: data.invoiceNo,
           invoiceDate,
           invoiceTitle: data.invoiceTitle || null,
+          invoiceType: data.invoiceType || '進貨單',
           taxType: data.taxType || null,
           invoiceAmount: data.invoiceAmount ? parseFloat(data.invoiceAmount) : null,
           supplierDiscount: data.supplierDiscount ? parseFloat(data.supplierDiscount) : 0,
@@ -153,6 +155,7 @@ export async function POST(request) {
       tax: Number(newInvoice.tax),
       totalAmount: Number(newInvoice.totalAmount),
       status: newInvoice.status,
+      invoiceType: newInvoice.invoiceType,
       items: newInvoice.details.map(d => ({
         purchaseItemId: d.purchaseItemId,
         purchaseId: d.purchaseId,
