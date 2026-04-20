@@ -1,0 +1,20 @@
+# Cursor AI Rules for erp_cindy
+
+## 每次開始前
+- 先執行 `git pull origin main` 確保是最新版本
+- 不要修改 docker-compose.yml、Dockerfile、prisma/schema.prisma 除非特別指定
+
+## 每次結束後
+- 修改完畢後請提醒使用者執行 `git add . && git commit -m "..." && git push origin main`
+- Docker rebuild 請交由 Claude Code 處理
+
+## 禁止事項
+- 不要自動執行 git push
+- 不要修改 .env 檔案
+- 不要修改 package-lock.json（讓 npm 自動管理）
+
+## 本專案技術棧
+- Next.js 14 (App Router) + Prisma + PostgreSQL
+- 部署：Railway（自動 from GitHub main branch）+ 本地 Docker
+- 程式語言：JavaScript（非 TypeScript）
+- 樣式：Tailwind CSS
