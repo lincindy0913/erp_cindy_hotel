@@ -174,6 +174,7 @@ function RentalsPage() {
     status: ''
   });
   const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '' });
+  const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
   const [maintenanceFilter, setMaintenanceFilter] = useState({ category: '', status: '' });
 
   // Modal states
@@ -197,10 +198,10 @@ function RentalsPage() {
 
   const [showTaxModal, setShowTaxModal] = useState(false);
   const [editingTax, setEditingTax] = useState(null);
-  const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' });
+  const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '', certNo: '', paidDate: '', note: '' });
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', note: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
   const [editingMaintenance, setEditingMaintenance] = useState(null);
 
   // Inline payment forms
@@ -755,7 +756,7 @@ function RentalsPage() {
 
   async function savePaymentEdit() {
     if (!editingPaymentForm.amount || Number(editingPaymentForm.amount) <= 0) return showToast('請填寫金額', 'error');
-    if (!editingPaymentForm.accountId) return showToast('請選擇帳戶', 'error');
+    if (!editingPaymentForm.accountId) return showToast('請選擇收款帳戶', 'error');
     setEditingPaymentSaving(true);
     try {
       const res = await fetch(`/api/rentals/payments/${editingPaymentId}`, {
@@ -769,6 +770,7 @@ function RentalsPage() {
       setEditingPaymentId(null);
       fetchIncomes();
       fetchSummary();
+      if (activeTab === 'paymentRecords') fetchPaymentRecords(paymentRecordsPagination.page);
     } catch (e) { showToast('更新失敗: ' + e.message, 'error'); }
     finally { setEditingPaymentSaving(false); }
   }
@@ -814,7 +816,7 @@ function RentalsPage() {
   }
 
   async function batchConfirmIncomes() {
-    if (!batchPayForm.accountId) return showToast('請選擇帳戶', 'error');
+    if (!batchPayForm.accountId) return showToast('請選擇收款帳戶', 'error');
     const ids = Array.from(selectedIncomeIds);
     if (ids.length === 0) return;
     setBatchSaving(true);
@@ -1234,7 +1236,10 @@ function RentalsPage() {
       taxYear: tax.taxYear,
       taxType: tax.taxType || '房屋稅',
       dueDate: tax.dueDate || '',
-      amount: tax.amount != null ? String(tax.amount) : ''
+      amount: tax.amount != null ? String(tax.amount) : '',
+      certNo: tax.certNo || '',
+      paidDate: tax.paidDate || '',
+      note: tax.note || '',
     });
     setShowTaxModal(true);
   }
@@ -1249,7 +1254,10 @@ function RentalsPage() {
           body: JSON.stringify({
             amount: taxForm.amount === '' ? undefined : Number(taxForm.amount),
             dueDate: taxForm.dueDate || undefined,
-            taxType: taxForm.taxType || undefined
+            taxType: taxForm.taxType || undefined,
+            certNo: taxForm.certNo,
+            paidDate: taxForm.paidDate,
+            note: taxForm.note,
           })
         });
         const data = await res.json();
@@ -1318,6 +1326,8 @@ function RentalsPage() {
             category: maintenanceForm.category,
             amount: maintenanceForm.amount,
             accountingSubjectId: maintenanceForm.accountingSubjectId,
+            isCapitalized: maintenanceForm.isCapitalized,
+            isRecurring: maintenanceForm.isRecurring,
             note: maintenanceForm.note
           })
         });
@@ -1891,7 +1901,7 @@ function RentalsPage() {
                               <th className="text-left py-1">次數</th>
                               <th className="text-left py-1">收款日期</th>
                               <th className="text-right py-1">金額</th>
-                              <th className="text-left py-1">帳戶</th>
+                              <th className="text-left py-1">收款帳戶</th>
                               <th className="text-left py-1">付款方式</th>
                               <th className="text-left py-1">備註</th>
                               <th className="text-center py-1">操作</th>
@@ -1904,7 +1914,7 @@ function RentalsPage() {
                                   <td className="py-1 font-medium">第{p.sequenceNo || (i + 1)}次</td>
                                   <td className="py-1">{p.paymentDate || '-'}</td>
                                   <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
-                                  <td className="py-1">{accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
+                                  <td className="py-1">{p.account?.name || accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
                                   <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
                                   <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
                                   <td className="py-1 text-center">
@@ -1928,7 +1938,7 @@ function RentalsPage() {
                                           <input type="date" value={editingPaymentForm.paymentDate} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
                                         </div>
                                         <div>
-                                          <label className="text-xs text-gray-500">帳戶</label>
+                                          <label className="text-xs text-gray-500">收款帳戶</label>
                                           <select value={editingPaymentForm.accountId} onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
                                             <option value="">選擇</option>
                                             {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -2376,77 +2386,158 @@ function RentalsPage() {
                   </div>
                 </div>
 
-                <h3 className="text-base font-semibold text-gray-800 mb-3">稅款清單</h3>
-                <div className="flex items-center gap-3 mb-4">
-                  <label className="text-sm text-gray-600">年度:</label>
-                  <input type="number" value={taxFilter.taxYear} onChange={e => setTaxFilter(f => ({ ...f, taxYear: e.target.value }))}
-                    className="border rounded px-2 py-1.5 w-24 text-sm" />
-                  <select value={taxFilter.status} onChange={e => setTaxFilter(f => ({ ...f, status: e.target.value }))}
-                    className="border rounded px-2 py-1.5 text-sm">
-                    <option value="">全部狀態</option>
-                    <option value="pending">待繳</option>
-                    <option value="paid">已繳</option>
-                  </select>
-                  <button onClick={fetchTaxes} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={() => { setEditingTax(null); setTaxForm({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '' }); setShowTaxModal(true); }} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
-                    新增稅款
-                  </button>
+                {/* 子視圖切換 */}
+                <div className="flex items-center gap-2 mb-4">
+                  {[{k:'list',l:'稅款清單'},{k:'calendar',l:'90天待繳提醒'}].map(({k,l})=>(
+                    <button key={k} onClick={()=>setTaxView(k)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${taxView===k ? 'bg-teal-600 text-white' : 'bg-white border text-gray-600 hover:bg-gray-50'}`}>
+                      {l}
+                    </button>
+                  ))}
                 </div>
 
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
-                      <tr>
-                        <th className="text-left px-3 py-2">物業</th>
-                        <th className="text-center px-3 py-2">年度</th>
-                        <th className="text-left px-3 py-2">稅種</th>
-                        <th className="text-left px-3 py-2">到期日</th>
-                        <th className="text-right px-3 py-2">金額</th>
-                        <th className="text-center px-3 py-2">狀態</th>
-                        <th className="text-center px-3 py-2">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {taxes.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-                      ) : taxes.map(tax => (
-                        <tr key={tax.id} className="border-t hover:bg-gray-50">
-                          <td className="px-3 py-2">{tax.property?.name}</td>
-                          <td className="px-3 py-2 text-center">{tax.taxYear}</td>
-                          <td className="px-3 py-2">{tax.taxType}</td>
-                          <td className="px-3 py-2">{tax.dueDate}</td>
-                          <td className="px-3 py-2 text-right font-medium">${fmt(tax.amount)}</td>
-                          <td className="px-3 py-2 text-center">
-                            <span className={`text-xs px-2 py-0.5 rounded ${tax.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                              {tax.status === 'paid' ? '已繳' : '待繳'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex items-center justify-center gap-2 flex-wrap">
-                              {tax.status === 'pending' && (
-                                <>
-                                  <button onClick={() => openTaxEdit(tax)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
-                                    編輯
-                                  </button>
-                                  {tax.paymentOrderId ? (
-                                    <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</a>
-                                  ) : (
-                                    <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
-                                      className="text-teal-600 hover:text-teal-800 text-xs font-medium">
-                                      確認繳納
-                                    </button>
+                {taxView === 'calendar' && (() => {
+                  const today = new Date();
+                  const d90 = new Date(today); d90.setDate(d90.getDate() + 90);
+                  const todayStr = today.toISOString().split('T')[0];
+                  const d90Str = d90.toISOString().split('T')[0];
+                  const upcoming = taxes.filter(t => t.status === 'pending' && t.dueDate >= todayStr && t.dueDate <= d90Str)
+                    .sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+                  const overdue = taxes.filter(t => t.status === 'pending' && t.dueDate < todayStr)
+                    .sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+                  const urgency = (dueDate) => {
+                    const diff = Math.floor((new Date(dueDate) - today) / 86400000);
+                    if (diff <= 7) return { cls: 'bg-red-100 border-red-300 text-red-800', label: `${diff}天後` };
+                    if (diff <= 30) return { cls: 'bg-orange-100 border-orange-300 text-orange-800', label: `${diff}天後` };
+                    return { cls: 'bg-yellow-50 border-yellow-200 text-yellow-800', label: `${diff}天後` };
+                  };
+                  return (
+                    <div>
+                      {overdue.length > 0 && (
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-red-700 mb-2">已逾期（{overdue.length} 筆）</h4>
+                          <div className="space-y-2">
+                            {overdue.map(t=>(
+                              <div key={t.id} className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                <span className="text-xs bg-red-200 text-red-900 px-2 py-0.5 rounded font-semibold">逾期</span>
+                                <span className="font-medium text-sm">{t.property?.name}</span>
+                                <span className="text-xs text-gray-500">{t.taxYear} {t.taxType}</span>
+                                <span className="text-xs text-gray-500">到期日：{t.dueDate}</span>
+                                <span className="ml-auto font-bold text-sm">${fmt(t.amount)}</span>
+                                <button onClick={()=>openTaxEdit(t)} className="text-blue-600 hover:text-blue-800 text-xs">編輯</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2">未來 90 天（{upcoming.length} 筆）</h4>
+                      {upcoming.length === 0 ? (
+                        <p className="text-sm text-gray-400 py-4">未來 90 天內無待繳稅款</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {upcoming.map(t=>{
+                            const u = urgency(t.dueDate);
+                            return (
+                              <div key={t.id} className={`flex items-center gap-3 border rounded-lg px-3 py-2 ${u.cls}`}>
+                                <span className="text-xs font-semibold w-14 shrink-0">{u.label}</span>
+                                <span className="font-medium text-sm">{t.property?.name}</span>
+                                <span className="text-xs">{t.taxYear} {t.taxType}</span>
+                                <span className="text-xs">到期：{t.dueDate}</span>
+                                <span className="ml-auto font-bold text-sm">${fmt(t.amount)}</span>
+                                <button onClick={()=>openTaxEdit(t)} className="text-blue-600 hover:text-blue-800 text-xs shrink-0">編輯</button>
+                                {t.paymentOrderId
+                                  ? <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs underline shrink-0">前往出納</a>
+                                  : <button onClick={()=>{setPayingTaxId(t.id);setTaxPayForm({accountId:'',paymentDate:new Date().toISOString().split('T')[0]});}}
+                                      className="text-teal-600 hover:text-teal-800 text-xs shrink-0">確認繳納</button>
+                                }
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {taxView === 'list' && (
+                  <>
+                    <div className="flex items-center gap-3 mb-4">
+                      <label className="text-sm text-gray-600">年度:</label>
+                      <input type="number" value={taxFilter.taxYear} onChange={e => setTaxFilter(f => ({ ...f, taxYear: e.target.value }))}
+                        className="border rounded px-2 py-1.5 w-24 text-sm" />
+                      <select value={taxFilter.status} onChange={e => setTaxFilter(f => ({ ...f, status: e.target.value }))}
+                        className="border rounded px-2 py-1.5 text-sm">
+                        <option value="">全部狀態</option>
+                        <option value="pending">待繳</option>
+                        <option value="paid">已繳</option>
+                      </select>
+                      <button onClick={fetchTaxes} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
+                      <button onClick={() => { setEditingTax(null); setTaxForm({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '', certNo: '', paidDate: '', note: '' }); setShowTaxModal(true); }} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
+                        新增稅款
+                      </button>
+                    </div>
+                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-teal-50">
+                          <tr>
+                            <th className="text-left px-3 py-2">物業</th>
+                            <th className="text-center px-3 py-2">年度</th>
+                            <th className="text-left px-3 py-2">稅種</th>
+                            <th className="text-left px-3 py-2">到期日</th>
+                            <th className="text-left px-3 py-2">實繳日</th>
+                            <th className="text-left px-3 py-2">憑證號</th>
+                            <th className="text-right px-3 py-2">金額</th>
+                            <th className="text-center px-3 py-2">狀態</th>
+                            <th className="text-center px-3 py-2">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {taxes.length === 0 ? (
+                            <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                          ) : taxes.map(tax => (
+                            <tr key={tax.id} className="border-t hover:bg-gray-50">
+                              <td className="px-3 py-2">{tax.property?.name}</td>
+                              <td className="px-3 py-2 text-center">{tax.taxYear}</td>
+                              <td className="px-3 py-2">{tax.taxType}</td>
+                              <td className="px-3 py-2">{tax.dueDate}</td>
+                              <td className="px-3 py-2 text-gray-500 text-xs">{tax.paidDate || '—'}</td>
+                              <td className="px-3 py-2 text-gray-500 text-xs max-w-[100px] truncate" title={tax.certNo || ''}>{tax.certNo || '—'}</td>
+                              <td className="px-3 py-2 text-right font-medium">${fmt(tax.amount)}</td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`text-xs px-2 py-0.5 rounded ${tax.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                  {tax.status === 'paid' ? '已繳' : '待繳'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <div className="flex items-center justify-center gap-2 flex-wrap">
+                                  {tax.status === 'pending' && (
+                                    <>
+                                      <button onClick={() => openTaxEdit(tax)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                                        編輯
+                                      </button>
+                                      {tax.paymentOrderId ? (
+                                        <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</a>
+                                      ) : (
+                                        <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
+                                          className="text-teal-600 hover:text-teal-800 text-xs font-medium">
+                                          確認繳納
+                                        </button>
+                                      )}
+                                      <button onClick={() => deleteTax(tax)} className="text-red-600 hover:text-red-800 text-xs font-medium">刪除</button>
+                                    </>
                                   )}
-                                  <button onClick={() => deleteTax(tax)} className="text-red-600 hover:text-red-800 text-xs font-medium">刪除</button>
-                                </>
-                              )}
-                              {tax.status === 'paid' && <span className="text-xs text-gray-400">—</span>}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                                  {tax.status === 'paid' && (
+                                    <button onClick={() => openTaxEdit(tax)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">補憑證</button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
 
                 {/* Inline tax payment */}
                 {payingTaxId && (
@@ -2644,7 +2735,7 @@ function RentalsPage() {
                   <button onClick={fetchMaintenances} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
                   <button onClick={() => {
                     setEditingMaintenance(null);
-                    setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', note: '' });
+                    setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
                     setShowMaintenanceModal(true);
                   }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
@@ -2699,6 +2790,8 @@ function RentalsPage() {
                                     isEmployeeAdvance: !!m.isEmployeeAdvance,
                                     advancedBy: m.advancedBy || '',
                                     advancePaymentMethod: m.advancePaymentMethod || '現金',
+                                    isCapitalized: !!m.isCapitalized,
+                                    isRecurring: !!m.isRecurring,
                                     note: m.note || ''
                                   });
                                   setShowMaintenanceModal(true);
@@ -3351,10 +3444,10 @@ function RentalsPage() {
                     <option value="">全部物業</option>
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                  <label className="text-sm text-gray-600">帳戶：</label>
+                  <label className="text-sm text-gray-600">收款帳戶：</label>
                   <select value={paymentFilter.accountId} onChange={e => setPaymentFilter(f => ({ ...f, accountId: e.target.value }))}
                     className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部帳戶</option>
+                    <option value="">全部收款帳戶</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                   <label className="text-sm text-gray-600">付款方式：</label>
@@ -3410,7 +3503,10 @@ function RentalsPage() {
                               {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '—')}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-xs text-gray-500">{accounts.find(a => a.id === p.accountId)?.name || '—'}</td>
+                          <td className="px-3 py-2 text-xs text-gray-500" title={p.accountWarehouse || ''}>
+                            {p.accountName || accounts.find(a => a.id === p.accountId)?.name || '—'}
+                            {p.accountCode ? <span className="text-gray-400 ml-1">({p.accountCode})</span> : null}
+                          </td>
                           <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={[p.matchBankAccountName, p.matchTransferRef, p.matchNote].filter(Boolean).join(' / ')}>
                             {[p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / ') || '—'}
                           </td>
@@ -3884,7 +3980,7 @@ function RentalsPage() {
                 <div>
                   <label className="text-sm text-gray-600">稅種 *</label>
                   <select value={taxForm.taxType} onChange={e => setTaxForm(f => ({ ...f, taxType: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
+                    className="w-full border rounded px-3 py-2 text-sm" disabled={editingTax?.status === 'paid'}>
                     <option value="房屋稅">房屋稅</option>
                     <option value="地價稅">地價稅</option>
                     <option value="土地增值稅">土地增值稅</option>
@@ -3892,14 +3988,34 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">到期日 *</label>
+                  <label className="text-sm text-gray-600">應繳到期日 *</label>
                   <input type="date" value={taxForm.dueDate} onChange={e => setTaxForm(f => ({ ...f, dueDate: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
+                    className="w-full border rounded px-3 py-2 text-sm" disabled={editingTax?.status === 'paid'} />
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">金額 *</label>
                   <input type="number" value={taxForm.amount} onChange={e => setTaxForm(f => ({ ...f, amount: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
+                    className="w-full border rounded px-3 py-2 text-sm" disabled={editingTax?.status === 'paid'} />
+                </div>
+                <div className="border-t pt-3">
+                  <p className="text-xs text-gray-500 mb-2">繳款憑證（已繳後填寫，供對帳用）</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-600">實際繳款日</label>
+                      <input type="date" value={taxForm.paidDate} onChange={e => setTaxForm(f => ({ ...f, paidDate: e.target.value }))}
+                        className="w-full border rounded px-2 py-1.5 text-sm mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">繳款憑證號</label>
+                      <input type="text" value={taxForm.certNo} onChange={e => setTaxForm(f => ({ ...f, certNo: e.target.value }))}
+                        placeholder="e.g. 2026050100001" className="w-full border rounded px-2 py-1.5 text-sm mt-1" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">備註</label>
+                  <textarea value={taxForm.note} onChange={e => setTaxForm(f => ({ ...f, note: e.target.value }))}
+                    rows={2} placeholder="繳款方式、代繳機構…" className="w-full border rounded px-3 py-2 text-sm mt-1" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
@@ -3986,6 +4102,24 @@ function RentalsPage() {
                       </div>
                     </div>
                   )}
+                </div>
+                {/* 費用性質 */}
+                <div className="border-t pt-3 mt-2">
+                  <p className="text-xs text-gray-500 mb-2">費用性質（影響年度費用分析）</p>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={maintenanceForm.isCapitalized}
+                        onChange={e => setMaintenanceForm(f => ({ ...f, isCapitalized: e.target.checked }))} />
+                      <span className="text-gray-700">資本化支出</span>
+                      <span className="text-xs text-gray-400">（設備改良、工程等）</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={maintenanceForm.isRecurring}
+                        onChange={e => setMaintenanceForm(f => ({ ...f, isRecurring: e.target.checked }))} />
+                      <span className="text-gray-700">例行性費用</span>
+                      <span className="text-xs text-gray-400">（電梯年檢、定期保養）</span>
+                    </label>
+                  </div>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">備註</label>

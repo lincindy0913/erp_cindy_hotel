@@ -21,6 +21,11 @@ import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOvervi
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
 
+const VALID_TAB_KEYS = new Set(TABS.map(t => t.key));
+const SETTINGS_TAB_KEYS = new Set(['travelAgency', 'paymentConfig', 'mapping']);
+const MAIN_TABS = TABS.filter(t => !SETTINGS_TAB_KEYS.has(t.key));
+const SETTINGS_TABS_LIST = TABS.filter(t => SETTINGS_TAB_KEYS.has(t.key));
+
 export default function PmsIncomePageWrapper() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-gray-500">載入中...</div>}>
@@ -32,7 +37,16 @@ export default function PmsIncomePageWrapper() {
 function PmsIncomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'overview';
+  const activeTab = VALID_TAB_KEYS.has(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Redirect invalid ?tab= values so the URL stays clean
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && !VALID_TAB_KEYS.has(tabParam)) {
+      router.replace('/pms-income?tab=overview', { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // Shared state
   const [loading, setLoading] = useState(false);
@@ -237,7 +251,7 @@ function PmsIncomePage() {
       fetchManualEntries();
       fetchManualAccounts();
     }
-  }, [activeTab, manualMonth, fetchManualEntries, fetchManualAccounts]);
+  }, [activeTab, fetchManualEntries, fetchManualAccounts]);
 
   // ========================
   // Payment config tab
@@ -442,10 +456,6 @@ function PmsIncomePage() {
           <div>
             <h2 className="text-2xl font-bold text-teal-800">PMS 收入管理</h2>
             <p className="text-sm text-gray-600 mt-1">管理飯店 PMS 系統日報表的匯入與收入記錄</p>
-            <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
-              <span className="w-2 h-2 rounded-full bg-green-400"></span>
-              <span>快取啟用中</span>
-            </div>
           </div>
           {activeTab === 'records' && (
             <ExportButtons
@@ -473,8 +483,8 @@ function PmsIncomePage() {
         )}
 
         {/* Tab navigation */}
-        <div className="flex gap-1 mb-6 border-b border-gray-200">
-          {TABS.map(tab => (
+        <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200">
+          {MAIN_TABS.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -487,6 +497,37 @@ function PmsIncomePage() {
               {tab.label}
             </button>
           ))}
+          {/* Settings dropdown — collects travelAgency / paymentConfig / mapping */}
+          <div className="relative">
+            <button
+              onClick={() => setSettingsOpen(o => !o)}
+              onBlur={() => setTimeout(() => setSettingsOpen(false), 150)}
+              className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-1 ${
+                SETTINGS_TAB_KEYS.has(activeTab)
+                  ? 'bg-teal-600 text-white border-b-2 border-teal-600'
+                  : 'text-gray-600 hover:text-teal-700 hover:bg-teal-50'
+              }`}
+            >
+              ⚙ 設定 <span className="text-xs opacity-70">{settingsOpen ? '▲' : '▼'}</span>
+            </button>
+            {settingsOpen && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-max">
+                {SETTINGS_TABS_LIST.map(tab => (
+                  <button
+                    key={tab.key}
+                    onMouseDown={() => { setActiveTab(tab.key); setSettingsOpen(false); }}
+                    className={`block w-full text-left px-4 py-2.5 text-sm first:rounded-t-lg last:rounded-b-lg ${
+                      activeTab === tab.key
+                        ? 'bg-teal-50 text-teal-700 font-semibold'
+                        : 'text-gray-700 hover:bg-teal-50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {activeTab === 'overview' && (

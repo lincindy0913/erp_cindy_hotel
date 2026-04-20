@@ -21,6 +21,7 @@ export default function PurchaseAllowancesPage() {
   const [purchaseFilterDateTo, setPurchaseFilterDateTo] = useState('');
   const [purchaseFilterSupplierId, setPurchaseFilterSupplierId] = useState('');
   const [purchaseFilterWarehouse, setPurchaseFilterWarehouse] = useState('');
+  const [purchaseFilterPaidOnly, setPurchaseFilterPaidOnly] = useState('all'); // 'all' | 'paid' | 'unpaid'
   const [purchaseListResults, setPurchaseListResults] = useState([]);
   const [purchaseListLoading, setPurchaseListLoading] = useState(false);
   const [purchaseListSearched, setPurchaseListSearched] = useState(false);
@@ -85,7 +86,8 @@ export default function PurchaseAllowancesPage() {
       if (purchaseFilterDateTo) params.set('dateTo', purchaseFilterDateTo);
       if (purchaseFilterSupplierId) params.set('supplierId', purchaseFilterSupplierId);
       if (purchaseFilterWarehouse) params.set('warehouse', purchaseFilterWarehouse);
-      params.set('onlyPaid', 'true');
+      if (purchaseFilterPaidOnly === 'paid') params.set('onlyPaid', 'true');
+      if (purchaseFilterPaidOnly === 'unpaid') params.set('onlyPaid', 'false');
       const res = await fetch(`/api/purchase-allowances/search-purchases?${params}`);
       const data = await res.json();
       setPurchaseListResults(Array.isArray(data) ? data : []);
@@ -213,6 +215,7 @@ export default function PurchaseAllowancesPage() {
       allowanceDate: new Date().toISOString().split('T')[0],
       supplierName: '', warehouse: '', purchaseNo: '', invoiceNo: '', paymentOrderNo: '',
       supplierId: null, invoiceId: null, paymentOrderId: null,
+      creditNoteNo: '',
       amount: '', tax: '0', totalAmount: '', reason: formMode === '全額退貨' ? '全額退貨' : '', note: '',
       details: [],
     });
@@ -237,6 +240,7 @@ export default function PurchaseAllowancesPage() {
       supplierId: rec.supplierId || null,
       invoiceId: rec.invoiceId || null,
       paymentOrderId: rec.paymentOrderId || null,
+      creditNoteNo: rec.creditNoteNo || '',
       amount: String(rec.amount || ''),
       tax: String(rec.tax || '0'),
       totalAmount: String(rec.totalAmount || ''),
@@ -544,6 +548,15 @@ export default function PurchaseAllowancesPage() {
                     </select>
                   </div>
                   <div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>付款狀態</div>
+                    <select value={purchaseFilterPaidOnly} onChange={e => setPurchaseFilterPaidOnly(e.target.value)}
+                      style={{ ...inputStyle, fontSize: '0.875rem', padding: '6px 8px' }}>
+                      <option value="all">全部</option>
+                      <option value="paid">僅已付款</option>
+                      <option value="unpaid">未付款</option>
+                    </select>
+                  </div>
+                  <div>
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>關鍵字（單號/品名）</div>
                     <input value={purchaseSearch} onChange={e => setPurchaseSearch(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && searchPurchaseList()}
@@ -816,6 +829,11 @@ export default function PurchaseAllowancesPage() {
                 </div>
               </div>
 
+              <div style={{ marginBottom: 12 }}>
+                <label style={labelStyle}>廠商折讓單號</label>
+                <input value={form.creditNoteNo || ''} onChange={e => setForm(f => ({ ...f, creditNoteNo: e.target.value }))}
+                  placeholder="廠商開立的折讓單號碼（選填，申報進項用）" style={inputStyle} />
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div>
                   <label style={labelStyle}>退貨原因 *</label>

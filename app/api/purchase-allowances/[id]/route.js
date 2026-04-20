@@ -81,6 +81,7 @@ export async function PUT(request, { params }) {
           amount: data.amount !== undefined ? parseFloat(data.amount) : existing.amount,
           tax: data.tax !== undefined ? parseFloat(data.tax) : existing.tax,
           totalAmount: data.totalAmount !== undefined ? parseFloat(data.totalAmount) : existing.totalAmount,
+          creditNoteNo: data.creditNoteNo !== undefined ? (data.creditNoteNo?.trim() || null) : existing.creditNoteNo,
           reason: data.reason !== undefined ? (data.reason?.trim() || null) : existing.reason,
           note: data.note !== undefined ? (data.note?.trim() || null) : existing.note,
           details: data.details?.length > 0 ? {

@@ -42,6 +42,7 @@ export async function GET(request) {
       prisma.rentalIncomePayment.findMany({
         where: paymentWhere,
         include: {
+          account: { select: { id: true, name: true, accountCode: true, type: true, warehouse: true } },
           rentalIncome: {
             select: {
               id: true,
@@ -68,6 +69,10 @@ export async function GET(request) {
       sequenceNo: p.sequenceNo,
       amount: Number(p.amount),
       accountId: p.accountId,
+      accountName: p.account?.name || null,
+      accountCode: p.account?.accountCode || null,
+      accountType: p.account?.type || null,
+      accountWarehouse: p.account?.warehouse || null,
       paymentMethod: p.paymentMethod,
       matchTransferRef: p.matchTransferRef,
       matchBankAccountName: p.matchBankAccountName,

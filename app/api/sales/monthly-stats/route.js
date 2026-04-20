@@ -29,20 +29,30 @@ export async function GET(request) {
       invoiceDate: { gte: startDate, lte: endDate },
     };
 
-    const masters = await prisma.salesMaster.findMany({
-      where,
-      select: {
-        id: true,
-        invoiceDate: true,
-        invoiceTitle: true,
-        invoiceNo: true,
-        totalAmount: true,
-        details: {
-          select: { warehouse: true, subtotal: true },
+    const [masters, allowanceRecords] = await Promise.all([
+      prisma.salesMaster.findMany({
+        where,
+        select: {
+          id: true,
+          invoiceDate: true,
+          invoiceTitle: true,
+          invoiceNo: true,
+          totalAmount: true,
+          details: {
+            select: { warehouse: true, subtotal: true },
+          },
         },
-      },
-      orderBy: { invoiceDate: 'asc' },
-    });
+        orderBy: { invoiceDate: 'asc' },
+      }),
+      prisma.purchaseAllowance.findMany({
+        where: {
+          status: '已確認',
+          allowanceDate: { gte: startDate, lte: endDate },
+          ...(warehouse ? { warehouse } : {}),
+        },
+        select: { allowanceDate: true, warehouse: true, totalAmount: true },
+      }),
+    ]);
 
     // 月份 × 館別 × 抬頭 彙整
     const monthMap = {};
@@ -56,7 +66,7 @@ export async function GET(request) {
       titleSet.add(title);
 
       if (!monthMap[month]) {
-        monthMap[month] = { month, total: 0, byWarehouse: {}, byTitle: {}, invoiceCount: 0 };
+        monthMap[month] = { month, total: 0, byWarehouse: {}, byTitle: {}, invoiceCount: 0, allowanceTotal: 0 };
       }
       monthMap[month].total += total;
       monthMap[month].invoiceCount += 1;
@@ -74,6 +84,20 @@ export async function GET(request) {
       }
     }
 
+    // 扣除已確認折讓
+    for (const a of allowanceRecords) {
+      const month = a.allowanceDate.substring(0, 7);
+      const wh = a.warehouse || '未分類';
+      const amt = Number(a.totalAmount || 0);
+      warehouseSet.add(wh);
+      if (!monthMap[month]) {
+        monthMap[month] = { month, total: 0, byWarehouse: {}, byTitle: {}, invoiceCount: 0, allowanceTotal: 0 };
+      }
+      monthMap[month].total -= amt;
+      monthMap[month].allowanceTotal += amt;
+      monthMap[month].byWarehouse[wh] = (monthMap[month].byWarehouse[wh] || 0) - amt;
+    }
+
     let warehouses = [...warehouseSet].sort();
     let rows = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
 
@@ -89,10 +113,11 @@ export async function GET(request) {
     }
 
     // 合計行
-    const periodTotal = { byWarehouse: {}, byTitle: {}, total: 0, invoiceCount: 0 };
+    const periodTotal = { byWarehouse: {}, byTitle: {}, total: 0, invoiceCount: 0, allowanceTotal: 0 };
     for (const r of rows) {
       periodTotal.total += r.total;
       periodTotal.invoiceCount += r.invoiceCount;
+      periodTotal.allowanceTotal += (r.allowanceTotal || 0);
       for (const wh of warehouses) {
         periodTotal.byWarehouse[wh] = (periodTotal.byWarehouse[wh] || 0) + (r.byWarehouse[wh] || 0);
       }

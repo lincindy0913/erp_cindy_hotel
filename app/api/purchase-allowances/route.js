@@ -115,6 +115,7 @@ export async function POST(request) {
           invoiceNo: data.invoiceNo?.trim() || null,
           paymentOrderId: data.paymentOrderId ? parseInt(data.paymentOrderId) : null,
           paymentOrderNo: data.paymentOrderNo?.trim() || null,
+          creditNoteNo: data.creditNoteNo?.trim() || null,
           amount: parseFloat(data.amount || data.totalAmount),
           tax: parseFloat(data.tax || 0),
           totalAmount: parseFloat(data.totalAmount),

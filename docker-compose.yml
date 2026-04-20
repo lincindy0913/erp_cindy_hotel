@@ -1,13 +1,21 @@
 # ERP app + PostgreSQL + pgAdmin
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-local}
+        BUILD_DATE: ${BUILD_DATE:-}
+    image: erp_cindy:latest
+    pull_policy: build
     container_name: erp_cindy
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0
+      GIT_COMMIT: ${GIT_COMMIT:-local}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required — set your Railway PostgreSQL URL in .env}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
@@ -15,7 +23,8 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
+    pull_policy: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}

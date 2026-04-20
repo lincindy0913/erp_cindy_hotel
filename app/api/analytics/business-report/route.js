@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 async function computeMetrics(year, month) {
   const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
 
-  const [purchases, sales, cashAccounts] = await Promise.all([
+  const [purchases, sales, cashAccounts, allowances] = await Promise.all([
     prisma.purchaseMaster.findMany({
       where: { purchaseDate: { startsWith: monthPrefix } },
       select: { totalAmount: true, supplierId: true },
@@ -23,10 +23,16 @@ async function computeMetrics(year, month) {
       where: { isActive: true },
       select: { currentBalance: true },
     }),
+    prisma.purchaseAllowance.findMany({
+      where: { status: '已確認', allowanceDate: { startsWith: monthPrefix } },
+      select: { totalAmount: true },
+    }),
   ]);
 
   const totalPurchase = purchases.reduce((s, p) => s + Number(p.totalAmount || 0), 0);
-  const totalSales = sales.reduce((s, s2) => s + Number(s2.totalAmount || 0), 0);
+  const totalAllowances = allowances.reduce((s, a) => s + Number(a.totalAmount || 0), 0);
+  const grossInvoices = sales.reduce((s, s2) => s + Number(s2.totalAmount || 0), 0);
+  const totalSales = grossInvoices - totalAllowances;
   const grossProfit = totalSales - totalPurchase;
   const grossMargin = totalSales > 0 ? Number(((grossProfit / totalSales) * 100).toFixed(1)) : 0;
   const totalCash = cashAccounts.reduce((s, a) => s + Number(a.currentBalance || 0), 0);
@@ -50,6 +56,8 @@ async function computeMetrics(year, month) {
 
   const profitAnalysis = {
     totalSales,
+    grossInvoices,
+    totalAllowances,
     totalPurchase,
     grossProfit,
     grossMargin,
@@ -108,7 +116,8 @@ async function computeMetrics(year, month) {
   }
 
   const statusLabel = grossMargin >= TARGET_GROSS_MARGIN ? '達成目標' : '未達目標';
-  const executiveSummary = `${year}年${month}月經營摘要：本月銷貨額 NT$${totalSales.toLocaleString()}，採購額 NT$${totalPurchase.toLocaleString()}，毛利率 ${grossMargin}%（目標 ${TARGET_GROSS_MARGIN}%，${statusLabel}）。現金餘額 NT$${totalCash.toLocaleString()}。廠商集中度：最大廠商佔比 ${topSupplierPct}%。${recommendations.length > 0 ? `優先行動：${recommendations.map(r => r.action).join('、')}。` : '各項指標正常。'}`;
+  const allowancesNote = totalAllowances > 0 ? `（含折讓 NT$${totalAllowances.toLocaleString()}，發票原額 NT$${grossInvoices.toLocaleString()}）` : '';
+  const executiveSummary = `${year}年${month}月經營摘要：本月進項發票淨額 NT$${totalSales.toLocaleString()}${allowancesNote}，採購額 NT$${totalPurchase.toLocaleString()}，毛利率 ${grossMargin}%（目標 ${TARGET_GROSS_MARGIN}%，${statusLabel}）。現金餘額 NT$${totalCash.toLocaleString()}。廠商集中度：最大廠商佔比 ${topSupplierPct}%。${recommendations.length > 0 ? `優先行動：${recommendations.map(r => r.action).join('、')}。` : '各項指標正常。'}`;
 
   return { profitAnalysis, riskAnalysis, cashFlowAnalysis, recommendations, executiveSummary };
 }

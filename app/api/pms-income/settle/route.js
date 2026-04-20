@@ -53,7 +53,8 @@ export async function POST(request) {
       },
       include: {
         records: {
-          where: { entryType: '借方' }  // Only debit-side (payment methods: 現金, 信用卡, 轉帳)
+          where: { entryType: '借方' },
+          select: { pmsColumnName: true, amount: true, businessDate: true },
         }
       }
     });

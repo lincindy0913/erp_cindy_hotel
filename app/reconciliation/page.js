@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
@@ -21,6 +22,74 @@ const STATUS_MAP = {
 
 const BUILT_IN_BANKS = ['玉山', '台新', '國泰', '土銀', '中信', '合庫', '第一', '台灣銀行', '郵局'];
 
+// ---- Bank statement PDF parsers (pure functions, outside component) ----
+
+function parseLandBankStatementPdf(lines) {
+  const parsed = [];
+  const toNum = s => parseFloat((String(s || '')).replace(/,/g, '')) || 0;
+  for (const line of lines) {
+    const m = line.match(/^(\d{2,3})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/);
+    if (m) {
+      const year = parseInt(m[1]) + 1911;
+      const txDate = `${year}-${m[2]}-${m[3]}`;
+      const desc = m[4].trim();
+      const col5 = toNum(m[5]);
+      const col6 = toNum(m[6]);
+      const balance = toNum(m[7]);
+      parsed.push({ txDate, description: desc, debitAmount: String(col5 || 0), creditAmount: String(col6 || 0), referenceNo: '', runningBalance: String(balance) });
+      continue;
+    }
+    const m2 = line.match(/^(\d{2,3})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(支出|存入|借|貸)\s+([\d,]+)\s+([\d,]+)/);
+    if (m2) {
+      const year = parseInt(m2[1]) + 1911;
+      const txDate = `${year}-${m2[2]}-${m2[3]}`;
+      const isDeb = /支出|借/.test(m2[5]);
+      const amount = String(toNum(m2[6]));
+      const balance = String(toNum(m2[7]));
+      parsed.push({ txDate, description: m2[4].trim(), debitAmount: isDeb ? amount : '0', creditAmount: isDeb ? '0' : amount, referenceNo: '', runningBalance: balance });
+    }
+  }
+  return parsed;
+}
+
+function parseGenericBankStatementPdf(lines, bankName) {
+  const parsed = [];
+  const toNum = s => parseFloat((String(s || '')).replace(/,/g, '')) || 0;
+  for (const line of lines) {
+    const m = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/);
+    if (m) {
+      const txDate = `${m[1]}-${m[2]}-${m[3]}`;
+      const col5 = toNum(m[5]);
+      const col6 = toNum(m[6]);
+      const balance = toNum(m[7]);
+      const desc = m[4].trim();
+      parsed.push({ txDate, description: desc, debitAmount: String(col5), creditAmount: String(col6), referenceNo: '', runningBalance: String(balance) });
+      continue;
+    }
+    const m2 = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(?:支出|提出|提款)\s+([\d,]+(?:\.\d+)?)\s+(?:餘額)?\s*([\d,]+(?:\.\d+)?)/);
+    if (m2) {
+      const txDate = `${m2[1]}-${m2[2]}-${m2[3]}`;
+      parsed.push({ txDate, description: m2[4].trim(), debitAmount: String(toNum(m2[5])), creditAmount: '0', referenceNo: '', runningBalance: String(toNum(m2[6])) });
+      continue;
+    }
+    const m3 = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(?:存入|轉入|收入)\s+([\d,]+(?:\.\d+)?)\s+(?:餘額)?\s*([\d,]+(?:\.\d+)?)/);
+    if (m3) {
+      const txDate = `${m3[1]}-${m3[2]}-${m3[3]}`;
+      parsed.push({ txDate, description: m3[4].trim(), debitAmount: '0', creditAmount: String(toNum(m3[5])), referenceNo: '', runningBalance: String(toNum(m3[6])) });
+    }
+  }
+  return parsed;
+}
+
+function parseBankStatementPdfText(fullText, bankName) {
+  const lines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
+  const bn = bankName || '';
+  if (bn.includes('土地') || bn.includes('土銀')) {
+    return parseLandBankStatementPdf(lines);
+  }
+  return parseGenericBankStatementPdf(lines, bankName);
+}
+
 function formatMoney(val) {
   if (val == null || isNaN(val)) return '0';
   return Number(val).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -29,9 +98,14 @@ function formatMoney(val) {
 export default function ReconciliationPage() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState('dashboard');
+  // Tab state — initialised from URL, kept in sync on back/forward
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab');
+    return tab && TABS.find(t => t.key === tab) ? tab : 'dashboard';
+  });
 
   // Dashboard state
   const now = new Date();
@@ -43,8 +117,12 @@ export default function ReconciliationPage() {
   const [dashSearch, setDashSearch] = useState('');
   const { sortKey: dashSortKey, sortDir: dashSortDir, toggleSort: dashToggleSort } = useColumnSort('accountName', 'asc');
 
-  // Account tab state
+  // Account tab state（含全部啟用中現金帳戶，供租金對帳篩選；銀行子集供帳戶對帳）
   const [accounts, setAccounts] = useState([]);
+  const bankAccountsOnly = useMemo(
+    () => accounts.filter(a => a.type === '銀行存款' && a.isActive),
+    [accounts]
+  );
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [acctYear, setAcctYear] = useState(now.getFullYear());
   const [acctMonth, setAcctMonth] = useState(now.getMonth() + 1);
@@ -126,21 +204,20 @@ export default function ReconciliationPage() {
     setTimeout(() => setMessage({ text: '', type: '' }), 4000);
   };
 
-  // Read tab from URL
+  // Sync activeTab when browser back/forward changes URL
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab');
-    if (tab && TABS.find(t => t.key === tab)) {
-      setActiveTab(tab);
+    const tab = searchParams.get('tab');
+    if (!tab) return;
+    if (!TABS.find(t => t.key === tab)) {
+      router.replace('?tab=dashboard');
+      return;
     }
-  }, []);
+    if (tab !== activeTab) setActiveTab(tab);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update URL when tab changes
   const changeTab = (tab) => {
     setActiveTab(tab);
-    const url = new URL(window.location);
-    url.searchParams.set('tab', tab);
-    window.history.pushState({}, '', url);
+    router.push(`?tab=${tab}`, { scroll: false });
   };
 
   // ---- Dashboard ----
@@ -151,24 +228,23 @@ export default function ReconciliationPage() {
       const data = await res.json();
       setDashboardData(data);
     } catch (e) {
-      console.error('載入儀表板失敗:', e);
+      showMessage('載入儀表板失敗：' + (e.message || '請稍後再試'), 'error');
     }
     setDashLoading(false);
   }, [dashYear, dashMonth]);
 
   useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+    if (activeTab === 'dashboard') fetchDashboard();
+  }, [activeTab, fetchDashboard]);
 
   // ---- Accounts ----
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch('/api/cashflow/accounts');
       const data = await res.json();
-      const bankAccounts = data.filter(a => a.type === '銀行存款' && a.isActive);
-      setAccounts(bankAccounts);
+      setAccounts(Array.isArray(data) ? data.filter(a => a.isActive) : []);
     } catch (e) {
-      console.error('載入帳戶失敗:', e);
+      showMessage('載入帳戶失敗：' + (e.message || '請稍後再試'), 'error');
     }
   }, []);
 
@@ -190,7 +266,7 @@ export default function ReconciliationPage() {
       const data = await res.json();
       setRentalPayments(data.data || []);
     } catch (e) {
-      console.error('載入租金付款紀錄失敗:', e);
+      showMessage('載入租金付款紀錄失敗：' + (e.message || '請稍後再試'), 'error');
     }
     setRentalReconLoading(false);
   }, [rentalReconYear, rentalReconMonth, rentalReconAccountId, rentalReconMethodFilter]);
@@ -207,7 +283,7 @@ export default function ReconciliationPage() {
       const data = await res.json();
       setFormats(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error('載入銀行格式失敗:', e);
+      showMessage('載入銀行格式失敗：' + (e.message || '請稍後再試'), 'error');
     }
     setFormatsLoading(false);
   }, []);
@@ -239,7 +315,7 @@ export default function ReconciliationPage() {
         setCcBuildings((bData.list || []).filter(w => w.type === 'building'));
       }
     } catch (e) {
-      console.error('載入信用卡對帳失敗:', e);
+      showMessage('載入信用卡對帳失敗：' + (e.message || '請稍後再試'), 'error');
     }
     setCcLoading(false);
   }, [ccMonth, ccWarehouseFilter, ccStatusFilter]);
@@ -262,7 +338,7 @@ export default function ReconciliationPage() {
         setCcPmsRecords(data.records || []);
       }
     } catch (e) {
-      console.error('載入PMS信用卡收入失敗:', e);
+      showMessage('載入 PMS 信用卡收入失敗：' + (e.message || '請稍後再試'), 'error');
     }
     setCcPmsLoading(false);
   }, [ccPmsStartDate, ccPmsEndDate, ccPmsWarehouse]);
@@ -300,7 +376,7 @@ export default function ReconciliationPage() {
         setReconciliation(prev => ({ ...prev, ...detail }));
       }
     } catch (e) {
-      console.error('載入對帳資料失敗:', e);
+      showMessage('載入對帳資料失敗：' + (e.message || '請稍後再試'), 'error');
     }
     setAcctLoading(false);
   }, [selectedAccountId, acctYear, acctMonth]);
@@ -472,83 +548,6 @@ export default function ReconciliationPage() {
   };
 
   // ---- CSV/Excel Import ----
-  // ---- Bank account statement PDF parsers ----
-
-  // Parse PDF text for 土地銀行 / 土銀 (ROC date, Big5-extracted text)
-  function parseLandBankStatementPdf(lines) {
-    const parsed = [];
-    const toNum = s => parseFloat((String(s || '')).replace(/,/g, '')) || 0;
-    for (const line of lines) {
-      // ROC date: 113/01/05 or 1130105
-      const m = line.match(/^(\d{2,3})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/);
-      if (m) {
-        const year = parseInt(m[1]) + 1911;
-        const txDate = `${year}-${m[2]}-${m[3]}`;
-        const desc = m[4].trim();
-        const col5 = toNum(m[5]);
-        const col6 = toNum(m[6]);
-        const balance = toNum(m[7]);
-        // 土銀: 支出 存入 餘額 (debit credit balance)
-        parsed.push({ txDate, description: desc, debitAmount: String(col5 || 0), creditAmount: String(col6 || 0), referenceNo: '', runningBalance: String(balance) });
-        continue;
-      }
-      // Alternative: ROC date + debit/credit marker
-      const m2 = line.match(/^(\d{2,3})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(支出|存入|借|貸)\s+([\d,]+)\s+([\d,]+)/);
-      if (m2) {
-        const year = parseInt(m2[1]) + 1911;
-        const txDate = `${year}-${m2[2]}-${m2[3]}`;
-        const isDeb = /支出|借/.test(m2[5]);
-        const amount = String(toNum(m2[6]));
-        const balance = String(toNum(m2[7]));
-        parsed.push({ txDate, description: m2[4].trim(), debitAmount: isDeb ? amount : '0', creditAmount: isDeb ? '0' : amount, referenceNo: '', runningBalance: balance });
-      }
-    }
-    return parsed;
-  }
-
-  // Parse PDF text for 台新銀行 / 玉山銀行 / 中信 / 合庫 / 第一 (AD date)
-  function parseGenericBankStatementPdf(lines, bankName) {
-    const parsed = [];
-    const toNum = s => parseFloat((String(s || '')).replace(/,/g, '')) || 0;
-    for (const line of lines) {
-      // AD date: 2024/01/05 or 2024-01-05
-      const m = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)/);
-      if (m) {
-        const txDate = `${m[1]}-${m[2]}-${m[3]}`;
-        const col5 = toNum(m[5]);
-        const col6 = toNum(m[6]);
-        const balance = toNum(m[7]);
-        const desc = m[4].trim();
-        // Heuristic: larger of col5/col6 is more likely the balance; smaller two are debit/credit
-        // But actually col5=debit, col6=credit is most common
-        parsed.push({ txDate, description: desc, debitAmount: String(col5), creditAmount: String(col6), referenceNo: '', runningBalance: String(balance) });
-        continue;
-      }
-      // Some banks put debit/credit label: 2024/01/05 摘要 支出 12,500 餘額 250,000
-      const m2 = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(?:支出|提出|提款)\s+([\d,]+(?:\.\d+)?)\s+(?:餘額)?\s*([\d,]+(?:\.\d+)?)/);
-      if (m2) {
-        const txDate = `${m2[1]}-${m2[2]}-${m2[3]}`;
-        parsed.push({ txDate, description: m2[4].trim(), debitAmount: String(toNum(m2[5])), creditAmount: '0', referenceNo: '', runningBalance: String(toNum(m2[6])) });
-        continue;
-      }
-      const m3 = line.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})\s+(.+?)\s+(?:存入|轉入|收入)\s+([\d,]+(?:\.\d+)?)\s+(?:餘額)?\s*([\d,]+(?:\.\d+)?)/);
-      if (m3) {
-        const txDate = `${m3[1]}-${m3[2]}-${m3[3]}`;
-        parsed.push({ txDate, description: m3[4].trim(), debitAmount: '0', creditAmount: String(toNum(m3[5])), referenceNo: '', runningBalance: String(toNum(m3[6])) });
-      }
-    }
-    return parsed;
-  }
-
-  // Dispatch bank account statement PDF text by bank name
-  function parseBankStatementPdfText(fullText, bankName) {
-    const lines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
-    const bn = bankName || '';
-    if (bn.includes('土地') || bn.includes('土銀')) {
-      return parseLandBankStatementPdf(lines);
-    }
-    return parseGenericBankStatementPdf(lines, bankName);
-  }
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -2364,7 +2363,7 @@ export default function ReconciliationPage() {
                     className="border rounded-lg px-3 py-1.5 text-sm min-w-[200px]"
                   >
                     <option value="">-- 選擇帳戶 --</option>
-                    {accounts.map(a => (
+                    {bankAccountsOnly.map(a => (
                       <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
                     ))}
                   </select>
@@ -2925,7 +2924,9 @@ export default function ReconciliationPage() {
               (p.propertyName || '').toLowerCase().includes(q) ||
               (p.tenantName || '').toLowerCase().includes(q) ||
               (p.matchTransferRef || '').toLowerCase().includes(q) ||
-              (p.matchBankAccountName || '').toLowerCase().includes(q)
+              (p.matchBankAccountName || '').toLowerCase().includes(q) ||
+              (p.accountName || '').toLowerCase().includes(q) ||
+              (p.accountCode || '').toLowerCase().includes(q)
             );
           });
           const totalAmount = filtered.reduce((s, p) => s + Number(p.amount || 0), 0);
@@ -2952,11 +2953,15 @@ export default function ReconciliationPage() {
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-600">帳戶</label>
+                    <label className="text-sm font-medium text-gray-600">收款帳戶</label>
                     <select value={rentalReconAccountId} onChange={e => setRentalReconAccountId(e.target.value)}
-                      className="border rounded px-2 py-1 text-sm">
-                      <option value="">全部帳戶</option>
-                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      className="border rounded px-2 py-1 text-sm min-w-[180px]">
+                      <option value="">全部收款帳戶</option>
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}{a.type ? `（${a.type}）` : ''}{a.warehouse ? ` · ${a.warehouse}` : ''}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2971,7 +2976,7 @@ export default function ReconciliationPage() {
                     </select>
                   </div>
                   <input type="text" value={rentalReconSearch} onChange={e => setRentalReconSearch(e.target.value)}
-                    placeholder="搜尋物業/租客/轉帳參考號"
+                    placeholder="搜尋物業/租客/轉帳參考號/收款帳戶"
                     className="border rounded px-2 py-1 text-sm w-48" />
                   <button onClick={fetchRentalPayments} disabled={rentalReconLoading}
                     className="px-4 py-1.5 bg-violet-600 text-white text-sm rounded hover:bg-violet-700 disabled:opacity-50">
@@ -3015,6 +3020,7 @@ export default function ReconciliationPage() {
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">年/月</th>
                       <th className="text-right px-3 py-2 text-xs font-semibold text-gray-600">金額</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">付款方式</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-teal-700">收款帳戶</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-violet-700">轉帳參考號</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-violet-700">匯款戶名</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">備註</th>
@@ -3022,9 +3028,9 @@ export default function ReconciliationPage() {
                   </thead>
                   <tbody>
                     {rentalReconLoading ? (
-                      <tr><td colSpan={9} className="text-center py-10 text-gray-400">載入中…</td></tr>
+                      <tr><td colSpan={10} className="text-center py-10 text-gray-400">載入中…</td></tr>
                     ) : filtered.length === 0 ? (
-                      <tr><td colSpan={9} className="text-center py-10 text-gray-400">暫無資料</td></tr>
+                      <tr><td colSpan={10} className="text-center py-10 text-gray-400">暫無資料</td></tr>
                     ) : filtered.map(p => (
                       <tr key={p.id} className="border-t hover:bg-violet-50">
                         <td className="px-3 py-2 text-gray-700">{p.paymentDate}</td>
@@ -3036,6 +3042,11 @@ export default function ReconciliationPage() {
                           <span className={`text-xs px-1.5 py-0.5 rounded ${p.paymentMethod === 'transfer' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                             {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}
                           </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-teal-800" title={p.accountWarehouse || ''}>
+                          <span className="font-medium">{p.accountName || '—'}</span>
+                          {p.accountCode ? <span className="text-gray-400 ml-1">({p.accountCode})</span> : null}
+                          {p.accountType ? <span className="block text-[10px] text-gray-400">{p.accountType}</span> : null}
                         </td>
                         <td className="px-3 py-2 font-mono text-xs text-violet-700">{p.matchTransferRef || '-'}</td>
                         <td className="px-3 py-2 text-xs text-gray-600">{p.matchBankAccountName || '-'}</td>

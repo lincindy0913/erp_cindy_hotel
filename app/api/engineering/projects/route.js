@@ -6,25 +6,47 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_VIEW);
   if (!auth.ok) return auth.response;
   try {
-    const projects = await prisma.engineeringProject.findMany({
-      orderBy: [{ status: 'asc' }, { code: 'asc' }],
-      include: {
-        warehouseRef: true,
-        departmentRef: true,
-        _count: { select: { contracts: true, materials: true } },
-      },
-    });
-    return NextResponse.json(projects.map(p => ({
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+    const page = parseInt(searchParams.get('page')) || 0;
+    const limit = Math.min(parseInt(searchParams.get('limit')) || 50, 200);
+
+    const where = {};
+    if (status) where.status = status;
+
+    const include = {
+      warehouseRef: true,
+      departmentRef: true,
+      _count: { select: { contracts: true, materials: true } },
+    };
+    const orderBy = [{ status: 'asc' }, { code: 'asc' }];
+
+    const fmt = (p) => ({
       ...p,
       budget: p.budget != null ? Number(p.budget) : null,
       clientContractAmount: p.clientContractAmount != null ? Number(p.clientContractAmount) : null,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
-    })));
+    });
+
+    if (page > 0) {
+      const skip = (page - 1) * limit;
+      const [projects, totalCount] = await Promise.all([
+        prisma.engineeringProject.findMany({ where, include, orderBy, skip, take: limit }),
+        prisma.engineeringProject.count({ where }),
+      ]);
+      return NextResponse.json({
+        data: projects.map(fmt),
+        pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+      });
+    }
+
+    const projects = await prisma.engineeringProject.findMany({ where, include, orderBy });
+    return NextResponse.json(projects.map(fmt));
   } catch (e) {
     return handleApiError(e);
   }

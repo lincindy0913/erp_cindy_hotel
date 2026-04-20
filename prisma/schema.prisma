@@ -440,6 +440,7 @@ model CashAccount {
   cashCountConfigs    CashCountConfig[]
   cashCounts          CashCount[]
   engineeringIncomes  EngineeringIncome[]
+  rentalIncomePayments RentalIncomePayment[]
 
   @@index([warehouse])
   @@index([type])
@@ -772,6 +773,7 @@ model PmsImportBatch {
   records PmsIncomeRecord[]
 
   @@unique([warehouse, businessDate])
+  @@index([warehouse, businessDate])
   @@index([warehouse])
   @@index([businessDate])
   @@index([status])
@@ -798,6 +800,7 @@ model PmsIncomeRecord {
   importBatch PmsImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
 
   @@index([warehouse, businessDate])
+  @@index([businessDate])
   @@index([importBatchId])
   @@index([entryType])
   @@index([cashTransactionId])
@@ -1511,6 +1514,7 @@ model Asset {
   assetType        String           @default("BUILDING") @map("asset_type") @db.VarChar(20) // LAND | BUILDING | MIXED | OTHER
   address          String?          @db.VarChar(500)
   areaSqm          Decimal?         @map("area_sqm") @db.Decimal(14, 2)
+  acquisitionDate  String?          @map("acquisition_date") @db.VarChar(20)
   notes            String?          @db.Text
   rentalPropertyId Int?             @unique @map("rental_property_id")
   rentalProperty   RentalProperty?  @relation(fields: [rentalPropertyId], references: [id], onDelete: SetNull)
@@ -1688,7 +1692,10 @@ model RentalIncomePayment {
   createdAt             DateTime  @default(now()) @map("created_at")
 
   rentalIncome RentalIncome @relation(fields: [rentalIncomeId], references: [id], onDelete: Cascade)
+  account      CashAccount  @relation(fields: [accountId], references: [id])
+
   @@index([rentalIncomeId])
+  @@index([accountId])
   @@map("rental_income_payments")
 }
 
@@ -1704,6 +1711,9 @@ model PropertyTax {
   cashTransactionId   Int?      @map("cash_transaction_id")
   confirmedBy         String?   @map("confirmed_by") @db.VarChar(255)
   confirmedAt         DateTime? @map("confirmed_at")
+  paidDate            String?   @map("paid_date") @db.VarChar(20)
+  certNo              String?   @map("cert_no") @db.VarChar(80)
+  note                String?   @db.Text
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -1733,6 +1743,8 @@ model RentalMaintenance {
   advancePaymentMethod  String?   @map("advance_payment_method") @db.VarChar(50) // 現金, 信用卡
   employeeAdvanceId     Int?      @map("employee_advance_id")
   note                  String?   @db.Text
+  isCapitalized         Boolean   @default(false) @map("is_capitalized")
+  isRecurring           Boolean   @default(false) @map("is_recurring")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
@@ -1874,6 +1886,7 @@ model BankStatementLine {
   @@index([txDate])
   @@index([matchStatus])
   @@index([accountId, txDate]) // spec24
+  @@index([reconciliationId])  // filter by recon session
   @@map("bank_statement_lines")
 }
 
@@ -1977,6 +1990,7 @@ model CreditCardStatement {
   @@index([warehouseId])
   @@index([billingDate])
   @@index([status])
+  @@index([warehouseId, billingDate]) // composite for filtered month+warehouse queries
   @@map("credit_card_statements")
 }
 
@@ -2780,6 +2794,7 @@ model PurchaseAllowance {
   cashTransactionId   Int?      @map("cash_transaction_id")
   cashTransactionNo   String?   @map("cash_transaction_no") @db.VarChar(50)
   status              String    @default("草稿") @db.VarChar(20)
+  creditNoteNo        String?   @map("credit_note_no") @db.VarChar(50)
   reason              String?   @db.Text
   note                String?   @db.Text
   confirmedBy         String?   @map("confirmed_by") @db.VarChar(255)
@@ -2929,11 +2944,11 @@ model BnbMonthlyReport {
 }
 
 // ============================================
-// 業主往來 — 老闆多間公司月底發票彙整
+// 發票私帳（UI 名稱；路由 /owner-expenses）— 老闆多間公司月底發票彙整
 // ============================================
 
 /// 老闆旗下公司清單（一次性設定）
-/// 業主往來使用發票抬頭管理（settings/invoice-titles）作為公司來源，此 model 保留備用
+/// 發票私帳使用發票抬頭管理（settings/invoice-titles）作為公司來源，此 model 保留備用
 model OwnerCompany {
   id          Int      @id @default(autoincrement())
   companyName String   @map("company_name") @db.VarChar(100)

@@ -1,7 +1,10 @@
 {
   "name": "erp-inventory-system",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "進銷存暨營運決策分析系統 - ERP System with Web Interface",
+  "engines": {
+    "node": ">=20.19.0 || >=22.13.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

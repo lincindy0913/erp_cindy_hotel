@@ -947,10 +947,15 @@ export default function ExpensesPage() {
           setSubmitting(false);
           return;
         }
-        const needsCheckFields = executeForm.paymentMethod === '支票' || lines.some(l => l.paymentMethod === '支票');
+        const needsCheckFields =
+          executeForm.paymentMethod === '支票' || lines.some((l) => l.paymentMethod === '支票');
+        const effectiveCheckAccountId =
+          lines.find((l) => l.paymentMethod === '支票' && l.accountId)?.accountId ||
+          executeForm.checkAccountId ||
+          '';
         if (needsCheckFields) {
-          if (!executeForm.checkIssueDate || !executeForm.checkDate || !executeForm.checkNo?.trim() || !executeForm.checkAccountId) {
-            showToast('付款方式為支票時，請填寫：付款(開票)日期、支票日期、支票號碼、開票帳戶', 'error');
+          if (!executeForm.checkIssueDate || !executeForm.checkDate || !executeForm.checkNo?.trim() || !effectiveCheckAccountId) {
+            showToast('付款方式為支票時，請填寫：付款(開票)日期、支票日期、支票號碼，並於該列「付款帳戶」選擇開票帳戶', 'error');
             setSubmitting(false);
             return;
           }
@@ -979,11 +984,11 @@ export default function ExpensesPage() {
           note: executeForm.note || null,
           allowDuplicate
         };
-        if (executeForm.paymentMethod === '支票') {
+        if (needsCheckFields) {
           body.checkIssueDate = executeForm.checkIssueDate;
           body.checkDate = executeForm.checkDate;
           body.checkNo = executeForm.checkNo?.trim();
-          body.checkAccountId = executeForm.checkAccountId ? parseInt(executeForm.checkAccountId) : null;
+          body.checkAccountId = effectiveCheckAccountId ? parseInt(String(effectiveCheckAccountId), 10) : null;
           body.checkNote = executeForm.checkNote || null;
         }
 
@@ -997,7 +1002,7 @@ export default function ExpensesPage() {
           const result = await res.json();
           let msg = result.message || `執行成功！已建立 ${result.created?.length || 0} 筆記錄`;
           if (executeForm.creditCardAdvanceMode) msg += `\n\n已建立「老闆信用卡代墊」記錄，可至「員工預支」頁面結算。\n（付款單狀態為「已代墊」，不會出現在出納待付清單）`;
-          else if (executeForm.paymentMethod === '支票') msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
+          else if (needsCheckFields) msg += '\n\n已連動支票管理，可至「支票管理」頁面追蹤兌現。';
           showToast(msg, 'success');
           setSelectedTemplateId('');
           setExecuteForm(prev => ({
@@ -1244,7 +1249,7 @@ export default function ExpensesPage() {
                             <th style={{ ...thStyle, width: 110 }}>廠商</th>
                             <th style={{ ...thStyle, width: 80 }}>館別 *</th>
                             <th style={{ ...thStyle, width: 80 }}>付款方式 *</th>
-                            <th style={{ ...thStyle, width: 120 }}>轉帳存簿</th>
+                                <th style={{ ...thStyle, width: 120 }}>轉帳／開票存簿</th>
                             <th style={{ ...thStyle, width: 100 }}>備註</th>
                             <th style={{ ...thStyle, width: 80 }}>預設金額</th>
                             <th style={{ ...thStyle, width: 40 }}></th>
@@ -1292,7 +1297,9 @@ export default function ExpensesPage() {
                                 <select value={line.paymentMethod}
                                   onChange={e => {
                                     updateEntryLine(idx, 'paymentMethod', e.target.value);
-                                    if (e.target.value !== '轉帳' && e.target.value !== '匯款') updateEntryLine(idx, 'accountId', '');
+                                    if (e.target.value !== '轉帳' && e.target.value !== '匯款' && e.target.value !== '支票') {
+                                      updateEntryLine(idx, 'accountId', '');
+                                    }
                                   }}
                                   style={{ ...inputStyle, marginBottom: 0 }}>
                                   <option value="">選擇</option>
@@ -1300,11 +1307,11 @@ export default function ExpensesPage() {
                                 </select>
                               </td>
                               <td style={tdStyle}>
-                                {(line.paymentMethod === '轉帳' || line.paymentMethod === '匯款') ? (
+                                {(line.paymentMethod === '轉帳' || line.paymentMethod === '匯款' || line.paymentMethod === '支票') ? (
                                   <select value={line.accountId}
                                     onChange={e => updateEntryLine(idx, 'accountId', e.target.value)}
                                     style={{ ...inputStyle, marginBottom: 0 }}>
-                                    <option value="">選擇存簿</option>
+                                    <option value="">{line.paymentMethod === '支票' ? '開票帳戶' : '選擇存簿'}</option>
                                     {cashAccounts.filter(a => a.warehouse === line.warehouse || !a.warehouse).map(a => (
                                       <option key={a.id} value={a.id}>{a.name} {a.warehouse ? `(${a.warehouse})` : ''}</option>
                                     ))}
@@ -1700,10 +1707,14 @@ export default function ExpensesPage() {
                         </div>
                       )}
 
-                      {/* 付款方式為支票時，顯示支票資訊（存檔後連動支票管理） */}
-                      {(executeForm.paymentMethod === '支票' || executeForm.entryLines?.some(l => l.paymentMethod === '支票')) && (
+                      {/* 某列付款方式為「支票」，或頂層付款方式為「支票」時，顯示支票資訊；開票帳戶優先於各列「付款帳戶」選擇 */}
+                      {(executeForm.paymentMethod === '支票' ||
+                        executeForm.entryLines?.some((l) => l.entryType === 'debit' && l.paymentMethod === '支票')) && (
                         <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                           <div style={{ fontSize: 16, fontWeight: 600, color: '#b45309', marginBottom: 8 }}>支票資訊（存檔後連動支票管理）</div>
+                          <p style={{ fontSize: 13, color: '#92400e', marginBottom: 10 }}>
+                            請將該筆費用列的「付款方式」設為「支票」後，於該列「付款帳戶」選擇開票帳戶；若僅使用上方「付款方式」選支票而未改各列，請於下方選擇開票帳戶。
+                          </p>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                             <div>
                               <label style={{ fontSize: 14, color: '#b45309' }}>付款(開票)日期 *</label>
@@ -1717,23 +1728,26 @@ export default function ExpensesPage() {
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkDate: e.target.value }))}
                                 style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
-                            <div>
+                            <div style={{ gridColumn: '1 / -1' }}>
                               <label style={{ fontSize: 14, color: '#b45309' }}>支票號碼 *</label>
                               <input type="text" value={executeForm.checkNo || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkNo: e.target.value }))}
                                 placeholder="請輸入支票號碼" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
-                            <div>
-                              <label style={{ fontSize: 14, color: '#b45309' }}>開票帳戶 *</label>
-                              <select value={executeForm.checkAccountId || ''}
-                                onChange={e => setExecuteForm(prev => ({ ...prev, checkAccountId: e.target.value }))}
-                                style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }}>
-                                <option value="">請選擇</option>
-                                {cashAccounts.map(a => (
-                                  <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
-                                ))}
-                              </select>
-                            </div>
+                            {executeForm.paymentMethod === '支票' &&
+                              !executeForm.entryLines?.some((l) => l.entryType === 'debit' && l.paymentMethod === '支票') && (
+                              <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={{ fontSize: 14, color: '#b45309' }}>開票帳戶 *</label>
+                                <select value={executeForm.checkAccountId || ''}
+                                  onChange={e => setExecuteForm(prev => ({ ...prev, checkAccountId: e.target.value }))}
+                                  style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }}>
+                                  <option value="">請選擇</option>
+                                  {cashAccounts.map(a => (
+                                    <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                             <div style={{ gridColumn: '1 / -1' }}>
                               <label style={{ fontSize: 14, color: '#b45309' }}>備註</label>
                               <input type="text" value={executeForm.checkNote || ''}
@@ -1756,7 +1770,7 @@ export default function ExpensesPage() {
                                 <th style={{ ...thStyle, width: 110 }}>廠商</th>
                                 <th style={{ ...thStyle, width: 90 }}>館別</th>
                                 <th style={{ ...thStyle, width: 80 }}>付款方式</th>
-                                <th style={{ ...thStyle, width: 150 }}>付款帳戶</th>
+                                <th style={{ ...thStyle, width: 150 }}>付款／開票帳戶</th>
                                 <th style={{ ...thStyle, width: 110 }}>代墊員工</th>
                                 <th style={{ ...thStyle, width: 130 }}>摘要</th>
                                 <th style={{ ...thStyle, width: 110 }}>金額 *</th>
@@ -1768,6 +1782,8 @@ export default function ExpensesPage() {
                                 const realIdx = executeForm.entryLines.indexOf(line);
                                 const isAdvance = line.paymentMethod === '信用卡' || line.paymentMethod === '員工代付';
                                 const isTransfer = line.paymentMethod === '轉帳' || line.paymentMethod === '匯款';
+                                const isCheck = line.paymentMethod === '支票';
+                                const accountColEnabled = isTransfer || isCheck;
                                 return (
                                   <tr key={realIdx}>
                                     {/* 費用名稱 */}
@@ -1813,14 +1829,30 @@ export default function ExpensesPage() {
                                             const newLines = prev.entryLines.map((l, i) => {
                                               if (i !== realIdx) return l;
                                               const updated = { ...l, paymentMethod: newPm };
-                                              if (newPm !== '轉帳' && newPm !== '匯款') updated.accountId = '';
+                                              if (newPm !== '轉帳' && newPm !== '匯款' && newPm !== '支票') updated.accountId = '';
                                               if (newPm !== '信用卡' && newPm !== '員工代付') updated.advancedBy = '';
                                               return updated;
                                             });
+                                            const anyCheckDebit = newLines.some(
+                                              (l) => l.entryType === 'debit' && l.paymentMethod === '支票'
+                                            );
+                                            const firstDebitPm =
+                                              newLines.find((l) => l.entryType === 'debit')?.paymentMethod || '';
                                             return {
                                               ...prev,
                                               entryLines: newLines,
-                                              ...(newPm === '支票' ? { paymentMethod: '支票' } : {})
+                                              paymentMethod: anyCheckDebit
+                                                ? '支票'
+                                                : (prev.paymentMethod === '支票' ? firstDebitPm : prev.paymentMethod),
+                                              ...(!anyCheckDebit
+                                                ? {
+                                                    checkIssueDate: '',
+                                                    checkDate: '',
+                                                    checkNo: '',
+                                                    checkAccountId: '',
+                                                    checkNote: ''
+                                                  }
+                                                : {})
                                             };
                                           });
                                         }}
@@ -1829,13 +1861,26 @@ export default function ExpensesPage() {
                                         {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                                       </select>
                                     </td>
-                                    {/* 付款帳戶（常駐，轉帳/匯款時可選） */}
+                                    {/* 付款帳戶：轉帳／匯款為付款存簿；支票為開票帳戶 */}
                                     <td style={tdStyle}>
                                       <select value={line.accountId || ''}
-                                        onChange={e => updateExecuteLine(realIdx, 'accountId', e.target.value)}
-                                        disabled={!isTransfer}
-                                        style={{ ...inputStyle, marginBottom: 0, opacity: isTransfer ? 1 : 0.4, background: isTransfer ? '#fff' : '#f8f9fa' }}>
-                                        <option value="">{isTransfer ? '選擇帳戶' : '—'}</option>
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          updateExecuteLine(realIdx, 'accountId', v);
+                                          if (isCheck) {
+                                            setExecuteForm((prev) => ({ ...prev, checkAccountId: v }));
+                                          }
+                                        }}
+                                        disabled={!accountColEnabled}
+                                        style={{
+                                          ...inputStyle,
+                                          marginBottom: 0,
+                                          opacity: accountColEnabled ? 1 : 0.4,
+                                          background: accountColEnabled ? '#fff' : '#f8f9fa'
+                                        }}>
+                                        <option value="">
+                                          {isTransfer ? '選擇帳戶' : isCheck ? '開票帳戶' : '—'}
+                                        </option>
                                         {cashAccounts.map(a => (
                                           <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
                                         ))}

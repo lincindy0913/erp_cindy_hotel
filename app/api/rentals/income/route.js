@@ -29,7 +29,12 @@ export async function GET(request) {
         property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true, email: true } },
         contract: { select: { id: true, contractNo: true, monthlyRent: true } },
-        payments: { orderBy: { sequenceNo: 'asc' } }
+        payments: {
+          orderBy: { sequenceNo: 'asc' },
+          include: {
+            account: { select: { id: true, name: true, accountCode: true, type: true, warehouse: true } }
+          }
+        }
       },
       orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { dueDate: 'asc' }]
     });

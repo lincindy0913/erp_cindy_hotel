@@ -18,7 +18,9 @@ export async function GET(request) {
     const dateTo    = searchParams.get('dateTo')     || '';
     const supplierId = searchParams.get('supplierId') || '';
     const warehouse = searchParams.get('warehouse')  || '';
-    const onlyPaid  = searchParams.get('onlyPaid') === 'true';
+    const onlyPaidParam = searchParams.get('onlyPaid'); // 'true' | 'false' | null
+    const onlyPaid  = onlyPaidParam === 'true';
+    const onlyUnpaid = onlyPaidParam === 'false';
 
     if (!keyword && !dateFrom && !dateTo && !supplierId && !warehouse) {
       return NextResponse.json([]);
@@ -144,8 +146,10 @@ export async function GET(request) {
       };
     });
 
-    // onlyPaid=true → 只回傳有對應付款單（已出納）的進貨單
-    const filtered = onlyPaid ? results.filter(r => !!r.paymentOrderNo) : results;
+    // 付款狀態篩選
+    let filtered = results;
+    if (onlyPaid) filtered = results.filter(r => !!r.paymentOrderNo);
+    else if (onlyUnpaid) filtered = results.filter(r => !r.paymentOrderNo);
 
     return NextResponse.json(filtered);
   } catch (error) {

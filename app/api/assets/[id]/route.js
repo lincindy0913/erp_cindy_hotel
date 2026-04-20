@@ -92,6 +92,9 @@ export async function PATCH(request, { params }) {
     if (body.notes !== undefined) {
       data.notes = body.notes == null || body.notes === '' ? null : String(body.notes).trim();
     }
+    if (body.acquisitionDate !== undefined) {
+      data.acquisitionDate = body.acquisitionDate == null || body.acquisitionDate === '' ? null : String(body.acquisitionDate).trim();
+    }
 
     if (body.rentalPropertyId !== undefined) {
       if (body.rentalPropertyId == null || body.rentalPropertyId === '') {

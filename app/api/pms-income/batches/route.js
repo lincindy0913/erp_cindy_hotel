@@ -54,7 +54,8 @@ export async function GET(request) {
       include: {
         _count: { select: { records: true } }
       },
-      orderBy: { importedAt: 'desc' }
+      orderBy: { importedAt: 'desc' },
+      take: 500,
     });
 
     // Attach credit card reconciliation status for each batch

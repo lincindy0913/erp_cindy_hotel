@@ -1,19 +1,23 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
-// GET: Return monthly summary
-// Params: year (required), month (optional)
-// If month provided: single month detail
-// If no month: array of 12 monthly summaries for the year
+/**
+ * GET ?year=YYYY[&month=M]
+ *
+ * Single month  → one groupBy query, return one summary object.
+ * All 12 months → one groupBy for the full year, split in JS, return array[12].
+ *
+ * Replaces the old approach of 12 sequential findMany + JS aggregation.
+ */
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.PMS_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year');
@@ -24,118 +28,112 @@ export async function GET(request) {
     }
 
     const yearNum = parseInt(year);
+    if (Number.isNaN(yearNum)) {
+      return createErrorResponse('VALIDATION_FAILED', '年份格式無效', 400);
+    }
 
     if (month) {
-      // Single month detail
       const monthNum = parseInt(month);
-      const summary = await getMonthSummary(yearNum, monthNum);
-      return NextResponse.json(summary);
-    } else {
-      // All 12 months for the year
-      const summaries = [];
-      for (let m = 1; m <= 12; m++) {
-        const summary = await getMonthSummary(yearNum, m);
-        summaries.push(summary);
-      }
-      return NextResponse.json(summaries);
+      const monthStr = String(monthNum).padStart(2, '0');
+      const groups = await prisma.pmsIncomeRecord.groupBy({
+        by: ['warehouse', 'businessDate', 'entryType', 'accountingCode', 'accountingName'],
+        where: { businessDate: { startsWith: `${yearNum}-${monthStr}` } },
+        _sum: { amount: true },
+      });
+      return NextResponse.json(buildMonthSummary(yearNum, monthNum, groups));
     }
+
+    // Full year: one DB round-trip, then split by month in JS
+    const groups = await prisma.pmsIncomeRecord.groupBy({
+      by: ['warehouse', 'businessDate', 'entryType', 'accountingCode', 'accountingName'],
+      where: { businessDate: { startsWith: `${yearNum}-` } },
+      _sum: { amount: true },
+    });
+
+    const summaries = Array.from({ length: 12 }, (_, i) =>
+      buildMonthSummary(yearNum, i + 1, groups)
+    );
+    return NextResponse.json(summaries);
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-async function getMonthSummary(year, month) {
+/**
+ * Build one month's summary from pre-fetched groupBy rows.
+ * No DB access — pure JS aggregation over the already-grouped data.
+ */
+function buildMonthSummary(year, month, allGroups) {
   const monthStr = String(month).padStart(2, '0');
-  const datePrefix = `${year}-${monthStr}`;
+  const prefix = `${year}-${monthStr}`;
 
-  // Get all records for this month
-  const records = await prisma.pmsIncomeRecord.findMany({
-    where: {
-      businessDate: { startsWith: datePrefix }
-    },
-    select: {
-      warehouse: true,
-      businessDate: true,
-      entryType: true,
-      amount: true,
-      accountingCode: true,
-      accountingName: true
-    }
-  });
-
-  // Calculate totals
   let total = 0;
   const byWarehouse = {};
   const byAccountingCode = {};
   const importedDaysSet = {};
 
-  for (const r of records) {
-    const amt = Number(r.amount);
-    const sign = r.entryType === '貸方' ? 1 : -1;
+  for (const g of allGroups) {
+    if (!g.businessDate.startsWith(prefix)) continue;
+
+    const amt = Number(g._sum.amount ?? 0);
+    const sign = g.entryType === '貸方' ? 1 : -1;
     total += amt * sign;
 
-    // By warehouse
-    if (!byWarehouse[r.warehouse]) {
-      byWarehouse[r.warehouse] = { credit: 0, debit: 0, net: 0, days: new Set() };
+    // byWarehouse
+    if (!byWarehouse[g.warehouse]) {
+      byWarehouse[g.warehouse] = { credit: 0, debit: 0, net: 0, days: new Set() };
     }
-    if (r.entryType === '貸方') {
-      byWarehouse[r.warehouse].credit += amt;
+    if (g.entryType === '貸方') {
+      byWarehouse[g.warehouse].credit += amt;
     } else {
-      byWarehouse[r.warehouse].debit += amt;
+      byWarehouse[g.warehouse].debit += amt;
     }
-    byWarehouse[r.warehouse].net += amt * sign;
-    byWarehouse[r.warehouse].days.add(r.businessDate);
+    byWarehouse[g.warehouse].net += amt * sign;
+    byWarehouse[g.warehouse].days.add(g.businessDate);
 
-    // By accounting code
-    const codeKey = `${r.accountingCode}|${r.accountingName}`;
+    // byAccountingCode
+    const codeKey = `${g.accountingCode}|${g.accountingName}`;
     if (!byAccountingCode[codeKey]) {
-      byAccountingCode[codeKey] = { accountingCode: r.accountingCode, accountingName: r.accountingName, credit: 0, debit: 0, net: 0 };
+      byAccountingCode[codeKey] = {
+        accountingCode: g.accountingCode,
+        accountingName: g.accountingName,
+        credit: 0, debit: 0, net: 0,
+      };
     }
-    if (r.entryType === '貸方') {
+    if (g.entryType === '貸方') {
       byAccountingCode[codeKey].credit += amt;
     } else {
       byAccountingCode[codeKey].debit += amt;
     }
     byAccountingCode[codeKey].net += amt * sign;
 
-    // Track imported days per warehouse
-    if (!importedDaysSet[r.warehouse]) {
-      importedDaysSet[r.warehouse] = new Set();
-    }
-    importedDaysSet[r.warehouse].add(r.businessDate);
+    // importedDaysSet
+    if (!importedDaysSet[g.warehouse]) importedDaysSet[g.warehouse] = new Set();
+    importedDaysSet[g.warehouse].add(g.businessDate);
   }
 
-  // Calculate days in month
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  // Get all imported days (unique business dates)
   const allDays = new Set();
-  for (const wh of Object.values(importedDaysSet)) {
-    for (const d of wh) allDays.add(d);
-  }
+  for (const s of Object.values(importedDaysSet)) for (const d of s) allDays.add(d);
 
-  // Serialize warehouse data (convert Sets to counts)
   const byWarehouseResult = {};
-  for (const [wh, data] of Object.entries(byWarehouse)) {
+  for (const [wh, v] of Object.entries(byWarehouse)) {
     byWarehouseResult[wh] = {
-      credit: data.credit,
-      debit: data.debit,
-      net: data.net,
-      importedDays: data.days.size
+      credit: v.credit,
+      debit: v.debit,
+      net: v.net,
+      importedDays: v.days.size,
     };
   }
 
-  // Missing days per warehouse
-  const warehouses = Object.keys(importedDaysSet);
   const missingDays = {};
-  for (const wh of warehouses) {
-    const importedDates = importedDaysSet[wh];
+  for (const wh of Object.keys(importedDaysSet)) {
+    const imported = importedDaysSet[wh];
     const missing = [];
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${monthStr}-${String(d).padStart(2, '0')}`;
-      if (!importedDates.has(dateStr)) {
-        missing.push(dateStr);
-      }
+      const ds = `${year}-${monthStr}-${String(d).padStart(2, '0')}`;
+      if (!imported.has(ds)) missing.push(ds);
     }
     missingDays[wh] = missing;
   }
@@ -148,6 +146,6 @@ async function getMonthSummary(year, month) {
     byAccountingCode: Object.values(byAccountingCode),
     importedDays: allDays.size,
     totalDays: daysInMonth,
-    missingDays
+    missingDays,
   };
 }

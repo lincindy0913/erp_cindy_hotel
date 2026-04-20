@@ -66,7 +66,9 @@ export async function PUT(request, { params }) {
       isEmployeeAdvance,
       advancedBy,
       advancePaymentMethod,
-      note
+      note,
+      isCapitalized,
+      isRecurring,
     } = body;
 
     const updateData = {};
@@ -82,6 +84,8 @@ export async function PUT(request, { params }) {
       updateData.advancePaymentMethod = isEmployeeAdvance ? (advancePaymentMethod || '現金') : null;
     }
     if (note !== undefined) updateData.note = note || null;
+    if (isCapitalized !== undefined) updateData.isCapitalized = !!isCapitalized;
+    if (isRecurring !== undefined) updateData.isRecurring = !!isRecurring;
 
     const updated = await prisma.rentalMaintenance.update({
       where: { id: maintenanceId },

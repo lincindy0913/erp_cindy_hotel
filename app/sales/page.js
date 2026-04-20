@@ -5,13 +5,24 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
+
+const SALES_VIEWS = ['list', 'privateLedger', 'report', 'monthly'];
 
 function InvoicePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const userPermissions = session?.user?.permissions || [];
+  const isAdmin = session?.user?.role === 'admin';
+  const canSalesView =
+    isAdmin || userPermissions.includes('*') || hasPermission(userPermissions, PERMISSIONS.SALES_VIEW);
+  const canOwnerExpense =
+    isAdmin || userPermissions.includes('*') || hasPermission(userPermissions, PERMISSIONS.OWNER_EXPENSE_VIEW);
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -20,6 +31,7 @@ function InvoicePageInner() {
   const [selectedItems, setSelectedItems] = useState([]); // 勾選的品項
   const [availableItems, setAvailableItems] = useState([]); // 可選的未核銷品項
   const [invoices, setInvoices] = useState([]);
+  const [allowances, setAllowances] = useState([]); // 已確認的進貨折讓
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [salesSaving, setSalesSaving] = useState(false);
@@ -56,7 +68,7 @@ function InvoicePageInner() {
   // 勾選發票（列印用）
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState(new Set());
 
-  // 月度館別統計 view
+  // 分頁：發票列表 / 發票私帳 / 報表 / 月度統計（與網址 ?view= 同步）
   const [activeView, setActiveView] = useState('list');
   const [statsStartMonth, setStatsStartMonth] = useState(() => `${new Date().getFullYear()}-01`);
   const [statsEndMonth,   setStatsEndMonth]   = useState(() => new Date().toISOString().slice(0, 7));
@@ -96,6 +108,7 @@ function InvoicePageInner() {
     fetchProducts();
     fetchSuppliers();
     fetchInvoices();
+    fetchAllowances();
     fetchSystemTaxRate();
     fetchInvoiceTitles();
   }, []);
@@ -112,13 +125,44 @@ function InvoicePageInner() {
   }
 
   useEffect(() => {
-    if (activeView === 'monthly') fetchMonthlyStats();
-  }, [activeView]);
+    if (activeView === 'monthly' && canSalesView) fetchMonthlyStats();
+  }, [activeView, canSalesView]);
 
-  // 從 URL ?month=YYYY-MM&invoiceTitle=XXX 預設篩選（供業主往來頁跳轉）
+  function goSalesView(next) {
+    if (next === 'privateLedger' && !canOwnerExpense) return;
+    if (next !== 'privateLedger' && !canSalesView) return;
+    setActiveView(next);
+    const p = new URLSearchParams(searchParams.toString());
+    p.set('view', next);
+    router.replace(`/sales?${p.toString()}`, { scroll: false });
+  }
+
+  // 網址 ?view= 與權限同步分頁
+  useEffect(() => {
+    if (!session) return;
+    const v = searchParams.get('view');
+    const canList = canSalesView;
+    const canPriv = canOwnerExpense;
+    if (v && SALES_VIEWS.includes(v)) {
+      if (v === 'privateLedger' && canPriv) setActiveView('privateLedger');
+      else if (v !== 'privateLedger' && canList) setActiveView(v);
+      else if (v === 'privateLedger' && !canPriv && canList) setActiveView('list');
+      else if (v !== 'privateLedger' && !canList && canPriv) setActiveView('privateLedger');
+      return;
+    }
+    if (!v && !canList && canPriv) {
+      setActiveView('privateLedger');
+      const p = new URLSearchParams(searchParams.toString());
+      p.set('view', 'privateLedger');
+      router.replace(`/sales?${p.toString()}`, { scroll: false });
+    }
+  }, [session, searchParams, canSalesView, canOwnerExpense, router]);
+
+  // 從 URL ?month=YYYY-MM&invoiceTitle=XXX 預設篩選（發票私帳「查看發票」→ 發票列表）
   useEffect(() => {
     const m = searchParams.get('month');
     const t = searchParams.get('invoiceTitle');
+    const v = searchParams.get('view');
     if (m) {
       setSearchDateFrom(`${m}-01`);
       const [y, mo] = m.split('-').map(Number);
@@ -126,7 +170,15 @@ function InvoicePageInner() {
       setSearchDateTo(`${m}-${String(lastDay).padStart(2, '0')}`);
     }
     if (t) setSearchInvoiceTitle(t);
-  }, []);
+    if ((m || t) && canSalesView && v !== 'privateLedger') {
+      setActiveView('list');
+      if (v !== 'list') {
+        const p = new URLSearchParams(searchParams.toString());
+        p.set('view', 'list');
+        router.replace(`/sales?${p.toString()}`, { scroll: false });
+      }
+    }
+  }, [searchParams, canSalesView, router]);
 
   async function fetchInvoiceTitles() {
     try {
@@ -141,7 +193,6 @@ function InvoicePageInner() {
   }
 
   // 從網址 ?edit=id 連動開啟編輯表單（例如從財務頁「發票號」或「編輯」點入）
-  const searchParams = useSearchParams();
   useEffect(() => {
     const editId = searchParams.get('edit');
     if (!editId) return;
@@ -184,6 +235,14 @@ function InvoicePageInner() {
       setInvoices([]);
       setLoading(false);
     }
+  }
+
+  async function fetchAllowances() {
+    try {
+      const res = await fetch('/api/purchase-allowances?status=已確認');
+      const data = await res.json();
+      setAllowances(Array.isArray(data) ? data : []);
+    } catch { setAllowances([]); }
   }
 
   async function fetchProducts() {
@@ -686,7 +745,13 @@ function InvoicePageInner() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* 標題與操作 */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
+          <div>
+            <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
+            {activeView === 'privateLedger' && canOwnerExpense && (
+              <p className="text-sm text-gray-500 mt-1">發票私帳與本頁「發票列表」共用進項發票；「查看發票」會依月份與抬頭帶入列表篩選。</p>
+            )}
+          </div>
+          {activeView === 'list' && canSalesView && (
           <div className="flex items-center gap-3">
             <button onClick={handlePrintFilteredList}
               className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300">
@@ -716,10 +781,11 @@ function InvoicePageInner() {
               </button>
             )}
           </div>
+          )}
         </div>
 
         {/* 新增發票表單 */}
-        {showAddForm && (
+        {showAddForm && canSalesView && (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-blue-200">
             <h3 className="text-lg font-semibold mb-4">{editingInvoice ? '編輯發票' : '新增發票'}</h3>
             <form onSubmit={handleSubmit}>
@@ -1185,19 +1251,38 @@ function InvoicePageInner() {
         )}
 
         {/* View toggle */}
-        <div className="flex gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
-          {[{ key: 'list', label: '發票列表' }, { key: 'report', label: '報表' }, { key: 'monthly', label: '月度館別統計' }].map(v => (
-            <button key={v.key} onClick={() => setActiveView(v.key)}
+        <div className="flex flex-wrap gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
+          {[
+            ...(canSalesView
+              ? [
+                  { key: 'list', label: '發票列表' },
+                  { key: 'report', label: '報表' },
+                  { key: 'monthly', label: '月度館別統計' },
+                ]
+              : []),
+            ...(canOwnerExpense ? [{ key: 'privateLedger', label: '發票私帳' }] : []),
+          ].map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => goSalesView(v.key)}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeView === v.key ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}>
+              }`}
+            >
               {v.label}
             </button>
           ))}
         </div>
 
+        {activeView === 'privateLedger' && canOwnerExpense && (
+          <div className="mb-6">
+            <OwnerExpensesPanel embedded />
+          </div>
+        )}
+
         {/* ══ 報表 ══ */}
-        {activeView === 'report' && (() => {
+        {activeView === 'report' && canSalesView && (() => {
           const reportInvoices = invoices.filter(inv => {
             const d = inv.invoiceDate || '';
             if (reportDateFrom && d < reportDateFrom) return false;
@@ -1207,7 +1292,17 @@ function InvoicePageInner() {
             if (reportType     && (inv.invoiceType || '進貨單') !== reportType) return false;
             return true;
           });
-          const grandTotal = reportInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+          // 同日期/館別範圍篩選折讓
+          const reportAllowances = allowances.filter(a => {
+            const d = a.allowanceDate || '';
+            if (reportDateFrom && d < reportDateFrom) return false;
+            if (reportDateTo   && d > reportDateTo)   return false;
+            if (reportWarehouse && (a.warehouse || '') !== reportWarehouse) return false;
+            return true;
+          });
+          const invoiceTotal = reportInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+          const allowanceTotal = reportAllowances.reduce((s, a) => s + Number(a.totalAmount || 0), 0);
+          const grandTotal = invoiceTotal - allowanceTotal;
 
           return (
           <div className="space-y-4">
@@ -1257,8 +1352,8 @@ function InvoicePageInner() {
                   </button>
                 )}
                 <div className="ml-auto text-right">
-                  <div className="text-xs text-gray-400">共 {reportInvoices.length} 筆</div>
-                  <div className="text-lg font-bold text-green-700">NT$ {grandTotal.toLocaleString()}</div>
+                  <div className="text-xs text-gray-400">發票 {reportInvoices.length} 筆 · 折讓 {reportAllowances.length} 筆</div>
+                  <div className="text-lg font-bold text-green-700">淨額 NT$ {grandTotal.toLocaleString()}</div>
                 </div>
               </div>
             </div>
@@ -1268,7 +1363,7 @@ function InvoicePageInner() {
               {INVOICE_SOURCES.map(src => {
                 const rows = reportInvoices.filter(i => (i.invoiceType || '進貨單') === src);
                 const total = rows.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-                const pct = grandTotal > 0 ? Math.round(total / grandTotal * 100) : 0;
+                const pct = invoiceTotal > 0 ? Math.round(total / invoiceTotal * 100) : 0;
                 const c = SOURCE_COLORS[src];
                 return (
                   <div key={src} className={`rounded-xl border ${c.border} bg-white shadow-sm p-4`}>
@@ -1285,6 +1380,20 @@ function InvoicePageInner() {
                 );
               })}
             </div>
+
+            {/* 折讓彙總卡片（有折讓時顯示） */}
+            {reportAllowances.length > 0 && (
+              <div className="rounded-xl border border-red-200 bg-red-50 shadow-sm p-4 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="w-2 h-2 rounded-full bg-red-400" />
+                    <p className="text-xs font-medium text-red-700">進貨折讓（負數）</p>
+                  </div>
+                  <p className="text-xs text-gray-500">{reportAllowances.length} 筆折讓，已從總計扣除</p>
+                </div>
+                <p className="text-base font-bold text-red-700">－ NT$ {allowanceTotal.toLocaleString()}</p>
+              </div>
+            )}
 
             {/* 明細報表 - 依來源分組 */}
             {reportInvoices.length === 0 ? (
@@ -1353,16 +1462,62 @@ function InvoicePageInner() {
                   );
                 })}
 
+                {/* 折讓明細表 */}
+                {reportAllowances.length > 0 && (
+                  <div className="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden">
+                    <div className="px-4 py-2.5 border-b bg-red-50 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">進貨折讓</span>
+                        <span className="text-xs text-gray-500">{reportAllowances.length} 筆</span>
+                      </div>
+                      <span className="text-sm font-bold text-red-700">－ NT$ {allowanceTotal.toLocaleString()}</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 text-gray-500 text-xs border-b">
+                            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">館別</th>
+                            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">廠商</th>
+                            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">廠商折讓單號</th>
+                            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">原發票號</th>
+                            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">折讓日期</th>
+                            <th className="px-4 py-2 text-right font-medium whitespace-nowrap">折讓金額</th>
+                            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">原因</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {reportAllowances.map((a, idx) => (
+                            <tr key={a.id} className={`${idx % 2 === 1 ? 'bg-gray-50/40' : ''} text-red-700`}>
+                              <td className="px-4 py-2 whitespace-nowrap">{a.warehouse || '－'}</td>
+                              <td className="px-4 py-2 whitespace-nowrap">{a.supplierName || '－'}</td>
+                              <td className="px-4 py-2 font-medium whitespace-nowrap">{a.creditNoteNo || '－'}</td>
+                              <td className="px-4 py-2 whitespace-nowrap">{a.invoiceNo || '－'}</td>
+                              <td className="px-4 py-2 whitespace-nowrap">{a.allowanceDate}</td>
+                              <td className="px-4 py-2 text-right font-semibold tabular-nums whitespace-nowrap">－ NT$ {Number(a.totalAmount || 0).toLocaleString()}</td>
+                              <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{a.reason || '－'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 {/* 總計 */}
                 <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-4 flex items-center justify-between">
                   <div>
-                    <span className="text-sm font-semibold text-green-800">期間合計</span>
-                    <span className="ml-3 text-xs text-green-600">{reportInvoices.length} 張發票</span>
+                    <span className="text-sm font-semibold text-green-800">期間淨進項合計</span>
+                    <span className="ml-3 text-xs text-green-600">{reportInvoices.length} 張發票{reportAllowances.length > 0 ? `，${reportAllowances.length} 筆折讓` : ''}</span>
                     {(reportDateFrom || reportDateTo) && (
                       <span className="ml-2 text-xs text-gray-400">{reportDateFrom || '—'} ～ {reportDateTo || '—'}</span>
                     )}
                   </div>
-                  <span className="text-xl font-bold text-green-800">NT$ {grandTotal.toLocaleString()}</span>
+                  <div className="text-right">
+                    {reportAllowances.length > 0 && (
+                      <div className="text-xs text-gray-500 mb-0.5">發票 NT$ {invoiceTotal.toLocaleString()} － 折讓 NT$ {allowanceTotal.toLocaleString()}</div>
+                    )}
+                    <span className="text-xl font-bold text-green-800">NT$ {grandTotal.toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -1371,7 +1526,7 @@ function InvoicePageInner() {
         })()}
 
         {/* ══ 月度館別統計 ══ */}
-        {activeView === 'monthly' && (
+        {activeView === 'monthly' && canSalesView && (
           <div className="space-y-4">
             {/* 篩選列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -1466,11 +1621,11 @@ function InvoicePageInner() {
                         ) : statsData.rows.map((row, idx) => {
                           const jumpToList = (wh) => {
                             const [y, mo] = row.month.split('-').map(Number);
-                            setActiveView('list');
                             setSearchDateFrom(`${row.month}-01`);
                             setSearchDateTo(`${row.month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`);
                             setSearchWarehouse(wh || '');
                             setSearchInvoiceTitle('');
+                            goSalesView('list');
                           };
                           return (
                             <tr key={row.month} className={`hover:bg-green-50/30 ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
@@ -1561,7 +1716,7 @@ function InvoicePageInner() {
           </div>
         )}
 
-        {activeView === 'list' && (<>
+        {activeView === 'list' && canSalesView && (<>
         {/* 搜尋列 */}
         <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
           <div className="flex flex-wrap items-center gap-3">

@@ -77,6 +77,7 @@ export async function POST(request) {
         assetType,
         address: body.address?.trim() || null,
         areaSqm: areaSqm != null ? areaSqm : null,
+        acquisitionDate: body.acquisitionDate?.trim() || null,
         notes: body.notes?.trim() || null,
         rentalPropertyId,
       },

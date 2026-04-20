@@ -106,6 +106,9 @@ export async function PATCH(request, { params }) {
     if (amount !== undefined) updateData.amount = Number(amount);
     if (dueDate !== undefined) updateData.dueDate = dueDate;
     if (taxType !== undefined) updateData.taxType = taxType;
+    if (body.certNo !== undefined) updateData.certNo = body.certNo?.trim() || null;
+    if (body.paidDate !== undefined) updateData.paidDate = body.paidDate || null;
+    if (body.note !== undefined) updateData.note = body.note?.trim() || null;
 
     if (Object.keys(updateData).length === 0) {
       return createErrorResponse('VALIDATION_FAILED', '請提供要更新的欄位', 400);

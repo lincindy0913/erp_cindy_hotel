@@ -71,7 +71,6 @@ if (typeof globalThis.__rlCleanup === 'undefined') {
 // 模組路由 → 所需權限對應表
 const ROUTE_PERMISSIONS = {
   '/purchasing': 'purchasing.view',
-  '/sales': 'sales.view',
   '/finance': 'finance.view',
   '/cashier': 'cashier.view',
   '/inventory': 'inventory.view',
@@ -157,6 +156,31 @@ export default withAuth(
       return NextResponse.next();
     }
 
+    // /sales：進項發票與「發票私帳」同一頁，擁有 sales.view 或 owner_expense.view 即可
+    if (pathname === '/sales' || pathname.startsWith('/sales/')) {
+      const permissions = token?.permissions || [];
+      const ok =
+        token?.role === 'admin' ||
+        permissions.includes('*') ||
+        permissions.includes('sales.view') ||
+        permissions.includes('owner_expense.view');
+      if (!ok) {
+        if (isApiRoute) {
+          return NextResponse.json(
+            { error: { code: 'FORBIDDEN', message: '權限不足' } },
+            { status: 403 }
+          );
+        }
+        return NextResponse.redirect(new URL('/unauthorized', req.url));
+      }
+      const res = NextResponse.next();
+      if (isApiRoute) {
+        res.headers.set('Api-Version', API_VERSION);
+        res.headers.set('Deprecation', 'false');
+      }
+      return res;
+    }
+
     // 模組路由 - 檢查權限
     const requiredPermission = getRequiredPermission(pathname);
     if (requiredPermission) {
@@ -208,7 +232,10 @@ export const config = {
     '/api/:path*',
     '/admin/:path*',
     '/purchasing/:path*',
+    '/sales',
     '/sales/:path*',
+    '/owner-expenses',
+    '/owner-expenses/:path*',
     '/finance/:path*',
     '/cashier/:path*',
     '/inventory/:path*',

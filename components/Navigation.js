@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
   { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
   { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
-  { href: '/owner-expenses', label: '業主往來', linkClass: 'link-pms-income', requiredPermission: 'owner_expense.view' },
+  { href: '/sales?view=privateLedger', label: '發票私帳', linkClass: 'link-pms-income', requiredPermission: 'owner_expense.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
   { href: '/assets', label: '資產管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
   { href: '/engineering', label: '工程',      linkClass: 'link-engineering', requiredPermission: 'engineering.view' },

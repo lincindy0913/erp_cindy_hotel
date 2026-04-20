@@ -118,41 +118,32 @@ export async function POST(request) {
     const nextYear = month === 12 ? parseInt(year) + 1 : parseInt(year);
     const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-    // Transactions before this month for opening balance
-    const txBefore = await prisma.cashTransaction.findMany({
-      where: {
-        accountId: parseInt(accountId),
-        transactionDate: { lt: monthStart }
-      }
-    });
+    // Use groupBy to sum by type — avoids loading every transaction row
+    const [txBeforeGroups, txInMonthGroups] = await Promise.all([
+      prisma.cashTransaction.groupBy({
+        by: ['type'],
+        where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } },
+        _sum: { amount: true },
+      }),
+      prisma.cashTransaction.groupBy({
+        by: ['type'],
+        where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } },
+        _sum: { amount: true },
+      }),
+    ]);
 
-    let openingBalance = Number(account.openingBalance);
-    txBefore.forEach(tx => {
-      const amt = Number(tx.amount);
-      if (tx.type === '收入' || tx.type === '移轉入') {
-        openingBalance += amt;
-      } else if (tx.type === '支出' || tx.type === '移轉') {
-        openingBalance -= amt;
+    const netFromGroups = (groups) => {
+      let net = 0;
+      for (const g of groups) {
+        const amt = Number(g._sum.amount || 0);
+        if (g.type === '收入' || g.type === '移轉入') net += amt;
+        else if (g.type === '支出' || g.type === '移轉') net -= amt;
       }
-    });
+      return net;
+    };
 
-    // Transactions in this month for closing balance
-    const txInMonth = await prisma.cashTransaction.findMany({
-      where: {
-        accountId: parseInt(accountId),
-        transactionDate: { gte: monthStart, lt: monthEnd }
-      }
-    });
-
-    let closingBalanceSystem = openingBalance;
-    txInMonth.forEach(tx => {
-      const amt = Number(tx.amount);
-      if (tx.type === '收入' || tx.type === '移轉入') {
-        closingBalanceSystem += amt;
-      } else if (tx.type === '支出' || tx.type === '移轉') {
-        closingBalanceSystem -= amt;
-      }
-    });
+    const openingBalance = Number(account.openingBalance) + netFromGroups(txBeforeGroups);
+    const closingBalanceSystem = openingBalance + netFromGroups(txInMonthGroups);
 
     // Generate reconciliation number
     const dateStr = `${year}${String(month).padStart(2, '0')}`;

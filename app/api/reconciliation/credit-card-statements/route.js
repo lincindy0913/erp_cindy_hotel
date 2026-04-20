@@ -33,6 +33,7 @@ export async function GET(request) {
         feeDetails: { orderBy: [{ origin: 'asc' }, { cardType: 'asc' }] },
       },
       orderBy: [{ billingDate: 'desc' }, { id: 'desc' }],
+      take: 300,
     });
 
     return NextResponse.json(statements.map(s => ({

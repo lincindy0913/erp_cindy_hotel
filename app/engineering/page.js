@@ -150,18 +150,10 @@ function EngineeringPageInner() {
   const executedPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '已執行'), [paymentOrders]);
   const rejectedPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '已拒絕'), [paymentOrders]);
 
-  function getPayTabOrders() {
-    switch (payTab) {
-      case 'draft': return draftPaymentOrders;
-      case 'pending': return pendingPaymentOrders;
-      case 'executed': return executedPaymentOrders;
-      case 'rejected': return rejectedPaymentOrders;
-      default: return paymentOrders;
-    }
-  }
-
   const filteredPaymentOrders = useMemo(() => {
-    const base = getPayTabOrders();
+    const statusMap = { draft: '草稿', pending: '待出納', executed: '已執行', rejected: '已拒絕' };
+    const targetStatus = statusMap[payTab];
+    const base = targetStatus ? paymentOrders.filter(o => o.status === targetStatus) : paymentOrders;
     return base.filter(o => {
       if (paySearchDateFrom) {
         const d = (o.createdAt || '').slice(0, 10);
@@ -175,7 +167,6 @@ function EngineeringPageInner() {
       if (paySearchWarehouse && (o.warehouse || '') !== paySearchWarehouse) return false;
       return true;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentOrders, payTab, paySearchDateFrom, paySearchDateTo, paySearchSupplierId, paySearchWarehouse]);
 
   const { sortKey: engPayKey, sortDir: engPayDir, toggleSort: engPayToggle } = useColumnSort('orderNo', 'asc');
@@ -250,10 +241,11 @@ function EngineeringPageInner() {
   function handlePayPrint() {
     const rows = sortedPaymentOrders;
     if (rows.length === 0) return;
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const filterInfo = [];
-    if (paySearchDateFrom || paySearchDateTo) filterInfo.push(`日期: ${paySearchDateFrom || '~'} ~ ${paySearchDateTo || '~'}`);
-    if (paySearchWarehouse) filterInfo.push(`館別: ${paySearchWarehouse}`);
-    if (paySearchSupplierId) { const s = suppliers.find(s => String(s.id) === paySearchSupplierId); filterInfo.push(`廠商: ${s?.name || paySearchSupplierId}`); }
+    if (paySearchDateFrom || paySearchDateTo) filterInfo.push(`日期: ${esc(paySearchDateFrom || '~')} ~ ${esc(paySearchDateTo || '~')}`);
+    if (paySearchWarehouse) filterInfo.push(`館別: ${esc(paySearchWarehouse)}`);
+    if (paySearchSupplierId) { const s = suppliers.find(s => String(s.id) === paySearchSupplierId); filterInfo.push(`廠商: ${esc(s?.name || paySearchSupplierId)}`); }
     const w = window.open('', '_blank');
     w.document.write(`<html><head><title>工程付款單</title>
       <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
@@ -264,7 +256,7 @@ function EngineeringPageInner() {
       h2{margin:0 0 4px} .info{color:#666;font-size:12px;margin-bottom:12px}
       @media print{button{display:none}}</style></head><body>
       <h2>工程付款單</h2>
-      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}列印時間: ${new Date().toLocaleString('zh-TW')}</div>
+      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}列印時間: ${esc(new Date().toLocaleString('zh-TW'))}</div>
       <table><thead><tr>
         <th>付款單號</th><th>摘要</th><th>廠商</th><th>館別</th><th class="right">金額</th><th>狀態</th><th>建立日期</th>
       </tr></thead><tbody>`);
@@ -273,9 +265,9 @@ function EngineeringPageInner() {
       const amt = Number(o.netAmount || 0);
       total += amt;
       w.document.write(`<tr>
-        <td>${o.orderNo || ''}</td><td>${o.summary || '－'}</td><td>${o.supplierName || '－'}</td>
-        <td>${o.warehouse || '－'}</td><td class="right">${amt.toLocaleString()}</td><td>${o.status || ''}</td>
-        <td>${o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '－'}</td>
+        <td>${esc(o.orderNo)}</td><td>${esc(o.summary) || '－'}</td><td>${esc(o.supplierName) || '－'}</td>
+        <td>${esc(o.warehouse) || '－'}</td><td class="right">${amt.toLocaleString()}</td><td>${esc(o.status)}</td>
+        <td>${o.createdAt ? esc(new Date(o.createdAt).toLocaleDateString('zh-TW')) : '－'}</td>
       </tr>`);
     });
     w.document.write(`</tbody><tfoot><tr>
@@ -290,20 +282,21 @@ function EngineeringPageInner() {
   function handlePayExportExcel() {
     const rows = sortedPaymentOrders;
     if (rows.length === 0) return;
+    const csvEsc = (v) => { const s = String(v == null ? '' : v); return `"${s.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`; };
     const header = ['付款單號', '摘要', '廠商', '館別', '金額', '狀態', '建立日期'];
-    const csvRows = [header.join(',')];
+    const csvRows = [header.map(csvEsc).join(',')];
     rows.forEach(o => {
       csvRows.push([
         o.orderNo || '',
-        (o.summary || '').replace(/,/g, '，'),
-        (o.supplierName || '').replace(/,/g, '，'),
+        o.summary || '',
+        o.supplierName || '',
         o.warehouse || '',
         Number(o.netAmount || 0),
         o.status || '',
-        o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : ''
-      ].map(c => `"${c}"`).join(','));
+        o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '',
+      ].map(csvEsc).join(','));
     });
-    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob(['\uFEFF' + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -388,17 +381,13 @@ function EngineeringPageInner() {
   useEffect(() => {
     fetchProjects();
     fetchSuppliers();
-    fetchProducts();
-    fetchWarehouseDepartments();
-    fetchContracts();
-    fetchPaymentOrders();
-    refreshDashIncomes();
   }, []);
 
   useEffect(() => {
+    if (activeTab === 'projects') { fetchContracts(); fetchPaymentOrders(); refreshDashIncomes(); fetchWarehouseDepartments(); }
     if (activeTab === 'contracts') fetchContracts(filterProjectId || undefined);
-    if (activeTab === 'materials') { fetchMaterials(filterProjectId || undefined); fetchContracts(); }
-    if (activeTab === 'projectMgmt') { fetchContracts(); fetchPaymentOrders(); }
+    if (activeTab === 'materials') { fetchMaterials(filterProjectId || undefined); fetchContracts(); fetchProducts(); }
+    if (activeTab === 'projectMgmt') { fetchContracts(); fetchPaymentOrders(); fetchWarehouseDepartments(); }
     if (activeTab === 'payments') {
       fetchPaymentOrders();
       fetchAccounts();
@@ -2427,45 +2416,55 @@ ${projectRows.map(p => `<tr>
                     fetchPaymentOrders();
                     showToast('付款單已更新', 'success');
                   } else {
-                    // Create new payment order
-                    const res = await fetch('/api/payment-orders', {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        invoiceIds: [], paymentMethod: paymentForm.paymentMethod,
-                        netAmount: parseFloat(paymentForm.netAmount), amount: parseFloat(paymentForm.amount || paymentForm.netAmount),
-                        discount: 0, supplierId: paymentForm.supplierId || null, supplierName: paymentForm.supplierName || null,
-                        dueDate: paymentForm.dueDate || null, accountId: paymentForm.accountId || null,
-                        summary: paymentForm.summary || null, note: paymentForm.note || null,
-                        status: '待出納', sourceType: 'engineering',
-                        sourceRecordId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
-                        warehouse: paymentForm.warehouse || null,
-                      }),
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error?.message || '建立失敗');
-                    // Create material requisition records from selected contract materials
+                    // Build material rows from selected contract materials
                     const selContract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
                     const contractMats = selContract?.materials || [];
                     const matRows = (paymentForm.materials || []).filter(m => m.materialId && parseFloat(m.quantity) > 0);
-                    if (matRows.length > 0) {
-                      const projId = selContract?.projectId || (paymentForm.projectId ? parseInt(paymentForm.projectId) : null);
-                      for (const mat of matRows) {
-                        const cm = contractMats.find(c => c.id === Number(mat.materialId));
-                        if (!cm) continue;
-                        const qty = parseFloat(mat.quantity) || 0;
-                        await fetch('/api/engineering/materials', {
-                          method: 'POST', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            projectId: projId, contractId: paymentForm.contractId ? parseInt(paymentForm.contractId) : null,
-                            termId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
-                            description: cm.description, quantity: qty, unit: cm.unit || '式', unitPrice: cm.unitPrice,
-                            usedAt: new Date().toISOString().slice(0, 10),
-                            note: mat.note?.trim() || `付款單 ${data.paymentNo || ''} 領用`,
-                          }),
-                        });
-                      }
-                      fetchMaterials(filterProjectId || undefined);
-                    }
+                    const projId = selContract?.projectId || (paymentForm.projectId ? parseInt(paymentForm.projectId) : null);
+                    const materialPayload = matRows.map(mat => {
+                      const cm = contractMats.find(c => c.id === Number(mat.materialId));
+                      if (!cm) return null;
+                      return {
+                        projectId: projId, contractId: paymentForm.contractId ? parseInt(paymentForm.contractId) : null,
+                        termId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
+                        description: cm.description, quantity: parseFloat(mat.quantity) || 0,
+                        unit: cm.unit || '式', unitPrice: cm.unitPrice, note: mat.note?.trim() || null,
+                      };
+                    }).filter(Boolean);
+
+                    // Use combined atomic endpoint when materials are present, else plain payment order
+                    const endpoint = materialPayload.length > 0
+                      ? '/api/engineering/payment-orders-with-materials'
+                      : '/api/payment-orders';
+                    const payload = materialPayload.length > 0
+                      ? {
+                          paymentMethod: paymentForm.paymentMethod,
+                          netAmount: parseFloat(paymentForm.netAmount),
+                          supplierId: paymentForm.supplierId || null, supplierName: paymentForm.supplierName || null,
+                          dueDate: paymentForm.dueDate || null, accountId: paymentForm.accountId || null,
+                          summary: paymentForm.summary || null, note: paymentForm.note || null,
+                          sourceRecordId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
+                          warehouse: paymentForm.warehouse || null,
+                          materials: materialPayload,
+                        }
+                      : {
+                          invoiceIds: [], paymentMethod: paymentForm.paymentMethod,
+                          netAmount: parseFloat(paymentForm.netAmount), amount: parseFloat(paymentForm.amount || paymentForm.netAmount),
+                          discount: 0, supplierId: paymentForm.supplierId || null, supplierName: paymentForm.supplierName || null,
+                          dueDate: paymentForm.dueDate || null, accountId: paymentForm.accountId || null,
+                          summary: paymentForm.summary || null, note: paymentForm.note || null,
+                          status: '待出納', sourceType: 'engineering',
+                          sourceRecordId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
+                          warehouse: paymentForm.warehouse || null,
+                        };
+
+                    const res = await fetch(endpoint, {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error?.message || '建立失敗');
+                    if (materialPayload.length > 0) fetchMaterials(filterProjectId || undefined);
                     setShowPaymentModal(false);
                     fetchPaymentOrders();
                     if (activeTab === 'contracts' || activeTab === 'projectMgmt') fetchContracts(filterProjectId || undefined);

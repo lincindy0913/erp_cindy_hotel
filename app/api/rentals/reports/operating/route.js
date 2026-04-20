@@ -85,7 +85,7 @@ export async function GET(request) {
           ? { id: propertyIdFilter }
           : {};
 
-    const [incomes, utilityIncomes, maintenances, taxes, properties] = await Promise.all([
+    const [incomes, utilityIncomes, maintenances, taxes, properties, assetAreas] = await Promise.all([
       prisma.rentalIncome.findMany({
         where: { ...incomeYearFilter, ...propFilter },
         select: { propertyId: true, actualAmount: true, status: true }
@@ -105,7 +105,11 @@ export async function GET(request) {
       prisma.rentalProperty.findMany({
         where: propertiesWhere,
         select: { id: true, name: true, buildingName: true, unitNo: true, address: true }
-      })
+      }),
+      prisma.asset.findMany({
+        where: { rentalPropertyId: { not: null }, areaSqm: { not: null } },
+        select: { rentalPropertyId: true, areaSqm: true },
+      }),
     ]);
 
     const propertyIds = new Set([
@@ -123,6 +127,11 @@ export async function GET(request) {
         });
 
     const propMap = new Map(allProperties.map(p => [p.id, p]));
+    const areaSqmByProp = new Map(
+      assetAreas
+        .filter(a => a.rentalPropertyId != null && a.areaSqm != null)
+        .map(a => [a.rentalPropertyId, Number(a.areaSqm)])
+    );
 
     const rentByProp = new Map();
     for (const i of incomes) {
@@ -151,6 +160,8 @@ export async function GET(request) {
       const totalExpense = maintenance + tax;
       const netProfit = rent - totalExpense;
       const profitMargin = rent > 0 ? (netProfit / rent) * 100 : null;
+      const areaSqm = areaSqmByProp.get(pid) || null;
+      const netProfitPerSqm = areaSqm && areaSqm > 0 ? Math.round((netProfit / areaSqm) * 100) / 100 : null;
       return {
         propertyId: pid,
         propertyLabel: label,
@@ -159,7 +170,9 @@ export async function GET(request) {
         taxAmount: tax,
         totalExpense,
         netProfit,
-        profitMarginPercent: profitMargin != null ? Math.round(profitMargin * 100) / 100 : null
+        profitMarginPercent: profitMargin != null ? Math.round(profitMargin * 100) / 100 : null,
+        areaSqm,
+        netProfitPerSqm,
       };
     });
 

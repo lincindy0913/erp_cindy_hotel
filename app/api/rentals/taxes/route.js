@@ -88,7 +88,10 @@ export async function POST(request) {
           taxType,
           dueDate,
           amount: parseFloat(amount),
-          status: 'pending'
+          status: 'pending',
+          certNo: body.certNo?.trim() || null,
+          paidDate: body.paidDate || null,
+          note: body.note?.trim() || null,
         },
         include: {
           property: { select: { id: true, name: true, buildingName: true } }

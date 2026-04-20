@@ -1,7 +1,8 @@
 # ============================================
 # Stage 1: Dependencies & Build
 # ============================================
-FROM node:20-alpine AS builder
+# Node 22 Active LTS — align with local `engines` if set
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -11,7 +12,7 @@ RUN apk add --no-cache openssl
 # Install dependencies (copy prisma schema first for postinstall generate)
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
-RUN npm install --prefer-offline || npm install
+RUN npm ci
 
 # App source and build
 COPY . .
@@ -21,7 +22,7 @@ RUN npm run build
 # ============================================
 # Stage 2: Runtime (standalone)
 # ============================================
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
@@ -31,6 +32,12 @@ ENV HOSTNAME=0.0.0.0
 
 # Install OpenSSL for Prisma engine
 RUN apk add --no-cache openssl
+
+ARG BUILD_DATE
+ARG GIT_COMMIT
+LABEL org.opencontainers.image.title="erp-inventory-system"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${GIT_COMMIT}"
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
@@ -64,6 +71,9 @@ COPY --from=builder /app/node_modules/xlsx ./node_modules/xlsx
 
 # Copy font files if they exist
 COPY --from=builder /app/lib/fonts ./lib/fonts
+
+# Package version for /api/health (standalone does not set npm_package_version)
+COPY --from=builder /app/package.json ./package.json
 
 USER nextjs
 

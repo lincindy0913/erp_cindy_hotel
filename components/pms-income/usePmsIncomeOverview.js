@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 /**
  * 每日匯入總覽（overview）分頁：資料、館別初始化、Excel 帶入 Modal、刪除批次。
@@ -60,6 +60,11 @@ export function usePmsIncomeOverview({
     if (activeTab === 'overview') fetchOverviewData();
   }, [activeTab, fetchOverviewData]);
 
+  // Capture the initial warehouse value so the once-on-mount effect below
+  // can check it without adding overviewUploadWarehouse to deps (which would
+  // cause the warehouse-departments fetch to re-fire on every upload change).
+  const initWarehouseRef = useRef(overviewUploadWarehouse);
+
   useEffect(() => {
     fetch('/api/warehouse-departments')
       .then((r) => r.json())
@@ -69,16 +74,14 @@ export function usePmsIncomeOverview({
         const listToUse = buildings.length > 0 ? buildings : WAREHOUSES_FALLBACK;
         setWAREHOUSES(listToUse);
         setOverviewBuildings(listToUse);
-        if (!overviewUploadWarehouse || !listToUse.includes(overviewUploadWarehouse)) {
+        if (!initWarehouseRef.current || !listToUse.includes(initWarehouseRef.current)) {
           setOverviewUploadWarehouse(listToUse[0] || '');
         }
       })
       .catch(() => {
         setOverviewBuildings(WAREHOUSES_FALLBACK);
       });
-    // 僅掛載時同步主檔館別（與原 page 行為一致）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [WAREHOUSES_FALLBACK, setWAREHOUSES]);
 
   const buildingList = overviewBuildings.length > 0 ? overviewBuildings : WAREHOUSES;
   const selectedWarehouseForUpload = useMemo(() => {

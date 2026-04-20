@@ -71,7 +71,9 @@ export async function POST(request) {
           isEmployeeAdvance: !!isEmployeeAdvance,
           advancedBy: isEmployeeAdvance ? (advancedBy || null) : null,
           advancePaymentMethod: isEmployeeAdvance ? (advancePaymentMethod || '現金') : null,
-          note: body.note || null
+          note: body.note || null,
+          isCapitalized: !!body.isCapitalized,
+          isRecurring: !!body.isRecurring,
         },
         include: {
           property: { select: { id: true, name: true, buildingName: true } }

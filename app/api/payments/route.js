@@ -10,8 +10,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.CASHIER_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
+    const { searchParams } = new URL(request.url);
+    const includeSummary = searchParams.get('summary') === 'true';
+
     const payments = await prisma.payment.findMany({
       orderBy: { id: 'asc' }
     });
@@ -25,7 +28,31 @@ export async function GET(request) {
       salesId: Array.isArray(p.invoiceIds) && p.invoiceIds.length > 0 ? p.invoiceIds[0] : null
     }));
 
-    return NextResponse.json(result);
+    if (!includeSummary) return NextResponse.json(result);
+
+    // 淨應付金額：未完成付款總額 - 已確認折讓總額
+    const [unpaidInvoices, confirmedAllowances] = await Promise.all([
+      prisma.salesMaster.findMany({
+        where: { invoiceType: '進貨單', paymentStatus: { not: '已付款' } },
+        select: { totalAmount: true },
+      }),
+      prisma.purchaseAllowance.findMany({
+        where: { status: '已確認' },
+        select: { totalAmount: true },
+      }),
+    ]);
+
+    const totalUnpaid = unpaidInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+    const totalAllowances = confirmedAllowances.reduce((s, a) => s + Number(a.totalAmount || 0), 0);
+
+    return NextResponse.json({
+      payments: result,
+      summary: {
+        totalUnpaidInvoices: totalUnpaid,
+        totalConfirmedAllowances: totalAllowances,
+        netPayable: totalUnpaid - totalAllowances,
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

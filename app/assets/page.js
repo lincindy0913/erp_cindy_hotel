@@ -41,6 +41,9 @@ function AssetsPageInner() {
   const [linkedTaxes, setLinkedTaxes] = useState([]);
   const [linkedMaint, setLinkedMaint] = useState([]);
   const [linkedLoading, setLinkedLoading] = useState(false);
+  const [plYear, setPlYear] = useState(new Date().getFullYear());
+  const [plData, setPlData] = useState(null);
+  const [plLoading, setPlLoading] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -50,6 +53,7 @@ function AssetsPageInner() {
     assetType: 'BUILDING',
     address: '',
     areaSqm: '',
+    acquisitionDate: '',
     notes: '',
     rentalPropertyId: '',
   });
@@ -110,6 +114,7 @@ function AssetsPageInner() {
     if (!pid) {
       setLinkedTaxes([]);
       setLinkedMaint([]);
+      setPlData(null);
       return;
     }
     let cancelled = false;
@@ -137,6 +142,23 @@ function AssetsPageInner() {
     return () => { cancelled = true; };
   }, [selected?.rentalPropertyId]);
 
+  async function fetchPL(pid, year) {
+    if (!pid) return;
+    setPlLoading(true);
+    setPlData(null);
+    try {
+      const res = await fetch(`/api/rentals/reports/operating?propertyId=${pid}&year=${year}`);
+      const data = await res.json();
+      if (res.ok && data.rows?.length > 0) setPlData(data.rows[0]);
+      else setPlData({ empty: true });
+    } catch { setPlData({ empty: true }); }
+    setPlLoading(false);
+  }
+
+  useEffect(() => {
+    if (selected?.rentalPropertyId) fetchPL(selected.rentalPropertyId, plYear);
+  }, [selected?.rentalPropertyId, plYear]);
+
   const propertyOptions = useMemo(() => {
     return properties.filter((p) => {
       if (!p.asset) return true;
@@ -152,6 +174,7 @@ function AssetsPageInner() {
       assetType: 'BUILDING',
       address: '',
       areaSqm: '',
+      acquisitionDate: '',
       notes: '',
       rentalPropertyId: linkProperty || '',
     });
@@ -165,6 +188,7 @@ function AssetsPageInner() {
       assetType: a.assetType || 'BUILDING',
       address: a.address || '',
       areaSqm: a.areaSqm != null ? String(a.areaSqm) : '',
+      acquisitionDate: a.acquisitionDate || '',
       notes: a.notes || '',
       rentalPropertyId: a.rentalPropertyId != null ? String(a.rentalPropertyId) : '',
     });
@@ -183,6 +207,7 @@ function AssetsPageInner() {
         assetType: form.assetType,
         address: form.address.trim() || null,
         areaSqm: form.areaSqm === '' ? null : form.areaSqm,
+        acquisitionDate: form.acquisitionDate || null,
         notes: form.notes.trim() || null,
         rentalPropertyId: form.rentalPropertyId === '' ? null : form.rentalPropertyId,
       };
@@ -329,6 +354,8 @@ function AssetsPageInner() {
             <div className="text-sm text-gray-600 space-y-1 mb-4">
               <p>類型：{ASSET_TYPE_OPTIONS.find((o) => o.value === selected.assetType)?.label || selected.assetType}</p>
               {selected.address && <p>地址：{selected.address}</p>}
+              {selected.areaSqm && <p>面積：{String(selected.areaSqm)} ㎡</p>}
+              {selected.acquisitionDate && <p>取得日期：{selected.acquisitionDate}</p>}
               {selected.rentalPropertyId ? (
                 <p>
                   租屋物業：
@@ -341,12 +368,66 @@ function AssetsPageInner() {
                   <Link className="text-teal-700 hover:underline" href="/rentals?tab=maintenance">前往維護費</Link>
                 </p>
               ) : (
-                <p className="text-gray-500">尚未綁定物業，無法顯示該址之稅款／維護費摘要。</p>
+                <p className="text-gray-500">尚未綁定物業，稅款與維護費請至「租屋管理」登錄。</p>
               )}
             </div>
 
             {selected.rentalPropertyId && (
               <>
+                {/* 損益卡 */}
+                <div className="mb-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <h4 className="text-sm font-semibold text-gray-700">年度損益卡</h4>
+                    <select value={plYear} onChange={e => setPlYear(Number(e.target.value))}
+                      className="border rounded px-2 py-1 text-xs">
+                      {[0,1,2,3].map(d => {
+                        const y = new Date().getFullYear() - d;
+                        return <option key={y} value={y}>{y} 年</option>;
+                      })}
+                    </select>
+                    <button onClick={() => fetchPL(selected.rentalPropertyId, plYear)}
+                      className="text-xs text-teal-600 hover:text-teal-800 underline">重新載入</button>
+                  </div>
+                  {plLoading ? (
+                    <p className="text-xs text-gray-400">載入中…</p>
+                  ) : plData && !plData.empty ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+                      <div className="bg-teal-50 rounded-lg p-3 border border-teal-100">
+                        <p className="text-xs text-gray-500">租金收入</p>
+                        <p className="text-base font-bold text-teal-700">NT$ {fmtMoney(plData.rentIncome)}</p>
+                      </div>
+                      <div className="bg-red-50 rounded-lg p-3 border border-red-100">
+                        <p className="text-xs text-gray-500">稅費合計</p>
+                        <p className="text-base font-bold text-red-600">NT$ {fmtMoney(plData.taxAmount)}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">（含維修 {fmtMoney(plData.maintenanceAmount)}）</p>
+                      </div>
+                      <div className={`rounded-lg p-3 border ${plData.netProfit >= 0 ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
+                        <p className="text-xs text-gray-500">年度淨額</p>
+                        <p className={`text-base font-bold ${plData.netProfit >= 0 ? 'text-green-700' : 'text-orange-700'}`}>
+                          NT$ {fmtMoney(plData.netProfit)}
+                        </p>
+                        {plData.profitMarginPercent != null && (
+                          <p className="text-xs text-gray-400 mt-0.5">利潤率 {plData.profitMarginPercent}%</p>
+                        )}
+                      </div>
+                      {plData.netProfitPerSqm != null ? (
+                        <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                          <p className="text-xs text-gray-500">每坪淨收益</p>
+                          <p className="text-base font-bold text-purple-700">NT$ {fmtMoney(plData.netProfitPerSqm)}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{String(plData.areaSqm)} ㎡</p>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                          <p className="text-xs text-gray-400">每坪淨收益</p>
+                          <p className="text-xs text-gray-400 mt-1">（請在資產主檔填入面積）</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400">{plYear} 年無收支資料</p>
+                  )}
+                </div>
+
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">稅款（該物業）</h4>
                 {linkedLoading ? (
                   <p className="text-xs text-gray-400 mb-4">載入稅款與維護…</p>
@@ -361,19 +442,25 @@ function AssetsPageInner() {
                             <th className="text-right px-2 py-1">金額</th>
                             <th className="text-left px-2 py-1">狀態</th>
                             <th className="text-left px-2 py-1">到期日</th>
+                            <th className="text-left px-2 py-1">憑證號</th>
                           </tr>
                         </thead>
                         <tbody>
                           {linkedTaxes.length === 0 ? (
-                            <tr><td colSpan={5} className="px-2 py-2 text-gray-400">無稅款紀錄</td></tr>
+                            <tr><td colSpan={6} className="px-2 py-2 text-gray-400">無稅款紀錄</td></tr>
                           ) : (
                             linkedTaxes.slice(0, 15).map((t) => (
                               <tr key={t.id} className="border-t">
                                 <td className="px-2 py-1">{t.taxYear}</td>
                                 <td className="px-2 py-1">{t.taxType}</td>
                                 <td className="px-2 py-1 text-right">{fmtMoney(t.amount)}</td>
-                                <td className="px-2 py-1">{t.status || '—'}</td>
+                                <td className="px-2 py-1">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                    {t.status === 'paid' ? '已繳' : '待繳'}
+                                  </span>
+                                </td>
                                 <td className="px-2 py-1">{t.dueDate || '—'}</td>
+                                <td className="px-2 py-1 text-gray-400">{t.certNo || '—'}</td>
                               </tr>
                             ))
                           )}
@@ -389,18 +476,23 @@ function AssetsPageInner() {
                             <th className="text-left px-2 py-1">日期</th>
                             <th className="text-left px-2 py-1">類別</th>
                             <th className="text-right px-2 py-1">金額</th>
+                            <th className="text-left px-2 py-1">性質</th>
                             <th className="text-left px-2 py-1">狀態</th>
                           </tr>
                         </thead>
                         <tbody>
                           {linkedMaint.length === 0 ? (
-                            <tr><td colSpan={4} className="px-2 py-2 text-gray-400">無維護紀錄</td></tr>
+                            <tr><td colSpan={5} className="px-2 py-2 text-gray-400">無維護紀錄</td></tr>
                           ) : (
                             linkedMaint.slice(0, 15).map((m) => (
                               <tr key={m.id} className="border-t">
                                 <td className="px-2 py-1">{m.maintenanceDate}</td>
                                 <td className="px-2 py-1">{m.category}</td>
                                 <td className="px-2 py-1 text-right">{fmtMoney(m.amount)}</td>
+                                <td className="px-2 py-1">
+                                  {m.isCapitalized && <span className="bg-blue-100 text-blue-700 px-1 rounded mr-1">資本化</span>}
+                                  {m.isRecurring && <span className="bg-gray-100 text-gray-600 px-1 rounded">例行</span>}
+                                </td>
                                 <td className="px-2 py-1">{m.status || '—'}</td>
                               </tr>
                             ))
@@ -460,6 +552,15 @@ function AssetsPageInner() {
                   className="w-full border rounded px-3 py-2 mt-1"
                   value={form.areaSqm}
                   onChange={(e) => setForm((f) => ({ ...f, areaSqm: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-gray-600">取得日期（選填）</label>
+                <input
+                  type="date"
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={form.acquisitionDate}
+                  onChange={(e) => setForm((f) => ({ ...f, acquisitionDate: e.target.value }))}
                 />
               </div>
               <div>
