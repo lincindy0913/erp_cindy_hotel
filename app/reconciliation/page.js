@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
@@ -95,7 +95,7 @@ function formatMoney(val) {
   return Number(val).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-export default function ReconciliationPage() {
+function ReconciliationPageInner() {
   const { data: session } = useSession();
   const isLoggedIn = !!session;
   const router = useRouter();
@@ -3206,5 +3206,13 @@ export default function ReconciliationPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ReconciliationPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-500">載入中…</div>}>
+      <ReconciliationPageInner />
+    </Suspense>
   );
 }
