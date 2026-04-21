@@ -56,13 +56,14 @@ function InvoicePageInner() {
   const [reportTitle, setReportTitle] = useState('');
   const [reportWarehouse, setReportWarehouse] = useState('');
   const [reportType, setReportType] = useState('');
+  const [reportOwnerData, setReportOwnerData] = useState({ total: 0, count: 0 });
 
-  const INVOICE_SOURCES = ['進貨單', '租屋支出', '業主私帳', '固定費用'];
+  const INVOICE_SOURCES = ['進貨單', '租屋支出', '固定費用'];
   const SOURCE_COLORS = {
-    '進貨單':  { bg: 'bg-gray-100',   text: 'text-gray-700',   border: 'border-gray-300',   dot: 'bg-gray-400'   },
-    '租屋支出': { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300', dot: 'bg-purple-400' },
-    '業主私帳': { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-400' },
-    '固定費用': { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300',   dot: 'bg-blue-400'   },
+    '進貨單':      { bg: 'bg-gray-100',   text: 'text-gray-700',   border: 'border-gray-300',   dot: 'bg-gray-400'   },
+    '租屋支出':    { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300', dot: 'bg-purple-400' },
+    '業主發票私帳': { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-400' },
+    '固定費用':    { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300',   dot: 'bg-blue-400'   },
   };
 
   // 勾選發票（列印用）
@@ -194,6 +195,10 @@ function InvoicePageInner() {
 
   // 從網址 ?edit=id 連動開啟編輯表單（例如從財務頁「發票號」或「編輯」點入）
   useEffect(() => {
+    if (activeView === 'report') fetchOwnerExpenseTotal(reportDateFrom, reportDateTo);
+  }, [activeView, reportDateFrom, reportDateTo]);
+
+  useEffect(() => {
     const editId = searchParams.get('edit');
     if (!editId) return;
     const id = parseInt(editId, 10);
@@ -243,6 +248,19 @@ function InvoicePageInner() {
       const data = await res.json();
       setAllowances(Array.isArray(data) ? data : []);
     } catch { setAllowances([]); }
+  }
+
+  async function fetchOwnerExpenseTotal(from, to) {
+    if (!from && !to) { setReportOwnerData({ total: 0, count: 0 }); return; }
+    try {
+      const fromMonth = from ? from.slice(0, 7) : '2000-01';
+      const toMonth   = to   ? to.slice(0, 7)   : new Date().toISOString().slice(0, 7);
+      const res = await fetch(`/api/owner-expenses?from=${fromMonth}&to=${toMonth}`);
+      if (res.ok) {
+        const data = await res.json();
+        setReportOwnerData({ total: data.total ?? 0, count: data.count ?? 0 });
+      }
+    } catch { setReportOwnerData({ total: 0, count: 0 }); }
   }
 
   async function fetchProducts() {
@@ -748,7 +766,7 @@ function InvoicePageInner() {
           <div>
             <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
             {activeView === 'privateLedger' && canOwnerExpense && (
-              <p className="text-sm text-gray-500 mt-1">發票私帳與本頁「發票列表」共用進項發票；「查看發票」會依月份與抬頭帶入列表篩選。</p>
+              <p className="text-sm text-gray-500 mt-1">業主發票私帳：登記每月各抬頭進項發票金額，統計結果顯示於「報表」分頁的業主發票私帳卡片。</p>
             )}
           </div>
           {activeView === 'list' && canSalesView && (
@@ -1110,7 +1128,6 @@ function InvoicePageInner() {
                   >
                     <option value="進貨單">進貨單</option>
                     <option value="租屋支出">租屋支出</option>
-                    <option value="業主私帳">業主私帳</option>
                     <option value="固定費用">固定費用</option>
                   </select>
                 </div>
@@ -1260,7 +1277,7 @@ function InvoicePageInner() {
                   { key: 'monthly', label: '月度館別統計' },
                 ]
               : []),
-            ...(canOwnerExpense ? [{ key: 'privateLedger', label: '發票私帳' }] : []),
+            ...(canOwnerExpense ? [{ key: 'privateLedger', label: '業主發票私帳' }] : []),
           ].map((v) => (
             <button
               key={v.key}
@@ -1379,6 +1396,25 @@ function InvoicePageInner() {
                   </div>
                 );
               })}
+              {/* 業主發票私帳：來自月結登記，獨立統計 */}
+              {(() => {
+                const c = SOURCE_COLORS['業主發票私帳'];
+                const total = reportOwnerData.total;
+                const count = reportOwnerData.count;
+                return (
+                  <div className={`rounded-xl border ${c.border} bg-white shadow-sm p-4`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                      <p className={`text-xs font-medium ${c.text}`}>業主發票私帳</p>
+                    </div>
+                    <p className="text-base font-bold text-gray-800">NT$ {total.toLocaleString()}</p>
+                    <div className="mt-2 bg-gray-100 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${c.dot}`} style={{ width: total > 0 ? '100%' : '0%' }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">{count} 張 · 月結登記</p>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* 折讓彙總卡片（有折讓時顯示） */}
@@ -1755,7 +1791,6 @@ function InvoicePageInner() {
               <option value="">全部來源</option>
               <option value="進貨單">進貨單</option>
               <option value="租屋支出">租屋支出</option>
-              <option value="業主私帳">業主私帳</option>
               <option value="固定費用">固定費用</option>
             </select>
             <div className="flex items-center gap-2">
@@ -1896,7 +1931,7 @@ function InvoicePageInner() {
                           NT$ {parseFloat(invoice.totalAmount || invoice.amount + invoice.tax || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          {invoice.invoiceType === '業主私帳' && <span className="px-2 py-1 rounded text-xs bg-orange-100 text-orange-800">業主私帳</span>}
+                          {invoice.invoiceType === '業主私帳' && <span className="px-2 py-1 rounded text-xs bg-orange-100 text-orange-800">業主發票私帳</span>}
                           {invoice.invoiceType === '租屋支出' && <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">租屋支出</span>}
                           {invoice.invoiceType === '固定費用' && <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">固定費用</span>}
                           {(!invoice.invoiceType || invoice.invoiceType === '進貨單') && <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">進貨單</span>}

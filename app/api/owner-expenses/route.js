@@ -102,7 +102,21 @@ export async function GET(request) {
       });
     }
 
-    return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供 month 或 year 參數', 400);
+    // 區間彙整：?from=YYYY-MM&to=YYYY-MM → 回傳 { total, count }
+    const from = searchParams.get('from');
+    const to   = searchParams.get('to');
+    if (from && to) {
+      const expenses = await prisma.ownerMonthlyExpense.findMany({
+        where: {
+          expenseMonth: { gte: from, lte: to },
+        },
+      });
+      const total = expenses.reduce((s, e) => s + Number(e.totalAmount), 0);
+      const count = expenses.reduce((s, e) => s + (e.invoiceCount || 0), 0);
+      return NextResponse.json({ from, to, total, count });
+    }
+
+    return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供 month、year 或 from/to 參數', 400);
   } catch (error) {
     return handleApiError(error);
   }

@@ -22,7 +22,7 @@ const EXPORT_COLS = [
   { header: '備註', key: 'note' },
 ];
 
-/** 進項發票「發票私帳」區塊（嵌入 /sales 或獨立頁） */
+/** 進項發票「業主發票私帳」區塊（嵌入 /sales 或獨立頁） */
 export default function OwnerExpensesPanel({ embedded = true }) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('monthly');
@@ -212,7 +212,7 @@ export default function OwnerExpensesPanel({ embedded = true }) {
     <>
       {!embedded && (
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">發票私帳</h2>
+          <h2 className="text-2xl font-bold text-gray-900">業主發票私帳</h2>
           <p className="text-sm text-gray-500 mt-1">老闆旗下各公司月底私用發票彙整</p>
         </div>
       )}
@@ -255,8 +255,8 @@ export default function OwnerExpensesPanel({ embedded = true }) {
                   <ExportButtons
                     data={monthData.rows.map((r) => ({ ...r, ...editMap[r.companyId] }))}
                     columns={EXPORT_COLS}
-                    filename={`發票私帳_${month}`}
-                    title={`發票私帳 ${month}`}
+                    filename={`業主發票私帳_${month}`}
+                    title={`業主發票私帳 ${month}`}
                   />
                 </div>
               </>
@@ -472,8 +472,8 @@ export default function OwnerExpensesPanel({ embedded = true }) {
                     })),
                     { header: '合計', key: 'total', format: 'number' },
                   ]}
-                  filename={`發票私帳年度_${year}`}
-                  title={`發票私帳年度彙整 ${year}`}
+                  filename={`業主發票私帳年度_${year}`}
+                  title={`業主發票私帳年度彙整 ${year}`}
                 />
               </div>
             )}
