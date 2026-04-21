@@ -251,10 +251,9 @@ function InvoicePageInner() {
   }
 
   async function fetchOwnerExpenseTotal(from, to) {
-    if (!from && !to) { setReportOwnerData({ total: 0, count: 0 }); return; }
     try {
       const fromMonth = from ? from.slice(0, 7) : '2000-01';
-      const toMonth   = to   ? to.slice(0, 7)   : new Date().toISOString().slice(0, 7);
+      const toMonth   = to   ? to.slice(0, 7)   : '2099-12';
       const res = await fetch(`/api/owner-expenses?from=${fromMonth}&to=${toMonth}`);
       if (res.ok) {
         const data = await res.json();
