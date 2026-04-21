@@ -33,7 +33,7 @@ export async function GET(request) {
         },
         rentCollectAccount: { select: { id: true, name: true } },
         depositAccount: { select: { id: true, name: true } },
-        asset: { select: { id: true, name: true, assetType: true } },
+        asset: { select: { id: true, name: true, assetType: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true } },
       },
       orderBy: [{ buildingName: 'asc' }, { name: 'asc' }]
     });

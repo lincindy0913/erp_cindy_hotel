@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 const ASSET_TYPES = new Set(['LAND', 'BUILDING', 'MIXED', 'OTHER']);
 
 export async function GET(_request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
+  const auth = await requirePermission(PERMISSIONS.ASSET_VIEW);
   if (!auth.ok) return auth.response;
 
   const { id: idParam } = await params;
@@ -44,7 +44,7 @@ export async function GET(_request, { params }) {
 }
 
 export async function PATCH(request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  const auth = await requirePermission(PERMISSIONS.ASSET_EDIT);
   if (!auth.ok) return auth.response;
 
   const { id: idParam } = await params;
@@ -95,6 +95,10 @@ export async function PATCH(request, { params }) {
     if (body.acquisitionDate !== undefined) {
       data.acquisitionDate = body.acquisitionDate == null || body.acquisitionDate === '' ? null : String(body.acquisitionDate).trim();
     }
+    if (body.isAvailableForRental !== undefined) data.isAvailableForRental = body.isAvailableForRental === true;
+    if (body.hasHouseTax !== undefined) data.hasHouseTax = body.hasHouseTax === true;
+    if (body.hasLandTax !== undefined) data.hasLandTax = body.hasLandTax === true;
+    if (body.hasMaintenanceFee !== undefined) data.hasMaintenanceFee = body.hasMaintenanceFee === true;
 
     if (body.rentalPropertyId !== undefined) {
       if (body.rentalPropertyId == null || body.rentalPropertyId === '') {
@@ -135,7 +139,7 @@ export async function PATCH(request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  const auth = await requirePermission(PERMISSIONS.ASSET_EDIT);
   if (!auth.ok) return auth.response;
 
   const { id: idParam } = await params;

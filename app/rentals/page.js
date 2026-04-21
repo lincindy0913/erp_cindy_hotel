@@ -2496,7 +2496,12 @@ function RentalsPage() {
                             <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                           ) : taxes.map(tax => (
                             <tr key={tax.id} className="border-t hover:bg-gray-50">
-                              <td className="px-3 py-2">{tax.property?.name}</td>
+                              <td className="px-3 py-2">
+                                <span>{tax.property?.name}</span>
+                                {tax.property?.asset && (tax.property.asset.hasHouseTax || tax.property.asset.hasLandTax) && (
+                                  <span className="ml-1 text-xs text-amber-600 bg-amber-50 px-1 rounded">資產標記</span>
+                                )}
+                              </td>
                               <td className="px-3 py-2 text-center">{tax.taxYear}</td>
                               <td className="px-3 py-2">{tax.taxType}</td>
                               <td className="px-3 py-2">{tax.dueDate}</td>
@@ -3969,7 +3974,13 @@ function RentalsPage() {
                   <select value={taxForm.propertyId} onChange={e => setTaxForm(f => ({ ...f, propertyId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingTax}>
                     <option value="">選擇物業</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {properties.map(p => {
+                      const flags = [];
+                      if (p.asset?.hasHouseTax) flags.push('房屋稅');
+                      if (p.asset?.hasLandTax) flags.push('地價稅');
+                      const suffix = flags.length > 0 ? ` [${flags.join('·')}]` : '';
+                      return <option key={p.id} value={p.id}>{p.name}{suffix}</option>;
+                    })}
                   </select>
                 </div>
                 <div>

@@ -1515,11 +1515,15 @@ model Asset {
   address          String?          @db.VarChar(500)
   areaSqm          Decimal?         @map("area_sqm") @db.Decimal(14, 2)
   acquisitionDate  String?          @map("acquisition_date") @db.VarChar(20)
-  notes            String?          @db.Text
-  rentalPropertyId Int?             @unique @map("rental_property_id")
-  rentalProperty   RentalProperty?  @relation(fields: [rentalPropertyId], references: [id], onDelete: SetNull)
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
+  notes                String?          @db.Text
+  isAvailableForRental Boolean          @default(false) @map("is_available_for_rental")
+  hasHouseTax          Boolean          @default(false) @map("has_house_tax")
+  hasLandTax           Boolean          @default(false) @map("has_land_tax")
+  hasMaintenanceFee    Boolean          @default(false) @map("has_maintenance_fee")
+  rentalPropertyId     Int?             @unique @map("rental_property_id")
+  rentalProperty       RentalProperty?  @relation(fields: [rentalPropertyId], references: [id], onDelete: SetNull)
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
   @@index([assetType])
   @@map("assets")

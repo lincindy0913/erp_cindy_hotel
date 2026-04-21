@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 const ASSET_TYPES = new Set(['LAND', 'BUILDING', 'MIXED', 'OTHER']);
 
 export async function GET() {
-  const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
+  const auth = await requirePermission(PERMISSIONS.ASSET_VIEW);
   if (!auth.ok) return auth.response;
 
   try {
@@ -36,7 +36,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.RENTAL_CREATE);
+  const auth = await requirePermission(PERMISSIONS.ASSET_EDIT);
   if (!auth.ok) return auth.response;
 
   try {
@@ -79,6 +79,10 @@ export async function POST(request) {
         areaSqm: areaSqm != null ? areaSqm : null,
         acquisitionDate: body.acquisitionDate?.trim() || null,
         notes: body.notes?.trim() || null,
+        isAvailableForRental: body.isAvailableForRental === true,
+        hasHouseTax: body.hasHouseTax === true,
+        hasLandTax: body.hasLandTax === true,
+        hasMaintenanceFee: body.hasMaintenanceFee === true,
         rentalPropertyId,
       },
       include: {

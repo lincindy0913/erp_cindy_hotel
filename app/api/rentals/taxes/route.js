@@ -24,7 +24,12 @@ export async function GET(request) {
     const taxes = await prisma.propertyTax.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true } }
+        property: {
+          select: {
+            id: true, name: true, buildingName: true,
+            asset: { select: { id: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true } },
+          },
+        },
       },
       orderBy: [{ taxYear: 'desc' }, { dueDate: 'asc' }]
     });

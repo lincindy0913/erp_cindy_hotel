@@ -22,6 +22,22 @@ function fmtMoney(n) {
   return x.toLocaleString('zh-TW');
 }
 
+function AssetFlagBadges({ asset }) {
+  const flags = [];
+  if (asset.isAvailableForRental) flags.push({ label: '可出租', cls: 'bg-teal-100 text-teal-700' });
+  if (asset.hasHouseTax) flags.push({ label: '房屋稅', cls: 'bg-amber-100 text-amber-700' });
+  if (asset.hasLandTax) flags.push({ label: '地價稅', cls: 'bg-orange-100 text-orange-700' });
+  if (asset.hasMaintenanceFee) flags.push({ label: '維修費', cls: 'bg-blue-100 text-blue-700' });
+  if (flags.length === 0) return null;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {flags.map(f => (
+        <span key={f.label} className={`text-xs px-1.5 py-0.5 rounded ${f.cls}`}>{f.label}</span>
+      ))}
+    </span>
+  );
+}
+
 function AssetsPageInner() {
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -31,8 +47,8 @@ function AssetsPageInner() {
   const userPerms = session?.user?.permissions || [];
   const isAdmin = session?.user?.role === 'admin';
   const canWildcard = isAdmin || userPerms.includes('*');
-  const canCreate = canWildcard || hasPermission(userPerms, PERMISSIONS.RENTAL_CREATE);
-  const canEdit = canWildcard || hasPermission(userPerms, PERMISSIONS.RENTAL_EDIT);
+  const canView = canWildcard || hasPermission(userPerms, PERMISSIONS.ASSET_VIEW);
+  const canEdit = canWildcard || hasPermission(userPerms, PERMISSIONS.ASSET_EDIT);
 
   const [assets, setAssets] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -44,6 +60,7 @@ function AssetsPageInner() {
   const [plYear, setPlYear] = useState(new Date().getFullYear());
   const [plData, setPlData] = useState(null);
   const [plLoading, setPlLoading] = useState(false);
+  const [creatingProperty, setCreatingProperty] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -56,6 +73,10 @@ function AssetsPageInner() {
     acquisitionDate: '',
     notes: '',
     rentalPropertyId: '',
+    isAvailableForRental: false,
+    hasHouseTax: false,
+    hasLandTax: false,
+    hasMaintenanceFee: false,
   });
 
   const highlightPropertyId = searchParams.get('propertyId');
@@ -177,6 +198,10 @@ function AssetsPageInner() {
       acquisitionDate: '',
       notes: '',
       rentalPropertyId: linkProperty || '',
+      isAvailableForRental: false,
+      hasHouseTax: false,
+      hasLandTax: false,
+      hasMaintenanceFee: false,
     });
     setShowModal(true);
   }
@@ -191,6 +216,10 @@ function AssetsPageInner() {
       acquisitionDate: a.acquisitionDate || '',
       notes: a.notes || '',
       rentalPropertyId: a.rentalPropertyId != null ? String(a.rentalPropertyId) : '',
+      isAvailableForRental: a.isAvailableForRental || false,
+      hasHouseTax: a.hasHouseTax || false,
+      hasLandTax: a.hasLandTax || false,
+      hasMaintenanceFee: a.hasMaintenanceFee || false,
     });
     setShowModal(true);
   }
@@ -210,6 +239,10 @@ function AssetsPageInner() {
         acquisitionDate: form.acquisitionDate || null,
         notes: form.notes.trim() || null,
         rentalPropertyId: form.rentalPropertyId === '' ? null : form.rentalPropertyId,
+        isAvailableForRental: form.isAvailableForRental,
+        hasHouseTax: form.hasHouseTax,
+        hasLandTax: form.hasLandTax,
+        hasMaintenanceFee: form.hasMaintenanceFee,
       };
       const url = editing ? `/api/assets/${editing.id}` : '/api/assets';
       const method = editing ? 'PATCH' : 'POST';
@@ -255,6 +288,55 @@ function AssetsPageInner() {
     await loadProperties();
   }
 
+  async function createAndLinkProperty(asset) {
+    if (!confirm(`將為「${asset.name}」新建一筆租屋物業並自動綁定，確定繼續？`)) return;
+    setCreatingProperty(true);
+    try {
+      const propRes = await fetch('/api/rentals/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: asset.name,
+          address: asset.address || '',
+          status: 'available',
+        }),
+      });
+      const propData = await propRes.json();
+      if (!propRes.ok) {
+        showToast(propData?.error?.message || propData?.error || '建立物業失敗', 'error');
+        return;
+      }
+      const patchRes = await fetch(`/api/assets/${asset.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rentalPropertyId: propData.id }),
+      });
+      const patchData = await patchRes.json();
+      if (!patchRes.ok) {
+        showToast(patchData?.error?.message || patchData?.error || '綁定失敗', 'error');
+        return;
+      }
+      showToast('已建立並綁定租屋物業', 'success');
+      await Promise.all([loadAssets(), loadProperties()]);
+      setSelected(patchData);
+    } catch {
+      showToast('操作失敗', 'error');
+    } finally {
+      setCreatingProperty(false);
+    }
+  }
+
+  if (!canView) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navigation borderColor="border-teal-500" />
+        <div className="max-w-7xl mx-auto px-4 py-12 text-center text-gray-500">
+          您沒有權限查看資產管理，請聯繫系統管理員。
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-teal-500" />
@@ -263,10 +345,10 @@ function AssetsPageInner() {
           <div>
             <h2 className="text-xl font-bold text-gray-800">資產管理</h2>
             <p className="text-sm text-gray-600 mt-1">
-              資產主檔可選擇綁定一筆租屋物業；房屋稅／地價稅與維護費仍請於「租屋管理」內登錄，此處僅彙總顯示。
+              資產主檔可設定是否可出租及稅費標記，標記後在租屋管理可登錄相應稅款與維護費。
             </p>
           </div>
-          {canCreate && (
+          {canEdit && (
             <button
               type="button"
               onClick={openCreate}
@@ -288,6 +370,7 @@ function AssetsPageInner() {
                   <th className="text-left px-3 py-2">類型</th>
                   <th className="text-left px-3 py-2">地址</th>
                   <th className="text-right px-3 py-2">面積（㎡）</th>
+                  <th className="text-left px-3 py-2">標記</th>
                   <th className="text-left px-3 py-2">綁定物業</th>
                   <th className="text-center px-3 py-2 w-40">操作</th>
                 </tr>
@@ -295,7 +378,7 @@ function AssetsPageInner() {
               <tbody>
                 {assets.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-400">尚無資產資料</td>
+                    <td colSpan={7} className="text-center py-12 text-gray-400">尚無資產資料</td>
                   </tr>
                 ) : (
                   assets.map((a) => {
@@ -319,6 +402,9 @@ function AssetsPageInner() {
                           {a.areaSqm != null ? String(a.areaSqm) : '—'}
                         </td>
                         <td className="px-3 py-2">
+                          <AssetFlagBadges asset={a} />
+                        </td>
+                        <td className="px-3 py-2">
                           {a.rentalProperty ? (
                             <Link
                               href={`/rentals?tab=properties`}
@@ -327,6 +413,8 @@ function AssetsPageInner() {
                             >
                               {a.rentalProperty.name}
                             </Link>
+                          ) : a.isAvailableForRental ? (
+                            <span className="text-orange-500 text-xs">待建立物業</span>
                           ) : (
                             <span className="text-gray-400">未綁定</span>
                           )}
@@ -350,7 +438,10 @@ function AssetsPageInner() {
 
         {selected && (
           <div className="mt-6 border border-gray-200 rounded-lg p-4 bg-white">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">選取：{selected.name}</h3>
+            <div className="flex items-start justify-between mb-2">
+              <h3 className="text-lg font-semibold text-gray-800">選取：{selected.name}</h3>
+              <AssetFlagBadges asset={selected} />
+            </div>
             <div className="text-sm text-gray-600 space-y-1 mb-4">
               <p>類型：{ASSET_TYPE_OPTIONS.find((o) => o.value === selected.assetType)?.label || selected.assetType}</p>
               {selected.address && <p>地址：{selected.address}</p>}
@@ -362,11 +453,33 @@ function AssetsPageInner() {
                   <Link className="text-teal-700 hover:underline ml-1" href="/rentals?tab=properties">
                     {selected.rentalProperty?.name || `#${selected.rentalPropertyId}`}
                   </Link>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <Link className="text-teal-700 hover:underline" href="/rentals?tab=taxes">前往稅款</Link>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <Link className="text-teal-700 hover:underline" href="/rentals?tab=maintenance">前往維護費</Link>
+                  {(selected.hasHouseTax || selected.hasLandTax) && (
+                    <>
+                      <span className="mx-2 text-gray-300">|</span>
+                      <Link className="text-teal-700 hover:underline" href="/rentals?tab=taxes">前往稅款</Link>
+                    </>
+                  )}
+                  {selected.hasMaintenanceFee && (
+                    <>
+                      <span className="mx-2 text-gray-300">|</span>
+                      <Link className="text-teal-700 hover:underline" href="/rentals?tab=maintenance">前往維護費</Link>
+                    </>
+                  )}
                 </p>
+              ) : selected.isAvailableForRental ? (
+                <div className="flex items-center gap-3">
+                  <p className="text-orange-600">此資產標記為可出租，尚未建立租屋物業。</p>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      disabled={creatingProperty}
+                      onClick={() => createAndLinkProperty(selected)}
+                      className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      {creatingProperty ? '建立中…' : '建立並綁定租屋物業'}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <p className="text-gray-500">尚未綁定物業，稅款與維護費請至「租屋管理」登錄。</p>
               )}
@@ -447,7 +560,13 @@ function AssetsPageInner() {
                         </thead>
                         <tbody>
                           {linkedTaxes.length === 0 ? (
-                            <tr><td colSpan={6} className="px-2 py-2 text-gray-400">無稅款紀錄</td></tr>
+                            <tr>
+                              <td colSpan={6} className="px-2 py-2 text-gray-400">
+                                {(selected.hasHouseTax || selected.hasLandTax)
+                                  ? '此資產已標記稅費，請至租屋管理 > 稅款管理登錄。'
+                                  : '無稅款紀錄'}
+                              </td>
+                            </tr>
                           ) : (
                             linkedTaxes.slice(0, 15).map((t) => (
                               <tr key={t.id} className="border-t">
@@ -482,7 +601,13 @@ function AssetsPageInner() {
                         </thead>
                         <tbody>
                           {linkedMaint.length === 0 ? (
-                            <tr><td colSpan={5} className="px-2 py-2 text-gray-400">無維護紀錄</td></tr>
+                            <tr>
+                              <td colSpan={5} className="px-2 py-2 text-gray-400">
+                                {selected.hasMaintenanceFee
+                                  ? '此資產已標記維修費，請至租屋管理 > 維護費登錄。'
+                                  : '無維護紀錄'}
+                              </td>
+                            </tr>
                           ) : (
                             linkedMaint.slice(0, 15).map((m) => (
                               <tr key={m.id} className="border-t">
@@ -513,7 +638,7 @@ function AssetsPageInner() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !saving && setShowModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4">{editing ? '編輯資產' : '新增資產'}</h3>
             <div className="space-y-3 text-sm">
               <div>
@@ -563,6 +688,33 @@ function AssetsPageInner() {
                   onChange={(e) => setForm((f) => ({ ...f, acquisitionDate: e.target.value }))}
                 />
               </div>
+
+              <div className="border rounded-lg p-3 bg-gray-50">
+                <p className="text-gray-700 font-medium mb-2">出租與稅費標記</p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.isAvailableForRental}
+                      onChange={(e) => setForm((f) => ({ ...f, isAvailableForRental: e.target.checked }))} />
+                    <span>可出租（顯示於租屋管理並啟用出租功能）</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.hasHouseTax}
+                      onChange={(e) => setForm((f) => ({ ...f, hasHouseTax: e.target.checked }))} />
+                    <span>有房屋稅（會計可在稅款管理填寫）</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.hasLandTax}
+                      onChange={(e) => setForm((f) => ({ ...f, hasLandTax: e.target.checked }))} />
+                    <span>有地價稅（會計可在稅款管理填寫）</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.hasMaintenanceFee}
+                      onChange={(e) => setForm((f) => ({ ...f, hasMaintenanceFee: e.target.checked }))} />
+                    <span>有維修費（會計可在維護費登錄）</span>
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label className="text-gray-600">綁定租屋物業（選填，一物業僅能綁一筆資產）</label>
                 <select
