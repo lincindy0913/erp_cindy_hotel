@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,6 +132,16 @@ export async function PATCH(request, { params }) {
         },
       },
     });
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.ASSET_UPDATE,
+      targetModule: 'asset',
+      targetRecordId: id,
+      targetRecordNo: existing.name,
+      beforeState: { name: existing.name, assetType: existing.assetType, address: existing.address },
+      afterState: data,
+      note: `修改資產 ${existing.name}`,
+    });
+
     return NextResponse.json(asset);
   } catch (error) {
     console.error('PATCH /api/assets/[id] error:', error.message || error);
@@ -154,6 +165,16 @@ export async function DELETE(_request, { params }) {
       return createErrorResponse('NOT_FOUND', '查無資產', 404);
     }
     await prisma.asset.delete({ where: { id } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.ASSET_DELETE,
+      targetModule: 'asset',
+      targetRecordId: id,
+      targetRecordNo: existing.name,
+      beforeState: { name: existing.name, assetType: existing.assetType, address: existing.address },
+      note: `刪除資產 ${existing.name}`,
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('DELETE /api/assets/[id] error:', error.message || error);

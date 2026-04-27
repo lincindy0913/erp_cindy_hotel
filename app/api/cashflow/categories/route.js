@@ -11,23 +11,27 @@ export async function GET() {
   if (!auth.ok) return auth.response;
   
   try {
-    const categories = await prisma.cashCategory.findMany({
-      orderBy: [{ type: 'asc' }, { name: 'asc' }],
-      include: {
-        accountingSubject: {
-          select: { id: true, code: true, name: true, category: true, subcategory: true }
-        },
-        _count: { select: { transactions: true } },
-        transactions: {
-          select: { amount: true },
+    const [categories, txSums] = await Promise.all([
+      prisma.cashCategory.findMany({
+        orderBy: [{ type: 'asc' }, { name: 'asc' }],
+        include: {
+          accountingSubject: {
+            select: { id: true, code: true, name: true, category: true, subcategory: true }
+          },
+          _count: { select: { transactions: true } },
         }
-      }
-    });
+      }),
+      prisma.cashTransaction.groupBy({
+        by: ['categoryId'],
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const sumMap = new Map(txSums.map(g => [g.categoryId, Number(g._sum.amount || 0)]));
 
     const result = categories.map(c => ({
       ...c,
-      totalAmount: c.transactions.reduce((sum, t) => sum + Number(t.amount), 0),
-      transactions: undefined,
+      totalAmount: sumMap.get(c.id) || 0,
       createdAt: c.createdAt.toISOString()
     }));
 

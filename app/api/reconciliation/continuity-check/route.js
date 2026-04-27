@@ -32,37 +32,46 @@ export async function GET(request) {
       select: { id: true, name: true, type: true, warehouse: true },
     });
 
-    const results = [];
+    const accountIds = bankAccounts.map(a => a.id);
 
-    for (const account of bankAccounts) {
-      // Check if reconciliation exists for this month
-      const reconciliation = await prisma.bankReconciliation.findFirst({
+    // Batch-load reconciliations and unreconciled counts in parallel
+    const [reconciliations, unreconciledGroups] = await Promise.all([
+      prisma.bankReconciliation.findMany({
+        where: { accountId: { in: accountIds }, reconciliationMonth: monthPrefix },
+      }),
+      prisma.cashTransaction.groupBy({
+        by: ['accountId'],
         where: {
-          accountId: account.id,
-          reconciliationMonth: monthPrefix,
-        },
-      });
-
-      // Count unreconciled transactions
-      const unreconciledTxCount = await prisma.cashTransaction.count({
-        where: {
-          accountId: account.id,
+          accountId: { in: accountIds },
           transactionDate: { startsWith: monthPrefix },
           reconciliationId: null,
         },
-      });
+        _count: { id: true },
+      }),
+    ]);
 
-      // Check for post-seal transactions
-      let postSealTxCount = 0;
-      if (reconciliation?.sealedAt) {
-        postSealTxCount = await prisma.cashTransaction.count({
+    const reconciliationMap = new Map(reconciliations.map(r => [r.accountId, r]));
+    const unreconciledMap = new Map(unreconciledGroups.map(g => [g.accountId, g._count.id]));
+
+    // Post-seal counts still need per-account query (each has different sealedAt)
+    const sealedAccounts = reconciliations.filter(r => r.sealedAt);
+    const postSealCounts = await Promise.all(
+      sealedAccounts.map(r =>
+        prisma.cashTransaction.count({
           where: {
-            accountId: account.id,
+            accountId: r.accountId,
             transactionDate: { startsWith: monthPrefix },
-            createdAt: { gt: new Date(reconciliation.sealedAt) },
+            createdAt: { gt: new Date(r.sealedAt) },
           },
-        });
-      }
+        }).then(count => [r.accountId, count])
+      )
+    );
+    const postSealMap = new Map(postSealCounts);
+
+    const results = bankAccounts.map(account => {
+      const reconciliation = reconciliationMap.get(account.id) || null;
+      const unreconciledTxCount = unreconciledMap.get(account.id) || 0;
+      const postSealTxCount = postSealMap.get(account.id) || 0;
 
       let continuityStatus = 'pending';
       if (reconciliation) {
@@ -73,7 +82,7 @@ export async function GET(request) {
         }
       }
 
-      results.push({
+      return {
         accountId: account.id,
         accountName: account.name,
         accountType: account.type,
@@ -85,8 +94,8 @@ export async function GET(request) {
         difference: reconciliation ? Number(reconciliation.difference || 0) : null,
         continuityStatus,
         continuitySignOffNote: reconciliation?.continuitySignOffNote || null,
-      });
-    }
+      };
+    });
 
     const overallStatus = results.every(r => r.continuityStatus === 'complete') ? 'complete'
       : results.some(r => r.continuityStatus === 'pending') ? 'pending'

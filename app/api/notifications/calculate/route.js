@@ -3,8 +3,11 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getCached, setCached } from '@/lib/server-cache';
 
 export const dynamic = 'force-dynamic';
+
+const NOTIFICATIONS_TTL = 5 * 60_000; // 5 分鐘
 
 // N01-N14 notification definitions (spec7/spec28)
 const NOTIFICATION_DEFS = {
@@ -27,7 +30,7 @@ const NOTIFICATION_DEFS = {
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.NOTIFICATION_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
     let body = {};
     try {
@@ -35,6 +38,11 @@ export async function POST(request) {
     } catch {
       // empty body is fine
     }
+
+    const forceRefresh = body.refresh === true;
+    const cacheKey = 'notifications:calculated';
+    const cached = forceRefresh ? null : getCached(cacheKey);
+    if (cached) return NextResponse.json(cached);
 
     const notifications = [];
     const today = new Date();
@@ -54,18 +62,16 @@ export async function POST(request) {
         select: { name: true },
       });
 
-      const missingWarehouses = [];
-      for (const wh of warehouses) {
-        const recentImport = await prisma.pmsImportBatch.findFirst({
-          where: {
-            warehouse: wh.name,
-            businessDate: { gte: threeDaysAgoStr },
-          },
-        });
-        if (!recentImport) {
-          missingWarehouses.push(wh.name);
-        }
-      }
+      const recentImports = await prisma.pmsImportBatch.findMany({
+        where: {
+          warehouse: { in: warehouses.map(w => w.name) },
+          businessDate: { gte: threeDaysAgoStr },
+        },
+        select: { warehouse: true },
+        distinct: ['warehouse'],
+      });
+      const importedSet = new Set(recentImports.map(r => r.warehouse));
+      const missingWarehouses = warehouses.map(w => w.name).filter(n => !importedSet.has(n));
 
       if (missingWarehouses.length > 0) {
         const def = NOTIFICATION_DEFS.N01;
@@ -97,30 +103,24 @@ export async function POST(request) {
       const currentMonth = today.getMonth() + 1;
       const currentDay = today.getDate();
 
-      const upcomingLoans = [];
-      for (const loan of activeLoans) {
-        // Check if repaymentDay is within 3 days
-        let repayDay = loan.repaymentDay;
-        // Handle months with fewer days
-        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-        if (repayDay > daysInMonth) repayDay = daysInMonth;
+      // Batch-fetch all monthly records for active loans this month
+      const paidRecords = await prisma.loanMonthlyRecord.findMany({
+        where: {
+          loanId: { in: activeLoans.map(l => l.id) },
+          recordYear: currentYear,
+          recordMonth: currentMonth,
+          status: { notIn: ['暫估'] },
+        },
+        select: { loanId: true },
+      });
+      const paidLoanIds = new Set(paidRecords.map(r => r.loanId));
 
-        const daysUntilRepayment = repayDay - currentDay;
-        if (daysUntilRepayment >= 0 && daysUntilRepayment <= 3) {
-          // Check if monthly record exists for this month
-          const existingRecord = await prisma.loanMonthlyRecord.findFirst({
-            where: {
-              loanId: loan.id,
-              recordYear: currentYear,
-              recordMonth: currentMonth,
-              status: { notIn: ['暫估'] },
-            },
-          });
-          if (!existingRecord) {
-            upcomingLoans.push(loan);
-          }
-        }
-      }
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      const upcomingLoans = activeLoans.filter(loan => {
+        const repayDay = Math.min(loan.repaymentDay, daysInMonth);
+        const daysUntil = repayDay - currentDay;
+        return daysUntil >= 0 && daysUntil <= 3 && !paidLoanIds.has(loan.id);
+      });
 
       if (upcomingLoans.length > 0) {
         const def = NOTIFICATION_DEFS.N02;
@@ -600,11 +600,13 @@ export async function POST(request) {
       warning: notifications.filter(n => n.level === 'warning').reduce((s, n) => s + n.count, 0),
     };
 
-    return NextResponse.json({
+    const result = {
       notifications,
       summary,
       calculatedAt: new Date().toISOString(),
-    });
+    };
+    setCached(cacheKey, result, NOTIFICATIONS_TTL);
+    return NextResponse.json(result);
   } catch (error) {
     return handleApiError(error);
   }

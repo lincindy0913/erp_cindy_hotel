@@ -22,6 +22,7 @@ export async function GET(request) {
         materials: true,
       },
       orderBy: { id: 'desc' },
+      take: 300,
     });
     return NextResponse.json(contracts.map(c => ({
       ...c,

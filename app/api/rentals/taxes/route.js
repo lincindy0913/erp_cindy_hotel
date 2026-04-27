@@ -31,7 +31,8 @@ export async function GET(request) {
           },
         },
       },
-      orderBy: [{ taxYear: 'desc' }, { dueDate: 'asc' }]
+      orderBy: [{ taxYear: 'desc' }, { dueDate: 'asc' }],
+      take: 500,
     });
 
     return NextResponse.json(taxes);

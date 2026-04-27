@@ -86,12 +86,24 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const propertyId = parseInt(id);
 
-    const contractCount = await prisma.rentalContract.count({
-      where: { propertyId }
-    });
+    const [contractCount, incomeCount, taxCount, maintenanceCount] = await Promise.all([
+      prisma.rentalContract.count({ where: { propertyId } }),
+      prisma.rentalIncome.count({ where: { propertyId } }),
+      prisma.propertyTax.count({ where: { propertyId } }),
+      prisma.rentalMaintenance.count({ where: { propertyId } }),
+    ]);
 
     if (contractCount > 0) {
       return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', '此物業尚有合約，無法刪除', 400);
+    }
+    if (incomeCount > 0) {
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此物業尚有 ${incomeCount} 筆收款紀錄，無法刪除`, 400);
+    }
+    if (taxCount > 0) {
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此物業尚有 ${taxCount} 筆稅務紀錄，無法刪除`, 400);
+    }
+    if (maintenanceCount > 0) {
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此物業尚有 ${maintenanceCount} 筆維修紀錄，無法刪除`, 400);
     }
 
     await prisma.rentalProperty.delete({ where: { id: propertyId } });

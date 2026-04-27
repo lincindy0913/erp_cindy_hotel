@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +91,15 @@ export async function POST(request) {
           select: { id: true, name: true, address: true, buildingName: true, unitNo: true, status: true },
         },
       },
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.ASSET_CREATE,
+      targetModule: 'asset',
+      targetRecordId: asset.id,
+      targetRecordNo: asset.name,
+      afterState: { name: asset.name, assetType: asset.assetType, address: asset.address, rentalPropertyId: asset.rentalPropertyId },
+      note: `建立資產 ${asset.name}`,
     });
 
     return NextResponse.json(asset, { status: 201 });

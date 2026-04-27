@@ -11,11 +11,33 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.SALES_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
+    const { searchParams } = new URL(request.url);
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo   = searchParams.get('dateTo');
+    const warehouse = searchParams.get('warehouse');
+
+    // Default: last 2 years when no date filter provided
+    const defaultFrom = (() => {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 2);
+      return d.toISOString().split('T')[0];
+    })();
+
+    const where = {
+      invoiceDate: {
+        gte: dateFrom || defaultFrom,
+        ...(dateTo ? { lte: dateTo } : {}),
+      },
+    };
+    if (warehouse) where.warehouse = warehouse;
+
     const sales = await prisma.salesMaster.findMany({
+      where,
       include: { details: true },
-      orderBy: { id: 'asc' }
+      orderBy: { id: 'asc' },
+      take: 2000,
     });
 
     // 依付款單狀態計算每張發票的「付款狀態」（套館別限制）
@@ -31,7 +53,11 @@ export async function GET(request) {
       }
     });
 
-    function getPaymentStatusForInvoice(invoiceId) {
+    function getPaymentStatusForInvoice(invoiceId, invoiceMasterStatus) {
+      // 進貨折讓確認後會寫入 SalesMaster.status（與付款單一致）
+      if (invoiceMasterStatus === '已退貨' || invoiceMasterStatus === '部分退貨') {
+        return invoiceMasterStatus;
+      }
       const idNum = Number(invoiceId);
       const related = paymentOrders.filter(o => {
         if (!Array.isArray(o.invoiceIds)) return false;
@@ -39,6 +65,7 @@ export async function GET(request) {
       });
       if (related.length === 0) return '未付款';
       if (related.some(o => o.status === '已退貨')) return '已退貨';
+      if (related.some(o => o.status === '部分退貨')) return '部分退貨';
       if (related.some(o => o.status === '已執行')) return '已付款';
       if (related.some(o => o.status === '待出納')) return '待出納';
       if (related.some(o => o.status === '草稿')) return '草稿';
@@ -59,7 +86,7 @@ export async function GET(request) {
       totalAmount: Number(s.totalAmount),
       status: s.status,
       invoiceType: s.invoiceType,
-      paymentStatus: getPaymentStatusForInvoice(s.id),
+      paymentStatus: getPaymentStatusForInvoice(s.id, s.status),
       items: s.details.map(d => ({
         purchaseItemId: d.purchaseItemId,
         purchaseId: d.purchaseId,

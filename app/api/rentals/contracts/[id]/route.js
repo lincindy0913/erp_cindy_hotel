@@ -67,10 +67,10 @@ export async function PUT(request, { params }) {
     if (body.action === 'depositReceive') {
       const accountId = existing.depositAccountId || existing.rentAccountId;
       const today = new Date().toISOString().split('T')[0];
-      const transactionNo = await nextCashTransactionNo(tx, today);
+      const transactionNo = await nextCashTransactionNo(prisma, today);
 
       const depositInCatId = await getCategoryId(prisma, 'rental_deposit_in');
-      const tx = await prisma.cashTransaction.create({
+      const cashTxRecord = await prisma.cashTransaction.create({
         data: {
           transactionNo,
           transactionDate: today,
@@ -89,13 +89,13 @@ export async function PUT(request, { params }) {
         where: { id: contractId },
         data: {
           depositReceived: true,
-          depositCashTransactionId: tx.id
+          depositCashTransactionId: cashTxRecord.id
         }
       });
 
       await recalcBalance(prisma, accountId);
 
-      return NextResponse.json({ success: true, transactionId: tx.id });
+      return NextResponse.json({ success: true, transactionId: cashTxRecord.id });
     }
 
     // Handle deposit refund action — create PaymentOrder for cashier to execute

@@ -276,7 +276,7 @@ export async function DELETE(request, { params }) {
         const fresh = await tx.cashTransaction.findUnique({ where: { id: cashTx.id } });
         if (!fresh || fresh.reversedById) continue; // 已沖銷，跳過
 
-        const revNo = await generateTransactionNo(revDate, tx);
+        const revNo = await nextCashTransactionNo(tx, revDate);
         const reversalTx = await tx.cashTransaction.create({
           data: {
             transactionNo: revNo,

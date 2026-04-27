@@ -55,7 +55,8 @@ export async function GET(request) {
         fee: true,
         hasFee: true
       },
-      orderBy: { transactionDate: 'asc' }
+      orderBy: { transactionDate: 'asc' },
+      take: 5000,
     });
 
     // Aggregate by date

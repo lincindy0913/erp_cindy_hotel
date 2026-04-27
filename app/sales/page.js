@@ -5,12 +5,11 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
-import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
-const SALES_VIEWS = ['list', 'privateLedger', 'report', 'monthly'];
+const SALES_VIEWS = ['list', 'report', 'monthly'];
 
 function InvoicePageInner() {
   const router = useRouter();
@@ -58,6 +57,21 @@ function InvoicePageInner() {
   const [reportType, setReportType] = useState('');
   const [reportOwnerData, setReportOwnerData] = useState({ total: 0, count: 0 });
 
+  // 新增折讓發票表單
+  const [showAddAllowanceForm, setShowAddAllowanceForm] = useState(false);
+  const [allowanceSaving, setAllowanceSaving] = useState(false);
+  const [allowanceFormData, setAllowanceFormData] = useState({
+    allowanceDate: new Date().toISOString().split('T')[0],
+    warehouse: '',
+    supplierName: '',
+    invoiceNo: '',
+    amount: '',
+    tax: '0',
+    totalAmount: '',
+    reason: '',
+    note: '',
+  });
+
   const INVOICE_SOURCES = ['進貨單', '租屋支出', '固定費用'];
   const SOURCE_COLORS = {
     '進貨單':      { bg: 'bg-gray-100',   text: 'text-gray-700',   border: 'border-gray-300',   dot: 'bg-gray-400'   },
@@ -68,6 +82,12 @@ function InvoicePageInner() {
 
   // 勾選發票（列印用）
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState(new Set());
+
+  // 發票列表分頁
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [invoiceTotalPages, setInvoiceTotalPages] = useState(1);
+  const [invoiceTotal, setInvoiceTotal] = useState(0);
+  const invoicePageSize = 50;
 
   // 分頁：發票列表 / 發票私帳 / 報表 / 月度統計（與網址 ?view= 同步）
   const [activeView, setActiveView] = useState('list');
@@ -130,8 +150,7 @@ function InvoicePageInner() {
   }, [activeView, canSalesView]);
 
   function goSalesView(next) {
-    if (next === 'privateLedger' && !canOwnerExpense) return;
-    if (next !== 'privateLedger' && !canSalesView) return;
+    if (!canSalesView) return;
     setActiveView(next);
     const p = new URLSearchParams(searchParams.toString());
     p.set('view', next);
@@ -140,24 +159,12 @@ function InvoicePageInner() {
 
   // 網址 ?view= 與權限同步分頁
   useEffect(() => {
-    if (!session) return;
+    if (!session || !canSalesView) return;
     const v = searchParams.get('view');
-    const canList = canSalesView;
-    const canPriv = canOwnerExpense;
     if (v && SALES_VIEWS.includes(v)) {
-      if (v === 'privateLedger' && canPriv) setActiveView('privateLedger');
-      else if (v !== 'privateLedger' && canList) setActiveView(v);
-      else if (v === 'privateLedger' && !canPriv && canList) setActiveView('list');
-      else if (v !== 'privateLedger' && !canList && canPriv) setActiveView('privateLedger');
-      return;
+      setActiveView(v);
     }
-    if (!v && !canList && canPriv) {
-      setActiveView('privateLedger');
-      const p = new URLSearchParams(searchParams.toString());
-      p.set('view', 'privateLedger');
-      router.replace(`/sales?${p.toString()}`, { scroll: false });
-    }
-  }, [session, searchParams, canSalesView, canOwnerExpense, router]);
+  }, [session, searchParams, canSalesView]);
 
   // 從 URL ?month=YYYY-MM&invoiceTitle=XXX 預設篩選（發票私帳「查看發票」→ 發票列表）
   useEffect(() => {
@@ -171,7 +178,7 @@ function InvoicePageInner() {
       setSearchDateTo(`${m}-${String(lastDay).padStart(2, '0')}`);
     }
     if (t) setSearchInvoiceTitle(t);
-    if ((m || t) && canSalesView && v !== 'privateLedger') {
+    if ((m || t) && canSalesView) {
       setActiveView('list');
       if (v !== 'list') {
         const p = new URLSearchParams(searchParams.toString());
@@ -208,7 +215,7 @@ function InvoicePageInner() {
       .then(res => (res.ok ? res.json() : null))
       .then(invoice => {
         if (cancelled || !invoice) return;
-        if (['草稿', '待出納', '已付款'].includes(invoice.paymentStatus)) {
+        if (['草稿', '待出納', '已付款', '已退貨', '部分退貨'].includes(invoice.paymentStatus)) {
           showToast(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`, 'error');
           return;
         }
@@ -229,17 +236,32 @@ function InvoicePageInner() {
     } catch { /* use default 5% */ }
   }
 
-  async function fetchInvoices() {
+  async function fetchInvoices(page = 1) {
+    setLoading(true);
     try {
-      const response = await fetch('/api/sales/with-info');
-      const data = await response.json();
-      setInvoices(Array.isArray(data) ? data : []);
-      setLoading(false);
+      const params = new URLSearchParams({ page: String(page), limit: String(invoicePageSize) });
+      if (searchDateFrom)    params.set('dateFrom', searchDateFrom);
+      if (searchDateTo)      params.set('dateTo', searchDateTo);
+      if (searchWarehouse)   params.set('warehouse', searchWarehouse);
+      if (searchInvoiceType && searchInvoiceType !== '折讓') params.set('invoiceType', searchInvoiceType);
+      if (searchInvoiceTitle) params.set('invoiceTitle', searchInvoiceTitle);
+
+      const response = await fetch(`/api/sales/with-info?${params}`);
+      const result = await response.json();
+      if (result.data && result.pagination) {
+        setInvoices(result.data);
+        setInvoicePage(result.pagination.page);
+        setInvoiceTotalPages(result.pagination.totalPages);
+        setInvoiceTotal(result.pagination.total);
+      } else {
+        // 向下相容舊格式
+        setInvoices(Array.isArray(result) ? result : []);
+      }
     } catch (error) {
       console.error('取得發票列表失敗:', error);
       setInvoices([]);
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   async function fetchAllowances() {
@@ -260,6 +282,39 @@ function InvoicePageInner() {
         setReportOwnerData({ total: data.total ?? 0, count: data.count ?? 0 });
       }
     } catch { setReportOwnerData({ total: 0, count: 0 }); }
+  }
+
+  async function saveAllowance(e) {
+    e.preventDefault();
+    if (!allowanceFormData.allowanceDate || !allowanceFormData.supplierName || !allowanceFormData.totalAmount) {
+      showToast('請填寫折讓日期、廠商名稱及折讓金額', 'error');
+      return;
+    }
+    setAllowanceSaving(true);
+    try {
+      const res = await fetch('/api/purchase-allowances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...allowanceFormData,
+          allowanceType: '折讓',
+          status: '已確認',
+          amount: parseFloat(allowanceFormData.amount || allowanceFormData.totalAmount) || 0,
+          tax: parseFloat(allowanceFormData.tax) || 0,
+          totalAmount: parseFloat(allowanceFormData.totalAmount) || 0,
+        }),
+      });
+      if (res.ok) {
+        showToast('折讓發票已儲存', 'success');
+        setShowAddAllowanceForm(false);
+        setAllowanceFormData({ allowanceDate: new Date().toISOString().split('T')[0], warehouse: '', supplierName: '', invoiceNo: '', amount: '', tax: '0', totalAmount: '', reason: '', note: '' });
+        fetchAllowances();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || '儲存失敗', 'error');
+      }
+    } catch { showToast('儲存失敗', 'error'); }
+    setAllowanceSaving(false);
   }
 
   async function fetchProducts() {
@@ -331,20 +386,29 @@ function InvoicePageInner() {
     return supplier ? supplier.name : '未知廠商';
   }
 
+  // 伺服器已過濾 date/warehouse/invoiceType/invoiceTitle；廠商名稱在前端過濾目前頁面
   const filteredInvoicesForList = useMemo(
+    () => invoices.filter(inv =>
+      !searchSupplier || (inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())
+    ),
+    [invoices, searchSupplier]
+  );
+  // 折讓篩選（與發票相同的日期/館別/廠商條件，但不篩 invoiceTitle/invoiceType）
+  const filteredAllowancesForList = useMemo(
     () =>
-      invoices.filter((inv) => {
-        if (searchSupplier && !(inv.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())) return false;
-        const invDate = inv.invoiceDate || inv.salesDate || '';
-        if (searchDateFrom && invDate < searchDateFrom) return false;
-        if (searchDateTo && invDate > searchDateTo) return false;
-        if (searchInvoiceTitle && (inv.invoiceTitle || '') !== searchInvoiceTitle) return false;
-        if (searchWarehouse && (inv.warehouse || '') !== searchWarehouse) return false;
-        if (searchInvoiceType && (inv.invoiceType || '進貨單') !== searchInvoiceType) return false;
+      allowances.filter((a) => {
+        if (searchSupplier && !(a.supplierName || '').toLowerCase().includes(searchSupplier.toLowerCase())) return false;
+        const d = a.allowanceDate || '';
+        if (searchDateFrom && d < searchDateFrom) return false;
+        if (searchDateTo && d > searchDateTo) return false;
+        if (searchWarehouse && (a.warehouse || '') !== searchWarehouse) return false;
+        // 若篩選「來源」為非折讓類型時不顯示折讓
+        if (searchInvoiceType && searchInvoiceType !== '折讓') return false;
         return true;
       }),
-    [invoices, searchSupplier, searchDateFrom, searchDateTo, searchInvoiceTitle, searchWarehouse, searchInvoiceType]
+    [allowances, searchSupplier, searchDateFrom, searchDateTo, searchWarehouse, searchInvoiceType]
   );
+
   const { sortKey: saleInvKey, sortDir: saleInvDir, toggleSort: toggleSaleInv } = useColumnSort('invoiceDate', 'desc');
   const sortedInvoicesForList = useMemo(
     () =>
@@ -360,6 +424,36 @@ function InvoicePageInner() {
       }),
     [filteredInvoicesForList, saleInvKey, saleInvDir]
   );
+
+  // 合併發票＋折讓，依日期排序
+  const mergedListForDisplay = useMemo(() => {
+    const invRows = sortedInvoicesForList.map(i => ({ ...i, _isAllowance: false }));
+    const allowanceRows = filteredAllowancesForList.map(a => ({
+      _isAllowance: true,
+      id: `a-${a.id}`,
+      _allowanceId: a.id,
+      warehouse: a.warehouse || '',
+      invoiceTitle: '-',
+      supplierName: a.supplierName || '-',
+      invoiceNo: a.allowanceNo,
+      invoiceDate: a.allowanceDate,
+      items: a.details || [],
+      totalAmount: -Number(a.totalAmount),
+      invoiceType: '折讓',
+      paymentStatus: a.status || '',
+      allowanceType: a.allowanceType,
+      reason: a.reason || '',
+    }));
+    const combined = [...invRows, ...allowanceRows];
+    combined.sort((a, b) => {
+      const da = a.invoiceDate || a.salesDate || '';
+      const db = b.invoiceDate || b.salesDate || '';
+      if (da > db) return saleInvDir === 'desc' ? -1 : 1;
+      if (da < db) return saleInvDir === 'desc' ? 1 : -1;
+      return 0;
+    });
+    return combined;
+  }, [sortedInvoicesForList, filteredAllowancesForList, saleInvDir]);
 
   function handleItemToggle(item) {
     const isSelected = selectedItems.some(selected => selected.id === item.id);
@@ -554,7 +648,7 @@ function InvoicePageInner() {
 
   function handleEdit(invoice) {
     // 若發票付款狀態為草稿 / 待出納 / 已付款，不可再修改
-    if (['草稿', '待出納', '已付款'].includes(invoice.paymentStatus)) {
+    if (['草稿', '待出納', '已付款', '已退貨', '部分退貨'].includes(invoice.paymentStatus)) {
       showToast(`此發票目前付款狀態為「${invoice.paymentStatus}」，不可修改發票內容。`, 'error');
       return;
     }
@@ -764,9 +858,6 @@ function InvoicePageInner() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-2xl font-bold">發票登錄/核銷</h2>
-            {activeView === 'privateLedger' && canOwnerExpense && (
-              <p className="text-sm text-gray-500 mt-1">業主發票私帳：登記每月各抬頭進項發票金額，統計結果顯示於「報表」分頁的業主發票私帳卡片。</p>
-            )}
           </div>
           {activeView === 'list' && canSalesView && (
           <div className="flex items-center gap-3">
@@ -779,27 +870,98 @@ function InvoicePageInner() {
               📥 匯出Excel
             </button>
             {isLoggedIn && (
-              <button
-                onClick={() => {
-                  setShowAddForm(!showAddForm);
-                  if (!showAddForm) {
-                    setSelectedItems([]);
-                    setAvailableItems([]);
-                    setFilterData({
-                      yearMonth: '',
-                      supplierId: '',
-                      warehouse: ''
-                    });
-                  }
-                }}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                ➕ 新增發票
-              </button>
+              <>
+                <button
+                  onClick={() => { setShowAddAllowanceForm(!showAddAllowanceForm); setShowAddForm(false); }}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm"
+                >
+                  ➕ 新增折讓發票
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddForm(!showAddForm);
+                    setShowAddAllowanceForm(false);
+                    if (!showAddForm) {
+                      setSelectedItems([]);
+                      setAvailableItems([]);
+                      setFilterData({ yearMonth: '', supplierId: '', warehouse: '' });
+                    }
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                >
+                  ➕ 新增發票
+                </button>
+              </>
             )}
           </div>
           )}
         </div>
+
+        {/* 新增折讓發票表單 */}
+        {showAddAllowanceForm && canSalesView && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-red-200">
+            <h3 className="text-lg font-semibold mb-4 text-red-700">新增折讓發票</h3>
+            <form onSubmit={saveAllowance}>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">折讓日期 *</label>
+                  <input type="date" required value={allowanceFormData.allowanceDate}
+                    onChange={e => setAllowanceFormData({ ...allowanceFormData, allowanceDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select value={allowanceFormData.warehouse}
+                    onChange={e => setAllowanceFormData({ ...allowanceFormData, warehouse: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm">
+                    <option value="">請選擇</option>
+                    <option value="麗格">麗格</option>
+                    <option value="麗軒">麗軒</option>
+                    <option value="民宿">民宿</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
+                  <input type="text" required value={allowanceFormData.supplierName}
+                    onChange={e => setAllowanceFormData({ ...allowanceFormData, supplierName: e.target.value })}
+                    placeholder="廠商名稱"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">原發票號</label>
+                  <input type="text" value={allowanceFormData.invoiceNo}
+                    onChange={e => setAllowanceFormData({ ...allowanceFormData, invoiceNo: e.target.value })}
+                    placeholder="原始發票號碼"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">折讓金額（含稅）*</label>
+                  <input type="number" required min="0.01" step="0.01" value={allowanceFormData.totalAmount}
+                    onChange={e => setAllowanceFormData({ ...allowanceFormData, totalAmount: e.target.value, amount: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">折讓原因</label>
+                  <input type="text" value={allowanceFormData.reason}
+                    onChange={e => setAllowanceFormData({ ...allowanceFormData, reason: e.target.value })}
+                    placeholder="折讓原因"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button type="button" onClick={() => setShowAddAllowanceForm(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                  取消
+                </button>
+                <button type="submit" disabled={allowanceSaving}
+                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm">
+                  {allowanceSaving ? '儲存中…' : '儲存折讓發票'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* 新增發票表單 */}
         {showAddForm && canSalesView && (
@@ -1267,33 +1429,24 @@ function InvoicePageInner() {
         )}
 
         {/* View toggle */}
-        <div className="flex flex-wrap gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
-          {[
-            ...(canSalesView
-              ? [
-                  { key: 'list', label: '發票列表' },
-                  { key: 'report', label: '報表' },
-                  { key: 'monthly', label: '月度館別統計' },
-                ]
-              : []),
-            ...(canOwnerExpense ? [{ key: 'privateLedger', label: '業主發票私帳' }] : []),
-          ].map((v) => (
-            <button
-              key={v.key}
-              type="button"
-              onClick={() => goSalesView(v.key)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeView === v.key ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-
-        {activeView === 'privateLedger' && canOwnerExpense && (
-          <div className="mb-6">
-            <OwnerExpensesPanel embedded />
+        {canSalesView && (
+          <div className="flex flex-wrap gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
+            {[
+              { key: 'list', label: '發票列表' },
+              { key: 'report', label: '報表' },
+              { key: 'monthly', label: '月度館別統計' },
+            ].map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                onClick={() => goSalesView(v.key)}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeView === v.key ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
           </div>
         )}
 
@@ -1704,6 +1857,61 @@ function InvoicePageInner() {
                   </div>
                 </div>
 
+                {/* ── 業主私帳獨立統計 ── */}
+                {statsData.private && statsData.private.rows.length > 0 && (
+                  <div className="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden">
+                    <div className="px-4 py-3 border-b bg-orange-50 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-orange-400 inline-block"></span>
+                        <p className="text-sm font-semibold text-orange-800">業主私帳發票統計</p>
+                        <span className="text-xs text-orange-500">（已包含於上方合計）</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-orange-700">NT$ {statsData.private.total.total.toLocaleString()}</p>
+                        <p className="text-xs text-orange-400">{statsData.private.total.invoiceCount} 張</p>
+                      </div>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-orange-50/60 text-orange-700 text-xs border-b border-orange-100">
+                          <th className="px-4 py-2 text-left font-medium">月份</th>
+                          <th className="px-4 py-2 text-right font-medium">張數</th>
+                          <th className="px-4 py-2 text-right font-medium">金額</th>
+                          <th className="px-4 py-2 text-right font-medium">佔該月發票比</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-orange-50">
+                        {statsData.private.rows.map(row => {
+                          const monthTotal = statsData.rows.find(r => r.month === row.month)?.total || 0;
+                          const pct = monthTotal > 0 ? (row.total / monthTotal * 100).toFixed(1) : '0.0';
+                          return (
+                            <tr key={row.month} className="hover:bg-orange-50/40">
+                              <td className="px-4 py-2.5 font-medium text-gray-700">{row.month}</td>
+                              <td className="px-4 py-2.5 text-right text-gray-500 tabular-nums">{row.invoiceCount}</td>
+                              <td className="px-4 py-2.5 text-right font-medium text-orange-700 tabular-nums">
+                                NT$ {row.total.toLocaleString()}
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">{pct}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-orange-100/60 font-semibold text-orange-900 text-sm border-t border-orange-200">
+                          <td className="px-4 py-2.5">期間合計</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{statsData.private.total.invoiceCount}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">NT$ {statsData.private.total.total.toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-right text-orange-500 tabular-nums">
+                            {statsData.periodTotal.total > 0
+                              ? (statsData.private.total.total / statsData.periodTotal.total * 100).toFixed(1)
+                              : '0.0'}%
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+
                 {/* ── 發票抬頭分析 ── */}
                 {statsData.titles.length > 1 && (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1791,6 +1999,7 @@ function InvoicePageInner() {
               <option value="進貨單">進貨單</option>
               <option value="租屋支出">租屋支出</option>
               <option value="固定費用">固定費用</option>
+              <option value="折讓">折讓</option>
             </select>
             <div className="flex items-center gap-2">
               <label className="text-sm text-gray-600">起始日期</label>
@@ -1810,9 +2019,19 @@ function InvoicePageInner() {
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
+            <button
+              onClick={() => fetchInvoices(1)}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              搜尋
+            </button>
             {(searchSupplier || searchDateFrom || searchDateTo || searchInvoiceTitle || searchWarehouse || searchInvoiceType) && (
               <button
-                onClick={() => { setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo(''); setSearchInvoiceTitle(''); setSearchWarehouse(''); setSearchInvoiceType(''); }}
+                onClick={() => {
+                  setSearchSupplier(''); setSearchDateFrom(''); setSearchDateTo('');
+                  setSearchInvoiceTitle(''); setSearchWarehouse(''); setSearchInvoiceType('');
+                  setTimeout(() => fetchInvoices(1), 0);
+                }}
                 className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
               >
                 清除篩選
@@ -1823,16 +2042,16 @@ function InvoicePageInner() {
           <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-200">
             <button
               onClick={() => {
-                // 全選/取消全選
-                if (checkedInvoiceIds.size === sortedInvoicesForList.length) {
+                const invoiceOnly = mergedListForDisplay.filter(i => !i._isAllowance);
+                if (checkedInvoiceIds.size === invoiceOnly.length) {
                   setCheckedInvoiceIds(new Set());
                 } else {
-                  setCheckedInvoiceIds(new Set(sortedInvoicesForList.map(inv => inv.id)));
+                  setCheckedInvoiceIds(new Set(invoiceOnly.map(inv => inv.id)));
                 }
               }}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
             >
-              {checkedInvoiceIds.size === sortedInvoicesForList.length && sortedInvoicesForList.length > 0 ? '取消全選' : '全選'}
+              {checkedInvoiceIds.size === mergedListForDisplay.filter(i => !i._isAllowance).length && mergedListForDisplay.filter(i => !i._isAllowance).length > 0 ? '取消全選' : '全選'}
             </button>
             <span className="text-sm text-gray-500">
               已選 {checkedInvoiceIds.size} 筆
@@ -1859,12 +2078,13 @@ function InvoicePageInner() {
                 <th className="px-3 py-3 w-10">
                   <input
                     type="checkbox"
-                    checked={checkedInvoiceIds.size === sortedInvoicesForList.length && sortedInvoicesForList.length > 0}
+                    checked={checkedInvoiceIds.size === mergedListForDisplay.filter(i => !i._isAllowance).length && mergedListForDisplay.filter(i => !i._isAllowance).length > 0}
                     onChange={() => {
-                      if (checkedInvoiceIds.size === sortedInvoicesForList.length) {
+                      const invoiceOnly = mergedListForDisplay.filter(i => !i._isAllowance);
+                      if (checkedInvoiceIds.size === invoiceOnly.length) {
                         setCheckedInvoiceIds(new Set());
                       } else {
-                        setCheckedInvoiceIds(new Set(sortedInvoicesForList.map(inv => inv.id)));
+                        setCheckedInvoiceIds(new Set(invoiceOnly.map(inv => inv.id)));
                       }
                     }}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1889,20 +2109,38 @@ function InvoicePageInner() {
                     載入中...
                   </td>
                 </tr>
-              ) : invoices.length === 0 ? (
+              ) : mergedListForDisplay.length === 0 ? (
                 <tr>
                   <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
-                    尚無發票資料
-                  </td>
-                </tr>
-              ) : filteredInvoicesForList.length === 0 ? (
-                <tr>
-                  <td colSpan="11" className="px-4 py-8 text-center text-gray-500">
-                    無符合篩選的發票
+                    {invoiceTotal === 0 ? '尚無符合條件的發票，請調整篩選條件' : '無符合篩選的發票'}
                   </td>
                 </tr>
               ) : (
-                sortedInvoicesForList.map((invoice, index) => {
+                mergedListForDisplay.map((invoice, index) => {
+                  if (invoice._isAllowance) {
+                    return (
+                      <tr key={invoice.id} className="bg-red-50 hover:bg-red-100 border-l-4 border-red-400">
+                        <td className="px-3 py-3" />
+                        <td className="px-4 py-3 text-sm">{invoice.warehouse || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-400">-</td>
+                        <td className="px-4 py-3 text-sm">{invoice.supplierName}</td>
+                        <td className="px-4 py-3 text-sm font-mono text-red-700">{invoice.invoiceNo}</td>
+                        <td className="px-4 py-3 text-sm">{invoice.invoiceDate}</td>
+                        <td className="px-4 py-3 text-sm">{invoice.items.length > 0 ? `${invoice.items.length} 項` : '-'}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-700">
+                          - NT$ {Math.abs(invoice.totalAmount).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-700 font-semibold">折讓</span>
+                          {invoice.reason && <span className="ml-1 text-xs text-gray-500">{invoice.reason}</span>}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">{invoice.paymentStatus || '已確認'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-400">-</td>
+                      </tr>
+                    );
+                  }
                   const isExpanded = expandedInvoices.has(invoice.id);
                   return (
                     <Fragment key={invoice.id}>
@@ -1930,10 +2168,18 @@ function InvoicePageInner() {
                           NT$ {parseFloat(invoice.totalAmount || invoice.amount + invoice.tax || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          {invoice.invoiceType === '業主私帳' && <span className="px-2 py-1 rounded text-xs bg-orange-100 text-orange-800">業主發票私帳</span>}
-                          {invoice.invoiceType === '租屋支出' && <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">租屋支出</span>}
-                          {invoice.invoiceType === '固定費用' && <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">固定費用</span>}
-                          {(!invoice.invoiceType || invoice.invoiceType === '進貨單') && <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">進貨單</span>}
+                          <div className="flex flex-wrap items-center gap-1">
+                            {invoice.invoiceType === '業主私帳' && <span className="px-2 py-1 rounded text-xs bg-orange-100 text-orange-800">業主發票私帳</span>}
+                            {invoice.invoiceType === '租屋支出' && <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">租屋支出</span>}
+                            {invoice.invoiceType === '固定費用' && <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">固定費用</span>}
+                            {(!invoice.invoiceType || invoice.invoiceType === '進貨單') && <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">進貨單</span>}
+                            {invoice.status === '已退貨' && (
+                              <span className="px-2 py-1 rounded text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200" title="已確認全額退貨">全額退貨</span>
+                            )}
+                            {invoice.status === '部分退貨' && (
+                              <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200" title="已確認部分退貨">部分退貨</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-1 rounded text-xs ${
@@ -1958,7 +2204,7 @@ function InvoicePageInner() {
                             </button>
                             {isLoggedIn && (
                               <>
-                                {!['草稿', '待出納', '已付款'].includes(invoice.paymentStatus) && (
+                                {!['草稿', '待出納', '已付款', '已退貨', '部分退貨'].includes(invoice.paymentStatus) && (
                                   <button
                                     onClick={() => handleEdit(invoice)}
                                     className="text-green-600 hover:underline text-sm"
@@ -1966,7 +2212,7 @@ function InvoicePageInner() {
                                     編輯
                                   </button>
                                 )}
-                                {!['草稿', '待出納', '已付款'].includes(invoice.paymentStatus) && (
+                                {!['草稿', '待出納', '已付款', '已退貨', '部分退貨'].includes(invoice.paymentStatus) && (
                                   <button
                                     onClick={() => handleDelete(invoice.id)}
                                     className="text-red-600 hover:underline text-sm"
@@ -2098,6 +2344,46 @@ function InvoicePageInner() {
               )}
             </tbody>
           </table>
+
+          {/* 分頁控制 */}
+          {invoiceTotalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+              <span className="text-sm text-gray-500">
+                共 {invoiceTotal} 筆，第 {invoicePage} / {invoiceTotalPages} 頁
+              </span>
+              <div className="flex gap-2">
+                <button
+                  disabled={invoicePage <= 1}
+                  onClick={() => fetchInvoices(invoicePage - 1)}
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 hover:bg-gray-100"
+                >上一頁</button>
+                {(() => {
+                  const pages = [];
+                  if (invoiceTotalPages <= 7) {
+                    for (let i = 1; i <= invoiceTotalPages; i++) pages.push(i);
+                  } else {
+                    for (let i = 1; i <= Math.min(3, invoiceTotalPages); i++) pages.push(i);
+                    if (invoicePage > 4) pages.push('…');
+                    for (let i = Math.max(invoicePage - 1, 4); i <= Math.min(invoicePage + 1, invoiceTotalPages - 3); i++) pages.push(i);
+                    if (invoicePage < invoiceTotalPages - 3) pages.push('…');
+                    for (let i = Math.max(invoiceTotalPages - 2, 4); i <= invoiceTotalPages; i++) pages.push(i);
+                  }
+                  return [...new Set(pages)].map((p, idx) =>
+                    p === '…' ? <span key={`e${idx}`} className="px-2 py-1 text-gray-400">…</span> :
+                    <button key={p} onClick={() => fetchInvoices(p)}
+                      className={`px-3 py-1 border rounded text-sm ${p === invoicePage ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-100'}`}>
+                      {p}
+                    </button>
+                  );
+                })()}
+                <button
+                  disabled={invoicePage >= invoiceTotalPages}
+                  onClick={() => fetchInvoices(invoicePage + 1)}
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 hover:bg-gray-100"
+                >下一頁</button>
+              </div>
+            </div>
+          )}
         </div>
         </>)}
       </main>

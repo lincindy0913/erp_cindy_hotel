@@ -50,7 +50,8 @@ export async function GET(request, { params }) {
         accountId: reconciliation.accountId,
         reconciliationId: reconciliation.id
       },
-      orderBy: [{ txDate: 'asc' }, { lineNo: 'asc' }]
+      orderBy: [{ txDate: 'asc' }, { lineNo: 'asc' }],
+      take: 1000,
     });
 
     // Get system transactions for this account/month
@@ -67,7 +68,8 @@ export async function GET(request, { params }) {
       include: {
         category: { select: { id: true, name: true } }
       },
-      orderBy: { transactionDate: 'asc' }
+      orderBy: { transactionDate: 'asc' },
+      take: 2000,
     });
 
     const result = {

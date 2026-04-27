@@ -72,12 +72,13 @@ export default function Dashboard() {
       .finally(() => setSummaryLoading(false));
   }, []);
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (forceRefresh = false) => {
+    setNtfLoading(true);
     try {
       const res = await fetch('/api/notifications/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(forceRefresh ? { refresh: true } : {}),
       });
       if (res.ok) {
         const data = await res.json();
@@ -103,9 +104,10 @@ export default function Dashboard() {
     fetchLatestReport();
   }, [isLoggedIn, fetchNotifications]);
 
-  async function fetchDashboardData() {
+  async function fetchDashboardData(refresh = false) {
     try {
-      const response = await fetch('/api/dashboard');
+      const url = refresh ? '/api/dashboard?refresh=true' : '/api/dashboard';
+      const response = await fetch(url);
       if (!response.ok) { setLoading(false); return; }
       const data = await response.json();
       setDashboardData(prev => ({ ...prev, ...data }));
@@ -116,13 +118,25 @@ export default function Dashboard() {
     }
   }
 
-  async function fetchExecutiveData() {
+  async function fetchExecutiveData(refresh = false) {
     try {
-      const response = await fetch('/api/dashboard/executive');
+      const url = refresh ? '/api/dashboard/executive?refresh=true' : '/api/dashboard/executive';
+      const response = await fetch(url);
       if (response.ok) setExecutiveData(await response.json());
     } catch (error) {
       console.error('取得決策儀表板資料失敗:', error);
     }
+  }
+
+  async function handleRefreshAll() {
+    setLoading(true);
+    await Promise.all([
+      fetchDashboardData(true),
+      fetchExecutiveData(true),
+      fetch('/api/dashboard/summary?refresh=true').then(r => r.ok ? r.json() : null).then(d => { if (d) setSummary(d); }),
+      fetchNotifications(true),
+      fetchLatestReport(),
+    ]);
   }
 
   async function fetchLatestReport() {
@@ -332,10 +346,26 @@ export default function Dashboard() {
         <div className="flex items-end justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">經營儀錶板</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{dateStr}</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {dateStr}
+              {dashboardData?.cachedAt && (
+                <span className="ml-2 text-xs text-gray-400">
+                  · 統計資料更新於 {new Date(dashboardData.cachedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                  {dashboardData.cacheStatus === 'cached' && ' (快取)'}
+                </span>
+              )}
+            </p>
           </div>
           {isLoggedIn && (
             <div className="flex gap-2">
+              <button
+                onClick={handleRefreshAll}
+                disabled={loading}
+                className="bg-white border border-gray-300 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50"
+                title="強制重新整理統計資料"
+              >
+                重新整理
+              </button>
               <Link href="/purchasing" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm inline-flex items-center gap-1.5">
                 <span>➕</span> 新增進貨單
               </Link>

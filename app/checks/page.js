@@ -97,6 +97,7 @@ export default function ChecksPage() {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('pending');
   const [checks, setChecks] = useState([]);
+  const [checksHasMore, setChecksHasMore] = useState(false);
   const [summary, setSummary] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -171,6 +172,7 @@ export default function ChecksPage() {
       const res = await fetch(`/api/checks?${query}`);
       const data = await res.json();
       setChecks(Array.isArray(data) ? data : []);
+      setChecksHasMore(res.headers.get('X-Has-More') === 'true');
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -833,6 +835,12 @@ export default function ChecksPage() {
             取消選擇
           </button>
         </div>
+      )}
+
+      {checksHasMore && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          目前顯示最近 1,000 筆，請使用日期或狀態篩選縮小範圍
+        </p>
       )}
 
       {/* Payable section */}

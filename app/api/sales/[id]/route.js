@@ -17,7 +17,6 @@ export async function GET(request, { params }) {
     if (!invoice) return createErrorResponse('NOT_FOUND', '發票不存在', 404);
 
     const paymentOrders = await prisma.paymentOrder.findMany({
-      where: { status: { in: ['草稿', '待出納', '已執行'] } },
       select: { invoiceIds: true, status: true }
     });
     const idNum = Number(id);
@@ -26,8 +25,12 @@ export async function GET(request, { params }) {
       return o.invoiceIds.some(invId => Number(invId) === idNum || invId === id);
     });
     let paymentStatus = '未付款';
-    if (related.length > 0) {
-      if (related.some(o => o.status === '已執行')) paymentStatus = '已付款';
+    if (invoice.status === '已退貨' || invoice.status === '部分退貨') {
+      paymentStatus = invoice.status;
+    } else if (related.length > 0) {
+      if (related.some(o => o.status === '已退貨')) paymentStatus = '已退貨';
+      else if (related.some(o => o.status === '部分退貨')) paymentStatus = '部分退貨';
+      else if (related.some(o => o.status === '已執行')) paymentStatus = '已付款';
       else if (related.some(o => o.status === '待出納')) paymentStatus = '待出納';
       else if (related.some(o => o.status === '草稿')) paymentStatus = '草稿';
     }

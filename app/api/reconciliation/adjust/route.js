@@ -5,6 +5,7 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { recalcBalance } from '@/lib/recalc-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,49 +70,41 @@ export async function POST(request) {
       }
     });
 
-    // Recalculate account balance
-    const allTx = await prisma.cashTransaction.findMany({
-      where: { accountId: parseInt(accountId) }
-    });
+    // Recalculate account balance using shared utility (handles fees correctly)
+    await recalcBalance(prisma, parseInt(accountId));
 
-    let balance = Number(account.openingBalance);
-    allTx.forEach(tx => {
-      const amt = Number(tx.amount);
-      if (tx.type === '收入' || tx.type === '移轉入') balance += amt;
-      else if (tx.type === '支出' || tx.type === '移轉') balance -= amt;
-    });
-
-    await prisma.cashAccount.update({
-      where: { id: parseInt(accountId) },
-      data: { currentBalance: balance }
-    });
-
-    // Update reconciliation: recalculate system closing balance and adjustment count
+    // Update reconciliation: recalculate system closing balance via groupBy aggregation
     const monthStart = `${reconciliation.statementYear}-${String(reconciliation.statementMonth).padStart(2, '0')}-01`;
     const nextMonth = reconciliation.statementMonth === 12 ? 1 : reconciliation.statementMonth + 1;
     const nextYear = reconciliation.statementMonth === 12 ? reconciliation.statementYear + 1 : reconciliation.statementYear;
     const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-    // Recalculate opening balance
-    const txBefore = await prisma.cashTransaction.findMany({
-      where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } }
-    });
-    let openingBalance = Number(account.openingBalance);
-    txBefore.forEach(tx => {
-      const amt = Number(tx.amount);
-      if (tx.type === '收入' || tx.type === '移轉入') openingBalance += amt;
-      else if (tx.type === '支出' || tx.type === '移轉') openingBalance -= amt;
-    });
+    const [beforeGroups, monthGroups] = await Promise.all([
+      prisma.cashTransaction.groupBy({
+        by: ['type'],
+        where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } },
+        _sum: { amount: true },
+      }),
+      prisma.cashTransaction.groupBy({
+        by: ['type'],
+        where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } },
+        _sum: { amount: true },
+      }),
+    ]);
 
-    const txInMonth = await prisma.cashTransaction.findMany({
-      where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } }
-    });
+    let openingBalance = Number(account.openingBalance);
+    for (const g of beforeGroups) {
+      const amt = Number(g._sum.amount || 0);
+      if (g.type === '收入' || g.type === '移轉入') openingBalance += amt;
+      else if (g.type === '支出' || g.type === '移轉') openingBalance -= amt;
+    }
+
     let closingBalanceSystem = openingBalance;
-    txInMonth.forEach(tx => {
-      const amt = Number(tx.amount);
-      if (tx.type === '收入' || tx.type === '移轉入') closingBalanceSystem += amt;
-      else if (tx.type === '支出' || tx.type === '移轉') closingBalanceSystem -= amt;
-    });
+    for (const g of monthGroups) {
+      const amt = Number(g._sum.amount || 0);
+      if (g.type === '收入' || g.type === '移轉入') closingBalanceSystem += amt;
+      else if (g.type === '支出' || g.type === '移轉') closingBalanceSystem -= amt;
+    }
 
     const difference = closingBalanceSystem - Number(reconciliation.closingBalanceBank);
 

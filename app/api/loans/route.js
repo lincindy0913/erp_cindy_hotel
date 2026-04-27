@@ -5,6 +5,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -168,6 +169,15 @@ export async function POST(request) {
       });
 
       return loan;
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.LOAN_CREATE,
+      targetModule: 'loan',
+      targetRecordId: result.id,
+      targetRecordNo: result.loanCode,
+      afterState: { loanCode: result.loanCode, loanName: result.loanName, originalAmount: Number(result.originalAmount), warehouse: result.warehouse },
+      note: `建立貸款 ${result.loanCode}`,
     });
 
     return NextResponse.json({

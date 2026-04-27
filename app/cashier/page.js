@@ -23,6 +23,15 @@ function getDisplayOrderNo(order) {
   return order.orderNo;
 }
 
+function defaultCashierDateRange() {
+  const now = new Date();
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  return {
+    from: `${threeMonthsAgo.getFullYear()}-${String(threeMonthsAgo.getMonth() + 1).padStart(2, '0')}-01`,
+    to: now.toISOString().split('T')[0],
+  };
+}
+
 export default function CashierPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -46,10 +55,11 @@ export default function CashierPage() {
   });
   const [executionResults, setExecutionResults] = useState({});
 
-  // Search filter
+  // Search filter — 預設顯示近3個月，避免初始載入全部歷史資料
+  const _defaultRange = defaultCashierDateRange();
   const [searchFilter, setSearchFilter] = useState({
-    dateFrom: '',
-    dateTo: '',
+    dateFrom: _defaultRange.from,
+    dateTo: _defaultRange.to,
     warehouse: '',
     supplierId: '',
     sourceType: '',
@@ -116,15 +126,17 @@ export default function CashierPage() {
   }
 
   function clearSearch() {
+    const range = defaultCashierDateRange();
     setSearchFilter({
-      dateFrom: '',
-      dateTo: '',
+      dateFrom: range.from,
+      dateTo: range.to,
       warehouse: '',
       supplierId: '',
       sourceType: '',
     });
     setLoading(true);
-    fetch('/api/payment-orders')
+    const params = new URLSearchParams({ dateFrom: range.from, dateTo: range.to });
+    fetch(`/api/payment-orders?${params}`)
       .then(r => r.json())
       .then(data => setOrders(Array.isArray(data) ? data : []))
       .catch(() => setOrders([]))
@@ -676,7 +688,7 @@ export default function CashierPage() {
               </select>
             </div>
           </div>
-          <div className="flex gap-2 mt-3">
+          <div className="flex flex-wrap gap-2 mt-3 items-center">
             <button
               type="button"
               onClick={handleSearch}
@@ -689,8 +701,25 @@ export default function CashierPage() {
               onClick={clearSearch}
               className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
             >
-              清除
+              還原預設（近3個月）
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchFilter(f => ({ ...f, dateFrom: '', dateTo: '' }));
+                setLoading(true);
+                fetch('/api/payment-orders')
+                  .then(r => r.json())
+                  .then(data => setOrders(Array.isArray(data) ? data : []))
+                  .catch(() => setOrders([]))
+                  .finally(() => setLoading(false));
+              }}
+              className="px-4 py-2 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 text-sm"
+              title="移除日期限制，載入全部歷史資料（資料量大時較慢）"
+            >
+              查詢全部歷史
+            </button>
+            <span className="text-xs text-gray-400 ml-1">預設顯示近3個月 · 含所有待執行單據</span>
           </div>
         </div>
 

@@ -28,7 +28,8 @@ export async function GET(request) {
       include: {
         property: { select: { id: true, name: true, buildingName: true } }
       },
-      orderBy: { maintenanceDate: 'desc' }
+      orderBy: { maintenanceDate: 'desc' },
+      take: 500,
     });
 
     return NextResponse.json(records);

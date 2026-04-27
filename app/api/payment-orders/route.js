@@ -83,13 +83,13 @@ export async function GET(request) {
       })),
     });
 
-    // 不分頁模式（向下相容：page 未帶或 all=true），上限 5000 筆
+    // 不分頁模式（向下相容：page 未帶或 all=true），上限 1000 筆
     if (all || page === 0) {
       const orders = await prisma.paymentOrder.findMany({
         where,
         include: { executions: true },
         orderBy: { createdAt: 'desc' },
-        take: 5000,
+        take: 1000,
       });
       return NextResponse.json(orders.map(formatOrder));
     }

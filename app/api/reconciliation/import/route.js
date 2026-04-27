@@ -115,27 +115,33 @@ export async function POST(request) {
       const nextYear = parseInt(month) === 12 ? parseInt(year) + 1 : parseInt(year);
       const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-      const txBefore = await prisma.cashTransaction.findMany({
-        where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } },
-      });
+      // Use groupBy aggregation instead of loading all rows
+      const [beforeGroups, monthGroups] = await Promise.all([
+        prisma.cashTransaction.groupBy({
+          by: ['type'],
+          where: { accountId: parseInt(accountId), transactionDate: { lt: monthStart } },
+          _sum: { amount: true },
+        }),
+        prisma.cashTransaction.groupBy({
+          by: ['type'],
+          where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } },
+          _sum: { amount: true },
+        }),
+      ]);
 
       let openingBalance = Number(account.openingBalance);
-      txBefore.forEach((tx) => {
-        const amt = Number(tx.amount);
-        if (tx.type === '收入' || tx.type === '移轉入') openingBalance += amt;
-        else if (tx.type === '支出' || tx.type === '移轉') openingBalance -= amt;
-      });
-
-      const txInMonth = await prisma.cashTransaction.findMany({
-        where: { accountId: parseInt(accountId), transactionDate: { gte: monthStart, lt: monthEnd } },
-      });
+      for (const g of beforeGroups) {
+        const amt = Number(g._sum.amount || 0);
+        if (g.type === '收入' || g.type === '移轉入') openingBalance += amt;
+        else if (g.type === '支出' || g.type === '移轉') openingBalance -= amt;
+      }
 
       let closingBalanceSystem = openingBalance;
-      txInMonth.forEach((tx) => {
-        const amt = Number(tx.amount);
-        if (tx.type === '收入' || tx.type === '移轉入') closingBalanceSystem += amt;
-        else if (tx.type === '支出' || tx.type === '移轉') closingBalanceSystem -= amt;
-      });
+      for (const g of monthGroups) {
+        const amt = Number(g._sum.amount || 0);
+        if (g.type === '收入' || g.type === '移轉入') closingBalanceSystem += amt;
+        else if (g.type === '支出' || g.type === '移轉') closingBalanceSystem -= amt;
+      }
 
       const reconDateStr = `${year}${String(month).padStart(2, '0')}`;
       const reconCount = await prisma.bankReconciliation.count({
@@ -176,6 +182,7 @@ export async function POST(request) {
         accountId: parseInt(accountId),
         transactionDate: { gte: monthStart2, lt: monthEnd2 },
       },
+      take: 2000,
     });
 
     // Pre-load BnB booking data（訂金／當天匯款後五碼、房客姓名）

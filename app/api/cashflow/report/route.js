@@ -36,7 +36,8 @@ export async function GET(request) {
         category: { select: { id: true, name: true, type: true } },
         account: { select: { id: true, name: true, type: true, warehouse: true } },
       },
-      orderBy: [{ transactionDate: 'asc' }, { type: 'asc' }]
+      orderBy: [{ transactionDate: 'asc' }, { type: 'asc' }],
+      take: 5000,
     });
 
     // Build supplier name map for grouping

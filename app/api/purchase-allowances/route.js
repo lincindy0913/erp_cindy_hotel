@@ -49,6 +49,7 @@ export async function GET(request) {
       where,
       include: { details: true },
       orderBy: { createdAt: 'desc' },
+      take: 500,
     });
 
     const result = records.map(r => ({
@@ -119,6 +120,7 @@ export async function POST(request) {
           amount: parseFloat(data.amount || data.totalAmount),
           tax: parseFloat(data.tax || 0),
           totalAmount: parseFloat(data.totalAmount),
+          status: data.status || '草稿',
           reason: data.reason?.trim() || null,
           note: data.note?.trim() || null,
           createdBy: data.createdBy?.trim() || null,

@@ -137,19 +137,23 @@ export async function POST(request) {
     let negativeInventoryCount = 0;
     const negativeProducts = [];
 
+    // Batch-fetch sold quantities for all in-stock products in one query
+    const productIds = inStockProducts.map(p => p.id);
+    const soldGroups = productIds.length > 0
+      ? await prisma.salesDetail.groupBy({
+          by: ['productId'],
+          where: { productId: { in: productIds } },
+          _sum: { quantity: true },
+        })
+      : [];
+    const soldMap = new Map(soldGroups.map(g => [g.productId, Number(g._sum.quantity || 0)]));
+
     for (const product of inStockProducts) {
-      // Calculate quantity from purchase details (in-stock items)
       const totalPurchased = product.purchaseDetails
         .filter(d => d.status === '已入庫')
         .reduce((sum, d) => sum + (d.quantity || 0), 0);
 
-      // Get sold quantity from sales details
-      const salesDetails = await prisma.salesDetail.aggregate({
-        where: { productId: product.id },
-        _sum: { quantity: true }
-      });
-      const totalSold = salesDetails._sum.quantity || 0;
-
+      const totalSold = soldMap.get(product.id) || 0;
       const currentQty = totalPurchased - totalSold;
       if (currentQty < 0) {
         negativeInventoryCount++;

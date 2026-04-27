@@ -5,6 +5,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,6 +148,16 @@ export async function PUT(request, { params }) {
       });
     });
 
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.LOAN_UPDATE,
+      targetModule: 'loan',
+      targetRecordId: updated.id,
+      targetRecordNo: updated.loanCode,
+      beforeState: { loanName: existing.loanName, status: existing.status, annualRate: Number(existing.annualRate) },
+      afterState: updateData,
+      note: `修改貸款 ${updated.loanCode}`,
+    });
+
     return NextResponse.json({
       ...updated,
       originalAmount: Number(updated.originalAmount),
@@ -181,6 +192,15 @@ export async function DELETE(request, { params }) {
     }
 
     await prisma.loanMaster.delete({ where: { id } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.LOAN_DELETE,
+      targetModule: 'loan',
+      targetRecordId: id,
+      targetRecordNo: existing.loanCode,
+      beforeState: { loanCode: existing.loanCode, loanName: existing.loanName, originalAmount: Number(existing.originalAmount) },
+      note: `刪除貸款 ${existing.loanCode}`,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

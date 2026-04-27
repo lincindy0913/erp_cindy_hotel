@@ -187,6 +187,7 @@ model PurchaseMaster {
   @@index([warehouse])
   @@index([purchaseNo])
   @@index([status])
+  @@index([warehouse, purchaseDate])  // spec24: 館別+日期篩選
   @@map("purchase_masters")
 }
 
@@ -236,6 +237,8 @@ model SalesMaster {
   @@index([invoiceNo])
   @@index([invoiceDate])
   @@index([invoiceType])
+  @@index([invoiceType, invoiceDate])    // spec24: 月統計業主私帳篩選
+  @@index([invoiceTitle, invoiceDate])   // spec24: 抬頭+日期月統計
   @@map("sales_masters")
 }
 
@@ -524,6 +527,8 @@ model CashTransaction {
   @@index([accountId, transactionDate(sort: Desc)])  // spec24
   @@index([sourceType, transactionDate])              // spec24
   @@index([isNonCashExpense, transactionDate])         // spec24
+  @@index([warehouse, transactionDate])               // spec24: 現金流館別+日期報表
+  @@index([type, transactionDate])                    // spec24: 收入/支出分類統計
   @@map("cash_transactions")
 }
 
@@ -1084,6 +1089,7 @@ model Check {
   @@index([warehouse])
   @@index([supplierId])
   @@index([reissueOfCheckId])
+  @@index([status, dueDate])  // spec24: 逾期/到期支票查詢
   @@map("checks")
 }
 
@@ -2084,6 +2090,8 @@ model PaymentOrder {
   @@index([sourceType])
   @@index([orderNo])
   @@index([createdAt])
+  @@index([status, createdAt])    // spec24: 待出納/已執行付款單列表
+  @@index([warehouse, status])    // spec24: 館別付款單狀態篩選
   @@map("payment_orders")
 }
 

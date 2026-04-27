@@ -14,14 +14,31 @@ export async function GET(request) {
   if (!auth.ok) return auth.response;
   
   try {
-    const where = {};
+    const { searchParams } = new URL(request.url);
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo   = searchParams.get('dateTo');
+
+    const defaultFrom = (() => {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 1);
+      return d.toISOString().split('T')[0];
+    })();
+
+    const where = {
+      invoiceDate: {
+        gte: dateFrom || defaultFrom,
+        ...(dateTo ? { lte: dateTo } : {}),
+      },
+    };
+
     // Warehouse-level access control
     const wf = applyWarehouseFilter(auth.session, where);
     if (!wf.ok) return wf.response;
 
     const expenses = await prisma.expense.findMany({
       where,
-      orderBy: { id: 'asc' }
+      orderBy: { id: 'asc' },
+      take: 2000,
     });
 
     const result = expenses.map(e => ({

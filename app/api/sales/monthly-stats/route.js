@@ -37,6 +37,7 @@ export async function GET(request) {
           invoiceDate: true,
           invoiceTitle: true,
           invoiceNo: true,
+          invoiceType: true,
           totalAmount: true,
           details: {
             select: { warehouse: true, subtotal: true },
@@ -59,12 +60,34 @@ export async function GET(request) {
     const warehouseSet = new Set();
     const titleSet = new Set();
 
+    // 業主私帳：獨立統計，不影響一般合計
+    const privateMap = {}; // month → { month, total, invoiceCount, byWarehouse }
+
     for (const m of masters) {
       const month = m.invoiceDate.substring(0, 7);
       const title = m.invoiceTitle || '未分類';
       const total = Number(m.totalAmount || 0);
-      titleSet.add(title);
+      const isPrivate = m.invoiceType === '業主私帳';
 
+      if (isPrivate) {
+        // 業主私帳走獨立 map（同樣計入 monthMap.total，但也記錄到 privateMap）
+        if (!privateMap[month]) privateMap[month] = { month, total: 0, invoiceCount: 0, byWarehouse: {} };
+        privateMap[month].total += total;
+        privateMap[month].invoiceCount += 1;
+        const details = m.details.filter(d => d.warehouse && Number(d.subtotal || 0) > 0);
+        if (details.length > 0) {
+          for (const d of details) {
+            const wh = d.warehouse;
+            privateMap[month].byWarehouse[wh] = (privateMap[month].byWarehouse[wh] || 0) + Number(d.subtotal);
+          }
+        } else {
+          const wh = '未分類';
+          privateMap[month].byWarehouse[wh] = (privateMap[month].byWarehouse[wh] || 0) + total;
+        }
+      }
+
+      // 仍加入一般統計（業主私帳也計入 monthMap，符合 C 選項需求）
+      titleSet.add(title);
       if (!monthMap[month]) {
         monthMap[month] = { month, total: 0, byWarehouse: {}, byTitle: {}, invoiceCount: 0, allowanceTotal: 0 };
       }
@@ -130,10 +153,18 @@ export async function GET(request) {
       periodTotal.byTitle[title] = (periodTotal.byTitle[title] || 0) + total;
     }
 
+    // 業主私帳彙整
+    const privateRows = Object.values(privateMap).sort((a, b) => a.month.localeCompare(b.month));
+    const privateTotal = privateRows.reduce(
+      (acc, r) => { acc.total += r.total; acc.invoiceCount += r.invoiceCount; return acc; },
+      { total: 0, invoiceCount: 0 }
+    );
+
     return NextResponse.json({
       startMonth, endMonth, warehouse,
       rows, warehouses, titles,
       periodTotal,
+      private: { rows: privateRows, total: privateTotal },
     });
   } catch (error) {
     return handleApiError(error);

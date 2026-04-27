@@ -70,6 +70,7 @@ export async function GET(request) {
       where.dueDate = { lte: dueDateTo };
     }
 
+    const TAKE = 1000;
     const checks = await prisma.check.findMany({
       where,
       include: {
@@ -78,10 +79,13 @@ export async function GET(request) {
         reissueOfCheck: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
         reissuedByChecks: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
       },
-      orderBy: { dueDate: 'asc' }
+      orderBy: { dueDate: 'asc' },
+      take: TAKE + 1,
     });
 
-    return NextResponse.json(checks);
+    const hasMore = checks.length > TAKE;
+    const data = hasMore ? checks.slice(0, TAKE) : checks;
+    return NextResponse.json(data, hasMore ? { headers: { 'X-Has-More': 'true' } } : {});
   } catch (error) {
     return handleApiError(error);
   }

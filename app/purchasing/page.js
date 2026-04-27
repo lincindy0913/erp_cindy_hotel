@@ -572,6 +572,18 @@ export default function PurchasingPage() {
     return invoicedItemIds.has(itemId);
   }
 
+  /** 進貨折讓確認後 PurchaseMaster.status；用於發票狀態欄與進項發票「類型」連動 */
+  function getPurchaseReturnInvoiceTag(purchase) {
+    if (!purchase?.status) return null;
+    if (purchase.status === '已退貨') {
+      return { label: '全額退貨', className: 'bg-rose-100 text-rose-800 border border-rose-200' };
+    }
+    if (purchase.status === '部分退貨') {
+      return { label: '部分退貨', className: 'bg-amber-100 text-amber-900 border border-amber-200' };
+    }
+    return null;
+  }
+
   async function fetchWarehouseDepartments() {
     try {
       const response = await fetch('/api/warehouse-departments');
@@ -776,14 +788,15 @@ export default function PurchasingPage() {
         return Object.keys(m).sort().map((k) => `${k}:${m[k]}`).join('|');
       },
       invoiceStatus: (r) => {
-        if (!r.items?.length) return '0-1';
+        const ret = r.status === '已退貨' ? '1' : r.status === '部分退貨' ? '2' : '0';
+        if (!r.items?.length) return `${ret}-0-1`;
         let inv = 0;
         let uni = 0;
         r.items.forEach((item, idx) => {
           if (isItemInvoiced(r.id, idx)) inv++;
           else uni++;
         });
-        return `${String(inv).padStart(4, '0')}-${String(uni).padStart(4, '0')}`;
+        return `${ret}-${String(inv).padStart(4, '0')}-${String(uni).padStart(4, '0')}`;
       },
     };
     return sortRows(purchases, purSortKey, purSortDir, acc);
@@ -1289,12 +1302,18 @@ export default function PurchasingPage() {
                                 const invoiced = editingPurchase && item.originalIndex !== undefined
                                   ? isItemInvoiced(editingPurchase.id, item.originalIndex)
                                   : false;
+                                const retTag = editingPurchase ? getPurchaseReturnInvoiceTag(editingPurchase) : null;
                                 return (
-                                  <span className={`px-2 py-1 rounded text-xs ${
-                                    invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {invoiced ? '已核銷' : '未核銷'}
-                                  </span>
+                                  <div className="flex flex-wrap gap-1">
+                                    <span className={`px-2 py-1 rounded text-xs ${
+                                      invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                    }`}>
+                                      {invoiced ? '已核銷' : '未核銷'}
+                                    </span>
+                                    {retTag && (
+                                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${retTag.className}`}>{retTag.label}</span>
+                                    )}
+                                  </div>
                                 );
                               })()}
                             </td>
@@ -1722,6 +1741,7 @@ export default function PurchasingPage() {
                                     uninvoicedCount++;
                                   }
                                 });
+                                const retTag = getPurchaseReturnInvoiceTag(purchase);
                                 return (
                                   <>
                                     {invoicedCount > 0 && (
@@ -1734,12 +1754,25 @@ export default function PurchasingPage() {
                                         未核銷{uninvoicedCount > 1 ? ` x${uninvoicedCount}` : ''}
                                       </span>
                                     )}
+                                    {retTag && (
+                                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${retTag.className}`}>{retTag.label}</span>
+                                    )}
                                   </>
                                 );
                               })()}
                             </div>
                           ) : (
-                            <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800">未核銷</span>
+                            (() => {
+                              const rt = getPurchaseReturnInvoiceTag(purchase);
+                              return (
+                                <div className="flex flex-wrap gap-1">
+                                  <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800">未核銷</span>
+                                  {rt && (
+                                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${rt.className}`}>{rt.label}</span>
+                                  )}
+                                </div>
+                              );
+                            })()
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -1850,12 +1883,18 @@ export default function PurchasingPage() {
                                             <td className="px-3 py-2 text-sm border border-gray-300">
                                               {(() => {
                                                 const invoiced = isItemInvoiced(purchase.id, idx);
+                                                const rt = getPurchaseReturnInvoiceTag(purchase);
                                                 return (
-                                                  <span className={`px-2 py-0.5 rounded text-xs ${
-                                                    invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                                  }`}>
-                                                    {invoiced ? '已核銷' : '未核銷'}
-                                                  </span>
+                                                  <div className="flex flex-wrap gap-1">
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${
+                                                      invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                    }`}>
+                                                      {invoiced ? '已核銷' : '未核銷'}
+                                                    </span>
+                                                    {rt && (
+                                                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${rt.className}`}>{rt.label}</span>
+                                                    )}
+                                                  </div>
                                                 );
                                               })()}
                                             </td>

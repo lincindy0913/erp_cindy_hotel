@@ -167,6 +167,31 @@ export async function POST(request) {
       }
     }
 
+    // Batch pre-fetch linked records outside transaction to avoid N+1 inside the loop
+    const batchOrderIds = orders.map(o => o.id);
+    const engSourceIds = orders
+      .filter(o => o.sourceType === 'engineering' && o.sourceRecordId)
+      .map(o => o.sourceRecordId);
+
+    const [batchChecks, batchLoans, batchMaintenances, batchTaxes, batchEngTerms] = await Promise.all([
+      prisma.check.findMany({ where: { paymentId: { in: batchOrderIds } } }),
+      prisma.loanMonthlyRecord.findMany({ where: { paymentOrderId: { in: batchOrderIds } } }),
+      prisma.rentalMaintenance.findMany({ where: { paymentOrderId: { in: batchOrderIds } } }),
+      prisma.propertyTax.findMany({ where: { paymentOrderId: { in: batchOrderIds } } }),
+      engSourceIds.length > 0
+        ? prisma.engineeringContractTerm.findMany({
+            where: { id: { in: engSourceIds } },
+            include: { contract: { include: { terms: true } } },
+          })
+        : [],
+    ]);
+
+    const checkByOrderId       = new Map(batchChecks.map(c => [c.paymentId, c]));
+    const loanByOrderId        = new Map(batchLoans.map(l => [l.paymentOrderId, l]));
+    const maintenanceByOrderId = new Map(batchMaintenances.map(m => [m.paymentOrderId, m]));
+    const taxByOrderId         = new Map(batchTaxes.map(t => [t.paymentOrderId, t]));
+    const termBySourceId       = new Map(batchEngTerms.map(t => [t.id, t]));
+
     const dateStr = executionDate.replace(/-/g, '');
 
     const result = await prisma.$transaction(async (tx) => {
@@ -246,9 +271,7 @@ export async function POST(request) {
         });
 
         // 支票支付：若有關聯 Check，標記兌現（CashTransaction 已於上方建立）
-        const linkedCheck = await tx.check.findFirst({
-          where: { paymentId: order.id },
-        });
+        const linkedCheck = checkByOrderId.get(order.id) ?? null;
         if (linkedCheck) {
           const firstExec = executions.find(e => e.paymentOrderId === order.id);
           await tx.check.update({
@@ -264,9 +287,7 @@ export async function POST(request) {
         }
 
         // Check linked loan records — update status and actual amounts
-        const linkedLoanRecord = await tx.loanMonthlyRecord.findFirst({
-          where: { paymentOrderId: order.id },
-        });
+        const linkedLoanRecord = loanByOrderId.get(order.id) ?? null;
         if (linkedLoanRecord && linkedLoanRecord.status === '待出納') {
           // Sum actual amounts allocated to this order (includes extra prepaid)
           const orderAllocations = allocations.filter(a => a.orderId === order.id);
@@ -285,9 +306,7 @@ export async function POST(request) {
         }
 
         // If this order is linked to rental maintenance, update maintenance to paid
-        const linkedMaintenance = await tx.rentalMaintenance.findFirst({
-          where: { paymentOrderId: order.id },
-        });
+        const linkedMaintenance = maintenanceByOrderId.get(order.id) ?? null;
         if (linkedMaintenance) {
           const firstExec = executions.find(e => e.paymentOrderId === order.id);
           await tx.rentalMaintenance.update({
@@ -342,10 +361,7 @@ export async function POST(request) {
 
         // If this order is linked to engineering contract term, check partial vs full payment
         if (order.sourceType === 'engineering' && order.sourceRecordId) {
-          const linkedTerm = await tx.engineeringContractTerm.findUnique({
-            where: { id: order.sourceRecordId },
-            include: { contract: { include: { terms: true } } },
-          });
+          const linkedTerm = termBySourceId.get(order.sourceRecordId) ?? null;
           if (linkedTerm && linkedTerm.status !== 'paid') {
             const allPOs = await tx.paymentOrder.findMany({
               where: { sourceType: 'engineering', sourceRecordId: linkedTerm.id, status: '已執行' },
@@ -378,9 +394,7 @@ export async function POST(request) {
         }
 
         // 若此付款單為租賃稅款，連動更新 PropertyTax 為已繳並寫入金流
-        const linkedTax = await tx.propertyTax.findFirst({
-          where: { paymentOrderId: order.id },
-        });
+        const linkedTax = taxByOrderId.get(order.id) ?? null;
         if (linkedTax) {
           const firstExec = executions.find(e => e.paymentOrderId === order.id);
           await tx.propertyTax.update({

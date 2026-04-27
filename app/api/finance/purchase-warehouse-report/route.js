@@ -86,6 +86,7 @@ export async function GET(request) {
           invoiceIds: { not: null },
         },
         orderBy: { createdAt: 'desc' },
+        take: 2000,
       });
 
       // Filter orders whose invoiceIds overlap with our salesIds

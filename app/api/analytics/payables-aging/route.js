@@ -73,47 +73,30 @@ export async function GET() {
     });
     const currentCash = cashAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
 
-    // Pending checks due
-    const checkWhere7 = {
-      checkType: 'payable',
-      status: { in: ['pending', 'due'] },
-      dueDate: { lte: new Date(today.getTime() + 7 * 86400000).toISOString().split('T')[0] },
-    };
-    const cwf1 = applyWarehouseFilter(auth.session, checkWhere7);
-    if (!cwf1.ok) return cwf1.response;
-
-    const checksDue7 = await prisma.check.findMany({
-      where: checkWhere7,
-      select: { amount: true },
-    });
-    const checkWhere14 = {
-      checkType: 'payable',
-      status: { in: ['pending', 'due'] },
-      dueDate: { lte: new Date(today.getTime() + 14 * 86400000).toISOString().split('T')[0] },
-    };
-    const cwf2 = applyWarehouseFilter(auth.session, checkWhere14);
-    if (!cwf2.ok) return cwf2.response;
-
-    const checksDue14 = await prisma.check.findMany({
-      where: checkWhere14,
-      select: { amount: true },
-    });
+    // Pending checks due — single query for 30-day window, bucket in memory
     const checkWhere30 = {
       checkType: 'payable',
       status: { in: ['pending', 'due'] },
       dueDate: { lte: new Date(today.getTime() + 30 * 86400000).toISOString().split('T')[0] },
     };
-    const cwf3 = applyWarehouseFilter(auth.session, checkWhere30);
-    if (!cwf3.ok) return cwf3.response;
+    const cwf1 = applyWarehouseFilter(auth.session, checkWhere30);
+    if (!cwf1.ok) return cwf1.response;
 
     const checksDue30 = await prisma.check.findMany({
       where: checkWhere30,
-      select: { amount: true },
+      select: { amount: true, dueDate: true },
     });
 
-    const outflow7 = checksDue7.reduce((sum, c) => sum + Number(c.amount || 0), 0);
-    const outflow14 = checksDue14.reduce((sum, c) => sum + Number(c.amount || 0), 0);
-    const outflow30 = checksDue30.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    const day7  = new Date(today.getTime() +  7 * 86400000).toISOString().split('T')[0];
+    const day14 = new Date(today.getTime() + 14 * 86400000).toISOString().split('T')[0];
+
+    let outflow7 = 0, outflow14 = 0, outflow30 = 0;
+    for (const c of checksDue30) {
+      const amt = Number(c.amount || 0);
+      outflow30 += amt;
+      if (c.dueDate <= day14) outflow14 += amt;
+      if (c.dueDate <= day7)  outflow7  += amt;
+    }
 
     const cashPressure = [
       { days: 7, pendingOutflow: outflow7, predictedBalance: currentCash - outflow7, sufficiency: currentCash > 0 ? (((currentCash - outflow7) / currentCash) * 100).toFixed(1) : 0 },

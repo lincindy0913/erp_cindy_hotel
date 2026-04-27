@@ -51,7 +51,8 @@ export async function GET(request) {
           select: { id: true, status: true }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
     const result = tenants.map(t => ({

@@ -47,7 +47,8 @@ export async function GET(request) {
         property: { select: { id: true, name: true, buildingName: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: 500,
     });
 
     const result = contracts.map(c => ({
@@ -76,6 +77,9 @@ export async function POST(request) {
     }
     if (!accountingSubjectId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇會計科目', 400);
+    }
+    if (startDate >= endDate) {
+      return createErrorResponse('VALIDATION_FAILED', '合約結束日期必須晚於開始日期', 400);
     }
 
     // Validate no overlapping active contract for same property

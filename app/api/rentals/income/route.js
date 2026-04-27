@@ -23,6 +23,7 @@ export async function GET(request) {
     if (status) where.status = status;
     if (propertyId) where.propertyId = parseInt(propertyId);
 
+    const TAKE = 1200;
     const incomes = await prisma.rentalIncome.findMany({
       where,
       include: {
@@ -36,10 +37,13 @@ export async function GET(request) {
           }
         }
       },
-      orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { dueDate: 'asc' }]
+      orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { dueDate: 'asc' }],
+      take: TAKE + 1,
     });
 
-    const result = incomes.map(i => ({
+    const hasMore = incomes.length > TAKE;
+    const slice = hasMore ? incomes.slice(0, TAKE) : incomes;
+    const result = slice.map(i => ({
       ...i,
       propertyName: i.property.name,
       buildingName: i.property.buildingName,
@@ -48,7 +52,7 @@ export async function GET(request) {
       tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName
     }));
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, hasMore ? { headers: { 'X-Has-More': 'true' } } : {});
   } catch (error) {
     console.error('GET /api/rentals/income error:', error.message || error);
     return handleApiError(error);

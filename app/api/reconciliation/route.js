@@ -44,7 +44,8 @@ export async function GET(request) {
           select: { id: true, name: true, warehouse: true, type: true, accountCode: true }
         }
       },
-      orderBy: { accountId: 'asc' }
+      orderBy: { accountId: 'asc' },
+      take: 500,
     });
 
     const result = reconciliations.map(r => ({

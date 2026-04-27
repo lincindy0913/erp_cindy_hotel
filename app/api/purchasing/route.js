@@ -74,10 +74,10 @@ export async function GET(request) {
     const includeOpts = { details: true, supplier: { select: { name: true } } };
     const orderByOpts = { id: 'desc' };
 
-    // 不分頁模式（向下相容），上限 5000 筆
+    // 不分頁模式（向下相容），上限 1000 筆
     if (all || page === 0) {
       const purchases = await prisma.purchaseMaster.findMany({
-        where, include: includeOpts, orderBy: orderByOpts, take: 5000,
+        where, include: includeOpts, orderBy: orderByOpts, take: 1000,
       });
       return NextResponse.json(purchases.map(formatPurchase));
     }

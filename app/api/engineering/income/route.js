@@ -25,6 +25,7 @@ export async function GET(request) {
         account: { select: { id: true, name: true, type: true, warehouse: true } },
       },
       orderBy: [{ projectId: 'asc' }, { receivedDate: 'desc' }],
+      take: 500,
     });
 
     return NextResponse.json(incomes.map(i => ({

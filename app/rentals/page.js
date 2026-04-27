@@ -109,6 +109,7 @@ function RentalsPage() {
   const [properties, setProperties] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [incomes, setIncomes] = useState([]);
+  const [incomesHasMore, setIncomesHasMore] = useState(false);
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('dueDate', 'desc');
   const sortedIncomes = useMemo(
     () =>
@@ -184,7 +185,7 @@ function RentalsPage() {
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -658,6 +659,7 @@ function RentalsPage() {
       ]);
       const incData = await incRes.json();
       setIncomes(Array.isArray(incData) ? incData : []);
+      setIncomesHasMore(incRes.headers.get('X-Has-More') === 'true');
       if (utiRes.ok) {
         const utiData = await utiRes.json();
         const map = {};
@@ -980,10 +982,11 @@ function RentalsPage() {
         publicInterestNote: property.publicInterestNote || '',
         publicInterestStartDate: property.publicInterestStartDate || '',
         publicInterestEndDate: property.publicInterestEndDate || '',
+        publicInterestRent: property.publicInterestRent != null ? String(property.publicInterestRent) : '',
       });
     } else {
       setEditingProperty(null);
-      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '' });
+      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
     }
     setShowPropertyModal(true);
   }
@@ -1588,6 +1591,11 @@ function RentalsPage() {
             {/* ==================== TAB: CASHIER ==================== */}
             {activeTab === 'cashier' && (
               <div>
+                {incomesHasMore && (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    目前顯示最近 1,200 筆，請使用年份或月份篩選縮小範圍
+                  </p>
+                )}
                 {/* Cashier summary cards */}
                 {incomes.length > 0 && (
                   <div className="grid grid-cols-4 gap-3 mb-4">
@@ -2498,8 +2506,11 @@ function RentalsPage() {
                             <tr key={tax.id} className="border-t hover:bg-gray-50">
                               <td className="px-3 py-2">
                                 <span>{tax.property?.name}</span>
-                                {tax.property?.asset && (tax.property.asset.hasHouseTax || tax.property.asset.hasLandTax) && (
-                                  <span className="ml-1 text-xs text-amber-600 bg-amber-50 px-1 rounded">資產標記</span>
+                                {tax.property?.asset?.hasHouseTax && (
+                                  <span className="ml-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">房屋稅</span>
+                                )}
+                                {tax.property?.asset?.hasLandTax && (
+                                  <span className="ml-1 text-xs text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded">地價稅</span>
                                 )}
                               </td>
                               <td className="px-3 py-2 text-center">{tax.taxYear}</td>
@@ -3812,7 +3823,13 @@ function RentalsPage() {
                             placeholder="申請公益出租人之人名"
                             className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
                         </div>
-                        <div />
+                        <div>
+                          <label className="text-xs text-green-700 font-medium block mb-1">公益月租金</label>
+                          <input type="number" min="0" step="1" value={propertyForm.publicInterestRent}
+                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestRent: e.target.value }))}
+                            placeholder="0"
+                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -4050,7 +4067,10 @@ function RentalsPage() {
                   <select value={maintenanceForm.propertyId} onChange={e => setMaintenanceForm(f => ({ ...f, propertyId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingMaintenance}>
                     <option value="">選擇物業</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {properties.map(p => {
+                      const suffix = p.asset?.hasMaintenanceFee ? ' [維護費]' : '';
+                      return <option key={p.id} value={p.id}>{p.name}{suffix}</option>;
+                    })}
                   </select>
                 </div>
                 <div>
