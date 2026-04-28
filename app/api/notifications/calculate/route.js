@@ -42,7 +42,7 @@ export async function POST(request) {
     const forceRefresh = body.refresh === true;
     const cacheKey = 'notifications:calculated';
     const cached = forceRefresh ? null : getCached(cacheKey);
-    if (cached) return NextResponse.json(cached);
+    if (cached) return NextResponse.json(cached.data);
 
     const notifications = [];
     const today = new Date();
