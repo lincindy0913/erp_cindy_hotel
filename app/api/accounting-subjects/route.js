@@ -14,7 +14,8 @@ export async function GET() {
   
   try {
     const subjects = await prisma.accountingSubject.findMany({
-      orderBy: { code: 'asc' }
+      orderBy: { code: 'asc' },
+      take: 500,
     });
     return NextResponse.json(subjects);
   } catch (error) {
@@ -90,6 +91,9 @@ export async function DELETE(request) {
     }
 
     const parsedId = parseInt(id);
+    if (Number.isNaN(parsedId)) {
+      return createErrorResponse('VALIDATION_FAILED', '無效的 id 參數', 400);
+    }
 
     // Check referential integrity before deleting
     const refCount = await prisma.cashCategory.count({

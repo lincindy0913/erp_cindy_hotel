@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
@@ -63,6 +64,14 @@ export async function PUT(request, { params }) {
         industryCategory: data.industryCategory && String(data.industryCategory).trim() ? String(data.industryCategory).trim() : null,
         sortOrder: data.sortOrder != null && data.sortOrder !== '' ? parseInt(data.sortOrder) : null,
       }
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.SUPPLIER_UPDATE,
+      targetModule: 'suppliers',
+      targetRecordId: id,
+      beforeState: { name: existing.name, paymentTerms: existing.paymentTerms },
+      afterState: { name: updated.name, paymentTerms: updated.paymentTerms },
     });
 
     return NextResponse.json(updated);

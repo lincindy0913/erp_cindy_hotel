@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,8 @@ export async function GET() {
 
     const accounts = await prisma.cashAccount.findMany({
       where,
-      orderBy: [{ warehouse: 'asc' }, { type: 'asc' }, { name: 'asc' }]
+      orderBy: [{ warehouse: 'asc' }, { type: 'asc' }, { name: 'asc' }],
+      take: 500,
     });
 
     const result = accounts.map(a => ({
@@ -67,6 +69,13 @@ export async function POST(request) {
         isActive: true,
         note: data.note || null
       }
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CASH_ACCOUNT_CREATE,
+      targetModule: 'cash-accounts',
+      targetRecordId: account.id,
+      afterState: { name: account.name, type: account.type, warehouse: account.warehouse },
     });
 
     return NextResponse.json({

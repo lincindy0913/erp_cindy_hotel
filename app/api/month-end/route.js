@@ -349,6 +349,41 @@ export async function POST(request) {
       level: cashBalanceMismatch > 0 ? 'warning' : 'pass'
     });
 
+    // Check cross-warehouse close: when doing a global close (no warehouse), warn if any building-type
+    // warehouse is missing a per-warehouse close for this period
+    if (!warehouse) {
+      try {
+        const activeBuildings = await prisma.warehouse.findMany({
+          where: { type: 'building', isActive: true },
+          select: { name: true },
+        });
+        if (activeBuildings.length > 0) {
+          const closedWarehouseStatuses = await prisma.monthEndStatus.findMany({
+            where: {
+              year,
+              month,
+              warehouse: { in: activeBuildings.map(w => w.name) },
+              status: { in: ['已結帳', '已鎖定'] },
+            },
+            select: { warehouse: true },
+          });
+          const closedWarehouseSet = new Set(closedWarehouseStatuses.map(s => s.warehouse));
+          const unclosedBuildings = activeBuildings.filter(w => !closedWarehouseSet.has(w.name));
+          if (unclosedBuildings.length > 0) {
+            preChecks.push({
+              name: '館別未完成個別月結',
+              count: unclosedBuildings.length,
+              passed: true,
+              level: 'warning',
+              detail: `以下館別尚未完成個別月結：${unclosedBuildings.map(w => w.name).join('、')}`,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('跨館別月結驗證錯誤:', e);
+      }
+    }
+
     // spec26: Check cash count completion for the last day of the month
     try {
       const lastDayOfMonth = new Date(year, month, 0); // last day of given month

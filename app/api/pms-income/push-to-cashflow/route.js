@@ -59,7 +59,30 @@ export async function POST(request) {
     const isCreditCard = (pmsColumnName) =>
       String(pmsColumnName).includes('信用卡');
 
+    // Pre-collect warehouses that have credit card records for batch pre-fetch
+    const ccWarehouses = [...new Set(
+      records.filter(r => !r.cashTransactionId && isCreditCard(r.pmsColumnName)).map(r => r.warehouse)
+    )];
+
     await prisma.$transaction(async (tx) => {
+      // Batch pre-fetch existing CC settlement/fee transactions to avoid N+1
+      const existingCCTxs = ccWarehouses.length > 0
+        ? await tx.cashTransaction.findMany({
+            where: {
+              sourceType: { in: ['pms_credit_card_settlement', 'pms_credit_card_fee'] },
+              warehouse: { in: ccWarehouses },
+            },
+            select: { id: true, sourceType: true, transactionDate: true, warehouse: true, accountId: true },
+          })
+        : [];
+      const existingSettlementMap = new Map();
+      const existingFeeMap = new Map();
+      for (const t of existingCCTxs) {
+        const mk = `${t.warehouse ?? ''}|${t.transactionDate}|${t.accountId}`;
+        if (t.sourceType === 'pms_credit_card_settlement') existingSettlementMap.set(mk, t);
+        else if (t.sourceType === 'pms_credit_card_fee') existingFeeMap.set(mk, t);
+      }
+
       for (const rec of records) {
         if (rec.cashTransactionId || processedIds.has(rec.id)) continue;
 
@@ -100,14 +123,8 @@ export async function POST(request) {
             : '信用卡手續費';
 
           // 1. 信用卡收入（全額，未扣手續費）
-          const existingGroupTx = await tx.cashTransaction.findFirst({
-            where: {
-              sourceType: 'pms_credit_card_settlement',
-              transactionDate: settlementDate,
-              warehouse: rec.warehouse,
-              accountId: config.cashAccountId
-            }
-          });
+          const settlementMapKey = `${rec.warehouse ?? ''}|${settlementDate}|${config.cashAccountId}`;
+          const existingGroupTx = existingSettlementMap.get(settlementMapKey) || null;
 
           if (!existingGroupTx && groupRecords.length > 0) {
             const txNo = await nextCashTransactionNo(tx, settlementDate);
@@ -134,6 +151,7 @@ export async function POST(request) {
                 status: '已確認'
               }
             });
+            existingSettlementMap.set(settlementMapKey, newTx);
             for (const r of groupRecords) {
               await tx.pmsIncomeRecord.update({ where: { id: r.id }, data: { cashTransactionId: newTx.id } });
               processedIds.add(r.id);
@@ -150,17 +168,11 @@ export async function POST(request) {
 
           // 2. 信用卡手續費（獨立一筆支出）
           if (groupFee > 0) {
-            const existingFeeTx = await tx.cashTransaction.findFirst({
-              where: {
-                sourceType: 'pms_credit_card_fee',
-                transactionDate: settlementDate,
-                warehouse: rec.warehouse,
-                accountId: config.cashAccountId
-              }
-            });
+            const feeMapKey = `${rec.warehouse ?? ''}|${settlementDate}|${config.cashAccountId}`;
+            const existingFeeTx = existingFeeMap.get(feeMapKey) || null;
             if (!existingFeeTx) {
               const feeTxNo = await nextCashTransactionNo(tx, settlementDate);
-              await tx.cashTransaction.create({
+              const createdFeeTx = await tx.cashTransaction.create({
                 data: {
                   transactionNo: feeTxNo,
                   transactionDate: settlementDate,
@@ -183,6 +195,7 @@ export async function POST(request) {
                   status: '已確認'
                 }
               });
+              existingFeeMap.set(feeMapKey, createdFeeTx);
             }
           }
 

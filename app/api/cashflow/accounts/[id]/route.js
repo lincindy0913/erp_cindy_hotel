@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.CASHFLOW_EDIT);
@@ -58,6 +59,14 @@ export async function PUT(request, { params }) {
       return updated;
     });
 
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CASH_ACCOUNT_UPDATE,
+      targetModule: 'cash-accounts',
+      targetRecordId: id,
+      beforeState: { name: existing.name, type: existing.type, openingBalance: Number(existing.openingBalance) },
+      afterState: { name: account.name, type: account.type, openingBalance: Number(account.openingBalance) },
+    });
+
     return NextResponse.json({
       ...account,
       openingBalance: Number(account.openingBalance),
@@ -77,6 +86,8 @@ export async function DELETE(request, { params }) {
   try {
     const id = parseInt(params.id);
 
+    const toDelete = await prisma.cashAccount.findUnique({ where: { id }, select: { name: true, type: true, warehouse: true } });
+
     const txCount = await prisma.cashTransaction.count({
       where: { OR: [{ accountId: id }, { transferAccountId: id }] }
     });
@@ -86,6 +97,14 @@ export async function DELETE(request, { params }) {
     }
 
     await prisma.cashAccount.delete({ where: { id } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CASH_ACCOUNT_DELETE,
+      targetModule: 'cash-accounts',
+      targetRecordId: id,
+      beforeState: toDelete ? { name: toDelete.name, type: toDelete.type, warehouse: toDelete.warehouse } : undefined,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);
