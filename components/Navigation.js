@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: '/inventory', label: '庫存', linkClass: 'link-inventory', requiredPermission: 'inventory.view' },
   { href: '/purchasing', label: '進貨', linkClass: 'link-purchasing', requiredPermission: 'purchasing.view' },
   { href: '/sales', label: '發票登錄', linkClass: 'link-sales', requiredPermission: 'sales.view' },
+  { href: '/owner-expenses', label: '業主私帳月結', linkClass: 'link-sales', requiredPermission: 'sales.view' },
   { href: '/finance', label: '付款', linkClass: 'link-finance', requiredPermission: 'finance.view' },
   { href: '/purchase-allowances', label: '退貨', linkClass: 'link-finance', requiredPermission: 'finance.view' },
   { href: '/checks', label: '支票', linkClass: 'link-checks', requiredPermission: 'check.view' },
@@ -72,7 +73,15 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   }
 
   // 過濾導覽項目
-  const visibleNavItems = NAV_ITEMS.filter(item => canAccess(item.requiredPermission));
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.href === '/owner-expenses') {
+      return (
+        canAccess('sales.view') ||
+        hasPermission(userPermissions, 'owner_expense.view')
+      );
+    }
+    return canAccess(item.requiredPermission);
+  });
 
   // 過濾結帳下拉項目（月結、年結）
   const visibleCloseBookItems = CLOSE_BOOK_ITEMS.filter(item => canAccess(item.requiredPermission));

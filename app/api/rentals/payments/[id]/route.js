@@ -20,11 +20,18 @@ export async function PATCH(request, { params }) {
 
     const payment = await prisma.rentalIncomePayment.findUnique({
       where: { id: paymentId },
-      include: {
+      select: {
+        id: true, amount: true, paymentDate: true, accountId: true,
+        paymentMethod: true, matchTransferRef: true, matchBankAccountName: true,
+        matchNote: true, cashTransactionId: true,
         rentalIncome: {
-          include: {
+          select: {
+            id: true, expectedAmount: true, cashTransactionId: true,
             property: { select: { name: true } },
-            payments: { orderBy: { sequenceNo: 'asc' } }
+            payments: {
+              orderBy: { sequenceNo: 'asc' },
+              select: { id: true, sequenceNo: true, amount: true, cashTransactionId: true }
+            }
           }
         }
       }

@@ -13,7 +13,14 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(request, { params }) {
-  const auth = await requireAnyPermission([PERMISSIONS.OWNER_EXPENSE_EDIT, PERMISSIONS.OWNER_EXPENSE_CREATE]);
+  const auth = await requireAnyPermission([
+    PERMISSIONS.OWNER_EXPENSE_EDIT,
+    PERMISSIONS.OWNER_EXPENSE_CREATE,
+    PERMISSIONS.SALES_CREATE,
+    PERMISSIONS.SALES_EDIT,
+    PERMISSIONS.FINANCE_CREATE,
+    PERMISSIONS.FINANCE_EDIT,
+  ]);
   if (!auth.ok) return auth.response;
 
   try {
@@ -43,7 +50,11 @@ export async function PATCH(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
-  const auth = await requireAnyPermission([PERMISSIONS.OWNER_EXPENSE_EDIT]);
+  const auth = await requireAnyPermission([
+    PERMISSIONS.OWNER_EXPENSE_EDIT,
+    PERMISSIONS.SALES_EDIT,
+    PERMISSIONS.FINANCE_EDIT,
+  ]);
   if (!auth.ok) return auth.response;
 
   try {

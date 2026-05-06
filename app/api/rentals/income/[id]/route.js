@@ -28,11 +28,18 @@ export async function PUT(request, { params }) {
 
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
-      include: {
+      select: {
+        id: true, propertyId: true, tenantId: true,
+        incomeYear: true, incomeMonth: true,
+        expectedAmount: true, actualAmount: true, accountId: true,
+        paymentMethod: true, status: true, cashTransactionId: true,
         contract: { select: { contractNo: true } },
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } },
-        payments: { orderBy: { sequenceNo: 'asc' } }
+        payments: {
+          orderBy: { sequenceNo: 'asc' },
+          select: { id: true, sequenceNo: true, amount: true, cashTransactionId: true }
+        }
       }
     });
 
@@ -159,7 +166,10 @@ export async function PATCH(request, { params }) {
 
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
-      include: {
+      select: {
+        id: true, actualAmount: true, actualDate: true, accountId: true,
+        paymentMethod: true, matchTransferRef: true, matchBankAccountName: true,
+        expectedAmount: true, cashTransactionId: true,
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } }
       }
@@ -246,10 +256,14 @@ export async function DELETE(request, { params }) {
 
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
-      include: {
+      select: {
+        id: true, status: true, actualAmount: true, cashTransactionId: true,
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } },
-        payments: { orderBy: { sequenceNo: 'asc' } }
+        payments: {
+          orderBy: { sequenceNo: 'asc' },
+          select: { id: true, sequenceNo: true, amount: true, cashTransactionId: true }
+        }
       }
     });
     if (!income) {

@@ -181,6 +181,26 @@ export default withAuth(
       return res;
     }
 
+    // /owner-expenses：業主發票私帳月結（與發票登錄能力一致）
+    if (pathname === '/owner-expenses' || pathname.startsWith('/owner-expenses/')) {
+      const permissions = token?.permissions || [];
+      const ok =
+        token?.role === 'admin' ||
+        permissions.includes('*') ||
+        permissions.includes('sales.view') ||
+        permissions.includes('owner_expense.view');
+      if (!ok) {
+        if (isApiRoute) {
+          return NextResponse.json(
+            { error: { code: 'FORBIDDEN', message: '權限不足' } },
+            { status: 403 }
+          );
+        }
+        return NextResponse.redirect(new URL('/unauthorized', req.url));
+      }
+      return NextResponse.next();
+    }
+
     // 模組路由 - 檢查權限
     const requiredPermission = getRequiredPermission(pathname);
     if (requiredPermission) {

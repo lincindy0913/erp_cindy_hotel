@@ -22,8 +22,13 @@ const EXPORT_COLS = [
   { header: '備註', key: 'note' },
 ];
 
-/** 進項發票「業主發票私帳」區塊（嵌入 /sales 或獨立頁） */
-export default function OwnerExpensesPanel({ embedded = true }) {
+const fetchOpts = { credentials: 'include' };
+
+/** 進項發票「業主發票私帳」區塊（嵌入 /sales 或獨立頁）
+ * @param {boolean} [nestedInLayout] 為 true 時不包 min-h-screen，供上層已有 Navigation + 全頁底色時使用
+ * @param {() => void} [onSaved] 儲存／確認成功後回呼（例如刷新報表業主私帳合計）
+ */
+export default function OwnerExpensesPanel({ embedded = true, nestedInLayout = false, onSaved }) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('monthly');
 
@@ -43,7 +48,7 @@ export default function OwnerExpensesPanel({ embedded = true }) {
   const fetchMonth = useCallback(async () => {
     setMonthLoading(true);
     try {
-      const res = await fetch(`/api/owner-expenses?month=${month}`);
+      const res = await fetch(`/api/owner-expenses?month=${month}`, fetchOpts);
       if (!res.ok) {
         showToast('載入月份資料失敗', 'error');
         return;
@@ -69,7 +74,7 @@ export default function OwnerExpensesPanel({ embedded = true }) {
   const fetchYear = useCallback(async () => {
     setYearLoading(true);
     try {
-      const res = await fetch(`/api/owner-expenses?year=${year}`);
+      const res = await fetch(`/api/owner-expenses?year=${year}`, fetchOpts);
       if (!res.ok) {
         showToast('載入年度資料失敗', 'error');
         return;
@@ -85,7 +90,7 @@ export default function OwnerExpensesPanel({ embedded = true }) {
   const fetchCompanies = useCallback(async () => {
     setCompLoading(true);
     try {
-      const res = await fetch('/api/settings/invoice-titles');
+      const res = await fetch('/api/settings/invoice-titles', fetchOpts);
       if (!res.ok) {
         showToast('載入發票抬頭失敗', 'error');
         return;
@@ -130,13 +135,20 @@ export default function OwnerExpensesPanel({ embedded = true }) {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        ...fetchOpts,
       });
       if (!res.ok) {
-        showToast('儲存失敗', 'error');
+        const err = await res.json().catch(() => ({}));
+        const msg =
+          typeof err?.error === 'string'
+            ? err.error
+            : err?.error?.message || err?.message || '儲存失敗';
+        showToast(msg, 'error');
         return;
       }
       showToast(`${row.companyName} 已儲存`, 'success');
-      fetchMonth();
+      await fetchMonth();
+      onSaved?.();
     } catch {
       showToast('儲存失敗', 'error');
     } finally {
@@ -171,11 +183,13 @@ export default function OwnerExpensesPanel({ embedded = true }) {
           method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          ...fetchOpts,
         });
         if (res.ok) count++;
       }
       showToast(`已儲存 ${count} 筆`, 'success');
-      fetchMonth();
+      await fetchMonth();
+      onSaved?.();
     } catch {
       showToast('批次儲存發生錯誤', 'error');
     } finally {
@@ -193,13 +207,20 @@ export default function OwnerExpensesPanel({ embedded = true }) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
+      ...fetchOpts,
     });
     if (!res.ok) {
-      showToast('更新狀態失敗', 'error');
+      const err = await res.json().catch(() => ({}));
+      const msg =
+        typeof err?.error === 'string'
+          ? err.error
+          : err?.error?.message || err?.message || '更新狀態失敗';
+      showToast(msg, 'error');
       return;
     }
     showToast(newStatus === '已確認' ? '已確認' : '已取消確認', 'success');
-    fetchMonth();
+    await fetchMonth();
+    onSaved?.();
   }
 
   const inputCls = 'border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none';
@@ -598,6 +619,10 @@ export default function OwnerExpensesPanel({ embedded = true }) {
 
   if (embedded) {
     return <div className="space-y-2">{inner}</div>;
+  }
+
+  if (nestedInLayout) {
+    return <div className="max-w-6xl mx-auto px-4 py-8">{inner}</div>;
   }
 
   return (

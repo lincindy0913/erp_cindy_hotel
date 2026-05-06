@@ -14,7 +14,12 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
-  const auth = await requireAnyPermission([PERMISSIONS.OWNER_EXPENSE_VIEW, PERMISSIONS.OWNER_EXPENSE_CREATE, PERMISSIONS.OWNER_EXPENSE_EDIT]);
+  const auth = await requireAnyPermission([
+    PERMISSIONS.OWNER_EXPENSE_VIEW,
+    PERMISSIONS.OWNER_EXPENSE_CREATE,
+    PERMISSIONS.OWNER_EXPENSE_EDIT,
+    PERMISSIONS.SALES_VIEW,
+  ]);
   if (!auth.ok) return auth.response;
 
   try {
@@ -123,7 +128,14 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const auth = await requireAnyPermission([PERMISSIONS.OWNER_EXPENSE_CREATE, PERMISSIONS.OWNER_EXPENSE_EDIT]);
+  const auth = await requireAnyPermission([
+    PERMISSIONS.OWNER_EXPENSE_CREATE,
+    PERMISSIONS.OWNER_EXPENSE_EDIT,
+    PERMISSIONS.SALES_CREATE,
+    PERMISSIONS.SALES_EDIT,
+    PERMISSIONS.FINANCE_CREATE,
+    PERMISSIONS.FINANCE_EDIT,
+  ]);
   if (!auth.ok) return auth.response;
 
   try {

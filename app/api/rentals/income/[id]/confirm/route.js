@@ -35,10 +35,16 @@ export async function POST(request, { params }) {
 
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
-      include: {
+      select: {
+        id: true, propertyId: true, tenantId: true,
+        incomeYear: true, incomeMonth: true,
+        expectedAmount: true, cashTransactionId: true,
         property: { select: { id: true, name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } },
-        payments: { orderBy: { sequenceNo: 'asc' } }
+        payments: {
+          orderBy: { sequenceNo: 'asc' },
+          select: { id: true, sequenceNo: true, amount: true, cashTransactionId: true }
+        }
       }
     });
 
