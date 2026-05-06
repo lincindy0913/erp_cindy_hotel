@@ -8,8 +8,9 @@ import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
+import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
 
-const SALES_VIEWS = ['list', 'report', 'monthly'];
+const SALES_VIEWS = ['list', 'report', 'monthly', 'owner-monthly'];
 
 function InvoicePageInner() {
   const router = useRouter();
@@ -56,6 +57,21 @@ function InvoicePageInner() {
   const [reportWarehouse, setReportWarehouse] = useState('');
   const [reportType, setReportType] = useState('');
   const [reportOwnerData, setReportOwnerData] = useState({ total: 0, count: 0 });
+
+  // 業主發票私帳 — 個別登錄
+  const [privateInvoices, setPrivateInvoices] = useState([]);
+  const [privateLoading, setPrivateLoading] = useState(false);
+  const [showPrivateForm, setShowPrivateForm] = useState(false);
+  const [editingPrivateId, setEditingPrivateId] = useState(null);
+  const [privateForm, setPrivateForm] = useState({
+    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceNo: '',
+    invoiceTitle: '',
+    totalAmount: '',
+    note: '',
+    warehouse: '',
+  });
+  const [privateSaving, setPrivateSaving] = useState(false);
 
   // 新增折讓發票表單
   const [showAddAllowanceForm, setShowAddAllowanceForm] = useState(false);
@@ -150,21 +166,58 @@ function InvoicePageInner() {
   }, [activeView, canSalesView]);
 
   function goSalesView(next) {
-    if (!canSalesView) return;
+    if (next === 'owner-monthly') {
+      if (!canSalesView && !canOwnerExpense) return;
+    } else if (!canSalesView) {
+      return;
+    }
     setActiveView(next);
     const p = new URLSearchParams(searchParams.toString());
     p.set('view', next);
+    p.delete('sub');
     router.replace(`/sales?${p.toString()}`, { scroll: false });
   }
 
+  /** 報表頁內子分頁：進項報表彙總 / 業主私帳登錄 / 業主私帳月結 */
+  function goReportSub(panel) {
+    if (!canSalesView) return;
+    setActiveView('report');
+    const p = new URLSearchParams(searchParams.toString());
+    p.set('view', 'report');
+    if (panel === 'owner' || panel === 'private') {
+      p.set('sub', panel);
+    } else {
+      p.delete('sub');
+    }
+    router.replace(`/sales?${p.toString()}`, { scroll: false });
+  }
+
+  const reportSubIsOwner   = searchParams.get('sub') === 'owner';
+  const reportSubIsPrivate = searchParams.get('sub') === 'private';
+
+  // 僅有業主私帳權限時，預設開「業主私帳月結」分頁
+  useEffect(() => {
+    if (!session) return;
+    if (!canSalesView && canOwnerExpense && searchParams.get('view') !== 'owner-monthly') {
+      setActiveView('owner-monthly');
+      const p = new URLSearchParams(searchParams.toString());
+      p.set('view', 'owner-monthly');
+      router.replace(`/sales?${p.toString()}`, { scroll: false });
+    }
+  }, [session, canSalesView, canOwnerExpense, searchParams, router]);
+
   // 網址 ?view= 與權限同步分頁
   useEffect(() => {
-    if (!session || !canSalesView) return;
+    if (!session) return;
     const v = searchParams.get('view');
-    if (v && SALES_VIEWS.includes(v)) {
-      setActiveView(v);
+    if (!v || !SALES_VIEWS.includes(v)) return;
+    if (v === 'owner-monthly') {
+      if (canSalesView || canOwnerExpense) setActiveView(v);
+      return;
     }
-  }, [session, searchParams, canSalesView]);
+    if (!canSalesView) return;
+    setActiveView(v);
+  }, [session, searchParams, canSalesView, canOwnerExpense]);
 
   // 從 URL ?month=YYYY-MM&invoiceTitle=XXX 預設篩選（發票私帳「查看發票」→ 發票列表）
   useEffect(() => {
@@ -202,8 +255,31 @@ function InvoicePageInner() {
 
   // 從網址 ?edit=id 連動開啟編輯表單（例如從財務頁「發票號」或「編輯」點入）
   useEffect(() => {
-    if (activeView === 'report') fetchOwnerExpenseTotal(reportDateFrom, reportDateTo);
+    if (activeView === 'report') {
+      fetchOwnerExpenseTotal(reportDateFrom, reportDateTo);
+      fetchPrivateInvoices(reportDateFrom, reportDateTo);
+    }
   }, [activeView, reportDateFrom, reportDateTo]);
+
+  // 切到 sub=private 時也刷新
+  useEffect(() => {
+    if (activeView === 'report' && reportSubIsPrivate) fetchPrivateInvoices(reportDateFrom, reportDateTo);
+  }, [reportSubIsPrivate]);
+
+  async function fetchPrivateInvoices(from, to) {
+    setPrivateLoading(true);
+    try {
+      const p = new URLSearchParams({ invoiceType: '業主發票私帳', limit: '500' });
+      if (from) p.set('dateFrom', from);
+      if (to)   p.set('dateTo', to);
+      const res = await fetch(`/api/sales/with-info?${p}`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setPrivateInvoices(Array.isArray(data.data) ? data.data : []);
+      }
+    } catch {}
+    setPrivateLoading(false);
+  }
 
   useEffect(() => {
     const editId = searchParams.get('edit');
@@ -276,12 +352,74 @@ function InvoicePageInner() {
     try {
       const fromMonth = from ? from.slice(0, 7) : '2000-01';
       const toMonth   = to   ? to.slice(0, 7)   : '2099-12';
-      const res = await fetch(`/api/owner-expenses?from=${fromMonth}&to=${toMonth}`);
+      const res = await fetch(`/api/owner-expenses?from=${fromMonth}&to=${toMonth}`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setReportOwnerData({ total: data.total ?? 0, count: data.count ?? 0 });
       }
     } catch { setReportOwnerData({ total: 0, count: 0 }); }
+  }
+
+  async function savePrivateInvoice() {
+    if (!privateForm.invoiceNo.trim()) return showToast('請填寫發票號碼', 'error');
+    if (!privateForm.invoiceTitle) return showToast('請選擇發票抬頭', 'error');
+    if (!privateForm.totalAmount || Number(privateForm.totalAmount) <= 0) return showToast('請填寫金額', 'error');
+    setPrivateSaving(true);
+    try {
+      const amt = parseFloat(privateForm.totalAmount) || 0;
+      const body = {
+        invoiceNo:    privateForm.invoiceNo.trim(),
+        invoiceDate:  privateForm.invoiceDate,
+        invoiceTitle: privateForm.invoiceTitle,
+        invoiceType:  '業主發票私帳',
+        totalAmount:  amt,
+        amount:       amt,
+        tax:          0,
+        warehouse:    privateForm.warehouse,
+        note:         privateForm.note,
+        items:        [],
+      };
+      const url    = editingPrivateId ? `/api/sales/${editingPrivateId}` : '/api/sales';
+      const method = editingPrivateId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || (data.message) || '儲存失敗', 'error');
+      showToast(editingPrivateId ? '已更新' : '已新增業主私帳發票', 'success');
+      setShowPrivateForm(false);
+      setEditingPrivateId(null);
+      setPrivateForm({ invoiceDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTitle: '', totalAmount: '', note: '', warehouse: '' });
+      fetchPrivateInvoices(reportDateFrom, reportDateTo);
+    } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
+    finally { setPrivateSaving(false); }
+  }
+
+  async function deletePrivateInvoice(id) {
+    if (!window.confirm('確定要刪除此筆業主私帳發票？')) return;
+    try {
+      const res = await fetch(`/api/sales/${id}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+      showToast('已刪除', 'success');
+      fetchPrivateInvoices(reportDateFrom, reportDateTo);
+    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+  }
+
+  function openEditPrivate(inv) {
+    setEditingPrivateId(inv.id);
+    setPrivateForm({
+      invoiceDate:  inv.invoiceDate || new Date().toISOString().split('T')[0],
+      invoiceNo:    inv.invoiceNo || '',
+      invoiceTitle: inv.invoiceTitle || '',
+      totalAmount:  String(inv.totalAmount || ''),
+      note:         inv.items?.[0]?.note || '',
+      warehouse:    inv.warehouse || '',
+    });
+    setShowPrivateForm(true);
   }
 
   async function saveAllowance(e) {
@@ -1429,12 +1567,17 @@ function InvoicePageInner() {
         )}
 
         {/* View toggle */}
-        {canSalesView && (
+        {(canSalesView || canOwnerExpense) && (
           <div className="flex flex-wrap gap-1 mb-4 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
             {[
-              { key: 'list', label: '發票列表' },
-              { key: 'report', label: '報表' },
-              { key: 'monthly', label: '月度館別統計' },
+              ...(canSalesView
+                ? [
+                    { key: 'list', label: '發票列表' },
+                    { key: 'report', label: '報表' },
+                    { key: 'monthly', label: '月度館別統計' },
+                  ]
+                : []),
+              ...(canSalesView || canOwnerExpense ? [{ key: 'owner-monthly', label: '業主私帳月結' }] : []),
             ].map((v) => (
               <button
                 key={v.key}
@@ -1450,8 +1593,251 @@ function InvoicePageInner() {
           </div>
         )}
 
+        {/* ══ 業主發票私帳 · 月結登記（每月依發票抬頭填寫一次） ══ */}
+        {activeView === 'owner-monthly' && (canSalesView || canOwnerExpense) && (
+          <div className="space-y-3 mb-6">
+            <p className="text-sm text-gray-600">
+              {canSalesView ? (
+                <>
+                  此處登記「業主發票私帳」月結金額，會反映在
+                  <button
+                    type="button"
+                    className="text-green-700 hover:underline mx-1 font-medium"
+                    onClick={() => goSalesView('report')}
+                  >
+                    報表
+                  </button>
+                  的業主私帳統計。
+                </>
+              ) : (
+                <>此處登記「業主發票私帳」月結金額（每月依發票抬頭填寫一次）。</>
+              )}
+              發票抬頭請至
+              <a href="/settings?tab=invoice-titles" className="text-green-700 hover:underline mx-1">
+                設定 → 發票抬頭
+              </a>
+              維護。
+            </p>
+            <OwnerExpensesPanel
+              embedded
+              onSaved={() => fetchOwnerExpenseTotal(reportDateFrom, reportDateTo)}
+            />
+          </div>
+        )}
+
         {/* ══ 報表 ══ */}
         {activeView === 'report' && canSalesView && (() => {
+          const activeSub = reportSubIsOwner ? 'owner' : reportSubIsPrivate ? 'private' : 'summary';
+          const reportSubTabs = (
+            <div className="flex flex-wrap gap-2 mb-1 bg-white rounded-lg shadow-sm border border-gray-100 p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => goReportSub('summary')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeSub === 'summary' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                進項報表彙總
+              </button>
+              <button
+                type="button"
+                onClick={() => goReportSub('private')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeSub === 'private' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                業主私帳登錄
+              </button>
+              <button
+                type="button"
+                onClick={() => goReportSub('owner')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeSub === 'owner' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                業主私帳月結
+              </button>
+            </div>
+          );
+
+          if (reportSubIsPrivate) {
+            const privateDateFiltered = privateInvoices.filter(inv => {
+              const d = inv.invoiceDate || '';
+              if (reportDateFrom && d < reportDateFrom) return false;
+              if (reportDateTo   && d > reportDateTo)   return false;
+              return true;
+            });
+            const privateTotal = privateDateFiltered.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+            return (
+              <div className="space-y-4 mb-6">
+                {reportSubTabs}
+                {/* 篩選列 + 新增按鈕 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                    <input type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)}
+                      className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                    <input type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)}
+                      className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+                  </div>
+                  <button type="button" onClick={() => fetchPrivateInvoices(reportDateFrom, reportDateTo)}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-50">
+                    查詢
+                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    <span className="text-sm text-gray-500">{privateDateFiltered.length} 筆 · 合計 <span className="font-bold text-orange-700">NT$ {privateTotal.toLocaleString()}</span></span>
+                    <button type="button"
+                      onClick={() => { setShowPrivateForm(true); setEditingPrivateId(null); setPrivateForm({ invoiceDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTitle: '', totalAmount: '', note: '', warehouse: '' }); }}
+                      className="px-4 py-1.5 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 font-medium">
+                      + 新增業主私帳
+                    </button>
+                  </div>
+                </div>
+
+                {/* 新增 / 編輯表單 */}
+                {showPrivateForm && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-orange-900 mb-4">{editingPrivateId ? '編輯業主私帳發票' : '新增業主私帳發票'}</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">發票日期 <span className="text-red-500">*</span></label>
+                        <input type="date" value={privateForm.invoiceDate}
+                          onChange={e => setPrivateForm(p => ({ ...p, invoiceDate: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">發票號碼 <span className="text-red-500">*</span></label>
+                        <input type="text" value={privateForm.invoiceNo} placeholder="AB-12345678"
+                          onChange={e => setPrivateForm(p => ({ ...p, invoiceNo: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">發票抬頭 <span className="text-red-500">*</span></label>
+                        <select value={privateForm.invoiceTitle}
+                          onChange={e => setPrivateForm(p => ({ ...p, invoiceTitle: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none">
+                          <option value="">— 選擇抬頭 —</option>
+                          {invoiceTitles.map(t => <option key={t.id} value={t.title}>{t.title}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">金額（NT$）<span className="text-red-500">*</span></label>
+                        <input type="number" min="0" step="1" value={privateForm.totalAmount} placeholder="0"
+                          onChange={e => setPrivateForm(p => ({ ...p, totalAmount: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-1.5 text-sm text-right focus:ring-2 focus:ring-orange-400 outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">館別</label>
+                        <select value={privateForm.warehouse}
+                          onChange={e => setPrivateForm(p => ({ ...p, warehouse: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none">
+                          <option value="">— 不限 —</option>
+                          <option value="麗格">麗格</option>
+                          <option value="麗軒">麗軒</option>
+                          <option value="民宿">民宿</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">備註</label>
+                        <input type="text" value={privateForm.note} placeholder="備註（選填）"
+                          onChange={e => setPrivateForm(p => ({ ...p, note: e.target.value }))}
+                          className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
+                      </div>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <button type="button" onClick={savePrivateInvoice} disabled={privateSaving}
+                        className="px-5 py-1.5 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50 font-medium">
+                        {privateSaving ? '儲存中…' : '儲存'}
+                      </button>
+                      <button type="button"
+                        onClick={() => { setShowPrivateForm(false); setEditingPrivateId(null); }}
+                        className="px-4 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 列表 */}
+                {privateLoading ? (
+                  <div className="text-center py-12 text-gray-400">載入中…</div>
+                ) : (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-orange-50 text-orange-800 text-xs">
+                          {['發票日期', '發票號碼', '發票抬頭', '館別', '金額（NT$）', '備註', '操作'].map(h => (
+                            <th key={h} className="px-4 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {privateDateFiltered.length === 0 ? (
+                          <tr><td colSpan={7} className="text-center py-12 text-gray-400">
+                            尚無業主私帳發票，請點「+ 新增業主私帳」建立
+                          </td></tr>
+                        ) : privateDateFiltered.map((inv, idx) => (
+                          <tr key={inv.id} className={`hover:bg-gray-50 ${idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
+                            <td className="px-4 py-2.5 whitespace-nowrap text-gray-600">{inv.invoiceDate}</td>
+                            <td className="px-4 py-2.5 font-medium whitespace-nowrap">{inv.invoiceNo}</td>
+                            <td className="px-4 py-2.5 whitespace-nowrap text-orange-700 font-medium">{inv.invoiceTitle || '—'}</td>
+                            <td className="px-4 py-2.5 whitespace-nowrap text-gray-500">{inv.warehouse || '—'}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold tabular-nums whitespace-nowrap">NT$ {Number(inv.totalAmount || 0).toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500 max-w-xs truncate">{inv.items?.[0]?.note || '—'}</td>
+                            <td className="px-4 py-2.5 whitespace-nowrap">
+                              <div className="flex gap-1.5">
+                                <button type="button" onClick={() => openEditPrivate(inv)}
+                                  className="text-xs px-2.5 py-1 rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-50">
+                                  編輯
+                                </button>
+                                <button type="button" onClick={() => deletePrivateInvoice(inv.id)}
+                                  className="text-xs px-2.5 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
+                                  刪除
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {privateDateFiltered.length > 0 && (
+                        <tfoot>
+                          <tr className="bg-orange-50 font-semibold text-orange-800 text-sm">
+                            <td colSpan={4} className="px-4 py-2.5">合計（{privateDateFiltered.length} 筆）</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">NT$ {privateTotal.toLocaleString()}</td>
+                            <td colSpan={2} />
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          if (reportSubIsOwner) {
+            return (
+              <div className="space-y-4 mb-6">
+                {reportSubTabs}
+                <div className="text-sm text-gray-700 rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3 space-y-2">
+                  <p>
+                    在此登打<strong className="text-orange-900">業主發票私帳</strong>（依發票抬頭、每月一次）。儲存後會連動下方「進項報表彙總」頁籤中業主發票私帳卡片的金額。
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    發票抬頭請至「設定 → 發票抬頭」維護。亦可改用頂部分頁「業主私帳月結」全畫面操作。
+                  </p>
+                </div>
+                <OwnerExpensesPanel
+                  embedded
+                  onSaved={() => fetchOwnerExpenseTotal(reportDateFrom, reportDateTo)}
+                />
+              </div>
+            );
+          }
+
           const reportInvoices = invoices.filter(inv => {
             const d = inv.invoiceDate || '';
             if (reportDateFrom && d < reportDateFrom) return false;
@@ -1475,6 +1861,7 @@ function InvoicePageInner() {
 
           return (
           <div className="space-y-4">
+            {reportSubTabs}
             {/* 篩選列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-3">
@@ -1502,6 +1889,7 @@ function InvoicePageInner() {
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
                     <option value="">全部來源</option>
                     {INVOICE_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                    <option value="業主發票私帳">業主發票私帳</option>
                   </select>
                 </div>
                 <div>
@@ -1548,11 +1936,18 @@ function InvoicePageInner() {
                   </div>
                 );
               })}
-              {/* 業主發票私帳：來自月結登記，獨立統計 */}
+              {/* 業主發票私帳：來自個別登錄 */}
               {(() => {
                 const c = SOURCE_COLORS['業主發票私帳'];
-                const total = reportOwnerData.total;
-                const count = reportOwnerData.count;
+                const filteredPrivate = privateInvoices.filter(inv => {
+                  const d = inv.invoiceDate || '';
+                  if (reportDateFrom && d < reportDateFrom) return false;
+                  if (reportDateTo   && d > reportDateTo)   return false;
+                  if (reportTitle    && (inv.invoiceTitle || '') !== reportTitle) return false;
+                  return true;
+                });
+                const total = filteredPrivate.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+                const count = filteredPrivate.length;
                 return (
                   <div className={`rounded-xl border ${c.border} bg-white shadow-sm p-4`}>
                     <div className="flex items-center gap-2 mb-1">
@@ -1563,11 +1958,79 @@ function InvoicePageInner() {
                     <div className="mt-2 bg-gray-100 rounded-full h-1.5">
                       <div className={`h-1.5 rounded-full ${c.dot}`} style={{ width: total > 0 ? '100%' : '0%' }} />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">{count} 張 · 月結登記</p>
+                    <p className="text-xs text-gray-400 mt-1">{count} 筆 · 個別登錄</p>
+                    {(canSalesView || canOwnerExpense) && (
+                      <button
+                        type="button"
+                        onClick={() => goReportSub('private')}
+                        className="mt-2 text-xs text-orange-700 hover:underline font-medium"
+                      >
+                        前往私帳登錄 →
+                      </button>
+                    )}
                   </div>
                 );
               })()}
             </div>
+
+                {/* 業主發票私帳明細（個別登錄，獨立資料源） */}
+                {(!reportType || reportType === '業主發票私帳') && (() => {
+                  const filteredPrivate = privateInvoices.filter(inv => {
+                    const d = inv.invoiceDate || '';
+                    if (reportDateFrom && d < reportDateFrom) return false;
+                    if (reportDateTo   && d > reportDateTo)   return false;
+                    if (reportTitle    && (inv.invoiceTitle || '') !== reportTitle) return false;
+                    if (reportWarehouse && (inv.warehouse || '') !== reportWarehouse) return false;
+                    return true;
+                  });
+                  if (filteredPrivate.length === 0) return null;
+                  const subTotal = filteredPrivate.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+                  const c = SOURCE_COLORS['業主發票私帳'];
+                  return (
+                    <div className="bg-white rounded-xl shadow-sm border border-orange-100 overflow-hidden">
+                      <div className={`px-4 py-2.5 border-b ${c.bg} flex items-center justify-between`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text} border ${c.border}`}>業主發票私帳</span>
+                          <span className="text-xs text-gray-500">{filteredPrivate.length} 筆</span>
+                        </div>
+                        <span className={`text-sm font-bold ${c.text}`}>NT$ {subTotal.toLocaleString()}</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-500 text-xs border-b">
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">館別</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">發票抬頭</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">發票號碼</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">日期</th>
+                              <th className="px-4 py-2 text-right font-medium whitespace-nowrap">金額</th>
+                              <th className="px-4 py-2 text-left font-medium whitespace-nowrap">備註</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {filteredPrivate.map((inv, idx) => (
+                              <tr key={inv.id} className={idx % 2 === 1 ? 'bg-gray-50/40' : ''}>
+                                <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{inv.warehouse || '－'}</td>
+                                <td className="px-4 py-2 text-orange-700 font-medium whitespace-nowrap">{inv.invoiceTitle || '－'}</td>
+                                <td className="px-4 py-2 font-medium whitespace-nowrap">{inv.invoiceNo}</td>
+                                <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{inv.invoiceDate}</td>
+                                <td className="px-4 py-2 text-right font-semibold tabular-nums whitespace-nowrap">NT$ {Number(inv.totalAmount || 0).toLocaleString()}</td>
+                                <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{inv.items?.[0]?.note || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-gray-200 font-semibold text-gray-700">
+                              <td colSpan={4} className="px-4 py-2 text-right text-xs">小計（{filteredPrivate.length} 筆）</td>
+                              <td className="px-4 py-2 text-right tabular-nums">NT$ {subTotal.toLocaleString()}</td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
 
             {/* 折讓彙總卡片（有折讓時顯示） */}
             {reportAllowances.length > 0 && (

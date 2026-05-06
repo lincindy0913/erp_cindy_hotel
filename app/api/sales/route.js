@@ -118,8 +118,13 @@ export async function POST(request) {
   try {
     const data = await request.json();
 
-    if (!data.invoiceNo || !data.items || data.items.length === 0) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：發票號碼和核銷品項', 400);
+    const isOwnerPrivate = (data.invoiceType || '進貨單') === '業主發票私帳';
+
+    if (!data.invoiceNo) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：發票號碼', 400);
+    }
+    if (!isOwnerPrivate && (!data.items || data.items.length === 0)) {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：核銷品項', 400);
     }
 
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -130,10 +135,33 @@ export async function POST(request) {
     const salesNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
 
     const invoiceDate = data.invoiceDate || new Date().toISOString().split('T')[0];
-    const warehouse = data.warehouse || (data.items && data.items[0] && data.items[0].warehouse) || undefined;
+    const warehouse = isOwnerPrivate
+      ? (data.warehouse || null)
+      : (data.warehouse || (data.items && data.items[0] && data.items[0].warehouse) || undefined);
+
+    // Build details: owner private uses a single placeholder detail to carry warehouse/note
+    const detailsToCreate = isOwnerPrivate
+      ? [{ purchaseItemId: '', warehouse: data.warehouse || null, note: data.note || null }]
+      : (data.items || []).map(item => ({
+          purchaseItemId: item.purchaseItemId || '',
+          purchaseId: item.purchaseId ? parseInt(item.purchaseId) : null,
+          purchaseNo: item.purchaseNo || null,
+          purchaseDate: item.purchaseDate || null,
+          warehouse: item.warehouse || null,
+          supplierId: item.supplierId ? parseInt(item.supplierId) : null,
+          productId: item.productId ? parseInt(item.productId) : null,
+          quantity: item.quantity ? parseInt(item.quantity) : null,
+          unitPrice: item.unitPrice ? parseFloat(item.unitPrice) : null,
+          note: item.note || null,
+          subtotal: item.subtotal ? parseFloat(item.subtotal) : null
+        }));
+
+    const amt = parseFloat(data.amount || (isOwnerPrivate ? (data.totalAmount || 0) : 0));
 
     const newInvoice = await prisma.$transaction(async (tx) => {
-      await assertPeriodOpen(tx, invoiceDate, warehouse);
+      if (!isOwnerPrivate) {
+        await assertPeriodOpen(tx, invoiceDate, warehouse);
+      }
 
       return tx.salesMaster.create({
         data: {
@@ -145,25 +173,11 @@ export async function POST(request) {
           taxType: data.taxType || null,
           invoiceAmount: data.invoiceAmount ? parseFloat(data.invoiceAmount) : null,
           supplierDiscount: data.supplierDiscount ? parseFloat(data.supplierDiscount) : 0,
-          amount: parseFloat(data.amount || 0),
+          amount: amt,
           tax: parseFloat(data.tax || 0),
-          totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : (parseFloat(data.amount || 0) + parseFloat(data.tax || 0)),
+          totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : (amt + parseFloat(data.tax || 0)),
           status: data.status || '待核銷',
-          details: {
-            create: (data.items || []).map(item => ({
-              purchaseItemId: item.purchaseItemId || '',
-              purchaseId: item.purchaseId ? parseInt(item.purchaseId) : null,
-              purchaseNo: item.purchaseNo || null,
-              purchaseDate: item.purchaseDate || null,
-              warehouse: item.warehouse || null,
-              supplierId: item.supplierId ? parseInt(item.supplierId) : null,
-              productId: item.productId ? parseInt(item.productId) : null,
-              quantity: item.quantity ? parseInt(item.quantity) : null,
-              unitPrice: item.unitPrice ? parseFloat(item.unitPrice) : null,
-              note: item.note || null,
-              subtotal: item.subtotal ? parseFloat(item.subtotal) : null
-            }))
-          }
+          details: { create: detailsToCreate }
         },
         include: { details: true }
       });
