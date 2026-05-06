@@ -739,7 +739,15 @@ export default function PaymentVoucherListPage() {
                               className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                             />
                           </td>
-                          <td className="px-4 py-3 text-sm font-medium text-indigo-700">{order.orderNo}</td>
+                          <td className="px-4 py-3 text-sm font-medium">
+                            <Link
+                              href={`/finance?highlight=${order.orderNo}`}
+                              className="text-indigo-700 hover:text-indigo-900 hover:underline"
+                              title="在財務付款管理中查看詳細"
+                            >
+                              {order.orderNo}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3 text-sm">{order.supplierName || '-'}</td>
                           <td className="px-4 py-3 text-sm">{order.warehouse || '-'}</td>
                           <td className="px-4 py-3 text-sm text-right font-semibold">NT$ {Number(order.netAmount).toLocaleString()}</td>

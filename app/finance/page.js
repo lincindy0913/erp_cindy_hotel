@@ -98,6 +98,13 @@ export default function PaymentPage() {
     advancePaymentMethod: '',
   });
 
+  const [highlightOrderNo, setHighlightOrderNo] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setHighlightOrderNo(params.get('highlight'));
+  }, []);
+
   useEffect(() => {
     fetchOrders();
     fetchSuppliers();
@@ -120,6 +127,21 @@ export default function PaymentPage() {
       });
     }
   }, [orders]);
+
+  // 從 payment-voucher 跳轉過來時，自動切換 tab、展開並捲動到目標付款單
+  useEffect(() => {
+    if (!highlightOrderNo || orders.length === 0) return;
+    const target = orders.find(o => o.orderNo === highlightOrderNo);
+    if (!target) return;
+    const statusToTab = { '草稿': 'draft', '待出納': 'pending', '已執行': 'executed', '已拒絕': 'rejected', '已代墊': 'advanced', '已退貨': 'returned' };
+    const tab = statusToTab[target.status] || 'draft';
+    setActiveTab(tab);
+    setExpandedOrders(prev => new Set([...prev, target.id]));
+    setTimeout(() => {
+      const el = document.getElementById(`order-row-${target.id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }, [orders, highlightOrderNo]);
 
   // 當勾選的發票變動時，自動更新付款金額（含支票金額）
   useEffect(() => {
@@ -1664,7 +1686,13 @@ export default function PaymentPage() {
                   const isExpanded = expandedOrders.has(order.id);
                   return (
                     <Fragment key={order.id}>
-                      <tr className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}>
+                      <tr
+                        id={`order-row-${order.id}`}
+                        style={order.orderNo === highlightOrderNo
+                          ? { background: '#fef3c7', boxShadow: 'inset 0 0 0 2px #f59e0b' }
+                          : undefined}
+                        className={`${order.orderNo === highlightOrderNo ? '' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}
+                      >
                         {(activeTab === 'draft' || activeTab === 'rejected') && (
                           <td className="px-3 py-3">
                             {(order.status === '草稿' || order.status === '已拒絕') ? (
@@ -1767,7 +1795,10 @@ export default function PaymentPage() {
                       </tr>
                       {/* 展開的詳細資訊 */}
                       {isExpanded && (
-                        <tr className="bg-indigo-50">
+                        <tr
+                          style={order.orderNo === highlightOrderNo ? { background: '#fffbeb', boxShadow: 'inset 0 0 0 2px #f59e0b' } : undefined}
+                          className={order.orderNo === highlightOrderNo ? '' : 'bg-indigo-50'}
+                        >
                           <td colSpan={(activeTab === 'draft' || activeTab === 'rejected') ? 11 : 10} className="px-4 py-4">
                             <div className="space-y-4">
                               {/* 曾被出納退回（待出納但 rejectedAt 有值）：請修改後重新送出 */}
@@ -1827,7 +1858,7 @@ export default function PaymentPage() {
                               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pb-4 border-b border-gray-300">
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">付款單號</div>
-                                  <div className="text-sm font-semibold">{order.orderNo}</div>
+                                  <div className={`text-sm font-semibold ${order.orderNo === highlightOrderNo ? 'text-amber-700 bg-amber-200 px-1.5 py-0.5 rounded' : ''}`}>{order.orderNo}</div>
                                 </div>
                                 <div>
                                   <div className="text-xs text-gray-500 mb-1">廠商</div>
