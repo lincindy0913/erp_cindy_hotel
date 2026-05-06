@@ -1718,6 +1718,7 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
+                        <SortableTh label="序號" colKey="propertySortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
                         <th className="px-3 py-2 text-center w-8">
                           <input type="checkbox"
                             checked={selectedIncomeIds.size > 0 && incomes.filter(i => i.status === 'pending' || i.status === 'partial').every(i => selectedIncomeIds.has(i.id))}
@@ -1727,7 +1728,6 @@ function RentalsPage() {
                             }}
                           />
                         </th>
-                        <SortableTh label="序號" colKey="propertySortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
                         <SortableTh label="類別" colKey="propertyCategory" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 whitespace-nowrap" />
                         <SortableTh label="物業" colKey="propertyName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租客" colKey="tenantName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
@@ -1758,18 +1758,6 @@ function RentalsPage() {
                         const totalExpected = expected + utilityExpected;
                         return (
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
-                            <td className="px-3 py-2 text-center">
-                              {(income.status === 'pending' || income.status === 'partial') && (
-                                <input type="checkbox"
-                                  checked={selectedIncomeIds.has(income.id)}
-                                  onChange={e => setSelectedIncomeIds(prev => {
-                                    const next = new Set(prev);
-                                    if (e.target.checked) next.add(income.id); else next.delete(income.id);
-                                    return next;
-                                  })}
-                                />
-                              )}
-                            </td>
                             {/* 序號 */}
                             <td className="px-3 py-2 text-center text-xs text-gray-500">
                               {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'sortOrder' ? (
@@ -1789,6 +1777,18 @@ function RentalsPage() {
                                   title="點擊編輯序號">
                                   {income.propertySortOrder ?? '—'}
                                 </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {(income.status === 'pending' || income.status === 'partial') && (
+                                <input type="checkbox"
+                                  checked={selectedIncomeIds.has(income.id)}
+                                  onChange={e => setSelectedIncomeIds(prev => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(income.id); else next.delete(income.id);
+                                    return next;
+                                  })}
+                                />
                               )}
                             </td>
                             {/* 類別 */}
