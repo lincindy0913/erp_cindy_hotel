@@ -67,7 +67,17 @@ async function upsertBnbTx({ sourceType, sourceRecordId, txDate, amount, descrip
 
 // ── 同步民宿收款 → CashTransaction ────────────────────────────
 async function syncBnbPaymentTx(bookingId) {
-  const booking = await prisma.bnbBookingRecord.findUnique({ where: { id: bookingId } });
+  const booking = await prisma.bnbBookingRecord.findUnique({
+    where: { id: bookingId },
+    select: {
+      warehouse: true, guestName: true, checkInDate: true, checkOutDate: true,
+      cashDestination: true, payCash: true, bossWithdrawNote: true,
+      depositDate: true, payDeposit: true, depositCashTxId: true,
+      transferDate: true, payTransfer: true, transferCashTxId: true,
+      cashDepositDate: true, cashCashTxId: true,
+      cardSettlementDate: true, payCard: true, cardFee: true, cardCashTxId: true,
+    },
+  });
   if (!booking) return {};
 
   // 老闆收取現金 → 先獨立處理 BnbBossWithdraw（不依賴銀行帳戶）
@@ -257,7 +267,10 @@ export async function PATCH(request, { params }) {
     if (updateData.payDeposit  !== undefined || updateData.payTransfer !== undefined ||
         updateData.payCard     !== undefined || updateData.payCash     !== undefined ||
         updateData.payVoucher  !== undefined) {
-      const existing = await prisma.bnbBookingRecord.findUnique({ where: { id } });
+      const existing = await prisma.bnbBookingRecord.findUnique({
+        where: { id },
+        select: { payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true },
+      });
       const dep = updateData.payDeposit  ?? Number(existing.payDeposit);
       const trn = updateData.payTransfer ?? Number(existing.payTransfer);
       const crd = updateData.payCard     ?? Number(existing.payCard);
@@ -266,7 +279,11 @@ export async function PATCH(request, { params }) {
       updateData.paymentFilled = (dep + trn + crd + csh + vch) > 0;
     }
 
-    const updated = await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
+    const updated = await prisma.bnbBookingRecord.update({
+      where: { id },
+      data: updateData,
+      select: { id: true, roomCharge: true },
+    });
 
     // 若付款相關欄位有變動，異步同步 CashTransaction（fire-and-forget）
     const paymentChanged = ['payDeposit','depositDate','payTransfer','transferDate','payCash','cashDestination','cashDepositDate','payCard','cardFeeRate','cardSettlementDate'].some(f => f in body);
@@ -274,7 +291,7 @@ export async function PATCH(request, { params }) {
       syncBnbPaymentTx(id).catch(() => {});
     }
 
-    return NextResponse.json({ ...updated, roomCharge: Number(updated.roomCharge) });
+    return NextResponse.json({ id: updated.id, roomCharge: Number(updated.roomCharge) });
   } catch (error) {
     return handleApiError(error);
   }

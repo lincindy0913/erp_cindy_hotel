@@ -301,6 +301,7 @@ export async function POST(request) {
         [cfg.matchedAtField]: new Date(),
         [cfg.matchedByField]: userName,
       },
+      select: { id: true },
     });
 
     return NextResponse.json({ ok: true, id: updated.id });
@@ -335,6 +336,7 @@ export async function DELETE(request) {
         [cfg.matchedAtField]: null,
         [cfg.matchedByField]: null,
       },
+      select: { id: true },
     });
 
     return NextResponse.json({ ok: true });
