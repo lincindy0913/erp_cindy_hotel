@@ -209,21 +209,30 @@ export async function POST(request) {
             }
           }
 
-          // Price notes for this order
+          // Price notes for this order (1-year window, all products)
           if (productMapForOrder.size > 0 && order.supplierId) {
             const earliestDate = sortedDatesForOrder[0] || '';
-            const relevantHistory = allPriceHistory.filter(h => h.supplierId === order.supplierId && h.purchaseDate < earliestDate);
+            const oneYearAgoDate = new Date((earliestDate || new Date().toISOString().split('T')[0]) + 'T00:00:00Z');
+            oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
+            const oneYearAgoStr = oneYearAgoDate.toISOString().split('T')[0];
+            const relevantHistory = allPriceHistory.filter(h =>
+              h.supplierId === order.supplierId &&
+              h.purchaseDate < earliestDate &&
+              h.purchaseDate >= oneYearAgoStr
+            );
             const historyByProduct = new Map();
             for (const h of relevantHistory) {
               if (!historyByProduct.has(h.productId)) historyByProduct.set(h.productId, []);
-              const arr = historyByProduct.get(h.productId);
-              if (arr.length < 3) arr.push(h);
+              historyByProduct.get(h.productId).push(h);
             }
             for (const [pid, entry] of productMapForOrder) {
               const recentHistory = historyByProduct.get(pid) || [];
-              if (recentHistory.length === 0) continue;
-              const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
               const currentPrice = entry.unitPrice;
+              if (recentHistory.length === 0) {
+                priceNoteItemsForOrder.push({ productName: entry.name, currentPrice, recentMin: null, priceDiff: null, diffRate: null, cheapestDate: '', historyCount: 0, hasCheaperHistory: false });
+                continue;
+              }
+              const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
               if (currentPrice > recentMin) {
                 const cheapestRecord = recentHistory.find(h => Number(h.unitPrice) === recentMin);
                 const priceDiff = currentPrice - recentMin;
@@ -232,7 +241,10 @@ export async function POST(request) {
                   productName: entry.name, currentPrice, recentMin,
                   priceDiff: `+${priceDiff.toFixed(0)}`, diffRate: `+${diffRate}%`,
                   cheapestDate: cheapestRecord?.purchaseDate || '', historyCount: recentHistory.length,
+                  hasCheaperHistory: true,
                 });
+              } else {
+                priceNoteItemsForOrder.push({ productName: entry.name, currentPrice, recentMin, priceDiff: '0', diffRate: '0%', cheapestDate: '', historyCount: recentHistory.length, hasCheaperHistory: false });
               }
             }
           }

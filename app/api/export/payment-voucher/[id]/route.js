@@ -162,16 +162,19 @@ export async function GET(request, { params }) {
           }
         }
 
-        // Price history comparison
+        // Price history comparison (1-year window, all products)
         if (productMap.size > 0 && order.supplierId) {
           const allProductIds = [...productMap.keys()];
           const earliestDate = sortedDates[0] || '';
+          const oneYearAgoDate = new Date((earliestDate || new Date().toISOString().split('T')[0]) + 'T00:00:00Z');
+          oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
+          const oneYearAgoStr = oneYearAgoDate.toISOString().split('T')[0];
           const allHistory = await prisma.priceHistory.findMany({
             where: {
               productId: { in: allProductIds },
               supplierId: order.supplierId,
               isSuperseded: false,
-              purchaseDate: { lt: earliestDate },
+              purchaseDate: { lt: earliestDate, gte: oneYearAgoStr },
             },
             orderBy: { purchaseDate: 'desc' },
             select: { productId: true, unitPrice: true, purchaseDate: true },
@@ -179,14 +182,16 @@ export async function GET(request, { params }) {
           const historyByProduct = new Map();
           for (const h of allHistory) {
             if (!historyByProduct.has(h.productId)) historyByProduct.set(h.productId, []);
-            const arr = historyByProduct.get(h.productId);
-            if (arr.length < 3) arr.push(h);
+            historyByProduct.get(h.productId).push(h);
           }
           for (const [pid, entry] of productMap) {
             const recentHistory = historyByProduct.get(pid) || [];
-            if (recentHistory.length === 0) continue;
-            const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
             const currentPrice = entry.unitPrice;
+            if (recentHistory.length === 0) {
+              priceNoteItems.push({ productName: entry.name, currentPrice, recentMin: null, priceDiff: null, diffRate: null, cheapestDate: '', historyCount: 0, hasCheaperHistory: false });
+              continue;
+            }
+            const recentMin = Math.min(...recentHistory.map(h => Number(h.unitPrice)));
             if (currentPrice > recentMin) {
               const cheapestRecord = recentHistory.find(h => Number(h.unitPrice) === recentMin);
               const priceDiff = currentPrice - recentMin;
@@ -195,7 +200,10 @@ export async function GET(request, { params }) {
                 productName: entry.name, currentPrice, recentMin,
                 priceDiff: `+${priceDiff.toFixed(0)}`, diffRate: `+${diffRate}%`,
                 cheapestDate: cheapestRecord?.purchaseDate || '', historyCount: recentHistory.length,
+                hasCheaperHistory: true,
               });
+            } else {
+              priceNoteItems.push({ productName: entry.name, currentPrice, recentMin, priceDiff: '0', diffRate: '0%', cheapestDate: '', historyCount: recentHistory.length, hasCheaperHistory: false });
             }
           }
         }
