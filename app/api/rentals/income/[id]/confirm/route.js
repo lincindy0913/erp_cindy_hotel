@@ -109,7 +109,8 @@ export async function POST(request, { params }) {
           matchBankAccountName: rent.matchBankAccountName || null,
           matchNote: rent.matchNote || null,
           cashTransactionId: rentTx.id
-        }
+        },
+        select: { id: true },
       });
 
       const firstTxId = existingPayments.length > 0 ? income.cashTransactionId : rentTx.id;
@@ -126,7 +127,8 @@ export async function POST(request, { params }) {
           status: newStatus,
           cashTransactionId: firstTxId ?? rentTx.id,
           confirmedAt: new Date()
-        }
+        },
+        select: { id: true },
       });
 
       // --- 水電費（選填）---
@@ -184,7 +186,8 @@ export async function POST(request, { params }) {
             accountId: acctId,
             note: utilityData.note || null,
             cashTransactionId: utilityTx.id
-          }
+          },
+          select: { id: true },
         });
       } else if (utilityData && utilityData.expectedAmount != null && utilityData.expectedAmount !== '') {
         // 只登記電費應收（尚未收款）
@@ -209,7 +212,8 @@ export async function POST(request, { params }) {
           update: {
             expectedAmount: parsedUtilityExpected,
             note: utilityData.note || null
-          }
+          },
+          select: { id: true },
         });
       }
 

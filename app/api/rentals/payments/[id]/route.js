@@ -67,12 +67,14 @@ export async function PATCH(request, { params }) {
       // Update payment record
       await tx.rentalIncomePayment.update({
         where: { id: paymentId },
-        data: { amount, paymentDate, accountId, paymentMethod: paymentMethod || null, matchTransferRef: matchTransferRef || null, matchBankAccountName: matchBankAccountName || null, matchNote: matchNote || null }
+        data: { amount, paymentDate, accountId, paymentMethod: paymentMethod || null, matchTransferRef: matchTransferRef || null, matchBankAccountName: matchBankAccountName || null, matchNote: matchNote || null },
+        select: { id: true },
       });
       // Update income summary
       await tx.rentalIncome.update({
         where: { id: income.id },
-        data: { actualAmount: newTotal, status: newStatus }
+        data: { actualAmount: newTotal, status: newStatus },
+        select: { id: true },
       });
     });
 

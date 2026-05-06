@@ -106,7 +106,8 @@ export async function PUT(request, { params }) {
         matchNote: body.matchNote || null,
         cashTransactionId: cashTx.id,
         confirmedBy: body.confirmedBy || null
-      }
+      },
+      select: { id: true },
     });
 
     const firstTxId = existingPayments.length > 0 ? income.cashTransactionId : cashTx.id;
@@ -124,7 +125,8 @@ export async function PUT(request, { params }) {
         cashTransactionId: firstTxId ?? cashTx.id,
         confirmedAt: new Date(),
         confirmedBy: body.confirmedBy || null
-      }
+      },
+      select: { id: true },
     });
 
     await recalcBalance(prisma, acctId);
@@ -196,7 +198,8 @@ export async function PATCH(request, { params }) {
           accountId,
           amount: actualAmount,
           paymentTerms: paymentMethod || null
-        }
+        },
+        select: { id: true },
       });
       await tx.rentalIncome.update({
         where: { id: incomeId },
@@ -208,7 +211,8 @@ export async function PATCH(request, { params }) {
           matchTransferRef: body.matchTransferRef != null ? body.matchTransferRef : income.matchTransferRef,
           matchBankAccountName: body.matchBankAccountName != null ? body.matchBankAccountName : income.matchBankAccountName,
           status: newStatus
-        }
+        },
+        select: { id: true },
       });
     });
 
@@ -317,7 +321,8 @@ export async function DELETE(request, { params }) {
           cashTransactionId: null,
           confirmedAt: null,
           confirmedBy: null
-        }
+        },
+        select: { id: true },
       });
     });
 
