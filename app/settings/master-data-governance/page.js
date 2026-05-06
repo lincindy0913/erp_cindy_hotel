@@ -6,7 +6,7 @@ import Navigation from '@/components/Navigation';
 
 const TABS = [
   { key: 'warehouse',         label: '館別',   icon: '🏢' },
-  { key: 'supplier',          label: '供應商', icon: '🏭' },
+  { key: 'supplier',          label: '廠商',   icon: '🏭' },
   { key: 'accountingSubject', label: '會計科目', icon: '📒' },
 ];
 
@@ -394,7 +394,7 @@ export default function MasterDataGovernancePage() {
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
             <p className="font-semibold mb-1">什麼是「主檔治理」？</p>
             <p className="text-xs text-blue-600 leading-relaxed">
-              系統中許多欄位（館別、供應商名稱、會計科目）以純文字儲存，長期下來可能出現拼字差異（如「麗格」vs「麗格館」）。
+              系統中許多欄位（館別、廠商名稱、會計科目）以純文字儲存，長期下來可能出現拼字差異（如「麗格」vs「麗格館」）。
               本頁面掃描所有相關資料表，找出與主檔不符的值，並提供一鍵批次更名，確保報表、月結、篩選結果正確。
             </p>
           </div>
