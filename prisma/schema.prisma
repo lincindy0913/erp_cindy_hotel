@@ -1494,6 +1494,8 @@ model RentalProperty {
   publicInterestEndDate   String?  @map("public_interest_end_date") @db.VarChar(20)
   publicInterestRent      Decimal? @map("public_interest_rent") @db.Decimal(12, 2)
   collectUtilityFee     Boolean  @default(false) @map("collect_utility_fee")
+  category              String?  @db.VarChar(50)                     // 住宅|商業|套房|停車場|其他
+  sortOrder             Int?     @map("sort_order")                  // 顯示序號（手動排序用）
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
@@ -1510,6 +1512,7 @@ model RentalProperty {
 
   @@index([buildingName])
   @@index([status])
+  @@index([sortOrder])
   @@map("rental_properties")
 }
 

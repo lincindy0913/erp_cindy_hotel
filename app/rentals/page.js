@@ -110,10 +110,12 @@ function RentalsPage() {
   const [contracts, setContracts] = useState([]);
   const [incomes, setIncomes] = useState([]);
   const [incomesHasMore, setIncomesHasMore] = useState(false);
-  const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('dueDate', 'desc');
+  const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('propertySortOrder', 'asc');
   const sortedIncomes = useMemo(
     () =>
       sortRows(incomes, rentIncKey, rentIncDir, {
+        propertySortOrder: (i) => i.propertySortOrder ?? 9999,
+        propertyCategory: (i) => i.propertyCategory || '',
         propertyName: (i) => i.propertyName || '',
         tenantName: (i) => i.tenantName || '',
         expectedAmount: (i) => Number(i.expectedAmount || 0),
@@ -125,6 +127,28 @@ function RentalsPage() {
       }),
     [incomes, rentIncKey, rentIncDir]
   );
+
+  // ── 物業欄位 inline edit (類別/序號) ──────────────────────────
+  const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
+  const [propInlineSaving, setPropInlineSaving] = useState(false);
+  const PROPERTY_CATEGORIES = ['住宅', '商業', '套房', '停車場', '其他'];
+
+  async function savePropField(propertyId, field, value) {
+    setPropInlineSaving(true);
+    try {
+      const res = await fetch(`/api/rentals/properties/${propertyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) { showToast('儲存失敗', 'error'); return; }
+      // update local incomes state
+      const apiField = field === 'category' ? 'propertyCategory' : 'propertySortOrder';
+      const parsed = field === 'sortOrder' ? (value !== '' && value !== null ? parseInt(value) : null) : (value || null);
+      setIncomes(prev => prev.map(i => i.propertyId === propertyId ? { ...i, [apiField]: parsed } : i));
+    } catch { showToast('儲存失敗', 'error'); }
+    finally { setPropInlineSaving(false); setPropInlineEdit(null); }
+  }
   const reportCategoryOptions = useMemo(() => {
     const map = new Map();
     properties.forEach((p) => {
@@ -1688,7 +1712,7 @@ function RentalsPage() {
 
                 {(() => {
                   const hasAnyUtility = incomes.some(i => i.collectUtilityFee);
-                  const colSpan = hasAnyUtility ? 12 : 10;
+                  const colSpan = hasAnyUtility ? 14 : 12;
                   return (
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1703,6 +1727,8 @@ function RentalsPage() {
                             }}
                           />
                         </th>
+                        <SortableTh label="序號" colKey="propertySortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
+                        <SortableTh label="類別" colKey="propertyCategory" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 whitespace-nowrap" />
                         <SortableTh label="物業" colKey="propertyName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租客" colKey="tenantName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租金應收" colKey="expectedAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
@@ -1742,6 +1768,47 @@ function RentalsPage() {
                                     return next;
                                   })}
                                 />
+                              )}
+                            </td>
+                            {/* 序號 */}
+                            <td className="px-3 py-2 text-center text-xs text-gray-500">
+                              {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'sortOrder' ? (
+                                <input autoFocus type="number" min="1" step="1"
+                                  value={propInlineEdit.value}
+                                  onChange={e => setPropInlineEdit(p => ({ ...p, value: e.target.value }))}
+                                  onBlur={() => savePropField(income.propertyId, 'sortOrder', propInlineEdit.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') savePropField(income.propertyId, 'sortOrder', propInlineEdit.value);
+                                    if (e.key === 'Escape') setPropInlineEdit(null);
+                                  }}
+                                  className="w-14 border border-indigo-400 rounded px-1 py-0.5 text-xs text-center outline-none ring-1 ring-indigo-400"
+                                />
+                              ) : (
+                                <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'sortOrder', value: income.propertySortOrder ?? '' })}
+                                  className="cursor-pointer hover:text-indigo-600 hover:underline"
+                                  title="點擊編輯序號">
+                                  {income.propertySortOrder ?? '—'}
+                                </span>
+                              )}
+                            </td>
+                            {/* 類別 */}
+                            <td className="px-3 py-2 text-xs">
+                              {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'category' ? (
+                                <select autoFocus
+                                  value={propInlineEdit.value || ''}
+                                  onChange={e => savePropField(income.propertyId, 'category', e.target.value)}
+                                  onBlur={() => setPropInlineEdit(null)}
+                                  onKeyDown={e => { if (e.key === 'Escape') setPropInlineEdit(null); }}
+                                  className="border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400">
+                                  <option value="">—</option>
+                                  {PROPERTY_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              ) : (
+                                <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'category', value: income.propertyCategory || '' })}
+                                  className={`cursor-pointer hover:text-indigo-600 hover:underline px-1.5 py-0.5 rounded ${income.propertyCategory ? 'bg-blue-50 text-blue-700' : 'text-gray-300'}`}
+                                  title="點擊編輯類別">
+                                  {income.propertyCategory || '—'}
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-2">{income.propertyName}</td>

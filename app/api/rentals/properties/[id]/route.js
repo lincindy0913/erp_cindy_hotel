@@ -68,12 +68,32 @@ export async function PUT(request, { params }) {
         publicInterestEndDate: body.publicInterestEndDate || null,
         publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
         collectUtilityFee: body.collectUtilityFee === true,
+        category:  body.category  !== undefined ? (body.category  || null) : undefined,
+        sortOrder: body.sortOrder !== undefined ? (body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null) : undefined,
       }
     });
 
     return NextResponse.json(property);
   } catch (error) {
     console.error('PUT /api/rentals/properties/[id] error:', error.message || error);
+    return handleApiError(error);
+  }
+}
+
+export async function PATCH(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const data = {};
+    if (body.category  !== undefined) data.category  = body.category  || null;
+    if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null;
+    if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
+    await prisma.rentalProperty.update({ where: { id: parseInt(id) }, data, select: { id: true } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
     return handleApiError(error);
   }
 }
