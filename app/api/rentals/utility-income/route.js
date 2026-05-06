@@ -51,7 +51,8 @@ async function ensureUtilityIncomeCashTx(prismaClient, record) {
       sourceType: 'rental_income',
       sourceRecordId: record.id,
       status: '已確認'
-    }
+    },
+    select: { id: true },
   });
   await prismaClient.rentalUtilityIncome.update({
     where: { id: record.id },

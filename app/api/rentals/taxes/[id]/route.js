@@ -54,7 +54,8 @@ export async function PUT(request, { params }) {
         sourceType: 'rental_tax',
         sourceRecordId: taxId,
         status: '已確認'
-      }
+      },
+      select: { id: true },
     });
 
     // Update tax record

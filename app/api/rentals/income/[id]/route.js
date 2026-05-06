@@ -89,7 +89,8 @@ export async function PUT(request, { params }) {
         sourceType: 'rental_income',
         sourceRecordId: incomeId,
         status: '已確認'
-      }
+      },
+      select: { id: true },
     });
 
     await prisma.rentalIncomePayment.create({
@@ -260,11 +261,12 @@ export async function DELETE(request, { params }) {
     }
 
     const accountIds = new Set();
+    const TX_SELECT = { id: true, accountId: true, categoryId: true, amount: true, description: true, reversedById: true };
     const txsToReverse = payments.length > 0
-      ? await prisma.cashTransaction.findMany({ where: { id: { in: payments.map(p => p.cashTransactionId).filter(Boolean) } } })
+      ? await prisma.cashTransaction.findMany({ where: { id: { in: payments.map(p => p.cashTransactionId).filter(Boolean) } }, select: TX_SELECT })
       : [];
     if (payments.length === 0 && income.cashTransactionId) {
-      const single = await prisma.cashTransaction.findUnique({ where: { id: income.cashTransactionId } });
+      const single = await prisma.cashTransaction.findUnique({ where: { id: income.cashTransactionId }, select: TX_SELECT });
       if (single) txsToReverse.push(single);
     }
     txsToReverse.forEach(t => accountIds.add(t.accountId));
@@ -273,7 +275,7 @@ export async function DELETE(request, { params }) {
       const revDate = new Date().toISOString().split('T')[0];
       for (const cashTx of txsToReverse) {
         // 冪等：re-read in transaction 確認尚未被沖銷
-        const fresh = await tx.cashTransaction.findUnique({ where: { id: cashTx.id } });
+        const fresh = await tx.cashTransaction.findUnique({ where: { id: cashTx.id }, select: TX_SELECT });
         if (!fresh || fresh.reversedById) continue; // 已沖銷，跳過
 
         const revNo = await nextCashTransactionNo(tx, revDate);
@@ -291,11 +293,13 @@ export async function DELETE(request, { params }) {
             status: '已確認',
             isReversal: true,
             reversalOfId: fresh.id
-          }
+          },
+          select: { id: true },
         });
         await tx.cashTransaction.update({
           where: { id: fresh.id },
-          data: { reversedById: reversalTx.id }
+          data: { reversedById: reversalTx.id },
+          select: { id: true },
         });
       }
       await tx.rentalIncomePayment.deleteMany({ where: { rentalIncomeId: incomeId } });

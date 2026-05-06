@@ -82,7 +82,8 @@ export async function PUT(request, { params }) {
           sourceType: 'rental_deposit_in',
           sourceRecordId: contractId,
           status: '已確認'
-        }
+        },
+        select: { id: true },
       });
 
       await prisma.rentalContract.update({

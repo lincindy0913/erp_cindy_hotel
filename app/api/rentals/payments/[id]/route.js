@@ -60,7 +60,8 @@ export async function PATCH(request, { params }) {
             accountId,
             amount,
             paymentTerms: paymentMethod || null
-          }
+          },
+          select: { id: true },
         });
       }
       // Update payment record

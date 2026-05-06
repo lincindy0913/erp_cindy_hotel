@@ -92,7 +92,8 @@ export async function POST(request, { params }) {
           sourceType: 'rental_income',
           sourceRecordId: incomeId,
           status: '已確認'
-        }
+        },
+        select: { id: true },
       });
 
       // --- RentalIncomePayment ---
@@ -150,7 +151,8 @@ export async function POST(request, { params }) {
             sourceType: 'rental_utility_income',
             sourceRecordId: income.propertyId,
             status: '已確認'
-          }
+          },
+          select: { id: true },
         });
         utilityTxId = utilityTx.id;
 
