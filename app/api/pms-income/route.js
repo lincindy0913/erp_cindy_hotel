@@ -1,12 +1,47 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
+
+/** 與飯店 PMS 日報／民宿分頁對應的預設篩選（OTA 訂金、佣金、代訂相關科目） */
+function buildPresetCondition(preset) {
+  if (!preset) return null;
+  if (preset === 'otaDeposit') {
+    return {
+      OR: [
+        { pmsColumnName: { contains: '訂金' } },
+        { pmsColumnName: { contains: '預收' } },
+        { pmsColumnName: { contains: '網訂' } },
+        { pmsColumnName: { contains: '沖訂金' } },
+        { pmsColumnName: { contains: '收訂金' } },
+      ],
+    };
+  }
+  if (preset === 'otaCommission') {
+    return {
+      OR: [
+        { pmsColumnName: { contains: '佣金' } },
+        { accountingCode: '6101' },
+      ],
+    };
+  }
+  if (preset === 'bookingCenter') {
+    return {
+      OR: [
+        { pmsColumnName: { contains: '佣金' } },
+        { pmsColumnName: { contains: '旅行社' } },
+        { pmsColumnName: { contains: '代訂' } },
+        { pmsColumnName: { contains: '網訂' } },
+      ],
+    };
+  }
+  return null;
+}
 
 // GET: List PMS income records with filters and pagination
 export async function GET(request) {
@@ -24,6 +59,7 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit')) || 50;
 
     const pmsColumnName = searchParams.get('pmsColumnName');
+    const preset = searchParams.get('preset');
 
     const where = {};
     if (warehouse) where.warehouse = warehouse;
@@ -42,9 +78,12 @@ export async function GET(request) {
       where.businessDate = { lte: endDate };
     }
 
-    const [records, total] = await Promise.all([
+    const presetCond = buildPresetCondition(preset);
+    const finalWhere = presetCond ? { AND: [where, presetCond] } : where;
+
+    const [records, total, sumAgg] = await Promise.all([
       prisma.pmsIncomeRecord.findMany({
-        where,
+        where: finalWhere,
         include: {
           importBatch: {
             select: { id: true, batchNo: true, fileName: true, status: true }
@@ -54,7 +93,11 @@ export async function GET(request) {
         skip: (page - 1) * limit,
         take: limit
       }),
-      prisma.pmsIncomeRecord.count({ where })
+      prisma.pmsIncomeRecord.count({ where: finalWhere }),
+      prisma.pmsIncomeRecord.aggregate({
+        where: finalWhere,
+        _sum: { amount: true },
+      }),
     ]);
 
     const result = records.map(r => ({
@@ -70,7 +113,9 @@ export async function GET(request) {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
+      sumAmount: Number(sumAgg._sum.amount ?? 0),
+      preset: preset || null,
     });
   } catch (error) {
     return handleApiError(error);

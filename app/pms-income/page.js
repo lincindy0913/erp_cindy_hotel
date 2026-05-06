@@ -17,6 +17,9 @@ import PmsIncomeTravelAgencyTab from '@/components/pms-income/PmsIncomeTravelAge
 import PmsIncomeManualCommissionTab from '@/components/pms-income/PmsIncomeManualCommissionTab';
 import PmsIncomePaymentConfigTab from '@/components/pms-income/PmsIncomePaymentConfigTab';
 import PmsIncomeMappingTab from '@/components/pms-income/PmsIncomeMappingTab';
+import PmsIncomeExcelImportTab from '@/components/pms-income/PmsIncomeExcelImportTab';
+import PmsIncomePresetRecordsTab from '@/components/pms-income/PmsIncomePresetRecordsTab';
+import PmsIncomeBookingCenterTab from '@/components/pms-income/PmsIncomeBookingCenterTab';
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
@@ -550,6 +553,42 @@ function PmsIncomePage() {
             excelParsing={overview.excelParsing}
             handleDeleteBatch={overview.handleDeleteBatch}
           />
+        )}
+
+        {activeTab === 'excelImport' && (
+          <PmsIncomeExcelImportTab
+            setActiveTab={setActiveTab}
+            onOpenUpload={() => {
+              setActiveTab('overview');
+              setShowUploadModal(true);
+            }}
+          />
+        )}
+
+        {activeTab === 'otaDeposit' && (
+          <PmsIncomePresetRecordsTab
+            preset="otaDeposit"
+            title="OTA 訂金（飯店 PMS 明細）"
+            subtitle="篩選：訂金、預收、網訂、沖訂金、收訂金等；資料須先由「每日匯入總覽」或 Excel 匯入。"
+            WAREHOUSES={WAREHOUSES}
+            accent="orange"
+            onGoFullRecords={() => setActiveTab('records')}
+          />
+        )}
+
+        {activeTab === 'otaCommission' && (
+          <PmsIncomePresetRecordsTab
+            preset="otaCommission"
+            title="OTA 傭金（飯店 PMS 明細）"
+            subtitle="篩選：PMS 欄位含「佣金」或會計科目 6101（佣金費用）；可與「旅行社佣金配置」「每月手動代訂」交叉核對。"
+            WAREHOUSES={WAREHOUSES}
+            accent="orange"
+            onGoFullRecords={() => setActiveTab('records')}
+          />
+        )}
+
+        {activeTab === 'bookingCenter' && (
+          <PmsIncomeBookingCenterTab WAREHOUSES={WAREHOUSES} setActiveTab={setActiveTab} />
         )}
 
         {activeTab === 'records' && (
