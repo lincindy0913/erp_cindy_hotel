@@ -282,7 +282,8 @@ export async function PATCH(request, { params }) {
     const updated = await prisma.bnbBookingRecord.update({
       where: { id },
       data: updateData,
-      select: { id: true, roomCharge: true },
+      select: { id: true, roomCharge: true, paymentFilled: true, cardFee: true,
+                payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true },
     });
 
     // 若付款相關欄位有變動，異步同步 CashTransaction（fire-and-forget）
@@ -291,7 +292,17 @@ export async function PATCH(request, { params }) {
       syncBnbPaymentTx(id).catch(() => {});
     }
 
-    return NextResponse.json({ id: updated.id, roomCharge: Number(updated.roomCharge) });
+    return NextResponse.json({
+      id:            updated.id,
+      roomCharge:    Number(updated.roomCharge),
+      paymentFilled: updated.paymentFilled,
+      cardFee:       Number(updated.cardFee),
+      payDeposit:    Number(updated.payDeposit),
+      payTransfer:   Number(updated.payTransfer),
+      payCard:       Number(updated.payCard),
+      payCash:       Number(updated.payCash),
+      payVoucher:    Number(updated.payVoucher),
+    });
   } catch (error) {
     return handleApiError(error);
   }

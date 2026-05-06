@@ -1258,7 +1258,8 @@ export default function BnbPage() {
       return;
     }
     const updated = await res.json();
-    setRecords(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+    // merge payload so inline-edited field is reflected immediately without refetch
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, ...payload, ...updated } : r));
   }
 
   // ── Excel 模式：進入 ──────────────────────────────────────────
