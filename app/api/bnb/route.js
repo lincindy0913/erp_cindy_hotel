@@ -11,6 +11,24 @@ import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
+// Explicit select — excludes transferBankLineId/MatchedAt/By, cashMatchedAt/By, cardMatchedAt/By
+// which were added later and may not exist in the Railway DB yet.
+const BNB_SELECT = {
+  id: true, importMonth: true, warehouse: true, source: true,
+  guestName: true, roomNo: true, checkInDate: true, checkOutDate: true,
+  roomCharge: true, otherCharge: true, status: true, note: true,
+  payDeposit: true, depositDate: true, depositLast5: true,
+  depositBankLineId: true, depositMatchedAt: true, depositMatchedBy: true,
+  payTransfer: true, transferDate: true, transferLast5: true,
+  payCard: true, cardFeeRate: true, cardFee: true,
+  cardSettlementDate: true, cardBankLineId: true,
+  payCash: true, payVoucher: true,
+  cashDestination: true, cashDepositDate: true, cashBankLineId: true, bossWithdrawNote: true,
+  paymentFilled: true, paymentLocked: true, paymentLockedAt: true, paymentLockedBy: true,
+  depositCashTxId: true, transferCashTxId: true, cashCashTxId: true, cardCashTxId: true,
+  createdAt: true, updatedAt: true,
+};
+
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.BNB_VIEW);
   if (!auth.ok) return auth.response;
@@ -36,6 +54,7 @@ export async function GET(request) {
       prisma.bnbBookingRecord.count({ where }),
       prisma.bnbBookingRecord.findMany({
         where,
+        select: BNB_SELECT,
         orderBy: [{ checkInDate: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -125,6 +144,7 @@ export async function POST(request) {
         paymentFilled: (pDeposit + pCard + pCash + pVoucher) > 0,
         note: note || null,
       },
+      select: BNB_SELECT,
     });
 
     return NextResponse.json({ ...record, roomCharge: Number(record.roomCharge) }, { status: 201 });
