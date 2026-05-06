@@ -2880,14 +2880,22 @@ model BnbBookingRecord {
   depositBankLineId    Int?     @map("deposit_bank_line_id")
   depositMatchedAt     DateTime? @map("deposit_matched_at")
   depositMatchedBy     String?  @map("deposit_matched_by") @db.VarChar(255)
+  // 當天匯款核對 — 對應到存簿明細行
+  transferBankLineId   Int?     @map("transfer_bank_line_id")
+  transferMatchedAt    DateTime? @map("transfer_matched_at")
+  transferMatchedBy    String?  @map("transfer_matched_by") @db.VarChar(255)
   // 現金去向 & 存款資訊
   cashDestination      String?  @map("cash_destination") @db.VarChar(20)   // '存帳' | '老闆收取'
   cashDepositDate      String?  @map("cash_deposit_date") @db.VarChar(10)  // 現金存入土銀日期
   cashBankLineId       Int?     @map("cash_bank_line_id")                   // 現金存款 → 存簿行
+  cashMatchedAt        DateTime? @map("cash_matched_at")
+  cashMatchedBy        String?  @map("cash_matched_by") @db.VarChar(255)
   bossWithdrawNote     String?  @map("boss_withdraw_note") @db.VarChar(255) // 老闆收取備註
   // 刷卡入帳日（POS 結算 T+1/2）
   cardSettlementDate   String?  @map("card_settlement_date") @db.VarChar(10)
   cardBankLineId       Int?     @map("card_bank_line_id")                   // 刷卡入帳 → 存簿行
+  cardMatchedAt        DateTime? @map("card_matched_at")
+  cardMatchedBy        String?  @map("card_matched_by") @db.VarChar(255)
   // 自動產生的 CashTransaction IDs（連動出納系統）
   depositCashTxId      Int?     @map("deposit_cash_tx_id")
   transferCashTxId     Int?     @map("transfer_cash_tx_id")
@@ -2902,6 +2910,9 @@ model BnbBookingRecord {
   @@index([checkInDate])
   @@index([status])
   @@index([depositBankLineId])
+  @@index([transferBankLineId])
+  @@index([cardBankLineId])
+  @@index([cashBankLineId])
   @@map("bnb_booking_records")
 }
 

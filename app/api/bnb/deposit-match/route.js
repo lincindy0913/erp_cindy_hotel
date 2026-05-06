@@ -1,13 +1,11 @@
 /**
- * GET  /api/bnb/deposit-match?month=2026-03&accountId=5
- *   — 回傳該月 BNB 訂金清單 + 指定帳戶存簿入帳明細（信用/入帳），供核對
+ * GET  /api/bnb/deposit-match?month=2026-03&accountId=5&paymentType=deposit
+ *   paymentType: deposit | transfer | card | cash（預設 deposit）
  *
  * POST /api/bnb/deposit-match
- *   body: { bnbId, bankLineId }
- *   — 配對一筆 BNB 訂金 ↔ 存簿明細行
+ *   body: { bnbId, bankLineId, paymentType? }
  *
- * DELETE /api/bnb/deposit-match?bnbId=123
- *   — 解除配對
+ * DELETE /api/bnb/deposit-match?bnbId=123&paymentType=deposit
  */
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
@@ -20,6 +18,58 @@ import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
+// ── 付款類型欄位對照表 ──────────────────────────────────────────────
+const PAY_TYPE_CONFIG = {
+  deposit: {
+    amountField:   'payDeposit',
+    dateField:     'depositDate',
+    last5Field:    'depositLast5',
+    bankLineField: 'depositBankLineId',
+    matchedAtField:'depositMatchedAt',
+    matchedByField:'depositMatchedBy',
+    label:         '訂金匯款',
+    bankDateField: 'txDate',  // 比對用的銀行日期欄位
+    searchWindowDays: 14,
+  },
+  transfer: {
+    amountField:   'payTransfer',
+    dateField:     'transferDate',
+    last5Field:    'transferLast5',
+    bankLineField: 'transferBankLineId',
+    matchedAtField:'transferMatchedAt',
+    matchedByField:'transferMatchedBy',
+    label:         '當天匯款',
+    bankDateField: 'txDate',
+    searchWindowDays: 7,
+  },
+  card: {
+    amountField:   'payCard',
+    dateField:     'cardSettlementDate',
+    last5Field:    null,
+    bankLineField: 'cardBankLineId',
+    matchedAtField:'cardMatchedAt',
+    matchedByField:'cardMatchedBy',
+    label:         '刷卡',
+    bankDateField: 'txDate',
+    searchWindowDays: 5,
+  },
+  cash: {
+    amountField:   'payCash',
+    dateField:     'cashDepositDate',
+    last5Field:    null,
+    bankLineField: 'cashBankLineId',
+    matchedAtField:'cashMatchedAt',
+    matchedByField:'cashMatchedBy',
+    label:         '現金存款',
+    bankDateField: 'txDate',
+    searchWindowDays: 7,
+  },
+};
+
+function getConfig(paymentType) {
+  return PAY_TYPE_CONFIG[paymentType] || PAY_TYPE_CONFIG.deposit;
+}
+
 // ── GET ──────────────────────────────────────────────────────────────
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.BNB_VIEW);
@@ -27,37 +77,92 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const month     = searchParams.get('month');     // YYYY-MM
-    const accountId = searchParams.get('accountId'); // CashAccount id
-    const warehouse = searchParams.get('warehouse') || '';
+    const month       = searchParams.get('month');
+    const accountId   = searchParams.get('accountId');
+    const warehouse   = searchParams.get('warehouse') || '';
+    const paymentType = searchParams.get('paymentType') || 'deposit';
 
     if (!month) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 month 參數', 400);
 
-    // ── 1. BNB 訂金記錄（payDeposit > 0，不含已刪除）──────────────
+    const cfg = getConfig(paymentType);
+
+    // ── 整體核對進度（paymentType = 'all'）─────────────────────
+    if (paymentType === 'all') {
+      const where = { importMonth: month, status: { not: '已刪除' } };
+      if (warehouse) where.warehouse = warehouse;
+      const records = await prisma.bnbBookingRecord.findMany({
+        where,
+        select: {
+          payDeposit:        true, depositBankLineId:  true,
+          payTransfer:       true, transferBankLineId: true,
+          payCard:           true, cardBankLineId:     true,
+          payCash:           true, cashBankLineId:     true, cashDestination: true,
+        },
+      });
+
+      const summary = {
+        deposit:  { label: '訂金匯款', total: 0, matched: 0, unmatched: 0, amount: 0 },
+        transfer: { label: '當天匯款', total: 0, matched: 0, unmatched: 0, amount: 0 },
+        card:     { label: '刷卡',     total: 0, matched: 0, unmatched: 0, amount: 0 },
+        cash:     { label: '現金存款', total: 0, matched: 0, unmatched: 0, amount: 0 },
+      };
+
+      for (const r of records) {
+        if (Number(r.payDeposit)  > 0) {
+          summary.deposit.total++;  summary.deposit.amount  += Number(r.payDeposit);
+          if (r.depositBankLineId)  summary.deposit.matched++;  else summary.deposit.unmatched++;
+        }
+        if (Number(r.payTransfer) > 0) {
+          summary.transfer.total++; summary.transfer.amount += Number(r.payTransfer);
+          if (r.transferBankLineId) summary.transfer.matched++; else summary.transfer.unmatched++;
+        }
+        if (Number(r.payCard)     > 0) {
+          summary.card.total++;     summary.card.amount     += Number(r.payCard);
+          if (r.cardBankLineId)     summary.card.matched++;     else summary.card.unmatched++;
+        }
+        if (Number(r.payCash)     > 0 && r.cashDestination === '存帳') {
+          summary.cash.total++;     summary.cash.amount     += Number(r.payCash);
+          if (r.cashBankLineId)     summary.cash.matched++;     else summary.cash.unmatched++;
+        }
+      }
+
+      return NextResponse.json({ month, summary: Object.values(summary) });
+    }
+
+    // ── 1. BNB 收款記錄 ─────────────────────────────────────────
+    const amountFilter = { [cfg.amountField]: { gt: 0 } };
+    if (paymentType === 'cash') amountFilter.cashDestination = '存帳';
+
     const bnbWhere = {
       importMonth: month,
-      payDeposit:  { gt: 0 },
       status:      { not: '已刪除' },
+      ...amountFilter,
     };
     if (warehouse) bnbWhere.warehouse = warehouse;
 
+    const selectFields = {
+      id: true, guestName: true, checkInDate: true, checkOutDate: true,
+      roomCharge: true, source: true, status: true, note: true,
+      [cfg.amountField]:   true,
+      [cfg.dateField]:     true,
+      [cfg.bankLineField]: true,
+      [cfg.matchedAtField]:true,
+      [cfg.matchedByField]:true,
+    };
+    if (cfg.last5Field) selectFields[cfg.last5Field] = true;
+    if (paymentType === 'cash') selectFields.cashDestination = true;
+
     const bnbRecords = await prisma.bnbBookingRecord.findMany({
-      where: bnbWhere,
-      select: {
-        id: true, guestName: true, checkInDate: true, checkOutDate: true,
-        roomCharge: true, payDeposit: true, source: true, status: true,
-        depositDate: true, depositLast5: true,
-        depositBankLineId: true, depositMatchedAt: true, depositMatchedBy: true,
-        note: true,
-      },
+      where:   bnbWhere,
+      select:  selectFields,
       orderBy: { checkInDate: 'asc' },
     });
 
-    // ── 2. 銀行存簿入帳明細（creditAmount > 0，該月）──────────────
+    // ── 2. 銀行存簿入帳明細 ───────────────────────────────────────
     const dateFrom = `${month}-01`;
-    const [y, m] = month.split('-').map(Number);
-    const lastDay = new Date(y, m, 0).getDate();
-    const dateTo  = `${month}-${String(lastDay).padStart(2, '0')}`;
+    const [y, m_] = month.split('-').map(Number);
+    const lastDay  = new Date(y, m_, 0).getDate();
+    const dateTo   = `${month}-${String(lastDay).padStart(2, '0')}`;
 
     const bankLineWhere = {
       txDate:       { gte: dateFrom, lte: dateTo },
@@ -66,83 +171,86 @@ export async function GET(request) {
     if (accountId) bankLineWhere.accountId = parseInt(accountId);
 
     const bankLines = await prisma.bankStatementLine.findMany({
-      where: bankLineWhere,
-      select: {
-        id: true, txDate: true, description: true,
-        creditAmount: true, referenceNo: true, runningBalance: true,
-        matchStatus: true, accountId: true,
-      },
+      where:   bankLineWhere,
+      select:  { id: true, txDate: true, description: true, creditAmount: true, referenceNo: true, runningBalance: true },
       orderBy: { txDate: 'asc' },
     });
 
-    // ── 3. 已被本月 BNB 記錄使用的 bankLineId Set ─────────────────
+    // ── 3. 已用 bankLineId Set ───────────────────────────────────
     const usedLineIds = new Set(
-      bnbRecords.filter(r => r.depositBankLineId).map(r => r.depositBankLineId)
+      bnbRecords.filter(r => r[cfg.bankLineField]).map(r => r[cfg.bankLineField])
     );
 
-    // ── 4. 自動建議：金額相符 + 日期/帳號後五碼比對 ────────────
-    const unmatchedBnb   = bnbRecords.filter(r => !r.depositBankLineId);
+    // ── 4. 自動配對建議 ──────────────────────────────────────────
+    const unmatchedBnb   = bnbRecords.filter(r => !r[cfg.bankLineField]);
     const unmatchedLines = bankLines.filter(l => !usedLineIds.has(l.id));
-    const usedSuggestionLines = new Set();
+    const usedSuggLines  = new Set();
+    const suggestions    = [];
 
-    const suggestions = [];
     for (const bnb of unmatchedBnb) {
-      const depositAmt = Number(bnb.payDeposit);
-      const refDate    = bnb.depositDate ? new Date(bnb.depositDate) : new Date(bnb.checkInDate);
-      const last5      = bnb.depositLast5 || '';
-      let bestMatch = null;
-      let bestScore = -1;
+      const amt    = Number(bnb[cfg.amountField]);
+      const refDate = bnb[cfg.dateField]
+        ? new Date(bnb[cfg.dateField])
+        : new Date(bnb.checkInDate);
+      const last5  = cfg.last5Field ? (bnb[cfg.last5Field] || '') : '';
+      let bestMatch = null; let bestScore = -1;
 
       for (const line of unmatchedLines) {
-        if (usedSuggestionLines.has(line.id)) continue;
-        if (Number(line.creditAmount) !== depositAmt) continue;
-
-        const lineDt   = new Date(line.txDate);
-        const diffDays = Math.abs((lineDt - refDate) / 86400000);
-        if (diffDays > 14) continue;
-
+        if (usedSuggLines.has(line.id)) continue;
+        if (Number(line.creditAmount) !== amt) continue;
+        const diffDays = Math.abs((new Date(line.txDate) - refDate) / 86400000);
+        if (diffDays > cfg.searchWindowDays) continue;
         let score = 0;
         if (last5 && line.description && line.description.includes(last5)) score += 10;
-        if (bnb.depositDate && line.txDate === bnb.depositDate) score += 5;
-        else if (diffDays <= 3) score += 3;
-        else if (diffDays <= 7) score += 1;
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = { bnbId: bnb.id, bankLineId: line.id, diffDays: Math.round(diffDays), score };
-        }
+        if (bnb[cfg.dateField] && line.txDate === bnb[cfg.dateField]) score += 5;
+        else if (diffDays <= 2) score += 3;
+        else if (diffDays <= 5) score += 1;
+        if (score > bestScore) { bestScore = score; bestMatch = { bnbId: bnb.id, bankLineId: line.id, diffDays: Math.round(diffDays), score }; }
       }
-      if (bestMatch) {
-        suggestions.push(bestMatch);
-        usedSuggestionLines.add(bestMatch.bankLineId);
-      }
+      if (bestMatch) { suggestions.push(bestMatch); usedSuggLines.add(bestMatch.bankLineId); }
     }
 
-    // ── 5. 摘要統計 ────────────────────────────────────────────────
-    const totalBnbDeposit  = bnbRecords.reduce((s, r) => s + Number(r.payDeposit), 0);
-    const totalBankCredit  = bankLines.reduce((s, l) => s + Number(l.creditAmount), 0);
-    const matchedCount     = bnbRecords.filter(r => r.depositBankLineId).length;
+    // ── 5. 摘要統計 ────────────────────────────────────────────
+    const totalBnbAmount  = bnbRecords.reduce((s, r) => s + Number(r[cfg.amountField]), 0);
+    const totalBankCredit = bankLines.reduce((s, l) => s + Number(l.creditAmount), 0);
+    const matchedCount    = bnbRecords.filter(r => r[cfg.bankLineField]).length;
+
+    // 正規化欄位名稱（統一為 payAmount / dateField / last5 / bankLineId / matchedAt / matchedBy）
+    const normalizedBnb = bnbRecords.map(r => ({
+      id:          r.id,
+      guestName:   r.guestName,
+      checkInDate: r.checkInDate,
+      checkOutDate:r.checkOutDate,
+      roomCharge:  Number(r.roomCharge),
+      source:      r.source,
+      status:      r.status,
+      note:        r.note,
+      payAmount:   Number(r[cfg.amountField]),
+      payDate:     r[cfg.dateField] || null,
+      last5:       cfg.last5Field ? (r[cfg.last5Field] || null) : null,
+      bankLineId:  r[cfg.bankLineField] || null,
+      matchedAt:   r[cfg.matchedAtField] || null,
+      matchedBy:   r[cfg.matchedByField] || null,
+    }));
 
     return NextResponse.json({
       month,
+      paymentType,
+      label: cfg.label,
       summary: {
-        totalBnbDeposit,
+        totalBnbAmount,
         totalBankCredit,
         matchedCount,
         unmatchedBnbCount:  unmatchedBnb.length,
         unmatchedLineCount: unmatchedLines.length,
-        diff: totalBnbDeposit - totalBankCredit,
+        diff: totalBnbAmount - totalBankCredit,
       },
-      bnbRecords: bnbRecords.map(r => ({
-        ...r,
-        payDeposit: Number(r.payDeposit),
-        roomCharge: Number(r.roomCharge),
-      })),
-      bankLines: bankLines.map(l => ({
+      bnbRecords: normalizedBnb,
+      bankLines:  bankLines.map(l => ({
         ...l,
-        creditAmount: Number(l.creditAmount),
+        creditAmount:   Number(l.creditAmount),
         runningBalance: l.runningBalance ? Number(l.runningBalance) : null,
-        isUsed: usedLineIds.has(l.id),
+        isUsed:         usedLineIds.has(l.id),
       })),
       suggestions,
     });
@@ -157,25 +265,28 @@ export async function POST(request) {
   if (!auth.ok) return auth.response;
 
   try {
-    const session  = await getServerSession(authOptions);
-    const userName = session?.user?.name || session?.user?.email || 'system';
+    const session     = await getServerSession(authOptions);
+    const userName    = session?.user?.name || session?.user?.email || 'system';
+    const { bnbId, bankLineId, paymentType = 'deposit' } = await request.json();
 
-    const { bnbId, bankLineId } = await request.json();
     if (!bnbId || !bankLineId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 bnbId 或 bankLineId', 400);
     }
 
-    const bnbRec = await prisma.bnbBookingRecord.findUnique({ where: { id: parseInt(bnbId) }, select: { importMonth: true, warehouse: true } });
+    const cfg = getConfig(paymentType);
+    const bnbRec = await prisma.bnbBookingRecord.findUnique({
+      where: { id: parseInt(bnbId) },
+      select: { importMonth: true, warehouse: true },
+    });
     if (bnbRec) await assertBnbMonthOpen(bnbRec.importMonth, bnbRec.warehouse);
 
-    // 確認 bankLine 存在
     const line = await prisma.bankStatementLine.findUnique({ where: { id: parseInt(bankLineId) } });
     if (!line) return createErrorResponse('NOT_FOUND', '找不到存簿明細行', 404);
 
-    // 確認此 bankLine 未被其他 BNB 佔用
+    // 確認此 bankLine 未被其他 BNB 的相同付款類型佔用
     const existing = await prisma.bnbBookingRecord.findFirst({
       where: {
-        depositBankLineId: parseInt(bankLineId),
+        [cfg.bankLineField]: parseInt(bankLineId),
         id: { not: parseInt(bnbId) },
       },
     });
@@ -186,17 +297,13 @@ export async function POST(request) {
     const updated = await prisma.bnbBookingRecord.update({
       where: { id: parseInt(bnbId) },
       data: {
-        depositBankLineId: parseInt(bankLineId),
-        depositMatchedAt:  new Date(),
-        depositMatchedBy:  userName,
-      },
-      select: {
-        id: true, guestName: true, payDeposit: true,
-        depositBankLineId: true, depositMatchedAt: true, depositMatchedBy: true,
+        [cfg.bankLineField]: parseInt(bankLineId),
+        [cfg.matchedAtField]: new Date(),
+        [cfg.matchedByField]: userName,
       },
     });
 
-    return NextResponse.json({ ...updated, payDeposit: Number(updated.payDeposit) });
+    return NextResponse.json({ ok: true, id: updated.id });
   } catch (error) {
     return handleApiError(error);
   }
@@ -209,18 +316,24 @@ export async function DELETE(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const bnbId = parseInt(searchParams.get('bnbId'));
+    const bnbId      = parseInt(searchParams.get('bnbId'));
+    const paymentType = searchParams.get('paymentType') || 'deposit';
+
     if (!bnbId) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 bnbId', 400);
 
-    const bnbRec = await prisma.bnbBookingRecord.findUnique({ where: { id: bnbId }, select: { importMonth: true, warehouse: true } });
+    const cfg    = getConfig(paymentType);
+    const bnbRec = await prisma.bnbBookingRecord.findUnique({
+      where: { id: bnbId },
+      select: { importMonth: true, warehouse: true },
+    });
     if (bnbRec) await assertBnbMonthOpen(bnbRec.importMonth, bnbRec.warehouse);
 
     await prisma.bnbBookingRecord.update({
       where: { id: bnbId },
       data: {
-        depositBankLineId: null,
-        depositMatchedAt:  null,
-        depositMatchedBy:  null,
+        [cfg.bankLineField]:  null,
+        [cfg.matchedAtField]: null,
+        [cfg.matchedByField]: null,
       },
     });
 

@@ -111,6 +111,7 @@ const ANALYTICS_SUB_TABS = [
   { key: 'pnl',            label: '月收支總表' },
   { key: 'declList',       label: '年度申報總表' },
   { key: 'sourceAnalysis', label: '來源分析' },
+  { key: 'otaAnalytics',  label: 'OTA收益分析' },
   { key: 'occupancy',      label: '入住率統計' },
   { key: 'calendar',       label: '訂房日曆' },
 ];
@@ -540,6 +541,12 @@ export default function BnbPage() {
   const [saData,      setSaData]      = useState(null);
   const [saLoading,   setSaLoading]   = useState(false);
 
+  // ── OTA 收益分析 state ────────────────────────────────────────
+  const [oaYear,      setOaYear]      = useState(() => new Date().getFullYear().toString());
+  const [oaWarehouse, setOaWarehouse] = useState('');
+  const [oaData,      setOaData]      = useState(null);
+  const [oaLoading,   setOaLoading]   = useState(false);
+
   // ── 付款稽核 state ────────────────────────────────────────────
   const [auditMonth,     setAuditMonth]     = useState(() => new Date().toISOString().slice(0, 7));
   const [auditWarehouse, setAuditWarehouse] = useState('');
@@ -617,6 +624,7 @@ export default function BnbPage() {
   const [dmSelBnb,      setDmSelBnb]      = useState(null);  // selected BNB id
   const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
   const [dmMatching,    setDmMatching]    = useState(false);
+  const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all
 
   // ── 旅宿網申報 state ─────────────────────────────────────────
   const [declMonth,     setDeclMonth]     = useState(() => new Date().toISOString().slice(0, 7));
@@ -646,6 +654,7 @@ export default function BnbPage() {
   const [otaFile,      setOtaFile]      = useState(null);
   const [otaResult,    setOtaResult]    = useState(null);
   const [otaLoading,   setOtaLoading]   = useState(false);
+  const [otaMonth,     setOtaMonth]     = useState('');
   const [otaViewTab,   setOtaViewTab]   = useState('matched'); // matched | unmatchedOta | unmatchedBnb | cancelled
   // OTA 傭金確認
   const [commAmt,        setCommAmt]        = useState('');
@@ -738,10 +747,11 @@ export default function BnbPage() {
 
   // ── 訂金核對 fetch ────────────────────────────────────────────
   const fetchDepositMatch = useCallback(async () => {
-    if (!dmAccountId) { showToast('請先選擇存簿帳戶', 'error'); return; }
+    if (dmPayType !== 'all' && !dmAccountId) { showToast('請先選擇存簿帳戶', 'error'); return; }
     setDmLoading(true);
     try {
-      const p = new URLSearchParams({ month: dmMonth, accountId: dmAccountId });
+      const p = new URLSearchParams({ month: dmMonth, paymentType: dmPayType });
+      if (dmAccountId) p.set('accountId', dmAccountId);
       if (dmWarehouse) p.set('warehouse', dmWarehouse);
       const res = await fetch(`/api/bnb/deposit-match?${p}`);
       if (!res.ok) { showToast('載入核對資料失敗', 'error'); return; }
@@ -750,7 +760,7 @@ export default function BnbPage() {
       setDmSelLine(null);
     } catch { showToast('載入核對資料失敗', 'error'); }
     finally { setDmLoading(false); }
-  }, [dmMonth, dmAccountId, dmWarehouse]);
+  }, [dmMonth, dmAccountId, dmWarehouse, dmPayType]);
 
   // ── 訂金手動配對 ──────────────────────────────────────────────
   async function handleMatch() {
@@ -760,7 +770,7 @@ export default function BnbPage() {
       const res = await fetch('/api/bnb/deposit-match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bnbId: dmSelBnb, bankLineId: dmSelLine }),
+        body: JSON.stringify({ bnbId: dmSelBnb, bankLineId: dmSelLine, paymentType: dmPayType }),
       });
       const d = await res.json();
       if (!res.ok) { showToast(d.message || '配對失敗', 'error'); return; }
@@ -773,7 +783,7 @@ export default function BnbPage() {
 
   // ── 解除配對 ──────────────────────────────────────────────────
   async function handleUnmatch(bnbId) {
-    const res = await fetch(`/api/bnb/deposit-match?bnbId=${bnbId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/bnb/deposit-match?bnbId=${bnbId}&paymentType=${dmPayType}`, { method: 'DELETE' });
     if (!res.ok) { showToast('解除配對失敗', 'error'); return; }
     showToast('已解除配對', 'success');
     fetchDepositMatch();
@@ -790,7 +800,7 @@ export default function BnbPage() {
         const res = await fetch('/api/bnb/deposit-match', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bnbId: s.bnbId, bankLineId: s.bankLineId }),
+          body: JSON.stringify({ bnbId: s.bnbId, bankLineId: s.bankLineId, paymentType: dmPayType }),
         });
         if (res.ok) count++;
       }
@@ -858,6 +868,18 @@ export default function BnbPage() {
     } catch { showToast('載入來源分析失敗', 'error'); }
     finally { setSaLoading(false); }
   }, [saYear, saWarehouse]);
+
+  // ── OTA 收益分析 fetch ────────────────────────────────────────
+  const fetchOtaAnalytics = useCallback(async () => {
+    setOaLoading(true);
+    try {
+      const p = new URLSearchParams({ year: oaYear });
+      if (oaWarehouse) p.set('warehouse', oaWarehouse);
+      const res = await fetch(`/api/bnb/ota-analytics?${p}`);
+      if (res.ok) setOaData(await res.json());
+    } catch { showToast('載入 OTA 分析失敗', 'error'); }
+    finally { setOaLoading(false); }
+  }, [oaYear, oaWarehouse]);
 
   // ── 付款稽核 fetch（重用訂房 API 撈全月無篩選資料）─────────────
   const fetchAudit = useCallback(async () => {
@@ -1116,6 +1138,7 @@ export default function BnbPage() {
     if (activeTab === 'bossWithdraw')  fetchBossWithdraw();
     if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy();
     if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis();
+    if (activeTab === 'analytics' && analyticsSub === 'otaAnalytics')  fetchOtaAnalytics();
     if (activeTab === 'payAudit')      fetchAudit();
     if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
   }, [activeTab, analyticsSub]);
@@ -1141,6 +1164,12 @@ export default function BnbPage() {
   useEffect(() => {
     if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis();
   }, [saYear, saWarehouse, activeTab, analyticsSub]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'otaAnalytics') fetchOtaAnalytics();
+  }, [oaYear, oaWarehouse, activeTab, analyticsSub]);
+  useEffect(() => {
+    if (activeTab === 'deposit') fetchDepositMatch();
+  }, [dmPayType, activeTab]);
   useEffect(() => { if (activeTab === 'payAudit') fetchAudit(); }, [auditMonth, auditWarehouse, activeTab]);
   useEffect(() => {
     if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
@@ -2937,15 +2966,39 @@ export default function BnbPage() {
           const suggestMap = new Map((dmData?.suggestions || []).map(s => [s.bnbId, s.bankLineId]));
           const lineMatchedByBnb = new Map(
             (dmData?.bnbRecords || [])
-              .filter(r => r.depositBankLineId)
-              .map(r => [r.depositBankLineId, r.guestName])
+              .filter(r => r.bankLineId)
+              .map(r => [r.bankLineId, r.guestName])
           );
-          const summary = dmData?.summary;
+          const summary    = dmData?.summary;
           const bnbRecords = dmData?.bnbRecords || [];
           const bankLines  = dmData?.bankLines  || [];
+          const allSummary = dmData?.summary;  // for paymentType=all view
+
+          const PAY_TYPE_TABS = [
+            { key: 'deposit',  label: '訂金匯款' },
+            { key: 'transfer', label: '當天匯款' },
+            { key: 'card',     label: '刷卡' },
+            { key: 'cash',     label: '現金存款' },
+            { key: 'all',      label: '整體進度' },
+          ];
 
           return (
             <div>
+              {/* 付款類型切換 */}
+              <div className="flex gap-1 mb-4 overflow-x-auto">
+                {PAY_TYPE_TABS.map(t => (
+                  <button key={t.key}
+                    onClick={() => { setDmPayType(t.key); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }}
+                    className={`px-4 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
+                      dmPayType === t.key
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50'
+                    }`}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
               {/* 篩選列 */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
                 <div>
@@ -2959,18 +3012,20 @@ export default function BnbPage() {
                     {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
-                  <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
-                    <option value="">請選擇帳戶</option>
-                    {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <button onClick={fetchDepositMatch} disabled={dmLoading || !dmAccountId}
+                {dmPayType !== 'all' && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
+                    <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
+                      <option value="">請選擇帳戶</option>
+                      {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                <button onClick={fetchDepositMatch} disabled={dmLoading || (dmPayType !== 'all' && !dmAccountId)}
                   className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
                   {dmLoading ? '載入中…' : '查詢'}
                 </button>
-                {dmData && (
+                {dmData && dmPayType !== 'all' && (
                   <>
                     <button onClick={handleAutoMatch} disabled={dmMatching || !(dmData?.suggestions?.length) || isLocked}
                       className={`${btnCls} bg-amber-50 text-amber-700 disabled:opacity-40`}>
@@ -2978,32 +3033,71 @@ export default function BnbPage() {
                     </button>
                     <ExportButtons
                       data={(dmData?.bnbRecords || []).map(r => ({
-                        ...r,
-                        matchStatus: r.depositBankLineId ? '已配對' : '未配對',
-                        matchedBy: r.depositMatchedBy || '',
+                        guestName:   r.guestName,
+                        checkInDate: r.checkInDate,
+                        checkOutDate:r.checkOutDate,
+                        payAmount:   r.payAmount,
+                        payDate:     r.payDate,
+                        last5:       r.last5,
+                        matchStatus: r.bankLineId ? '已配對' : '未配對',
+                        matchedBy:   r.matchedBy || '',
                       }))}
                       columns={[
-                        { header: '姓名',   key: 'guestName' },
-                        { header: '入住',   key: 'checkInDate' },
-                        { header: '退房',   key: 'checkOutDate' },
-                        { header: '訂金',   key: 'payDeposit',  format: 'number' },
-                        { header: '匯款日期', key: 'depositDate' },
-                        { header: '後五碼',  key: 'depositLast5' },
+                        { header: '姓名',    key: 'guestName' },
+                        { header: '入住',    key: 'checkInDate' },
+                        { header: '退房',    key: 'checkOutDate' },
+                        { header: '金額',    key: 'payAmount',  format: 'number' },
+                        { header: '付款日期', key: 'payDate' },
+                        { header: '後五碼',  key: 'last5' },
                         { header: '配對狀態', key: 'matchStatus' },
                         { header: '配對者',  key: 'matchedBy' },
                       ]}
-                      filename={`訂金核對_${dmMonth}`}
-                      title={`訂金核對 ${dmMonth}`}
+                      filename={`核對_${dmPayType}_${dmMonth}`}
+                      title={`${PAY_TYPE_TABS.find(t => t.key === dmPayType)?.label || ''} 核對 ${dmMonth}`}
                     />
                   </>
                 )}
               </div>
 
+              {/* 整體進度視圖 */}
+              {dmPayType === 'all' && dmData && !dmLoading && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {(dmData.summary || []).map(s => {
+                      const pct = s.total > 0 ? Math.round(s.matched / s.total * 100) : 0;
+                      return (
+                        <div key={s.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                          <div className="text-xs text-gray-500 mb-1">{s.label}</div>
+                          <div className="text-lg font-bold text-indigo-700">
+                            NT$ {s.amount.toLocaleString()}
+                          </div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="flex-1 bg-gray-100 rounded-full h-2">
+                              <div className="bg-green-500 h-2 rounded-full transition-all"
+                                style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-500">{pct}%</span>
+                          </div>
+                          <div className="mt-1 flex justify-between text-xs">
+                            <span className="text-green-600">✓ {s.matched}</span>
+                            <span className={s.unmatched > 0 ? 'text-amber-600' : 'text-gray-400'}>
+                              ○ {s.unmatched}
+                            </span>
+                            <span className="text-gray-400">共 {s.total}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* 摘要卡 */}
-              {summary && (
+              {summary && dmPayType !== 'all' && (
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                   {[
-                    { label: 'BNB 訂金合計',  val: `NT$ ${summary.totalBnbDeposit.toLocaleString()}`,  color: 'text-indigo-700' },
+                    { label: `BNB ${PAY_TYPE_TABS.find(t => t.key === dmPayType)?.label || ''}合計`,
+                      val: `NT$ ${summary.totalBnbAmount.toLocaleString()}`, color: 'text-indigo-700' },
                     { label: '存簿入帳合計',   val: `NT$ ${summary.totalBankCredit.toLocaleString()}`,  color: 'text-blue-700' },
                     { label: '差異',          val: `NT$ ${Math.abs(summary.diff).toLocaleString()}`,    color: summary.diff !== 0 ? 'text-red-600 font-bold' : 'text-green-600' },
                     { label: '已配對',         val: `${summary.matchedCount} 筆`,                        color: 'text-green-600' },
@@ -3031,20 +3125,24 @@ export default function BnbPage() {
               )}
 
               {!dmData && !dmLoading && (
-                <div className="text-center py-20 text-gray-400">請選擇存簿帳戶後按「查詢」</div>
+                <div className="text-center py-20 text-gray-400">
+                  {dmPayType === 'all' ? '請選擇月份後按「查詢」' : '請選擇存簿帳戶後按「查詢」'}
+                </div>
               )}
               {dmLoading && (
                 <div className="text-center py-20 text-gray-400">載入中…</div>
               )}
 
               {/* 雙欄核對表 */}
-              {dmData && !dmLoading && (
+              {dmData && !dmLoading && dmPayType !== 'all' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-                  {/* 左欄：BNB 訂金 */}
+                  {/* 左欄：BNB 收款 */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-indigo-800">訂房訂金（BNB）</span>
+                      <span className="text-sm font-semibold text-indigo-800">
+                        {PAY_TYPE_TABS.find(t => t.key === dmPayType)?.label || ''}（BNB）
+                      </span>
                       <span className="text-xs text-indigo-500">{bnbRecords.length} 筆　點選後再點右側存簿行配對</span>
                     </div>
                     <div className="overflow-y-auto max-h-[480px]">
@@ -3054,22 +3152,24 @@ export default function BnbPage() {
                             <th className="px-3 py-2 text-left">狀態</th>
                             <th className="px-3 py-2 text-left">姓名</th>
                             <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">匯款日</th>
-                            <th className="px-3 py-2 text-left">後五碼</th>
-                            <th className="px-3 py-2 text-right">訂金</th>
+                            <th className="px-3 py-2 text-left">付款日</th>
+                            {(dmPayType === 'deposit' || dmPayType === 'transfer') && (
+                              <th className="px-3 py-2 text-left">後五碼</th>
+                            )}
+                            <th className="px-3 py-2 text-right">金額</th>
                             <th className="px-3 py-2"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {bnbRecords.length === 0 && (
-                            <tr><td colSpan={7} className="text-center py-8 text-gray-400">本月無訂金記錄</td></tr>
+                            <tr><td colSpan={7} className="text-center py-8 text-gray-400">本月無此類型收款記錄</td></tr>
                           )}
                           {bnbRecords.map(r => {
-                            const isMatched  = !!r.depositBankLineId;
+                            const isMatched   = !!r.bankLineId;
                             const isSuggested = !isMatched && suggestMap.has(r.id);
-                            const isSelected = dmSelBnb === r.id;
+                            const isSelected  = dmSelBnb === r.id;
                             let rowCls = 'cursor-pointer transition-colors ';
-                            if (isSelected)  rowCls += 'bg-indigo-100 ring-1 ring-inset ring-indigo-300';
+                            if (isSelected)       rowCls += 'bg-indigo-100 ring-1 ring-inset ring-indigo-300';
                             else if (isMatched)   rowCls += 'bg-green-50 hover:bg-green-100';
                             else if (isSuggested) rowCls += 'bg-amber-50 hover:bg-amber-100';
                             else rowCls += 'hover:bg-gray-50';
@@ -3086,10 +3186,12 @@ export default function BnbPage() {
                                 </td>
                                 <td className="px-3 py-2.5 max-w-[100px] truncate font-medium">{r.guestName}</td>
                                 <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{r.checkInDate}</td>
-                                <td className="px-3 py-2.5 text-blue-500 whitespace-nowrap text-xs">{r.depositDate || '—'}</td>
-                                <td className="px-3 py-2.5 text-blue-600 font-mono text-xs tracking-wider">{r.depositLast5 || '—'}</td>
+                                <td className="px-3 py-2.5 text-blue-500 whitespace-nowrap text-xs">{r.payDate || '—'}</td>
+                                {(dmPayType === 'deposit' || dmPayType === 'transfer') && (
+                                  <td className="px-3 py-2.5 text-blue-600 font-mono text-xs tracking-wider">{r.last5 || '—'}</td>
+                                )}
                                 <td className="px-3 py-2.5 text-right font-semibold text-indigo-700">
-                                  {r.payDeposit.toLocaleString()}
+                                  {r.payAmount.toLocaleString()}
                                 </td>
                                 <td className="px-3 py-2.5 text-right">
                                   {isMatched && !isLocked && (
@@ -3187,14 +3289,29 @@ export default function BnbPage() {
                 </select>
               </div>
               <div>
+                <label className="block text-xs text-gray-500 mb-1">快速月份</label>
+                <input type="month" className="border rounded-lg px-3 py-1.5 text-sm"
+                  value={otaMonth}
+                  onChange={e => {
+                    const m = e.target.value;
+                    setOtaMonth(m);
+                    if (m) {
+                      const [y, mo] = m.split('-').map(Number);
+                      const last = new Date(y, mo, 0).getDate();
+                      setOtaDateFrom(`${m}-01`);
+                      setOtaDateTo(`${m}-${String(last).padStart(2, '0')}`);
+                    }
+                  }} />
+              </div>
+              <div>
                 <label className="block text-xs text-gray-500 mb-1">入住起日</label>
                 <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaDateFrom} onChange={e => setOtaDateFrom(e.target.value)} />
+                  value={otaDateFrom} onChange={e => { setOtaDateFrom(e.target.value); setOtaMonth(''); }} />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">入住迄日</label>
                 <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaDateTo} onChange={e => setOtaDateTo(e.target.value)} />
+                  value={otaDateTo} onChange={e => { setOtaDateTo(e.target.value); setOtaMonth(''); }} />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
@@ -3545,6 +3662,42 @@ export default function BnbPage() {
         {/* ══ Tab: OTA傭金 ══ */}
         {activeTab === 'otaCommission' && (
           <div>
+            {/* KPI 摘要 */}
+            {commHistRows.length > 0 && (() => {
+              const active = commHistRows.filter(r => r.status !== '已取消');
+              const totalAmt   = active.reduce((s, r) => s + Number(r.commissionAmount), 0);
+              const paidAmt    = active.filter(r => r.paymentOrder?.status === '已付款').reduce((s, r) => s + Number(r.commissionAmount), 0);
+              const pendingAmt = active.filter(r => r.status === '待出納').reduce((s, r) => s + Number(r.commissionAmount), 0);
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="text-xs text-gray-400 mb-1">傭金總額（有效）</div>
+                    <div className="text-xl font-bold text-gray-800">NT$ {totalAmt.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400 mt-1">{active.length} 筆</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="text-xs text-gray-400 mb-1">已付款</div>
+                    <div className="text-xl font-bold text-green-600">NT$ {paidAmt.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400 mt-1">{active.filter(r => r.paymentOrder?.status === '已付款').length} 筆</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="text-xs text-gray-400 mb-1">待出納</div>
+                    <div className="text-xl font-bold text-amber-600">NT$ {pendingAmt.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400 mt-1">{active.filter(r => r.status === '待出納').length} 筆</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="text-xs text-gray-400 mb-1">已付款率</div>
+                    <div className="text-xl font-bold text-indigo-600">
+                      {totalAmt > 0 ? Math.round(paidAmt / totalAmt * 100) : 0}%
+                    </div>
+                    <div className="mt-1.5 bg-gray-100 rounded-full h-1.5">
+                      <div className="bg-green-500 h-1.5 rounded-full"
+                        style={{ width: `${totalAmt > 0 ? Math.round(paidAmt / totalAmt * 100) : 0}%` }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">館別</label>
@@ -4130,6 +4283,144 @@ export default function BnbPage() {
                       </table>
                     </div>
                   )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ══ Tab: OTA收益分析 ══ */}
+        {activeTab === 'analytics' && analyticsSub === 'otaAnalytics' && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <input type="number" min="2020" max="2035" value={oaYear} onChange={e => setOaYear(e.target.value)}
+                className={inputCls + ' w-24'} />
+              <select value={oaWarehouse} onChange={e => setOaWarehouse(e.target.value)} className={inputCls}>
+                <option value="">全館</option>
+                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+              <button onClick={fetchOtaAnalytics} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
+              {oaLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
+            </div>
+
+            {oaData && (() => {
+              const { months, bySource, totals } = oaData;
+              return (
+                <>
+                  {/* 年度 KPI */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">OTA 收入</div>
+                      <div className="text-xl font-bold text-indigo-600">NT$ {totals.otaRevenue.toLocaleString()}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">佔比 {totals.otaPct}%</div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">傭金支出</div>
+                      <div className="text-xl font-bold text-rose-600">NT$ {totals.commissionTotal.toLocaleString()}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">均率 {totals.avgCommRate}%</div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">OTA 淨收入</div>
+                      <div className="text-xl font-bold text-emerald-600">NT$ {totals.netOtaRevenue.toLocaleString()}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">扣除傭金後</div>
+                    </div>
+                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                      <div className="text-xs text-gray-400 mb-1">待付傭金</div>
+                      <div className="text-xl font-bold text-amber-600">NT$ {totals.commissionPending.toLocaleString()}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">已付 NT$ {totals.commissionPaid.toLocaleString()}</div>
+                    </div>
+                  </div>
+
+                  {/* 來源分析 */}
+                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-4">來源分析（{oaData.year} 年）</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b text-gray-400">
+                            <th className="text-left py-2 pr-3 font-medium">來源</th>
+                            <th className="text-right py-2 px-2 font-medium">訂房</th>
+                            <th className="text-right py-2 px-2 font-medium">收入</th>
+                            <th className="text-right py-2 px-2 font-medium">傭金</th>
+                            <th className="text-right py-2 px-2 font-medium">淨收入</th>
+                            <th className="text-right py-2 pl-2 font-medium">傭金率</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {bySource.map(s => (
+                            <tr key={s.source} className="hover:bg-gray-50">
+                              <td className="py-2 pr-3">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  s.isOta ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
+                                }`}>{s.source}</span>
+                              </td>
+                              <td className="py-2 px-2 text-right text-gray-600">{s.bookings}</td>
+                              <td className="py-2 px-2 text-right font-semibold text-gray-800">NT$ {s.revenue.toLocaleString()}</td>
+                              <td className="py-2 px-2 text-right text-rose-600">
+                                {s.commission > 0 ? `NT$ ${s.commission.toLocaleString()}` : '—'}
+                              </td>
+                              <td className="py-2 px-2 text-right text-emerald-600 font-semibold">NT$ {s.netRevenue.toLocaleString()}</td>
+                              <td className="py-2 pl-2 text-right text-gray-500">
+                                {s.isOta && s.commissionRate > 0 ? `${s.commissionRate}%` : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 月度趨勢 */}
+                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 overflow-x-auto">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">月度 OTA 收益趨勢</h4>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b text-gray-400">
+                          <th className="text-left py-1.5 pr-3 font-medium">月份</th>
+                          <th className="text-right py-1.5 px-2 font-medium">OTA訂</th>
+                          <th className="text-right py-1.5 px-2 font-medium">OTA收入</th>
+                          <th className="text-right py-1.5 px-2 font-medium">傭金</th>
+                          <th className="text-right py-1.5 px-2 font-medium">待付</th>
+                          <th className="text-right py-1.5 px-2 font-medium">OTA淨收</th>
+                          <th className="text-right py-1.5 pl-2 font-medium text-gray-600">傭金率</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {months.filter(m => m.totalBookings > 0 || m.commissionTotal > 0).map(m => (
+                          <tr key={m.month} className="hover:bg-gray-50">
+                            <td className="py-1.5 pr-3 text-gray-600 font-medium">{m.month}</td>
+                            <td className="py-1.5 px-2 text-right text-indigo-600">{m.otaBookings}</td>
+                            <td className="py-1.5 px-2 text-right font-semibold text-gray-700">
+                              {m.otaRevenue > 0 ? `NT$ ${m.otaRevenue.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-rose-600">
+                              {m.commissionTotal > 0 ? `NT$ ${m.commissionTotal.toLocaleString()}` : '—'}
+                            </td>
+                            <td className={`py-1.5 px-2 text-right ${m.commissionPending > 0 ? 'text-amber-600 font-semibold' : 'text-gray-300'}`}>
+                              {m.commissionPending > 0 ? `NT$ ${m.commissionPending.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-emerald-600 font-semibold">
+                              {m.netOtaRevenue !== 0 ? `NT$ ${m.netOtaRevenue.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="py-1.5 pl-2 text-right text-gray-500">
+                              {m.effectiveCommRate > 0 ? `${m.effectiveCommRate}%` : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-50 font-semibold">
+                          <td className="py-2 pr-3 text-gray-700">合計</td>
+                          <td className="py-2 px-2 text-right text-indigo-700">{totals.otaBookings}</td>
+                          <td className="py-2 px-2 text-right text-gray-800">NT$ {totals.otaRevenue.toLocaleString()}</td>
+                          <td className="py-2 px-2 text-right text-rose-700">NT$ {totals.commissionTotal.toLocaleString()}</td>
+                          <td className={`py-2 px-2 text-right ${totals.commissionPending > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
+                            {totals.commissionPending > 0 ? `NT$ ${totals.commissionPending.toLocaleString()}` : '—'}
+                          </td>
+                          <td className="py-2 px-2 text-right text-emerald-700">NT$ {totals.netOtaRevenue.toLocaleString()}</td>
+                          <td className="py-2 pl-2 text-right text-gray-600">{totals.avgCommRate}%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </>
               );
             })()}
