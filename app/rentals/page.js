@@ -12,7 +12,6 @@ const TABS = [
   { key: 'cashier', label: '收租工作台' },
   { key: 'paymentRecords', label: '付款紀錄' },
   { key: 'tenants', label: '租客管理' },
-  { key: 'properties', label: '物業管理' },
   { key: 'contracts', label: '合約管理' },
   { key: 'taxes', label: '稅款管理' },
   { key: 'rentFiling', label: '租金申報' },
@@ -100,9 +99,7 @@ function RentalsPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const tabParam = searchParams.get('tab') || 'overview';
-  const [activeTab, setActiveTab] = useState(() =>
-    tabParam === 'properties' ? 'overview' : resolveRentalsMainTab(tabParam)
-  );
+  const [activeTab, setActiveTab] = useState(() => resolveRentalsMainTab(tabParam));
   const [analyticsSub, setAnalyticsSub] = useState(() => resolveRentalsAnalyticsSub(tabParam, searchParams));
 
   // Shared data
@@ -325,10 +322,6 @@ function RentalsPage() {
       setActiveTab('analytics');
       setAnalyticsSub(mapped);
       router.replace(`/rentals?tab=analytics&sub=${mapped}`, { scroll: false });
-      return;
-    }
-    if (tabParam === 'properties') {
-      router.replace('/assets');
       return;
     }
     setActiveTab(resolveRentalsMainTab(tabParam));
