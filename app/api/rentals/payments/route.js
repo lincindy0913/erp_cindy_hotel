@@ -41,15 +41,14 @@ export async function GET(request) {
     const [payments, totalCount] = await Promise.all([
       prisma.rentalIncomePayment.findMany({
         where: paymentWhere,
-        include: {
+        select: {
+          id: true, sequenceNo: true, amount: true, paymentDate: true, accountId: true,
+          paymentMethod: true, matchTransferRef: true, matchBankAccountName: true, matchNote: true,
+          cashTransactionId: true, rentalIncomeId: true,
           account: { select: { id: true, name: true, accountCode: true, type: true, warehouse: true } },
           rentalIncome: {
             select: {
-              id: true,
-              incomeYear: true,
-              incomeMonth: true,
-              expectedAmount: true,
-              dueDate: true,
+              id: true, incomeYear: true, incomeMonth: true, expectedAmount: true, dueDate: true,
               property: { select: { id: true, name: true, buildingName: true } },
               tenant: { select: { fullName: true, companyName: true, tenantType: true } },
               contract: { select: { contractNo: true } }

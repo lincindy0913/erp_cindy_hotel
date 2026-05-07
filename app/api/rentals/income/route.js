@@ -26,13 +26,22 @@ export async function GET(request) {
     const TAKE = 1200;
     const incomes = await prisma.rentalIncome.findMany({
       where,
-      include: {
-        property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true, category: true, sortOrder: true } },
+      select: {
+        id: true, contractId: true, propertyId: true, tenantId: true,
+        incomeYear: true, incomeMonth: true, dueDate: true,
+        expectedAmount: true, actualAmount: true, actualDate: true,
+        accountId: true, paymentMethod: true,
+        matchTransferRef: true, matchBankAccountName: true, matchNote: true,
+        status: true, cashTransactionId: true,
+        property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true, email: true } },
         contract: { select: { id: true, contractNo: true, monthlyRent: true } },
         payments: {
           orderBy: { sequenceNo: 'asc' },
-          include: {
+          select: {
+            id: true, sequenceNo: true, amount: true, paymentDate: true, accountId: true,
+            paymentMethod: true, matchTransferRef: true, matchBankAccountName: true, matchNote: true,
+            cashTransactionId: true,
             account: { select: { id: true, name: true, accountCode: true, type: true, warehouse: true } }
           }
         }
@@ -49,8 +58,8 @@ export async function GET(request) {
       buildingName: i.property.buildingName,
       collectUtilityFee: i.property.collectUtilityFee,
       rentCollectAccountId: i.property.rentCollectAccountId,
-      propertyCategory: i.property.category || null,
-      propertySortOrder: i.property.sortOrder ?? null,
+      propertyCategory: null,
+      propertySortOrder: null,
       tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName
     }));
 
