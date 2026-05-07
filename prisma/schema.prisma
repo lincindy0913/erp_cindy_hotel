@@ -2680,9 +2680,11 @@ model EngineeringProject {
 
   warehouseRef  Warehouse?  @relation(fields: [warehouseId], references: [id])
   departmentRef Department? @relation(fields: [departmentId], references: [id])
-  contracts     EngineeringContract[]
-  materials     EngineeringMaterial[]
-  incomes       EngineeringIncome[]
+  contracts      EngineeringContract[]
+  materials      EngineeringMaterial[]
+  incomes        EngineeringIncome[]
+  inputInvoices  EngineeringInputInvoice[]
+  outputInvoices EngineeringOutputInvoice[]
 
   @@index([status])
   @@index([warehouse])
@@ -2703,10 +2705,11 @@ model EngineeringContract {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  project   EngineeringProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  supplier  Supplier                  @relation(fields: [supplierId], references: [id])
-  terms     EngineeringContractTerm[]
-  materials EngineeringMaterial[]
+  project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplier      Supplier                  @relation(fields: [supplierId], references: [id])
+  terms         EngineeringContractTerm[]
+  materials     EngineeringMaterial[]
+  inputInvoices EngineeringInputInvoice[]
 
   @@unique([projectId, contractNo])
   @@index([projectId])
@@ -2782,6 +2785,53 @@ model EngineeringIncome {
 
   @@index([projectId])
   @@map("engineering_incomes")
+}
+
+// 廠商進項發票（工程收到廠商開立的發票）
+model EngineeringInputInvoice {
+  id           Int      @id @default(autoincrement())
+  projectId    Int      @map("project_id")
+  contractId   Int?     @map("contract_id")
+  supplierName String?  @map("supplier_name") @db.VarChar(255)
+  invoiceNo    String?  @map("invoice_no") @db.VarChar(100)
+  invoiceDate  String   @map("invoice_date") @db.VarChar(20)
+  amount       Decimal  @db.Decimal(14, 2)
+  taxAmount    Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount  Decimal  @map("total_amount") @db.Decimal(14, 2)
+  invoiceType  String?  @map("invoice_type") @db.VarChar(30)
+  status       String   @default("已取得") @db.VarChar(20)
+  note         String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  project  EngineeringProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contract EngineeringContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([contractId])
+  @@map("engineering_input_invoices")
+}
+
+// 業主銷項發票（工程開給業主的發票）
+model EngineeringOutputInvoice {
+  id          Int      @id @default(autoincrement())
+  projectId   Int      @map("project_id")
+  clientName  String?  @map("client_name") @db.VarChar(255)
+  invoiceNo   String?  @map("invoice_no") @db.VarChar(100)
+  invoiceDate String   @map("invoice_date") @db.VarChar(20)
+  amount      Decimal  @db.Decimal(14, 2)
+  taxAmount   Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount Decimal  @map("total_amount") @db.Decimal(14, 2)
+  invoiceType String?  @map("invoice_type") @db.VarChar(30)
+  status      String   @default("已開立") @db.VarChar(20)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("engineering_output_invoices")
 }
 
 // ============================================
