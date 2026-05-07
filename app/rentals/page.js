@@ -195,7 +195,7 @@ function RentalsPage() {
   const [contractFilter, setContractFilter] = useState({ status: '', propertyId: '' });
   const [incomeFilter, setIncomeFilter] = useState({
     year: new Date().getFullYear(),
-    month: new Date().getMonth() + 1,
+    month: '',
     status: ''
   });
   const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '' });
@@ -1167,11 +1167,13 @@ function RentalsPage() {
 
   // ==================== INCOME (CASHIER) ====================
   function generateMonthlyIncome() {
-    askConfirm(`確定產生 ${incomeFilter.year}/${incomeFilter.month} 月份租金紀錄？`, async () => {
+    const genYear = incomeFilter.year || new Date().getFullYear();
+    const genMonth = incomeFilter.month || (new Date().getMonth() + 1);
+    askConfirm(`確定產生 ${genYear}/${genMonth} 月份租金紀錄？`, async () => {
     try {
       const res = await fetch('/api/rentals/income', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: incomeFilter.year, month: incomeFilter.month })
+        body: JSON.stringify({ year: genYear, month: genMonth })
       });
       const data = await res.json();
       if (!res.ok) return showToast(data.error || '產生失敗', 'error');
@@ -1672,6 +1674,7 @@ function RentalsPage() {
                   <label className="text-sm text-gray-600">月份:</label>
                   <select value={incomeFilter.month} onChange={e => setIncomeFilter(f => ({ ...f, month: e.target.value }))}
                     className="border rounded px-2 py-1 text-sm">
+                    <option value="">全部月份</option>
                     {Array.from({ length: 12 }, (_, i) => (
                       <option key={i + 1} value={i + 1}>{i + 1} 月</option>
                     ))}

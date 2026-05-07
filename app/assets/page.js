@@ -15,6 +15,14 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'OTHER', label: '其他' },
 ];
 
+const STATUS_LABELS = {
+  rented: '已出租',
+  available: '空置',
+  renovation: '裝修中',
+  pending: '洽談中',
+  inactive: '停用',
+};
+
 function fmtMoney(n) {
   if (n == null || n === '') return '—';
   const x = Number(n);
@@ -22,19 +30,32 @@ function fmtMoney(n) {
   return x.toLocaleString('zh-TW');
 }
 
-function AssetFlagBadges({ asset }) {
-  const flags = [];
-  if (asset.isAvailableForRental) flags.push({ label: '可出租', cls: 'bg-teal-100 text-teal-700' });
-  if (asset.hasHouseTax) flags.push({ label: '房屋稅', cls: 'bg-amber-100 text-amber-700' });
-  if (asset.hasLandTax) flags.push({ label: '地價稅', cls: 'bg-orange-100 text-orange-700' });
-  if (asset.hasMaintenanceFee) flags.push({ label: '維修費', cls: 'bg-blue-100 text-blue-700' });
-  if (flags.length === 0) return null;
+function fmtMoneyShort(n) {
+  if (n == null) return '—';
+  const x = Number(n);
+  if (Number.isNaN(x)) return '—';
+  if (Math.abs(x) >= 1_000_000) return `${(x / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(x) >= 1_000) return `${(x / 1_000).toFixed(0)}K`;
+  return x.toLocaleString('zh-TW');
+}
+
+function SummaryCard({ label, value, sub, color = 'gray', small = false }) {
+  const colors = {
+    teal: 'bg-teal-50 border-teal-200 text-teal-700',
+    green: 'bg-green-50 border-green-200 text-green-700',
+    red: 'bg-red-50 border-red-200 text-red-600',
+    amber: 'bg-amber-50 border-amber-200 text-amber-700',
+    orange: 'bg-orange-50 border-orange-200 text-orange-700',
+    blue: 'bg-blue-50 border-blue-200 text-blue-700',
+    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+    gray: 'bg-gray-50 border-gray-200 text-gray-700',
+  };
   return (
-    <span className="flex flex-wrap gap-1">
-      {flags.map(f => (
-        <span key={f.label} className={`text-xs px-1.5 py-0.5 rounded ${f.cls}`}>{f.label}</span>
-      ))}
-    </span>
+    <div className={`rounded-lg border p-3 ${colors[color]}`}>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`font-bold ${small ? 'text-lg' : 'text-xl'}`}>{value}</p>
+      {sub && <p className="text-xs mt-0.5 opacity-70">{sub}</p>}
+    </div>
   );
 }
 
@@ -50,144 +71,153 @@ function AssetsPageInner() {
   const canView = canWildcard || hasPermission(userPerms, PERMISSIONS.ASSET_VIEW);
   const canEdit = canWildcard || hasPermission(userPerms, PERMISSIONS.ASSET_EDIT);
 
-  const [assets, setAssets] = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [linkedTaxes, setLinkedTaxes] = useState([]);
-  const [linkedMaint, setLinkedMaint] = useState([]);
-  const [linkedLoading, setLinkedLoading] = useState(false);
-  const [plYear, setPlYear] = useState(new Date().getFullYear());
-  const [plData, setPlData] = useState(null);
-  const [plLoading, setPlLoading] = useState(false);
-  const [creatingProperty, setCreatingProperty] = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
 
+  // Core data
+  const [properties, setProperties] = useState([]);
+  const [reportData, setReportData] = useState([]);   // operating report rows
+  const [taxesData, setTaxesData] = useState([]);     // all taxes for year
+  const [loading, setLoading] = useState(true);
+
+  // Selected property for detail panel
+  const [selected, setSelected] = useState(null);
+  const [detailIncomes, setDetailIncomes] = useState([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Asset modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    name: '',
-    assetType: 'BUILDING',
-    address: '',
-    areaSqm: '',
-    acquisitionDate: '',
-    notes: '',
-    rentalPropertyId: '',
-    isAvailableForRental: false,
-    hasHouseTax: false,
-    hasLandTax: false,
-    hasMaintenanceFee: false,
+    name: '', assetType: 'BUILDING', address: '', areaSqm: '',
+    acquisitionDate: '', notes: '', rentalPropertyId: '',
+    isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false,
   });
 
   const highlightPropertyId = searchParams.get('propertyId');
-  const highlightAssetId = searchParams.get('id');
   const linkProperty = searchParams.get('linkProperty');
 
-  const loadAssets = useCallback(async () => {
-    const res = await fetch('/api/assets');
-    const data = await res.json();
-    if (!res.ok) {
-      showToast(data?.error?.message || data?.error || '載入資產失敗', 'error');
-      setAssets([]);
-      return;
-    }
-    setAssets(Array.isArray(data) ? data : []);
-  }, [showToast]);
-
+  // Load properties (static — no year dependency)
   const loadProperties = useCallback(async () => {
     const res = await fetch('/api/rentals/properties');
     const data = await res.json();
-    if (!res.ok) {
-      setProperties([]);
-      return;
-    }
-    setProperties(Array.isArray(data) ? data : []);
+    const arr = res.ok && Array.isArray(data) ? data : [];
+    setProperties(arr);
+    return arr;
   }, []);
 
+  // Load year-dependent report + taxes in parallel
+  const loadYearData = useCallback(async (y) => {
+    const [repRes, taxRes] = await Promise.all([
+      fetch(`/api/rentals/reports/operating?year=${y}`),
+      fetch(`/api/rentals/taxes?taxYear=${y}`),
+    ]);
+    const repData = await repRes.json();
+    const taxData = await taxRes.json();
+    setReportData(repRes.ok && repData.rows ? repData.rows : []);
+    setTaxesData(taxRes.ok && Array.isArray(taxData) ? taxData : []);
+  }, []);
+
+  // Initial load
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([loadAssets(), loadProperties()]);
+      await Promise.all([loadProperties(), loadYearData(year)]);
       if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [loadAssets, loadProperties]);
+  }, [loadProperties, loadYearData, year]);
 
+  // Highlight by propertyId URL param
   useEffect(() => {
-    if (!highlightAssetId || assets.length === 0) return;
-    const id = parseInt(highlightAssetId, 10);
+    if (!highlightPropertyId || properties.length === 0) return;
+    const id = parseInt(highlightPropertyId, 10);
     if (Number.isNaN(id)) return;
-    const row = assets.find((a) => a.id === id);
+    const row = properties.find(p => p.id === id);
     if (row) setSelected(row);
-  }, [highlightAssetId, assets]);
+  }, [highlightPropertyId, properties]);
 
-  useEffect(() => {
-    if (!highlightPropertyId || assets.length === 0) return;
-    const row = assets.find((a) => String(a.rentalPropertyId || '') === highlightPropertyId);
-    if (row) setSelected(row);
-  }, [highlightPropertyId, assets]);
-
+  // Pre-fill modal when linkProperty param present
   useEffect(() => {
     if (linkOpenedRef.current || !linkProperty || properties.length === 0) return;
     linkOpenedRef.current = true;
     setEditing(null);
-    setForm((f) => ({ ...f, rentalPropertyId: linkProperty }));
+    setForm(f => ({ ...f, rentalPropertyId: linkProperty }));
     setShowModal(true);
   }, [linkProperty, properties.length]);
 
+  // Load detail incomes when a property is selected
   useEffect(() => {
-    const pid = selected?.rentalPropertyId;
-    if (!pid) {
-      setLinkedTaxes([]);
-      setLinkedMaint([]);
-      setPlData(null);
-      return;
-    }
+    if (!selected) { setDetailIncomes([]); return; }
     let cancelled = false;
-    (async () => {
-      setLinkedLoading(true);
-      try {
-        const [tRes, mRes] = await Promise.all([
-          fetch(`/api/rentals/taxes?propertyId=${pid}`),
-          fetch(`/api/rentals/maintenance?propertyId=${pid}`),
-        ]);
-        const tData = await tRes.json();
-        const mData = await mRes.json();
-        if (cancelled) return;
-        setLinkedTaxes(tRes.ok && Array.isArray(tData) ? tData : []);
-        setLinkedMaint(mRes.ok && Array.isArray(mData) ? mData : []);
-      } catch {
-        if (!cancelled) {
-          setLinkedTaxes([]);
-          setLinkedMaint([]);
-        }
-      } finally {
-        if (!cancelled) setLinkedLoading(false);
-      }
-    })();
+    setDetailLoading(true);
+    setDetailIncomes([]);
+    fetch(`/api/rentals/income?propertyId=${selected.id}&year=${year}`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setDetailIncomes(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setDetailIncomes([]); })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
-  }, [selected?.rentalPropertyId]);
+  }, [selected?.id, year]);
 
-  async function fetchPL(pid, year) {
-    if (!pid) return;
-    setPlLoading(true);
-    setPlData(null);
-    try {
-      const res = await fetch(`/api/rentals/reports/operating?propertyId=${pid}&year=${year}`);
-      const data = await res.json();
-      if (res.ok && data.rows?.length > 0) setPlData(data.rows[0]);
-      else setPlData({ empty: true });
-    } catch { setPlData({ empty: true }); }
-    setPlLoading(false);
-  }
+  // Merged rows: properties + report + taxes split by type
+  const { mergedRows, summary } = useMemo(() => {
+    const reportByPid = new Map();
+    for (const r of reportData) reportByPid.set(r.propertyId, r);
 
-  useEffect(() => {
-    if (selected?.rentalPropertyId) fetchPL(selected.rentalPropertyId, plYear);
-  }, [selected?.rentalPropertyId, plYear]);
+    const houseTaxByPid = new Map();
+    const landTaxByPid = new Map();
+    for (const t of taxesData) {
+      const pid = t.propertyId;
+      const amt = Number(t.amount || 0);
+      if (t.taxType?.includes('房屋') || t.taxType?.includes('house')) {
+        houseTaxByPid.set(pid, (houseTaxByPid.get(pid) || 0) + amt);
+      } else if (t.taxType?.includes('地價') || t.taxType?.includes('land')) {
+        landTaxByPid.set(pid, (landTaxByPid.get(pid) || 0) + amt);
+      } else {
+        // Unknown type — count in house tax bucket
+        houseTaxByPid.set(pid, (houseTaxByPid.get(pid) || 0) + amt);
+      }
+    }
 
+    let totalRent = 0, totalHouse = 0, totalLand = 0, totalMaint = 0;
+    let rentedCount = 0, availableCount = 0;
+
+    const rows = properties.map(p => {
+      const r = reportByPid.get(p.id) || {};
+      const houseTax = houseTaxByPid.get(p.id) || 0;
+      const landTax = landTaxByPid.get(p.id) || 0;
+      const maint = r.maintenanceAmount || 0;
+      const rent = r.rentIncome || 0;
+      const netProfit = rent - houseTax - landTax - maint;
+      if (p.status === 'rented') rentedCount++;
+      else if (p.status === 'available') availableCount++;
+      totalRent += rent;
+      totalHouse += houseTax;
+      totalLand += landTax;
+      totalMaint += maint;
+      return { ...p, rentIncome: rent, houseTax, landTax, maintenanceAmount: maint, netProfit };
+    });
+
+    const totalNet = totalRent - totalHouse - totalLand - totalMaint;
+
+    return {
+      mergedRows: rows,
+      summary: { rentedCount, availableCount, totalRent, totalHouse, totalLand, totalMaint, totalNet },
+    };
+  }, [properties, reportData, taxesData]);
+
+  // Taxes for the selected property (detail panel)
+  const selectedTaxes = useMemo(() => {
+    if (!selected) return [];
+    return taxesData.filter(t => t.propertyId === selected.id);
+  }, [selected, taxesData]);
+
+  // Unlinked properties for the modal dropdown
   const propertyOptions = useMemo(() => {
-    return properties.filter((p) => {
+    return properties.filter(p => {
       if (!p.asset) return true;
       if (editing && p.asset.id === editing.id) return true;
       return false;
@@ -197,17 +227,9 @@ function AssetsPageInner() {
   function openCreate() {
     setEditing(null);
     setForm({
-      name: '',
-      assetType: 'BUILDING',
-      address: '',
-      areaSqm: '',
-      acquisitionDate: '',
-      notes: '',
-      rentalPropertyId: linkProperty || '',
-      isAvailableForRental: false,
-      hasHouseTax: false,
-      hasLandTax: false,
-      hasMaintenanceFee: false,
+      name: '', assetType: 'BUILDING', address: '', areaSqm: '',
+      acquisitionDate: '', notes: '', rentalPropertyId: linkProperty || '',
+      isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false,
     });
     setShowModal(true);
   }
@@ -231,10 +253,7 @@ function AssetsPageInner() {
   }
 
   async function saveModal() {
-    if (!form.name.trim()) {
-      showToast('請填寫資產名稱', 'error');
-      return;
-    }
+    if (!form.name.trim()) { showToast('請填寫資產名稱', 'error'); return; }
     setSaving(true);
     try {
       const body = {
@@ -252,27 +271,16 @@ function AssetsPageInner() {
       };
       const url = editing ? `/api/assets/${editing.id}` : '/api/assets';
       const method = editing ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
-      if (!res.ok) {
-        showToast(data?.error?.message || data?.error || '儲存失敗', 'error');
-        return;
-      }
+      if (!res.ok) { showToast(data?.error?.message || data?.error || '儲存失敗', 'error'); return; }
       showToast(editing ? '已更新' : '已建立', 'success');
       setShowModal(false);
-      await loadAssets();
-      await loadProperties();
-      if (editing && selected?.id === editing.id) {
-        setSelected(data);
-      }
-      if (!editing && data?.id) {
-        setSelected(data);
-      }
-    } catch (e) {
+      const freshProps = await loadProperties();
+      // Update selected to the property containing this asset
+      const linkedProp = freshProps.find(p => p.asset?.id === data.id);
+      if (linkedProp) setSelected(linkedProp);
+    } catch {
       showToast('儲存失敗', 'error');
     } finally {
       setSaving(false);
@@ -284,52 +292,10 @@ function AssetsPageInner() {
     if (!confirm(`確定刪除資產「${a.name}」？`)) return;
     const res = await fetch(`/api/assets/${a.id}`, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showToast(data?.error?.message || data?.error || '刪除失敗', 'error');
-      return;
-    }
+    if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
     showToast('已刪除', 'success');
-    if (selected?.id === a.id) setSelected(null);
-    await loadAssets();
+    if (selected?.asset?.id === a.id) setSelected(prev => prev ? { ...prev, asset: null } : null);
     await loadProperties();
-  }
-
-  async function createAndLinkProperty(asset) {
-    if (!confirm(`將為「${asset.name}」新建一筆租屋物業並自動綁定，確定繼續？`)) return;
-    setCreatingProperty(true);
-    try {
-      const propRes = await fetch('/api/rentals/properties', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: asset.name,
-          address: asset.address || '',
-          status: 'available',
-        }),
-      });
-      const propData = await propRes.json();
-      if (!propRes.ok) {
-        showToast(propData?.error?.message || propData?.error || '建立物業失敗', 'error');
-        return;
-      }
-      const patchRes = await fetch(`/api/assets/${asset.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rentalPropertyId: propData.id }),
-      });
-      const patchData = await patchRes.json();
-      if (!patchRes.ok) {
-        showToast(patchData?.error?.message || patchData?.error || '綁定失敗', 'error');
-        return;
-      }
-      showToast('已建立並綁定租屋物業', 'success');
-      await Promise.all([loadAssets(), loadProperties()]);
-      setSelected(patchData);
-    } catch {
-      showToast('操作失敗', 'error');
-    } finally {
-      setCreatingProperty(false);
-    }
   }
 
   if (!canView) {
@@ -346,395 +312,449 @@ function AssetsPageInner() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-teal-500" />
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="max-w-[100rem] mx-auto px-4 py-6">
+
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
-            <h2 className="text-xl font-bold text-gray-800">資產管理</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              物業主檔與綁定請以此頁為準；建立資產後可綁定或新建租屋物業，營運細節（收租帳戶等）可自綁定列連結至租屋管理。
-            </p>
+            <h2 className="text-xl font-bold text-gray-800">資產管理總覽</h2>
+            <p className="text-sm text-gray-500 mt-0.5">各物業出租狀況、收租金額、稅費及維護費年度彙整</p>
           </div>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600">年度：</label>
+            <select
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+              className="border rounded px-3 py-1.5 text-sm"
             >
-              新增資產
-            </button>
-          )}
+              {[0,1,2,3,4].map(d => {
+                const y = currentYear - d;
+                return <option key={y} value={y}>{y} 年</option>;
+              })}
+            </select>
+            {canEdit && (
+              <button type="button" onClick={openCreate}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                新增資產
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* Summary Cards */}
+        {!loading && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
+            <SummaryCard label="物業總數" value={`${properties.length} 間`} color="gray" small />
+            <SummaryCard label="已出租" value={`${summary.rentedCount} 間`}
+              sub={`空置 ${summary.availableCount} 間`} color="teal" small />
+            <SummaryCard
+              label={`${year} 年租金收入`}
+              value={`NT$ ${fmtMoneyShort(summary.totalRent)}`}
+              sub={`${fmtMoney(summary.totalRent)}`}
+              color="green"
+            />
+            <SummaryCard
+              label={`${year} 年房屋稅`}
+              value={`NT$ ${fmtMoneyShort(summary.totalHouse)}`}
+              sub={fmtMoney(summary.totalHouse)}
+              color="amber"
+            />
+            <SummaryCard
+              label={`${year} 年地價稅`}
+              value={`NT$ ${fmtMoneyShort(summary.totalLand)}`}
+              sub={fmtMoney(summary.totalLand)}
+              color="orange"
+            />
+            <SummaryCard
+              label={`${year} 年維護費`}
+              value={`NT$ ${fmtMoneyShort(summary.totalMaint)}`}
+              sub={fmtMoney(summary.totalMaint)}
+              color="blue"
+            />
+            <SummaryCard
+              label="稅費合計"
+              value={`NT$ ${fmtMoneyShort(summary.totalHouse + summary.totalLand + summary.totalMaint)}`}
+              sub={fmtMoney(summary.totalHouse + summary.totalLand + summary.totalMaint)}
+              color="red"
+            />
+            <SummaryCard
+              label={`${year} 年淨利`}
+              value={`NT$ ${fmtMoneyShort(summary.totalNet)}`}
+              sub={fmtMoney(summary.totalNet)}
+              color={summary.totalNet >= 0 ? 'green' : 'red'}
+            />
+          </div>
+        )}
+
+        {/* Main Table */}
         {loading ? (
           <p className="text-gray-500 py-8">載入中…</p>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-teal-50">
+              <thead className="bg-teal-50 text-xs">
                 <tr>
-                  <th className="text-left px-3 py-2">名稱</th>
-                  <th className="text-left px-3 py-2">類型</th>
-                  <th className="text-left px-3 py-2">地址</th>
-                  <th className="text-right px-3 py-2">面積（㎡）</th>
+                  <th className="text-left px-3 py-2">物業</th>
+                  <th className="text-left px-3 py-2">棟別</th>
+                  <th className="text-left px-3 py-2">狀態</th>
+                  <th className="text-left px-3 py-2">租客</th>
+                  <th className="text-right px-3 py-2">月租金</th>
+                  <th className="text-right px-3 py-2">{year} 年<br/>租金實收</th>
+                  <th className="text-right px-3 py-2">{year} 年<br/>房屋稅</th>
+                  <th className="text-right px-3 py-2">{year} 年<br/>地價稅</th>
+                  <th className="text-right px-3 py-2">{year} 年<br/>維護費</th>
+                  <th className="text-right px-3 py-2">{year} 年<br/>淨利</th>
+                  <th className="text-left px-3 py-2">資產主檔</th>
                   <th className="text-left px-3 py-2">標記</th>
-                  <th className="text-left px-3 py-2">綁定物業</th>
-                  <th className="text-center px-3 py-2 w-40">操作</th>
+                  {canEdit && <th className="text-center px-3 py-2 w-20">操作</th>}
                 </tr>
               </thead>
               <tbody>
-                {assets.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-400">尚無資產資料</td>
-                  </tr>
+                {mergedRows.length === 0 ? (
+                  <tr><td colSpan={canEdit ? 13 : 12} className="text-center py-10 text-gray-400">尚無物業資料</td></tr>
                 ) : (
-                  assets.map((a) => {
-                    const rowHighlight =
-                      (highlightPropertyId && String(a.rentalPropertyId || '') === highlightPropertyId) ||
-                      (highlightAssetId && String(a.id) === highlightAssetId);
+                  mergedRows.map(p => {
+                    const isSelected = selected?.id === p.id;
+                    const highlight = highlightPropertyId && p.id === parseInt(highlightPropertyId, 10);
+                    const hasIncome = p.rentIncome > 0;
+                    const hasTax = p.houseTax > 0 || p.landTax > 0;
+                    const hasMaint = p.maintenanceAmount > 0;
                     return (
                       <tr
-                        key={a.id}
-                        className={`border-t cursor-pointer hover:bg-gray-50 ${rowHighlight ? 'bg-amber-50' : ''} ${selected?.id === a.id ? 'bg-teal-50/60' : ''}`}
-                        onClick={() => setSelected(a)}
+                        key={p.id}
+                        onClick={() => setSelected(isSelected ? null : p)}
+                        className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
+                          ${highlight ? 'bg-amber-50' : ''}
+                          ${isSelected ? 'bg-teal-50/70' : ''}`}
                       >
-                        <td className="px-3 py-2 font-medium">{a.name}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800">
+                          {p.name}{p.unitNo ? <span className="text-gray-400 text-xs ml-1">({p.unitNo})</span> : ''}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 text-xs">{p.buildingName || '—'}</td>
                         <td className="px-3 py-2">
-                          {ASSET_TYPE_OPTIONS.find((o) => o.value === a.assetType)?.label || a.assetType}
+                          <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap
+                            ${p.status === 'rented' ? 'bg-green-100 text-green-700'
+                            : p.status === 'available' ? 'bg-gray-100 text-gray-500'
+                            : 'bg-yellow-100 text-yellow-700'}`}>
+                            {STATUS_LABELS[p.status] || p.status || '—'}
+                          </span>
                         </td>
-                        <td className="px-3 py-2 text-gray-600 max-w-[200px] truncate" title={a.address || ''}>
-                          {a.address || '—'}
+                        <td className="px-3 py-2 text-gray-600 max-w-[120px] truncate text-xs" title={p.currentTenantName || ''}>
+                          {p.currentTenantName || <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-3 py-2 text-right text-gray-600">
-                          {a.areaSqm != null ? String(a.areaSqm) : '—'}
+                        <td className="px-3 py-2 text-right text-gray-700">
+                          {p.currentMonthlyRent ? fmtMoney(p.currentMonthlyRent) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-medium ${hasIncome ? 'text-teal-700' : 'text-gray-300'}`}>
+                          {hasIncome ? fmtMoney(p.rentIncome) : '—'}
+                        </td>
+                        <td className={`px-3 py-2 text-right ${hasTax && p.houseTax > 0 ? 'text-amber-700' : 'text-gray-300'}`}>
+                          {p.houseTax > 0 ? fmtMoney(p.houseTax) : '—'}
+                        </td>
+                        <td className={`px-3 py-2 text-right ${hasTax && p.landTax > 0 ? 'text-orange-700' : 'text-gray-300'}`}>
+                          {p.landTax > 0 ? fmtMoney(p.landTax) : '—'}
+                        </td>
+                        <td className={`px-3 py-2 text-right ${hasMaint ? 'text-blue-700' : 'text-gray-300'}`}>
+                          {hasMaint ? fmtMoney(p.maintenanceAmount) : '—'}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-semibold ${
+                          hasIncome || hasTax || hasMaint
+                            ? p.netProfit >= 0 ? 'text-green-700' : 'text-red-600'
+                            : 'text-gray-300'}`}>
+                          {hasIncome || hasTax || hasMaint ? fmtMoney(p.netProfit) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-teal-700">
+                          {p.asset?.name || <span className="text-gray-300">未建立</span>}
                         </td>
                         <td className="px-3 py-2">
-                          <AssetFlagBadges asset={a} />
+                          <AssetFlagBadges asset={p.asset} />
                         </td>
-                        <td className="px-3 py-2">
-                          {a.rentalProperty ? (
-                            <Link
-                              href={`/assets?propertyId=${a.rentalProperty.id}`}
-                              className="text-teal-700 hover:underline"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {a.rentalProperty.name}
-                            </Link>
-                          ) : a.isAvailableForRental ? (
-                            <span className="text-orange-500 text-xs">待建立物業</span>
-                          ) : (
-                            <span className="text-gray-400">未綁定</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                          {canEdit && (
-                            <>
-                              <button type="button" className="text-blue-600 hover:underline text-xs mr-2" onClick={() => openEdit(a)}>編輯</button>
-                              <button type="button" className="text-red-600 hover:underline text-xs" onClick={() => deleteAsset(a)}>刪除</button>
-                            </>
-                          )}
-                        </td>
+                        {canEdit && (
+                          <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                            {p.asset ? (
+                              <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>編輯</button>
+                            ) : (
+                              <button className="text-teal-600 hover:underline text-xs" onClick={() => {
+                                setEditing(null);
+                                setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                                setShowModal(true);
+                              }}>新增資產</button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })
                 )}
               </tbody>
+              {/* Totals row */}
+              {mergedRows.length > 0 && (
+                <tfoot className="bg-teal-50 border-t-2 border-teal-200 text-xs font-semibold">
+                  <tr>
+                    <td colSpan={5} className="px-3 py-2 text-gray-700">合計</td>
+                    <td className="px-3 py-2 text-right text-teal-700">{fmtMoney(summary.totalRent)}</td>
+                    <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(summary.totalHouse)}</td>
+                    <td className="px-3 py-2 text-right text-orange-700">{fmtMoney(summary.totalLand)}</td>
+                    <td className="px-3 py-2 text-right text-blue-700">{fmtMoney(summary.totalMaint)}</td>
+                    <td className={`px-3 py-2 text-right ${summary.totalNet >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                      {fmtMoney(summary.totalNet)}
+                    </td>
+                    <td colSpan={canEdit ? 3 : 2} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}
 
+        {/* Detail Panel */}
         {selected && (
-          <div className="mt-6 border border-gray-200 rounded-lg p-4 bg-white">
-            <div className="flex items-start justify-between mb-2">
-              <h3 className="text-lg font-semibold text-gray-800">選取：{selected.name}</h3>
-              <AssetFlagBadges asset={selected} />
-            </div>
-            <div className="text-sm text-gray-600 space-y-1 mb-4">
-              <p>類型：{ASSET_TYPE_OPTIONS.find((o) => o.value === selected.assetType)?.label || selected.assetType}</p>
-              {selected.address && <p>地址：{selected.address}</p>}
-              {selected.areaSqm && <p>面積：{String(selected.areaSqm)} ㎡</p>}
-              {selected.acquisitionDate && <p>取得日期：{selected.acquisitionDate}</p>}
-              {selected.rentalPropertyId ? (
-                <p>
-                  租屋物業：
-                  <Link className="text-teal-700 hover:underline ml-1" href={`/assets?propertyId=${selected.rentalPropertyId}`}>
-                    {selected.rentalProperty?.name || `#${selected.rentalPropertyId}`}
-                  </Link>
-                  <span className="text-xs text-gray-400 ml-1">（名稱／地址與資產主檔同步）</span>
-                  <span className="mx-2 text-gray-300">|</span>
-                  <Link className="text-teal-700 hover:underline" href={`/rentals?editProperty=${selected.rentalPropertyId}`}>
-                    租屋營運設定
-                  </Link>
-                  {(selected.hasHouseTax || selected.hasLandTax) && (
-                    <>
-                      <span className="mx-2 text-gray-300">|</span>
-                      <Link className="text-teal-700 hover:underline" href="/rentals?tab=taxes">前往稅款</Link>
-                    </>
-                  )}
-                  {selected.hasMaintenanceFee && (
-                    <>
-                      <span className="mx-2 text-gray-300">|</span>
-                      <Link className="text-teal-700 hover:underline" href="/rentals?tab=maintenance">前往維護費</Link>
-                    </>
-                  )}
-                </p>
-              ) : selected.isAvailableForRental ? (
-                <div className="flex items-center gap-3">
-                  <p className="text-orange-600">此資產標記為可出租，尚未建立租屋物業。</p>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      disabled={creatingProperty}
-                      onClick={() => createAndLinkProperty(selected)}
-                      className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700 disabled:opacity-50"
-                    >
-                      {creatingProperty ? '建立中…' : '建立並綁定租屋物業'}
-                    </button>
-                  )}
+          <div className="mt-5 border border-gray-200 rounded-lg bg-white overflow-hidden">
+            {/* Panel Header */}
+            <div className="bg-teal-50 border-b border-teal-100 px-4 py-3 flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-800">
+                  {selected.buildingName ? `${selected.buildingName} · ` : ''}{selected.name}
+                  {selected.unitNo && <span className="text-sm text-gray-500 ml-2">({selected.unitNo})</span>}
+                </h3>
+                <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                  {selected.address && <span>📍 {selected.address}</span>}
+                  <span>狀態：<strong className={selected.status === 'rented' ? 'text-green-700' : 'text-gray-600'}>
+                    {STATUS_LABELS[selected.status] || selected.status}
+                  </strong></span>
+                  {selected.currentTenantName && <span>租客：<strong className="text-gray-700">{selected.currentTenantName}</strong></span>}
+                  {selected.currentMonthlyRent && <span>月租：<strong className="text-teal-700">NT$ {fmtMoney(selected.currentMonthlyRent)}</strong></span>}
+                  {selected.currentContractEnd && <span>合約到期：{selected.currentContractEnd}</span>}
                 </div>
-              ) : (
-                <p className="text-gray-500">尚未綁定物業，稅款與維護費請至「租屋管理」登錄。</p>
-              )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href={`/rentals?editProperty=${selected.id}`}
+                  className="text-xs text-teal-700 hover:underline border border-teal-300 px-2 py-1 rounded">
+                  租屋設定
+                </Link>
+                <button onClick={() => setSelected(null)}
+                  className="text-gray-400 hover:text-gray-600 text-lg leading-none px-1">✕</button>
+              </div>
             </div>
 
-            {selected.rentalPropertyId && (
-              <>
-                {/* 損益卡 */}
-                <div className="mb-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <h4 className="text-sm font-semibold text-gray-700">年度損益卡</h4>
-                    <select value={plYear} onChange={e => setPlYear(Number(e.target.value))}
-                      className="border rounded px-2 py-1 text-xs">
-                      {[0,1,2,3].map(d => {
-                        const y = new Date().getFullYear() - d;
-                        return <option key={y} value={y}>{y} 年</option>;
-                      })}
-                    </select>
-                    <button onClick={() => fetchPL(selected.rentalPropertyId, plYear)}
-                      className="text-xs text-teal-600 hover:text-teal-800 underline">重新載入</button>
-                  </div>
-                  {plLoading ? (
-                    <p className="text-xs text-gray-400">載入中…</p>
-                  ) : plData && !plData.empty ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
-                      <div className="bg-teal-50 rounded-lg p-3 border border-teal-100">
-                        <p className="text-xs text-gray-500">租金收入</p>
-                        <p className="text-base font-bold text-teal-700">NT$ {fmtMoney(plData.rentIncome)}</p>
-                      </div>
-                      <div className="bg-red-50 rounded-lg p-3 border border-red-100">
-                        <p className="text-xs text-gray-500">稅費合計</p>
-                        <p className="text-base font-bold text-red-600">NT$ {fmtMoney(plData.taxAmount)}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">（含維修 {fmtMoney(plData.maintenanceAmount)}）</p>
-                      </div>
-                      <div className={`rounded-lg p-3 border ${plData.netProfit >= 0 ? 'bg-green-50 border-green-100' : 'bg-orange-50 border-orange-100'}`}>
-                        <p className="text-xs text-gray-500">年度淨額</p>
-                        <p className={`text-base font-bold ${plData.netProfit >= 0 ? 'text-green-700' : 'text-orange-700'}`}>
-                          NT$ {fmtMoney(plData.netProfit)}
-                        </p>
-                        {plData.profitMarginPercent != null && (
-                          <p className="text-xs text-gray-400 mt-0.5">利潤率 {plData.profitMarginPercent}%</p>
-                        )}
-                      </div>
-                      {plData.netProfitPerSqm != null ? (
-                        <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-                          <p className="text-xs text-gray-500">每坪淨收益</p>
-                          <p className="text-base font-bold text-purple-700">NT$ {fmtMoney(plData.netProfitPerSqm)}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{String(plData.areaSqm)} ㎡</p>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                          <p className="text-xs text-gray-400">每坪淨收益</p>
-                          <p className="text-xs text-gray-400 mt-1">（請在資產主檔填入面積）</p>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-400">{plYear} 年無收支資料</p>
-                  )}
-                </div>
-
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">稅款（該物業）</h4>
-                {linkedLoading ? (
-                  <p className="text-xs text-gray-400 mb-4">載入稅款與維護…</p>
+            <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* Col 1: Monthly Income Breakdown */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                  {year} 年各月收租紀錄
+                </h4>
+                {detailLoading ? (
+                  <p className="text-xs text-gray-400">載入中…</p>
+                ) : detailIncomes.length === 0 ? (
+                  <p className="text-xs text-gray-400">{year} 年無收租紀錄</p>
                 ) : (
-                  <>
-                    <div className="overflow-x-auto mb-4">
-                      <table className="w-full text-xs border">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="text-left px-2 py-1">年度</th>
-                            <th className="text-left px-2 py-1">類型</th>
-                            <th className="text-right px-2 py-1">金額</th>
-                            <th className="text-left px-2 py-1">狀態</th>
-                            <th className="text-left px-2 py-1">到期日</th>
-                            <th className="text-left px-2 py-1">憑證號</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {linkedTaxes.length === 0 ? (
-                            <tr>
-                              <td colSpan={6} className="px-2 py-2 text-gray-400">
-                                {(selected.hasHouseTax || selected.hasLandTax)
-                                  ? '此資產已標記稅費，請至租屋管理 > 稅款管理登錄。'
-                                  : '無稅款紀錄'}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left px-2 py-1">月份</th>
+                          <th className="text-right px-2 py-1">應收</th>
+                          <th className="text-right px-2 py-1">實收</th>
+                          <th className="text-left px-2 py-1">狀態</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailIncomes.map(inc => {
+                          const statusMap = { paid: { l: '已繳', cls: 'bg-green-100 text-green-700' }, partial: { l: '部分', cls: 'bg-yellow-100 text-yellow-700' }, pending: { l: '待繳', cls: 'bg-gray-100 text-gray-500' } };
+                          const st = statusMap[inc.status] || { l: inc.status, cls: 'bg-gray-100 text-gray-500' };
+                          return (
+                            <tr key={inc.id} className="border-t">
+                              <td className="px-2 py-1">{inc.incomeYear}/{String(inc.incomeMonth).padStart(2,'0')}</td>
+                              <td className="px-2 py-1 text-right">{fmtMoney(inc.expectedAmount)}</td>
+                              <td className={`px-2 py-1 text-right font-medium ${inc.actualAmount > 0 ? 'text-teal-700' : 'text-gray-400'}`}>
+                                {inc.actualAmount > 0 ? fmtMoney(inc.actualAmount) : '—'}
+                              </td>
+                              <td className="px-2 py-1">
+                                <span className={`px-1.5 py-0.5 rounded ${st.cls}`}>{st.l}</span>
                               </td>
                             </tr>
-                          ) : (
-                            linkedTaxes.slice(0, 15).map((t) => (
-                              <tr key={t.id} className="border-t">
-                                <td className="px-2 py-1">{t.taxYear}</td>
-                                <td className="px-2 py-1">{t.taxType}</td>
-                                <td className="px-2 py-1 text-right">{fmtMoney(t.amount)}</td>
-                                <td className="px-2 py-1">
-                                  <span className={`text-xs px-1.5 py-0.5 rounded ${t.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                    {t.status === 'paid' ? '已繳' : '待繳'}
-                                  </span>
-                                </td>
-                                <td className="px-2 py-1">{t.dueDate || '—'}</td>
-                                <td className="px-2 py-1 text-gray-400">{t.certNo || '—'}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">維護費（該物業）</h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs border">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="text-left px-2 py-1">日期</th>
-                            <th className="text-left px-2 py-1">類別</th>
-                            <th className="text-right px-2 py-1">金額</th>
-                            <th className="text-left px-2 py-1">性質</th>
-                            <th className="text-left px-2 py-1">狀態</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {linkedMaint.length === 0 ? (
-                            <tr>
-                              <td colSpan={5} className="px-2 py-2 text-gray-400">
-                                {selected.hasMaintenanceFee
-                                  ? '此資產已標記維修費，請至租屋管理 > 維護費登錄。'
-                                  : '無維護紀錄'}
-                              </td>
-                            </tr>
-                          ) : (
-                            linkedMaint.slice(0, 15).map((m) => (
-                              <tr key={m.id} className="border-t">
-                                <td className="px-2 py-1">{m.maintenanceDate}</td>
-                                <td className="px-2 py-1">{m.category}</td>
-                                <td className="px-2 py-1 text-right">{fmtMoney(m.amount)}</td>
-                                <td className="px-2 py-1">
-                                  {m.isCapitalized && <span className="bg-blue-100 text-blue-700 px-1 rounded mr-1">資本化</span>}
-                                  {m.isRecurring && <span className="bg-gray-100 text-gray-600 px-1 rounded">例行</span>}
-                                </td>
-                                <td className="px-2 py-1">{m.status || '—'}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    {(linkedTaxes.length > 15 || linkedMaint.length > 15) && (
-                      <p className="text-xs text-gray-500 mt-2">僅顯示前 15 筆，完整資料請至租屋管理各分頁。</p>
-                    )}
-                  </>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-gray-50 font-semibold">
+                        <tr>
+                          <td className="px-2 py-1">合計</td>
+                          <td className="px-2 py-1 text-right">{fmtMoney(detailIncomes.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</td>
+                          <td className="px-2 py-1 text-right text-teal-700">{fmtMoney(detailIncomes.reduce((s, i) => s + Number(i.actualAmount || 0), 0))}</td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 )}
-              </>
-            )}
+              </div>
+
+              {/* Col 2: Taxes */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年稅款</h4>
+                {selectedTaxes.length === 0 ? (
+                  <p className="text-xs text-gray-400">
+                    {(selected.asset?.hasHouseTax || selected.asset?.hasLandTax)
+                      ? '已標記稅費，請至租屋管理 > 稅款登錄。'
+                      : '無稅款紀錄'}
+                  </p>
+                ) : (
+                  <table className="w-full text-xs border">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-2 py-1">類型</th>
+                        <th className="text-right px-2 py-1">金額</th>
+                        <th className="text-left px-2 py-1">狀態</th>
+                        <th className="text-left px-2 py-1">到期日</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedTaxes.map(t => (
+                        <tr key={t.id} className="border-t">
+                          <td className="px-2 py-1">{t.taxType || '—'}</td>
+                          <td className="px-2 py-1 text-right font-medium text-amber-700">{fmtMoney(t.amount)}</td>
+                          <td className="px-2 py-1">
+                            <span className={`px-1.5 py-0.5 rounded ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                              {t.status === 'paid' ? '已繳' : '待繳'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1 text-gray-500">{t.dueDate || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 font-semibold">
+                      <tr>
+                        <td className="px-2 py-1">合計</td>
+                        <td className="px-2 py-1 text-right text-amber-700">{fmtMoney(selectedTaxes.reduce((s, t) => s + Number(t.amount || 0), 0))}</td>
+                        <td colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+
+                {/* Asset info */}
+                {selected.asset && (
+                  <div className="mt-4 border rounded p-2 bg-gray-50 text-xs space-y-1">
+                    <p className="font-semibold text-gray-700">資產主檔：{selected.asset.name}</p>
+                    <p className="text-gray-500">
+                      {ASSET_TYPE_OPTIONS.find(o => o.value === selected.asset.assetType)?.label || selected.asset.assetType}
+                      {selected.asset.areaSqm && ` · ${selected.asset.areaSqm} ㎡`}
+                      {selected.asset.acquisitionDate && ` · 取得：${selected.asset.acquisitionDate}`}
+                    </p>
+                    {canEdit && (
+                      <div className="flex gap-2 mt-1">
+                        <button onClick={() => openEdit(selected.asset)} className="text-blue-600 hover:underline">編輯資產</button>
+                        <span className="text-gray-300">|</span>
+                        <button onClick={() => deleteAsset(selected.asset)} className="text-red-600 hover:underline">刪除</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!selected.asset && canEdit && (
+                  <button
+                    className="mt-3 text-xs px-3 py-1.5 bg-teal-600 text-white rounded hover:bg-teal-700"
+                    onClick={() => {
+                      setEditing(null);
+                      setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: selected.address || '', areaSqm: '', acquisitionDate: '', notes: '', rentalPropertyId: String(selected.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                      setShowModal(true);
+                    }}
+                  >
+                    新增資產主檔
+                  </button>
+                )}
+              </div>
+
+              {/* Col 3: Maintenance + P&L */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年損益小計</h4>
+                <div className="space-y-2 mb-4">
+                  {[
+                    { label: '租金實收', value: mergedRows.find(r => r.id === selected.id)?.rentIncome || 0, cls: 'text-teal-700' },
+                    { label: '房屋稅', value: -(mergedRows.find(r => r.id === selected.id)?.houseTax || 0), cls: 'text-amber-700' },
+                    { label: '地價稅', value: -(mergedRows.find(r => r.id === selected.id)?.landTax || 0), cls: 'text-orange-700' },
+                    { label: '維護費', value: -(mergedRows.find(r => r.id === selected.id)?.maintenanceAmount || 0), cls: 'text-blue-700' },
+                  ].map(row => (
+                    <div key={row.label} className="flex justify-between text-sm border-b pb-1">
+                      <span className="text-gray-600">{row.label}</span>
+                      <span className={`font-medium ${row.cls}`}>NT$ {fmtMoney(Math.abs(row.value))}</span>
+                    </div>
+                  ))}
+                  {(() => {
+                    const r = mergedRows.find(r => r.id === selected.id);
+                    const net = r?.netProfit || 0;
+                    return (
+                      <div className="flex justify-between text-sm font-bold pt-1">
+                        <span className="text-gray-800">年度淨利</span>
+                        <span className={net >= 0 ? 'text-green-700' : 'text-red-600'}>NT$ {fmtMoney(net)}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年維護費</h4>
+                <MaintenanceList propertyId={selected.id} year={year} />
+              </div>
+            </div>
           </div>
         )}
       </div>
 
+      {/* Asset Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !saving && setShowModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-800 mb-4">{editing ? '編輯資產' : '新增資產'}</h3>
             <div className="space-y-3 text-sm">
               <div>
                 <label className="text-gray-600">名稱 *</label>
-                <input
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                />
+                <input className="w-full border rounded px-3 py-2 mt-1" value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div>
                 <label className="text-gray-600">資產類型</label>
-                <select
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={form.assetType}
-                  onChange={(e) => setForm((f) => ({ ...f, assetType: e.target.value }))}
-                >
-                  {ASSET_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                <select className="w-full border rounded px-3 py-2 mt-1" value={form.assetType}
+                  onChange={e => setForm(f => ({ ...f, assetType: e.target.value }))}>
+                  {ASSET_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-gray-600">地址</label>
-                <input
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={form.address}
-                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                />
+                <input className="w-full border rounded px-3 py-2 mt-1" value={form.address}
+                  onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
               </div>
               <div>
                 <label className="text-gray-600">面積（㎡）</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={form.areaSqm}
-                  onChange={(e) => setForm((f) => ({ ...f, areaSqm: e.target.value }))}
-                />
+                <input type="text" inputMode="decimal" className="w-full border rounded px-3 py-2 mt-1" value={form.areaSqm}
+                  onChange={e => setForm(f => ({ ...f, areaSqm: e.target.value }))} />
               </div>
               <div>
                 <label className="text-gray-600">取得日期（選填）</label>
-                <input
-                  type="date"
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={form.acquisitionDate}
-                  onChange={(e) => setForm((f) => ({ ...f, acquisitionDate: e.target.value }))}
-                />
+                <input type="date" className="w-full border rounded px-3 py-2 mt-1" value={form.acquisitionDate}
+                  onChange={e => setForm(f => ({ ...f, acquisitionDate: e.target.value }))} />
               </div>
-
               <div className="border rounded-lg p-3 bg-gray-50">
                 <p className="text-gray-700 font-medium mb-2">出租與稅費標記</p>
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.isAvailableForRental}
-                      onChange={(e) => setForm((f) => ({ ...f, isAvailableForRental: e.target.checked }))} />
-                    <span>可出租（顯示於租屋管理並啟用出租功能）</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.hasHouseTax}
-                      onChange={(e) => setForm((f) => ({ ...f, hasHouseTax: e.target.checked }))} />
-                    <span>有房屋稅（會計可在稅款管理填寫）</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.hasLandTax}
-                      onChange={(e) => setForm((f) => ({ ...f, hasLandTax: e.target.checked }))} />
-                    <span>有地價稅（會計可在稅款管理填寫）</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.hasMaintenanceFee}
-                      onChange={(e) => setForm((f) => ({ ...f, hasMaintenanceFee: e.target.checked }))} />
-                    <span>有維修費（會計可在維護費登錄）</span>
-                  </label>
+                  {[
+                    { key: 'isAvailableForRental', label: '可出租' },
+                    { key: 'hasHouseTax', label: '有房屋稅' },
+                    { key: 'hasLandTax', label: '有地價稅' },
+                    { key: 'hasMaintenanceFee', label: '有維修費' },
+                  ].map(item => (
+                    <label key={item.key} className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={form[item.key]}
+                        onChange={e => setForm(f => ({ ...f, [item.key]: e.target.checked }))} />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
-
               <div>
-                <label className="text-gray-600">綁定租屋物業（選填，一物業僅能綁一筆資產）</label>
-                <select
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  value={form.rentalPropertyId}
-                  onChange={(e) => setForm((f) => ({ ...f, rentalPropertyId: e.target.value }))}
-                >
+                <label className="text-gray-600">綁定租屋物業</label>
+                <select className="w-full border rounded px-3 py-2 mt-1" value={form.rentalPropertyId}
+                  onChange={e => setForm(f => ({ ...f, rentalPropertyId: e.target.value }))}>
                   <option value="">不綁定</option>
-                  {propertyOptions.map((p) => (
+                  {propertyOptions.map(p => (
                     <option key={p.id} value={p.id}>
                       {p.buildingName ? `${p.buildingName} · ` : ''}{p.name}{p.unitNo ? `（${p.unitNo}）` : ''}
                     </option>
@@ -743,12 +763,8 @@ function AssetsPageInner() {
               </div>
               <div>
                 <label className="text-gray-600">備註</label>
-                <textarea
-                  className="w-full border rounded px-3 py-2 mt-1"
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                />
+                <textarea className="w-full border rounded px-3 py-2 mt-1" rows={2} value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
@@ -764,6 +780,75 @@ function AssetsPageInner() {
   );
 }
 
+// Lazy maintenance list — only fetches when parent property is selected
+function MaintenanceList({ propertyId, year }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/rentals/maintenance?propertyId=${propertyId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        const arr = Array.isArray(data) ? data : [];
+        // Filter to current year
+        setItems(arr.filter(m => m.maintenanceDate?.startsWith(String(year))));
+      })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [propertyId, year]);
+
+  if (loading) return <p className="text-xs text-gray-400">載入中…</p>;
+  if (items.length === 0) return <p className="text-xs text-gray-400">{year} 年無維護費紀錄</p>;
+
+  return (
+    <table className="w-full text-xs border">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="text-left px-2 py-1">日期</th>
+          <th className="text-left px-2 py-1">類別</th>
+          <th className="text-right px-2 py-1">金額</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map(m => (
+          <tr key={m.id} className="border-t">
+            <td className="px-2 py-1">{m.maintenanceDate}</td>
+            <td className="px-2 py-1">{m.category || '—'}</td>
+            <td className="px-2 py-1 text-right text-blue-700 font-medium">{Number(m.amount).toLocaleString('zh-TW')}</td>
+          </tr>
+        ))}
+      </tbody>
+      <tfoot className="bg-gray-50 font-semibold">
+        <tr>
+          <td colSpan={2} className="px-2 py-1">合計</td>
+          <td className="px-2 py-1 text-right text-blue-700">{items.reduce((s, m) => s + Number(m.amount || 0), 0).toLocaleString('zh-TW')}</td>
+        </tr>
+      </tfoot>
+    </table>
+  );
+}
+
+function AssetFlagBadges({ asset }) {
+  if (!asset) return null;
+  const flags = [];
+  if (asset.isAvailableForRental) flags.push({ label: '可出租', cls: 'bg-teal-100 text-teal-700' });
+  if (asset.hasHouseTax) flags.push({ label: '房屋稅', cls: 'bg-amber-100 text-amber-700' });
+  if (asset.hasLandTax) flags.push({ label: '地價稅', cls: 'bg-orange-100 text-orange-700' });
+  if (asset.hasMaintenanceFee) flags.push({ label: '維修費', cls: 'bg-blue-100 text-blue-700' });
+  if (flags.length === 0) return null;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {flags.map(f => (
+        <span key={f.label} className={`text-xs px-1.5 py-0.5 rounded ${f.cls}`}>{f.label}</span>
+      ))}
+    </span>
+  );
+}
+
 export default function AssetsPage() {
   return (
     <Suspense fallback={(
@@ -771,8 +856,7 @@ export default function AssetsPage() {
         <Navigation borderColor="border-teal-500" />
         <div className="max-w-7xl mx-auto px-4 py-6 text-gray-500">載入中…</div>
       </div>
-    )}
-    >
+    )}>
       <AssetsPageInner />
     </Suspense>
   );

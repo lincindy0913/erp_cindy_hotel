@@ -93,7 +93,6 @@ function openPrintWindow(title, headers, rows) {
 }
 const TABS = [
   { key: 'records',    label: '訂房明細' },
-  { key: 'import',     label: '雲掌櫃匯入' },
   { key: 'analytics',  label: '分析' },
   { key: 'declaration',label: '旅宿網申報' },
   { key: 'deposit',    label: '訂金核對' },
@@ -596,6 +595,7 @@ export default function BnbPage() {
   const [importReplace, setImportReplace] = useState(true);
   const [importing,     setImporting]     = useState(false);
   const [importResult,  setImportResult]  = useState(null);
+  const [showImportPanel, setShowImportPanel] = useState(false);
 
   // ── 每日收入 state ──────────────────────────────────────────
   const [drMonth,      setDrMonth]      = useState(() => new Date().toISOString().slice(0, 7));
@@ -714,12 +714,11 @@ export default function BnbPage() {
 
   const getActiveLockContext = useCallback(() => {
     switch (activeTab) {
-      case 'import':      return { month: importMonth, warehouse: importWarehouse };
       case 'declaration': return { month: declMonth,   warehouse: declWarehouse };
       case 'deposit':     return { month: dmMonth,     warehouse: dmWarehouse || DEFAULT_WAREHOUSE };
       default:            return { month: filterMonth,  warehouse: DEFAULT_WAREHOUSE };
     }
-  }, [activeTab, filterMonth, importMonth, importWarehouse, declMonth, declWarehouse, dmMonth, dmWarehouse]);
+  }, [activeTab, filterMonth, declMonth, declWarehouse, dmMonth, dmWarehouse]);
 
   const toggleLock = useCallback(async () => {
     if (lockLoading) return;
@@ -1146,7 +1145,7 @@ export default function BnbPage() {
   useEffect(() => {
     const ctx = getActiveLockContext();
     fetchLockStatus(ctx.month, ctx.warehouse);
-  }, [activeTab, filterMonth, importMonth, importWarehouse, declMonth, declWarehouse, dmMonth, dmWarehouse]);
+  }, [activeTab, filterMonth, declMonth, declWarehouse, dmMonth, dmWarehouse]);
 
   useEffect(() => {
     if (activeTab === 'records') { setSelectedIds(new Set()); fetchRecords(); }
@@ -1613,6 +1612,11 @@ export default function BnbPage() {
                 className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1">
                 + 新增訂房
               </button>
+              <button
+                onClick={() => { setShowImportPanel(v => !v); setImportResult(null); }}
+                className={`px-3 py-1.5 text-sm rounded-lg border flex items-center gap-1 transition-colors ${showImportPanel ? 'bg-violet-100 text-violet-700 border-violet-300' : 'hover:bg-gray-50 text-gray-600'}`}>
+                ↑ 雲掌櫃匯入
+              </button>
               <div className="ml-auto flex items-end gap-2">
                 {canLock && !editMode && (
                   <button onClick={lockAllFilled} disabled={locking}
@@ -1657,6 +1661,55 @@ export default function BnbPage() {
                 >列印</button>
               </div>
             </div>
+
+            {/* 雲掌櫃匯入面板 */}
+            {showImportPanel && (
+              <div className="mb-4 bg-white rounded-xl shadow-sm border border-violet-100 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-800 text-sm">上傳雲掌櫃匯出檔</h3>
+                  <p className="text-xs text-gray-400">支援 .xlsx / .xls / .csv　欄位順序：A來源 B姓名 C本期房費 D本期消費 E房間 F入住日期 G離店日期 H狀態</p>
+                </div>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
+                    <input type="month" value={importMonth} onChange={e => setImportMonth(e.target.value)} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">館別</label>
+                    <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
+                      {(warehouseList.length ? warehouseList : [importWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">選擇檔案</label>
+                    <input type="file" accept=".xlsx,.xls,.csv"
+                      onChange={e => setImportFile(e.target.files?.[0] || null)}
+                      className="block text-sm text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-indigo-300 file:text-indigo-600 file:bg-indigo-50 hover:file:bg-indigo-100" />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={importReplace} onChange={e => setImportReplace(e.target.checked)} className="rounded" />
+                    取代同月舊資料
+                  </label>
+                  {isLocked ? (
+                    <span className="text-xs text-red-500 px-2 py-1.5 bg-red-50 border border-red-200 rounded-lg">
+                      {filterMonth} 已鎖帳，無法匯入
+                    </span>
+                  ) : (
+                    <button onClick={handleImport} disabled={importing || !importFile}
+                      className="px-4 py-1.5 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors font-medium">
+                      {importing ? '匯入中…' : '開始匯入'}
+                    </button>
+                  )}
+                  {importResult && (
+                    <span className="text-xs text-green-700 px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+                      ✓ 匯入完成：{importResult.imported} 筆
+                      {importResult.deleted > 0 && `（刪除舊資料 ${importResult.deleted} 筆）`}
+                      　{importResult.importMonth}／{importResult.warehouse}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* 摘要卡 */}
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
@@ -2199,60 +2252,6 @@ export default function BnbPage() {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ══ Tab: 雲掌櫃匯入 ══ */}
-        {activeTab === 'import' && (
-          <div className="max-w-xl">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-              <h3 className="font-semibold text-gray-800">上傳雲掌櫃匯出檔</h3>
-              <p className="text-sm text-gray-500">
-                支援 <strong>.xlsx / .xls / .csv</strong>。欄位順序需與雲掌櫃一致：<br/>
-                A來源 B姓名 C本期房費 D本期消費 E房間 F入住日期 G離店日期 H狀態
-              </p>
-
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
-                <input type="month" value={importMonth} onChange={e => setImportMonth(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
-                  {(warehouseList.length ? warehouseList : [importWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">選擇檔案</label>
-                <input type="file" accept=".xlsx,.xls,.csv"
-                  onChange={e => setImportFile(e.target.files?.[0] || null)}
-                  className="block text-sm text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-indigo-300 file:text-indigo-600 file:bg-indigo-50 hover:file:bg-indigo-100" />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input type="checkbox" checked={importReplace} onChange={e => setImportReplace(e.target.checked)}
-                  className="rounded" />
-                取代同月舊資料（勾選後會先刪除同月份現有記錄再匯入）
-              </label>
-
-              {isLocked && (
-                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
-                  {filterMonth} 已鎖帳，無法匯入。如需匯入請先解鎖。
-                </div>
-              )}
-              <button onClick={handleImport} disabled={importing || !importFile || isLocked}
-                className="w-full py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors">
-                {importing ? '匯入中…' : '開始匯入'}
-              </button>
-
-              {importResult && (
-                <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
-                  ✓ 匯入完成：{importResult.imported} 筆
-                  {importResult.deleted > 0 && `（已刪除舊資料 ${importResult.deleted} 筆）`}
-                  <br/>
-                  月份：{importResult.importMonth}　館別：{importResult.warehouse}
-                </div>
-              )}
-            </div>
           </div>
         )}
 

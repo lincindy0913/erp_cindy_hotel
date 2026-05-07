@@ -24,16 +24,18 @@ export async function GET(request) {
       include: {
         contracts: {
           where: { status: 'active' },
-          include: {
-            tenant: {
-              select: { fullName: true, companyName: true, tenantType: true }
-            }
+          select: {
+            id: true,
+            monthlyRent: true,
+            startDate: true,
+            endDate: true,
+            tenant: { select: { fullName: true, companyName: true, tenantType: true } }
           },
           take: 1
         },
         rentCollectAccount: { select: { id: true, name: true } },
         depositAccount: { select: { id: true, name: true } },
-        asset: { select: { id: true, name: true, assetType: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true } },
+        asset: { select: { id: true, name: true, assetType: true, address: true, areaSqm: true, acquisitionDate: true, notes: true, rentalPropertyId: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true } },
       },
       orderBy: [{ buildingName: 'asc' }, { name: 'asc' }]
     });
@@ -48,7 +50,9 @@ export async function GET(request) {
       return {
         ...p,
         currentTenantName: tenantName,
-        currentContractId: activeContract?.id || null
+        currentContractId: activeContract?.id || null,
+        currentMonthlyRent: activeContract?.monthlyRent != null ? Number(activeContract.monthlyRent) : null,
+        currentContractEnd: activeContract?.endDate || null,
       };
     });
 
