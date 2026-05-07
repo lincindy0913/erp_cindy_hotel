@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
-import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
+import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -46,31 +46,42 @@ export async function PUT(request, { params }) {
   
   try {
     const { id } = await params;
+    const propertyId = parseInt(id);
     const body = await request.json();
 
+    const linkedAsset = await prisma.asset.findUnique({
+      where: { rentalPropertyId: propertyId },
+      select: { id: true },
+    });
+
+    /** 已連結資產主檔時，名稱／地址由資產端同步，此處僅更新營運欄位 */
+    const data = {
+      buildingName: body.buildingName,
+      unitNo: body.unitNo,
+      ownerName: body.ownerName != null ? body.ownerName || null : undefined,
+      houseTaxRegistrationNo: body.houseTaxRegistrationNo != null ? body.houseTaxRegistrationNo || null : undefined,
+      rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
+      depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
+      status: body.status,
+      note: body.note,
+      publicInterestLandlord: body.publicInterestLandlord === true,
+      publicInterestApplicant: body.publicInterestApplicant || null,
+      publicInterestNote: body.publicInterestNote || null,
+      publicInterestStartDate: body.publicInterestStartDate || null,
+      publicInterestEndDate: body.publicInterestEndDate || null,
+      publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
+      collectUtilityFee: body.collectUtilityFee === true,
+      category: body.category !== undefined ? (body.category || null) : undefined,
+      sortOrder: body.sortOrder !== undefined ? (body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null) : undefined,
+    };
+    if (!linkedAsset) {
+      data.name = body.name;
+      data.address = body.address;
+    }
+
     const property = await prisma.rentalProperty.update({
-      where: { id: parseInt(id) },
-      data: {
-        name: body.name,
-        address: body.address,
-        buildingName: body.buildingName,
-        unitNo: body.unitNo,
-        ownerName: body.ownerName != null ? body.ownerName || null : undefined,
-        houseTaxRegistrationNo: body.houseTaxRegistrationNo != null ? body.houseTaxRegistrationNo || null : undefined,
-        rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
-        depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
-        status: body.status,
-        note: body.note,
-        publicInterestLandlord: body.publicInterestLandlord === true,
-        publicInterestApplicant: body.publicInterestApplicant || null,
-        publicInterestNote: body.publicInterestNote || null,
-        publicInterestStartDate: body.publicInterestStartDate || null,
-        publicInterestEndDate: body.publicInterestEndDate || null,
-        publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
-        collectUtilityFee: body.collectUtilityFee === true,
-        category:  body.category  !== undefined ? (body.category  || null) : undefined,
-        sortOrder: body.sortOrder !== undefined ? (body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null) : undefined,
-      }
+      where: { id: propertyId },
+      data,
     });
 
     return NextResponse.json(property);

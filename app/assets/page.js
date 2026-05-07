@@ -123,6 +123,12 @@ function AssetsPageInner() {
   }, [highlightAssetId, assets]);
 
   useEffect(() => {
+    if (!highlightPropertyId || assets.length === 0) return;
+    const row = assets.find((a) => String(a.rentalPropertyId || '') === highlightPropertyId);
+    if (row) setSelected(row);
+  }, [highlightPropertyId, assets]);
+
+  useEffect(() => {
     if (linkOpenedRef.current || !linkProperty || properties.length === 0) return;
     linkOpenedRef.current = true;
     setEditing(null);
@@ -345,7 +351,7 @@ function AssetsPageInner() {
           <div>
             <h2 className="text-xl font-bold text-gray-800">資產管理</h2>
             <p className="text-sm text-gray-600 mt-1">
-              資產主檔可設定是否可出租及稅費標記，標記後在租屋管理可登錄相應稅款與維護費。
+              物業主檔與綁定請以此頁為準；建立資產後可綁定或新建租屋物業，營運細節（收租帳戶等）可自綁定列連結至租屋管理。
             </p>
           </div>
           {canEdit && (
@@ -407,7 +413,7 @@ function AssetsPageInner() {
                         <td className="px-3 py-2">
                           {a.rentalProperty ? (
                             <Link
-                              href={`/rentals?tab=properties`}
+                              href={`/assets?propertyId=${a.rentalProperty.id}`}
                               className="text-teal-700 hover:underline"
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -450,8 +456,13 @@ function AssetsPageInner() {
               {selected.rentalPropertyId ? (
                 <p>
                   租屋物業：
-                  <Link className="text-teal-700 hover:underline ml-1" href="/rentals?tab=properties">
+                  <Link className="text-teal-700 hover:underline ml-1" href={`/assets?propertyId=${selected.rentalPropertyId}`}>
                     {selected.rentalProperty?.name || `#${selected.rentalPropertyId}`}
+                  </Link>
+                  <span className="text-xs text-gray-400 ml-1">（名稱／地址與資產主檔同步）</span>
+                  <span className="mx-2 text-gray-300">|</span>
+                  <Link className="text-teal-700 hover:underline" href={`/rentals?editProperty=${selected.rentalPropertyId}`}>
+                    租屋營運設定
                   </Link>
                   {(selected.hasHouseTax || selected.hasLandTax) && (
                     <>

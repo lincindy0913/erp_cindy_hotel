@@ -1507,7 +1507,7 @@ model RentalProperty {
   maintenances       RentalMaintenance[]
   utilityIncomes     RentalUtilityIncome[]
   annualRentFilings  RentalAnnualRentFiling[]
-  /// 選用：一筆物業對應一筆資產主檔（稅費／維護仍以物業為資料來源，資產頁彙總顯示）
+  /// 選用：一筆物業對應一筆資產主檔（名稱／地址以資產為準並向下同步；稅費／維護仍以物業為資料來源）
   asset                Asset?
 
   @@index([buildingName])

@@ -72,25 +72,39 @@ export async function POST(request) {
       return createErrorResponse('INVALID_INPUT', '面積格式無效', 400);
     }
 
-    const asset = await prisma.asset.create({
-      data: {
-        name: body.name.trim(),
-        assetType,
-        address: body.address?.trim() || null,
-        areaSqm: areaSqm != null ? areaSqm : null,
-        acquisitionDate: body.acquisitionDate?.trim() || null,
-        notes: body.notes?.trim() || null,
-        isAvailableForRental: body.isAvailableForRental === true,
-        hasHouseTax: body.hasHouseTax === true,
-        hasLandTax: body.hasLandTax === true,
-        hasMaintenanceFee: body.hasMaintenanceFee === true,
-        rentalPropertyId,
-      },
-      include: {
-        rentalProperty: {
-          select: { id: true, name: true, address: true, buildingName: true, unitNo: true, status: true },
+    const asset = await prisma.$transaction(async (tx) => {
+      const created = await tx.asset.create({
+        data: {
+          name: body.name.trim(),
+          assetType,
+          address: body.address?.trim() || null,
+          areaSqm: areaSqm != null ? areaSqm : null,
+          acquisitionDate: body.acquisitionDate?.trim() || null,
+          notes: body.notes?.trim() || null,
+          isAvailableForRental: body.isAvailableForRental === true,
+          hasHouseTax: body.hasHouseTax === true,
+          hasLandTax: body.hasLandTax === true,
+          hasMaintenanceFee: body.hasMaintenanceFee === true,
+          rentalPropertyId,
         },
-      },
+      });
+      if (created.rentalPropertyId) {
+        await tx.rentalProperty.update({
+          where: { id: created.rentalPropertyId },
+          data: {
+            name: created.name,
+            address: created.address,
+          },
+        });
+      }
+      return tx.asset.findUnique({
+        where: { id: created.id },
+        include: {
+          rentalProperty: {
+            select: { id: true, name: true, address: true, buildingName: true, unitNo: true, status: true },
+          },
+        },
+      });
     });
 
     await auditFromSession(prisma, auth.session, {
@@ -98,7 +112,12 @@ export async function POST(request) {
       targetModule: 'asset',
       targetRecordId: asset.id,
       targetRecordNo: asset.name,
-      afterState: { name: asset.name, assetType: asset.assetType, address: asset.address, rentalPropertyId: asset.rentalPropertyId },
+      afterState: {
+        name: asset.name,
+        assetType: asset.assetType,
+        address: asset.address,
+        rentalPropertyId: asset.rentalPropertyId,
+      },
       note: `建立資產 ${asset.name}`,
     });
 

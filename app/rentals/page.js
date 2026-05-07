@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
@@ -100,7 +100,9 @@ function RentalsPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const tabParam = searchParams.get('tab') || 'overview';
-  const [activeTab, setActiveTab] = useState(() => resolveRentalsMainTab(tabParam));
+  const [activeTab, setActiveTab] = useState(() =>
+    tabParam === 'properties' ? 'overview' : resolveRentalsMainTab(tabParam)
+  );
   const [analyticsSub, setAnalyticsSub] = useState(() => resolveRentalsAnalyticsSub(tabParam, searchParams));
 
   // Shared data
@@ -190,8 +192,6 @@ function RentalsPage() {
 
   // Search / filter states
   const [tenantSearch, setTenantSearch] = useState('');
-  const [propertyFilter, setPropertyFilter] = useState({ buildingName: '', status: '' });
-  const [propertySort, setPropertySort] = useState({ key: '', dir: 'asc' });
   const [contractFilter, setContractFilter] = useState({ status: '', propertyId: '' });
   const [incomeFilter, setIncomeFilter] = useState({
     year: new Date().getFullYear(),
@@ -327,6 +327,10 @@ function RentalsPage() {
       router.replace(`/rentals?tab=analytics&sub=${mapped}`, { scroll: false });
       return;
     }
+    if (tabParam === 'properties') {
+      router.replace('/assets');
+      return;
+    }
     setActiveTab(resolveRentalsMainTab(tabParam));
     if (tabParam === 'analytics') {
       const s = searchParams.get('sub');
@@ -346,7 +350,6 @@ function RentalsPage() {
   useEffect(() => {
     if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'tenants') fetchTenants();
-    if (activeTab === 'properties') fetchProperties();
     if (activeTab === 'contracts') fetchContracts();
     if (activeTab === 'taxes') fetchTaxes();
     // 維護費頁面也需要物業清單供下拉選單使用
@@ -595,6 +598,10 @@ function RentalsPage() {
   }
 
   function switchTab(key) {
+    if (key === 'properties') {
+      router.push('/assets');
+      return;
+    }
     if (key === 'analytics') {
       setActiveTab('analytics');
       router.push(`/rentals?tab=analytics&sub=${analyticsSub}`, { scroll: false });
@@ -648,10 +655,7 @@ function RentalsPage() {
 
   async function fetchProperties() {
     try {
-      const params = new URLSearchParams();
-      if (propertyFilter.buildingName) params.set('buildingName', propertyFilter.buildingName);
-      if (propertyFilter.status) params.set('status', propertyFilter.status);
-      const res = await fetch(`/api/rentals/properties?${params}`);
+      const res = await fetch('/api/rentals/properties');
       const data = await res.json();
       setProperties(Array.isArray(data) ? data : []);
     } catch { setProperties([]); }
@@ -992,34 +996,66 @@ function RentalsPage() {
     }, '刪除租客');
   }
 
-  // ==================== PROPERTY CRUD ====================
-  function openPropertyModal(property = null) {
-    if (property) {
-      setEditingProperty(property);
-      setPropertyForm({
-        name: property.name || '', address: property.address || '', buildingName: property.buildingName || '',
-        unitNo: property.unitNo || '', ownerName: property.ownerName || '', houseTaxRegistrationNo: property.houseTaxRegistrationNo || '',
-        status: property.status || 'available',
-        rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
-        note: property.note || '', collectUtilityFee: property.collectUtilityFee || false, publicInterestLandlord: property.publicInterestLandlord || false,
-        publicInterestApplicant: property.publicInterestApplicant || '',
-        publicInterestNote: property.publicInterestNote || '',
-        publicInterestStartDate: property.publicInterestStartDate || '',
-        publicInterestEndDate: property.publicInterestEndDate || '',
-        publicInterestRent: property.publicInterestRent != null ? String(property.publicInterestRent) : '',
-      });
-    } else {
-      setEditingProperty(null);
-      setPropertyForm({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
-    }
+  // ==================== PROPERTY CRUD（租屋營運欄位；主檔請至資產管理）====================
+  const openPropertyModal = useCallback((property) => {
+    if (!property) return;
+    setEditingProperty(property);
+    setPropertyForm({
+      name: property.name || '', address: property.address || '', buildingName: property.buildingName || '',
+      unitNo: property.unitNo || '', ownerName: property.ownerName || '', houseTaxRegistrationNo: property.houseTaxRegistrationNo || '',
+      status: property.status || 'available',
+      rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
+      note: property.note || '', collectUtilityFee: property.collectUtilityFee || false, publicInterestLandlord: property.publicInterestLandlord || false,
+      publicInterestApplicant: property.publicInterestApplicant || '',
+      publicInterestNote: property.publicInterestNote || '',
+      publicInterestStartDate: property.publicInterestStartDate || '',
+      publicInterestEndDate: property.publicInterestEndDate || '',
+      publicInterestRent: property.publicInterestRent != null ? String(property.publicInterestRent) : '',
+    });
     setShowPropertyModal(true);
-  }
+  }, []);
+
+  const editPropertyOpenedRef = useRef(false);
+
+  const editPropertyParam = searchParams.get('editProperty');
+
+  useEffect(() => {
+    if (editPropertyParam) fetchProperties();
+  }, [editPropertyParam]);
+
+  useEffect(() => {
+    if (!editPropertyParam) {
+      editPropertyOpenedRef.current = false;
+      return;
+    }
+    const id = parseInt(editPropertyParam, 10);
+    if (Number.isNaN(id)) {
+      router.replace('/rentals', { scroll: false });
+      showToast('物業編號無效', 'error');
+      return;
+    }
+    if (properties.length === 0 || editPropertyOpenedRef.current) return;
+    const p = properties.find((x) => x.id === id);
+    if (!p) {
+      editPropertyOpenedRef.current = true;
+      router.replace('/rentals', { scroll: false });
+      showToast('查無此物業', 'error');
+      return;
+    }
+    editPropertyOpenedRef.current = true;
+    openPropertyModal(p);
+    router.replace('/rentals', { scroll: false });
+  }, [properties, editPropertyParam, router, openPropertyModal, showToast]);
 
   async function saveProperty() {
     setPropertySaving(true);
     try {
-      const url = editingProperty ? `/api/rentals/properties/${editingProperty.id}` : '/api/rentals/properties';
-      const method = editingProperty ? 'PUT' : 'POST';
+      if (!editingProperty) {
+        showToast('請從資產管理建立或綁定物業', 'error');
+        return;
+      }
+      const url = `/api/rentals/properties/${editingProperty.id}`;
+      const method = 'PUT';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(propertyForm) });
       const data = await res.json();
       if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
@@ -1027,17 +1063,6 @@ function RentalsPage() {
       fetchProperties();
     } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
     finally { setPropertySaving(false); }
-  }
-
-  function deleteProperty(id) {
-    askConfirm('確定要刪除此物業？此操作無法復原。', async () => {
-      try {
-        const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-        fetchProperties();
-      } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
-    }, '刪除物業');
   }
 
   // ==================== CONTRACT CRUD ====================
@@ -1414,8 +1439,6 @@ function RentalsPage() {
     if (count <= 2) return 'text-yellow-600';
     return 'text-red-600';
   }
-
-  const buildingNames = [...new Set(properties.map(p => p.buildingName).filter(Boolean))];
 
   // ==================== RENDER ====================
   return (
@@ -2112,140 +2135,6 @@ function RentalsPage() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
-
-            {/* ==================== TAB: PROPERTIES ==================== */}
-            {activeTab === 'properties' && (
-              <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <select value={propertyFilter.buildingName} onChange={e => setPropertyFilter(f => ({ ...f, buildingName: e.target.value }))}
-                    className="border rounded px-2 py-1.5 text-sm">
-                    <option value="">全部大樓</option>
-                    {buildingNames.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                  <select value={propertyFilter.status} onChange={e => setPropertyFilter(f => ({ ...f, status: e.target.value }))}
-                    className="border rounded px-2 py-1.5 text-sm">
-                    <option value="">全部狀態</option>
-                    {PROPERTY_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                  <button onClick={fetchProperties} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={() => openPropertyModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
-                    新增物業
-                  </button>
-                </div>
-
-                {/* Sortable table */}
-                {(() => {
-                  const sortArrow = (key) => {
-                    const active = propertySort.key === key;
-                    return (
-                      <button onClick={() => setPropertySort(s => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }))} className="ml-1 inline-flex flex-col leading-none text-[10px]">
-                        <span className={active && propertySort.dir === 'asc' ? 'text-teal-700' : 'text-gray-300'}>▲</span>
-                        <span className={active && propertySort.dir === 'desc' ? 'text-teal-700' : 'text-gray-300'}>▼</span>
-                      </button>
-                    );
-                  };
-                  const sorted = [...properties].sort((a, b) => {
-                    if (!propertySort.key) return 0;
-                    const dir = propertySort.dir === 'asc' ? 1 : -1;
-                    const keyMap = {
-                      name: p => p.name || '',
-                      address: p => p.address || '',
-                      unitNo: p => p.unitNo || '',
-                      status: p => p.status || '',
-                      tenant: p => p.currentTenantName || '',
-                      account: p => p.rentCollectAccount?.name || '',
-                      publicInterest: p => p.publicInterestLandlord ? 1 : 0,
-                      note: p => p.note || '',
-                      building: p => p.buildingName || '',
-                    };
-                    const fn = keyMap[propertySort.key];
-                    if (!fn) return 0;
-                    const va = fn(a), vb = fn(b);
-                    if (typeof va === 'number') return (va - vb) * dir;
-                    return String(va).localeCompare(String(vb)) * dir;
-                  });
-                  const grouped = {};
-                  sorted.forEach(p => {
-                    const key = p.buildingName || '未分類';
-                    if (!grouped[key]) grouped[key] = [];
-                    grouped[key].push(p);
-                  });
-
-                  return Object.entries(grouped).map(([building, props]) => (
-                    <div key={building} className="mb-6">
-                      <h3 className="text-lg font-medium text-gray-700 mb-2">{building}</h3>
-                      <div className="bg-white rounded-lg shadow overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-teal-50">
-                            <tr>
-                              <th className="text-center px-3 py-2 w-10">序號</th>
-                              <th className="text-left px-3 py-2">名稱{sortArrow('name')}</th>
-                              <th className="text-left px-3 py-2">資產</th>
-                              <th className="text-left px-3 py-2">地址{sortArrow('address')}</th>
-                              <th className="text-left px-3 py-2">類別{sortArrow('unitNo')}</th>
-                              <th className="text-center px-3 py-2">狀態{sortArrow('status')}</th>
-                              <th className="text-left px-3 py-2">目前租客{sortArrow('tenant')}</th>
-                              <th className="text-left px-3 py-2">收租帳戶{sortArrow('account')}</th>
-                              <th className="text-center px-3 py-2">收電費</th>
-                              <th className="text-center px-3 py-2">公益出租人{sortArrow('publicInterest')}</th>
-                              <th className="text-left px-3 py-2">申請人</th>
-                              <th className="text-left px-3 py-2">公益租約期間</th>
-                              <th className="text-center px-3 py-2">租金申報</th>
-                              <th className="text-left px-3 py-2">備註{sortArrow('note')}</th>
-                              <th className="text-center px-3 py-2">操作</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {props.map((p, idx) => (
-                              <tr key={p.id} className="border-t hover:bg-gray-50">
-                                <td className="px-3 py-2 text-center text-xs text-gray-400">{idx + 1}</td>
-                                <td className="px-3 py-2 font-medium">{p.name}</td>
-                                <td className="px-3 py-2 text-xs">
-                                  {p.asset ? (
-                                    <Link href={`/assets?id=${p.asset.id}`} className="text-teal-700 hover:underline font-medium">
-                                      {p.asset.name}
-                                    </Link>
-                                  ) : (
-                                    <Link href={`/assets?linkProperty=${p.id}`} className="text-gray-400 hover:text-teal-700 hover:underline">
-                                      建立／綁定
-                                    </Link>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 text-gray-600">{p.address || '-'}</td>
-                                <td className="px-3 py-2">{p.unitNo || '-'}</td>
-                                <td className="px-3 py-2 text-center">
-                                  <StatusBadge value={p.status} list={PROPERTY_STATUSES} />
-                                </td>
-                                <td className="px-3 py-2">{p.currentTenantName || '-'}</td>
-                                <td className="px-3 py-2 text-xs text-gray-500">{p.rentCollectAccount?.name || '-'}</td>
-                                <td className="px-3 py-2 text-center">{p.collectUtilityFee ? <span className="text-blue-600 font-medium">是</span> : <span className="text-gray-400">—</span>}</td>
-                                <td className="px-3 py-2 text-center">{p.publicInterestLandlord ? <span className="text-green-600 font-medium">是</span> : <span className="text-gray-400">否</span>}</td>
-                                <td className="px-3 py-2 text-xs text-gray-600" title={p.publicInterestNote || ''}>{p.publicInterestApplicant || <span className="text-gray-300">—</span>}</td>
-                                <td className="px-3 py-2 text-xs text-gray-600">
-                                  {p.publicInterestLandlord && (p.publicInterestStartDate || p.publicInterestEndDate)
-                                    ? <span>{p.publicInterestStartDate || '—'} ～ {p.publicInterestEndDate || '—'}</span>
-                                    : <span className="text-gray-300">—</span>}
-                                </td>
-                                <td className="px-3 py-2 text-center">
-                                  <button type="button" onClick={() => switchTab('rentFiling')} className="text-teal-600 hover:underline text-xs font-medium">
-                                    {p.publicInterestLandlord ? '前往年度申報' : '總表'}
-                                  </button>
-                                </td>
-                                <td className="px-3 py-2 text-xs text-gray-500 max-w-[150px] truncate" title={p.note || ''}>{p.note || '-'}</td>
-                                <td className="px-3 py-2 text-center">
-                                  <button onClick={() => openPropertyModal(p)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
-                                  <button onClick={() => deleteProperty(p.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ));
-                })()}
               </div>
             )}
 
@@ -3802,12 +3691,24 @@ function RentalsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPropertyModal(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">{editingProperty ? '編輯物業' : '新增物業'}</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4">租屋營運設定</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                名稱與地址以「資產管理」主檔為準（儲存後會同步至租屋物業）；此處為大樓／戶別、收租帳戶、公益出租與備註等營運欄位。
+              </p>
+              {editingProperty?.asset?.id && (
+                <div className="text-xs bg-teal-50 border border-teal-100 rounded px-3 py-2 mb-3 text-teal-800">
+                  已連結資產主檔。
+                  <Link href={`/assets?id=${editingProperty.asset.id}`} className="font-medium underline ml-1">
+                    編輯名稱與地址
+                  </Link>
+                </div>
+              )}
               <div className="space-y-3">
                 <div>
                   <label className="text-sm text-gray-600">名稱 *</label>
                   <input type="text" value={propertyForm.name} onChange={e => setPropertyForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
+                    disabled={!!editingProperty?.asset?.id}
+                    className={`w-full border rounded px-3 py-2 text-sm ${editingProperty?.asset?.id ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`} />
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">大樓名稱</label>
@@ -3822,7 +3723,8 @@ function RentalsPage() {
                 <div>
                   <label className="text-sm text-gray-600">地址</label>
                   <input type="text" value={propertyForm.address} onChange={e => setPropertyForm(f => ({ ...f, address: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
+                    disabled={!!editingProperty?.asset?.id}
+                    className={`w-full border rounded px-3 py-2 text-sm ${editingProperty?.asset?.id ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -3923,9 +3825,33 @@ function RentalsPage() {
                   )}
                 </div>
               </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setShowPropertyModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveProperty} disabled={propertySaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{propertySaving ? '儲存中…' : '儲存'}</button>
+              <div className="flex justify-between items-center gap-2 mt-6 flex-wrap">
+                <div>
+                  {editingProperty && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = editingProperty.id;
+                        askConfirm('確定要刪除此物業？此操作無法復原。', async () => {
+                          try {
+                            const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
+                            const data = await res.json();
+                            if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+                            setShowPropertyModal(false);
+                            fetchProperties();
+                          } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+                        }, '刪除物業');
+                      }}
+                      className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50"
+                    >
+                      刪除物業
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2 ml-auto">
+                  <button onClick={() => setShowPropertyModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                  <button onClick={saveProperty} disabled={propertySaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{propertySaving ? '儲存中…' : '儲存'}</button>
+                </div>
               </div>
             </div>
           </div>

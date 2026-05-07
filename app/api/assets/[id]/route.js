@@ -123,9 +123,34 @@ export async function PATCH(request, { params }) {
       }
     }
 
-    const asset = await prisma.asset.update({
+    if (Object.keys(data).length === 0) {
+      const unchanged = await prisma.asset.findUnique({
+        where: { id },
+        include: {
+          rentalProperty: {
+            select: { id: true, name: true, address: true, buildingName: true, unitNo: true, status: true },
+          },
+        },
+      });
+      return NextResponse.json(unchanged);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.asset.update({ where: { id }, data });
+      const final = await tx.asset.findUnique({ where: { id } });
+      if (final?.rentalPropertyId) {
+        await tx.rentalProperty.update({
+          where: { id: final.rentalPropertyId },
+          data: {
+            name: final.name,
+            address: final.address,
+          },
+        });
+      }
+    });
+
+    const asset = await prisma.asset.findUnique({
       where: { id },
-      data,
       include: {
         rentalProperty: {
           select: { id: true, name: true, address: true, buildingName: true, unitNo: true, status: true },
@@ -165,6 +190,7 @@ export async function DELETE(_request, { params }) {
       return createErrorResponse('NOT_FOUND', '查無資產', 404);
     }
     await prisma.asset.delete({ where: { id } });
+    // 僅移除資產主檔；租屋物業資料保留（資產租屋欄位為 Asset→RentalProperty 外鍵，刪除資產不刪物業）
 
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.ASSET_DELETE,
