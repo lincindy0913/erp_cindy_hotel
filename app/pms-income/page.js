@@ -20,6 +20,7 @@ import PmsIncomeMappingTab from '@/components/pms-income/PmsIncomeMappingTab';
 import PmsIncomeExcelImportTab from '@/components/pms-income/PmsIncomeExcelImportTab';
 import PmsIncomePresetRecordsTab from '@/components/pms-income/PmsIncomePresetRecordsTab';
 import PmsIncomeBookingCenterTab from '@/components/pms-income/PmsIncomeBookingCenterTab';
+import PmsIncomeOtaReconTab from '@/components/pms-income/PmsIncomeOtaReconTab';
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
@@ -574,6 +575,10 @@ function PmsIncomePage() {
             accent="orange"
             onGoFullRecords={() => setActiveTab('records')}
           />
+        )}
+
+        {activeTab === 'otaRecon' && (
+          <PmsIncomeOtaReconTab WAREHOUSES={WAREHOUSES} />
         )}
 
         {activeTab === 'otaCommission' && (

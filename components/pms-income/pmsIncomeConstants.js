@@ -6,6 +6,7 @@ export const TABS = [
   { key: 'overview', label: '每日匯入總覽' },
   { key: 'excelImport', label: '飯店 Excel 匯入' },
   { key: 'otaDeposit', label: 'OTA 訂金' },
+  { key: 'otaRecon', label: 'OTA 對帳比對' },
   { key: 'otaCommission', label: 'OTA 傭金' },
   { key: 'bookingCenter', label: '代訂中心' },
   { key: 'records', label: '收入記錄明細' },
