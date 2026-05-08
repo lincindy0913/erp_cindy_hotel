@@ -589,13 +589,19 @@ export default function BnbPage() {
   const [locking,     setLocking]     = useState(false);
 
   // ── 雲掌櫃匯入 state ─────────────────────────────────────────
-  const [importFile,    setImportFile]    = useState(null);
-  const [importMonth,   setImportMonth]   = useState(() => new Date().toISOString().slice(0, 7));
+  const [importFile,      setImportFile]      = useState(null);
+  const [importMonth,     setImportMonth]     = useState(() => new Date().toISOString().slice(0, 7));
   const [importWarehouse, setImportWarehouse] = useState(DEFAULT_WAREHOUSE);
-  const [importReplace, setImportReplace] = useState(true);
-  const [importing,     setImporting]     = useState(false);
-  const [importResult,  setImportResult]  = useState(null);
+  const [importReplace,   setImportReplace]   = useState(true);
+  const [importing,       setImporting]       = useState(false);
+  const [importResult,    setImportResult]    = useState(null);
   const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importPreview,   setImportPreview]   = useState(null);   // { rows, totalRows, detectedMonth }
+  const [importConfirm,   setImportConfirm]   = useState(null);   // { existingCount }
+  const [importHistory,   setImportHistory]   = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(sessionStorage.getItem('bnb_import_history') || '[]'); } catch { return []; }
+  });
 
   // ── 每日收入 state ──────────────────────────────────────────
   const [drMonth,      setDrMonth]      = useState(() => new Date().toISOString().slice(0, 7));
@@ -1181,22 +1187,82 @@ export default function BnbPage() {
   const isLocked   = !!lockStatus?.locked;
   const monthLocked = isLocked;
 
-  // ── 匯入 ──────────────────────────────────────────────────────
+  // ── 選擇檔案後自動預覽（偵測月份 + 前 5 筆） ─────────────────
+  async function handleFileSelect(file) {
+    setImportFile(file);
+    setImportPreview(null);
+    setImportResult(null);
+    setImportConfirm(null);
+    if (!file) return;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('importMonth', importMonth);
+      fd.append('warehouse', importWarehouse);
+      fd.append('preview', 'true');
+      const res  = await fetch('/api/bnb/import', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok && data.preview) {
+        setImportPreview(data);
+        // 自動更新月份（若偵測到不同月份）
+        if (data.detectedMonth && data.detectedMonth !== importMonth) {
+          setImportMonth(data.detectedMonth);
+        }
+      }
+    } catch {} // 預覽失敗不阻礙後續操作
+  }
+
+  // ── 匯入（帶覆蓋確認） ────────────────────────────────────────
   async function handleImport() {
     if (!importFile) { showToast('請選擇檔案', 'error'); return; }
-    setImporting(true); setImportResult(null);
+    if (importReplace) {
+      // 查現有筆數，若有資料則顯示確認對話框
+      try {
+        const res  = await fetch(`/api/bnb/import?importMonth=${importMonth}&warehouse=${encodeURIComponent(importWarehouse)}`);
+        const data = await res.json();
+        if (data.count > 0) { setImportConfirm({ existingCount: data.count }); return; }
+      } catch {}
+    }
+    await doImport();
+  }
+
+  // ── 實際執行匯入 ──────────────────────────────────────────────
+  async function doImport() {
+    setImporting(true); setImportResult(null); setImportConfirm(null);
     try {
       const fd = new FormData();
       fd.append('file', importFile);
       fd.append('importMonth', importMonth);
       fd.append('warehouse', importWarehouse);
       fd.append('replace', importReplace ? 'true' : 'false');
-      const res = await fetch('/api/bnb/import', { method: 'POST', body: fd });
+      const res  = await fetch('/api/bnb/import', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) { showToast(data.error || data.message || '匯入失敗', 'error'); return; }
       setImportResult(data);
-      showToast(`匯入成功：${data.imported} 筆`, 'success');
+      const msg = `匯入成功：${data.imported} 筆` +
+        (data.deleted > 0 ? `，刪除舊資料 ${data.deleted} 筆` : '') +
+        (data.skipped > 0 ? `，略過重複 ${data.skipped} 筆` : '');
+      showToast(msg, 'success');
       setImportFile(null);
+      setImportPreview(null);
+      // 匯入後跳到對應月份
+      setFilterMonth(importMonth);
+      fetchRecords(1);
+      // 寫入本次 session 歷史
+      const entry = {
+        importMonth,
+        warehouse: importWarehouse,
+        imported:  data.imported,
+        deleted:   data.deleted || 0,
+        skipped:   data.skipped || 0,
+        replace:   importReplace,
+        at:        new Date().toLocaleString('zh-TW'),
+      };
+      setImportHistory(prev => {
+        const next = [entry, ...prev].slice(0, 10);
+        try { sessionStorage.setItem('bnb_import_history', JSON.stringify(next)); } catch {}
+        return next;
+      });
     } catch { showToast('匯入失敗', 'error'); }
     finally { setImporting(false); }
   }
@@ -1664,11 +1730,13 @@ export default function BnbPage() {
 
             {/* 雲掌櫃匯入面板 */}
             {showImportPanel && (
-              <div className="mb-4 bg-white rounded-xl shadow-sm border border-violet-100 p-4">
-                <div className="flex items-center justify-between mb-3">
+              <div className="mb-4 bg-white rounded-xl shadow-sm border border-violet-100 p-4 space-y-4">
+                <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-800 text-sm">上傳雲掌櫃匯出檔</h3>
-                  <p className="text-xs text-gray-400">支援 .xlsx / .xls / .csv　欄位順序：A來源 B姓名 C本期房費 D本期消費 E房間 F入住日期 G離店日期 H狀態</p>
+                  <p className="text-xs text-gray-400">支援 .xlsx / .xls / .csv　欄位：A來源 B姓名 C房費 D消費 E房間 F入住 G離店 H狀態</p>
                 </div>
+
+                {/* 設定列 */}
                 <div className="flex flex-wrap gap-3 items-end">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
@@ -1681,9 +1749,12 @@ export default function BnbPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">選擇檔案</label>
+                    <label className="block text-xs text-gray-500 mb-1">
+                      選擇檔案
+                      {importPreview && <span className="ml-2 text-violet-600 font-semibold">（解析到 {importPreview.totalRows} 筆）</span>}
+                    </label>
                     <input type="file" accept=".xlsx,.xls,.csv"
-                      onChange={e => setImportFile(e.target.files?.[0] || null)}
+                      onChange={e => handleFileSelect(e.target.files?.[0] || null)}
                       className="block text-sm text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-indigo-300 file:text-indigo-600 file:bg-indigo-50 hover:file:bg-indigo-100" />
                   </div>
                   <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
@@ -1702,12 +1773,96 @@ export default function BnbPage() {
                   )}
                   {importResult && (
                     <span className="text-xs text-green-700 px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                      ✓ 匯入完成：{importResult.imported} 筆
-                      {importResult.deleted > 0 && `（刪除舊資料 ${importResult.deleted} 筆）`}
+                      ✓ {importResult.imported} 筆
+                      {importResult.deleted > 0 && `，刪除 ${importResult.deleted} 筆`}
+                      {importResult.skipped > 0 && `，略過重複 ${importResult.skipped} 筆`}
                       　{importResult.importMonth}／{importResult.warehouse}
                     </span>
                   )}
                 </div>
+
+                {/* 欄位對應預覽表 */}
+                {importPreview && importPreview.rows.length > 0 && (
+                  <div className="border border-violet-100 rounded-lg overflow-hidden">
+                    <div className="bg-violet-50 px-3 py-2 flex items-center justify-between flex-wrap gap-2">
+                      <span className="text-xs font-medium text-violet-700">
+                        預覽（前 {importPreview.rows.length} 筆，共 {importPreview.totalRows} 筆）
+                      </span>
+                      {importPreview.detectedMonth !== importMonth && (
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                          偵測到月份 {importPreview.detectedMonth}，已自動更新匯入月份
+                        </span>
+                      )}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 text-gray-500">
+                          <tr>
+                            {['來源','姓名','房間','入住日','離店日','房費','狀態'].map(h => (
+                              <th key={h} className="px-3 py-1.5 text-left font-medium">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {importPreview.rows.map((r, i) => (
+                            <tr key={i} className="hover:bg-gray-50">
+                              <td className="px-3 py-1.5">{r.source}</td>
+                              <td className="px-3 py-1.5 font-medium">{r.guestName}</td>
+                              <td className="px-3 py-1.5">{r.roomNo || '—'}</td>
+                              <td className="px-3 py-1.5">{r.checkInDate}</td>
+                              <td className="px-3 py-1.5">{r.checkOutDate}</td>
+                              <td className="px-3 py-1.5 text-right">{(r.roomCharge || 0).toLocaleString('zh-TW')}</td>
+                              <td className="px-3 py-1.5">{r.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* 覆蓋確認對話框 */}
+                {importConfirm && (
+                  <div className="border border-red-200 bg-red-50 rounded-lg px-4 py-3">
+                    <p className="text-sm text-red-800 font-medium mb-3">
+                      確定覆蓋？將刪除 <strong>{importWarehouse} / {importMonth}</strong> 現有 <strong>{importConfirm.existingCount} 筆</strong> 資料，再匯入 <strong>{importPreview?.totalRows ?? '？'} 筆</strong>新資料，此操作無法還原。
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={doImport} disabled={importing}
+                        className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                        {importing ? '匯入中…' : `確定刪除 ${importConfirm.existingCount} 筆並匯入`}
+                      </button>
+                      <button onClick={() => setImportConfirm(null)} className="px-4 py-1.5 text-sm border border-gray-300 bg-white rounded-lg hover:bg-gray-50">
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 本次 session 上傳歷史 */}
+                {importHistory.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-gray-400 font-medium">本次工作階段上傳記錄</span>
+                      <button type="button" onClick={() => {
+                        setImportHistory([]);
+                        try { sessionStorage.removeItem('bnb_import_history'); } catch {}
+                      }} className="text-xs text-gray-300 hover:text-red-500">清除</button>
+                    </div>
+                    <div className="space-y-1">
+                      {importHistory.map((h, i) => (
+                        <div key={i} className="flex flex-wrap items-center gap-3 text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg">
+                          <span className="text-gray-400">{h.at}</span>
+                          <span className="font-medium text-gray-700">{h.importMonth} / {h.warehouse}</span>
+                          <span className="text-green-600">匯入 {h.imported} 筆</span>
+                          {h.deleted > 0 && <span className="text-red-500">刪除 {h.deleted} 筆</span>}
+                          {h.skipped > 0 && <span className="text-amber-500">略過重複 {h.skipped} 筆</span>}
+                          <span className="text-gray-300 ml-auto">{h.replace ? '覆蓋' : '追加'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
