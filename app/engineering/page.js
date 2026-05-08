@@ -786,6 +786,16 @@ function EngineeringPageInner() {
     if (!contractForm.projectId || !contractForm.supplierId || !contractForm.contractNo?.trim()) { showToast('請填寫工程案、廠商、合約編號', 'error'); return; }
     if (!contractForm.content?.trim()) { showToast('請填寫合約內容後再存檔', 'error'); return; }
     if (!contractForm.note?.trim()) { showToast('請填寫備註後再存檔', 'error'); return; }
+    // 驗證期數合計 = 合約總金額
+    const _contractTotal = parseFloat(contractForm.totalAmount) || 0;
+    if (_contractTotal > 0 && contractForm.terms.length > 0) {
+      const _existingSum = editingContract ? (editingContract.terms || []).reduce((s, t) => s + Number(t.amount || 0), 0) : 0;
+      const _newSum = contractForm.terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+      if (Math.abs(_existingSum + _newSum - _contractTotal) > 0.01) {
+        showToast(`期數合計 ${(_existingSum + _newSum).toLocaleString()} 與合約總金額 ${_contractTotal.toLocaleString()} 不符，請修正後再存檔`, 'error');
+        return;
+      }
+    }
     setContractSaving(true);
     try {
       const body = {
@@ -2514,11 +2524,61 @@ ${projectRows.map(p => `<tr>
                 </div>
               )}
               <div className="flex justify-between items-center"><label className="text-xs text-gray-500">{editingContract ? '追加期數' : '付款期數'}</label><button type="button" onClick={addContractTermRow} className="text-amber-600 text-sm">＋ 新增一期</button></div>
-              <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">內容</th><th className="px-2 py-1 text-left">備註</th><th className="w-8" /></tr></thead><tbody>
-                {contractForm.terms.length === 0 ? (
-                  <tr><td colSpan={6} className="px-2 py-3 text-center text-gray-400 text-xs">{editingContract ? '點擊上方「＋ 新增一期」追加期數' : '尚未新增期數'}</td></tr>
-                ) : contractForm.terms.map((t, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={t.termName} onChange={e => updateContractTerm(i, 'termName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" /></td><td className="px-2 py-1"><input type="number" value={t.amount} onChange={e => updateContractTerm(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" /></td><td className="px-2 py-1"><input type="date" value={t.dueDate} onChange={e => updateContractTerm(i, 'dueDate', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" /></td><td className="px-2 py-1"><input value={t.content || ''} onChange={e => updateContractTerm(i, 'content', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="付款內容" /></td><td className="px-2 py-1"><input value={t.note || ''} onChange={e => updateContractTerm(i, 'note', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="備註" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractTermRow(i)} className="text-red-500">×</button></td></tr>))}
-              </tbody></table></div>
+              {(() => {
+                const newTermSum = contractForm.terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+                const existingTermSum = editingContract ? (editingContract.terms || []).reduce((s, t) => s + Number(t.amount || 0), 0) : 0;
+                const totalTermSum = existingTermSum + newTermSum;
+                const contractTotal = parseFloat(contractForm.totalAmount) || 0;
+                const hasMismatch = contractTotal > 0 && contractForm.terms.length > 0 && Math.abs(totalTermSum - contractTotal) > 0.01;
+                const isMatch = contractTotal > 0 && contractForm.terms.length > 0 && !hasMismatch;
+                return (
+                  <>
+                    <div className={`border rounded-lg overflow-hidden ${hasMismatch ? 'border-red-300' : ''}`}>
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">內容</th><th className="px-2 py-1 text-left">備註</th><th className="w-8" /></tr></thead>
+                        <tbody>
+                          {contractForm.terms.length === 0 ? (
+                            <tr><td colSpan={6} className="px-2 py-3 text-center text-gray-400 text-xs">{editingContract ? '點擊上方「＋ 新增一期」追加期數' : '尚未新增期數'}</td></tr>
+                          ) : contractForm.terms.map((t, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={t.termName} onChange={e => updateContractTerm(i, 'termName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" /></td><td className="px-2 py-1"><input type="number" value={t.amount} onChange={e => updateContractTerm(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" /></td><td className="px-2 py-1"><input type="date" value={t.dueDate} onChange={e => updateContractTerm(i, 'dueDate', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" /></td><td className="px-2 py-1"><input value={t.content || ''} onChange={e => updateContractTerm(i, 'content', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="付款內容" /></td><td className="px-2 py-1"><input value={t.note || ''} onChange={e => updateContractTerm(i, 'note', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="備註" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractTermRow(i)} className="text-red-500">×</button></td></tr>))}
+                        </tbody>
+                        {contractForm.terms.length > 0 && (
+                          <tfoot className={`border-t text-xs font-semibold ${hasMismatch ? 'bg-red-50' : isMatch ? 'bg-green-50' : 'bg-gray-50'}`}>
+                            <tr>
+                              <td className="px-2 py-1.5 text-gray-500">
+                                {editingContract && existingTermSum > 0 ? `追加 ${contractForm.terms.length} 期（含舊計）` : `合計 ${contractForm.terms.length} 期`}
+                              </td>
+                              <td className={`px-2 py-1.5 text-right font-bold ${hasMismatch ? 'text-red-600' : isMatch ? 'text-green-700' : 'text-gray-700'}`}>
+                                {editingContract && existingTermSum > 0
+                                  ? <span title={`舊有 ${existingTermSum.toLocaleString()} ＋ 追加 ${newTermSum.toLocaleString()}`}>{totalTermSum.toLocaleString()}</span>
+                                  : newTermSum.toLocaleString()
+                                }
+                              </td>
+                              <td colSpan={3} className="px-2 py-1.5">
+                                {contractTotal > 0 && (
+                                  <span className={`text-xs ${hasMismatch ? 'text-red-600 font-semibold' : 'text-green-600'}`}>
+                                    {hasMismatch
+                                      ? `⚠ 合約金額 ${contractTotal.toLocaleString()}，差 ${(totalTermSum - contractTotal > 0 ? '+' : '') + (totalTermSum - contractTotal).toLocaleString()}`
+                                      : '✓ 與合約金額相符'}
+                                  </span>
+                                )}
+                              </td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                    {hasMismatch && (
+                      <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                        <span className="text-base leading-none mt-0.5">⚠</span>
+                        <span>
+                          期數金額合計 <strong>{totalTermSum.toLocaleString()}</strong> 與合約總金額 <strong>{contractTotal.toLocaleString()}</strong> 不符（相差 {Math.abs(totalTermSum - contractTotal).toLocaleString()}），請修正後才能存檔。
+                        </span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               <div className="flex justify-between items-center"><label className="text-xs text-gray-500">材料（會連動至「材料使用」TAB）</label><button type="button" onClick={addContractMaterialRow} className="text-amber-600 text-sm">＋ 新增一筆</button></div>
               <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-2 py-1 text-left">材料名稱</th><th className="px-2 py-1 text-right">數量</th><th className="px-2 py-1 text-right">金額</th><th className="w-8" /></tr></thead><tbody>
                 {(contractForm.materials || []).map((m, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={m.materialName} onChange={e => updateContractMaterial(i, 'materialName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="材料名稱" /></td><td className="px-2 py-1"><input type="number" value={m.quantity} onChange={e => updateContractMaterial(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="any" min="0" /></td><td className="px-2 py-1"><input type="number" value={m.amount} onChange={e => updateContractMaterial(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" min="0" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractMaterialRow(i)} className="text-red-500">×</button></td></tr>))}
