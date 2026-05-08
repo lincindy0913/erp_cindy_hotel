@@ -92,6 +92,7 @@ function AssetsPageInner() {
   const [form, setForm] = useState({
     name: '', assetType: 'BUILDING', address: '', areaSqm: '',
     acquisitionDate: '', notes: '', rentalPropertyId: '',
+    serialNo: '', category: '',
     isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false,
   });
 
@@ -229,6 +230,7 @@ function AssetsPageInner() {
     setForm({
       name: '', assetType: 'BUILDING', address: '', areaSqm: '',
       acquisitionDate: '', notes: '', rentalPropertyId: linkProperty || '',
+      serialNo: '', category: '',
       isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false,
     });
     setShowModal(true);
@@ -244,6 +246,8 @@ function AssetsPageInner() {
       acquisitionDate: a.acquisitionDate || '',
       notes: a.notes || '',
       rentalPropertyId: a.rentalPropertyId != null ? String(a.rentalPropertyId) : '',
+      serialNo: a.serialNo || '',
+      category: a.category || '',
       isAvailableForRental: a.isAvailableForRental || false,
       hasHouseTax: a.hasHouseTax || false,
       hasLandTax: a.hasLandTax || false,
@@ -263,6 +267,8 @@ function AssetsPageInner() {
         areaSqm: form.areaSqm === '' ? null : form.areaSqm,
         acquisitionDate: form.acquisitionDate || null,
         notes: form.notes.trim() || null,
+        serialNo: form.serialNo.trim() || null,
+        category: form.category.trim() || null,
         rentalPropertyId: form.rentalPropertyId === '' ? null : form.rentalPropertyId,
         isAvailableForRental: form.isAvailableForRental,
         hasHouseTax: form.hasHouseTax,
@@ -464,7 +470,13 @@ function AssetsPageInner() {
                           {hasIncome || hasTax || hasMaint ? fmtMoney(p.netProfit) : '—'}
                         </td>
                         <td className="px-3 py-2 text-xs text-teal-700">
-                          {p.asset?.name || <span className="text-gray-300">未建立</span>}
+                          {p.asset ? (
+                            <span>
+                              {p.asset.name}
+                              {p.asset.serialNo && <span className="ml-1 text-gray-400">#{p.asset.serialNo}</span>}
+                              {p.asset.category && <span className="ml-1 text-gray-400">({p.asset.category})</span>}
+                            </span>
+                          ) : <span className="text-gray-300">未建立</span>}
                         </td>
                         <td className="px-3 py-2">
                           <AssetFlagBadges asset={p.asset} />
@@ -476,7 +488,7 @@ function AssetsPageInner() {
                             ) : (
                               <button className="text-teal-600 hover:underline text-xs" onClick={() => {
                                 setEditing(null);
-                                setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                                setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
                                 setShowModal(true);
                               }}>新增資產</button>
                             )}
@@ -635,9 +647,13 @@ function AssetsPageInner() {
                 {/* Asset info */}
                 {selected.asset && (
                   <div className="mt-4 border rounded p-2 bg-gray-50 text-xs space-y-1">
-                    <p className="font-semibold text-gray-700">資產主檔：{selected.asset.name}</p>
+                    <p className="font-semibold text-gray-700">
+                      資產主檔：{selected.asset.name}
+                      {selected.asset.serialNo && <span className="ml-1 text-gray-400">#{selected.asset.serialNo}</span>}
+                    </p>
                     <p className="text-gray-500">
                       {ASSET_TYPE_OPTIONS.find(o => o.value === selected.asset.assetType)?.label || selected.asset.assetType}
+                      {selected.asset.category && ` · ${selected.asset.category}`}
                       {selected.asset.areaSqm && ` · ${selected.asset.areaSqm} ㎡`}
                       {selected.asset.acquisitionDate && ` · 取得：${selected.asset.acquisitionDate}`}
                     </p>
@@ -655,7 +671,7 @@ function AssetsPageInner() {
                     className="mt-3 text-xs px-3 py-1.5 bg-teal-600 text-white rounded hover:bg-teal-700"
                     onClick={() => {
                       setEditing(null);
-                      setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: selected.address || '', areaSqm: '', acquisitionDate: '', notes: '', rentalPropertyId: String(selected.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                      setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: selected.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(selected.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
                       setShowModal(true);
                     }}
                   >
@@ -709,6 +725,18 @@ function AssetsPageInner() {
                 <label className="text-gray-600">名稱 *</label>
                 <input className="w-full border rounded px-3 py-2 mt-1" value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-gray-600">序號</label>
+                  <input className="w-full border rounded px-3 py-2 mt-1" placeholder="例：A001" value={form.serialNo}
+                    onChange={e => setForm(f => ({ ...f, serialNo: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-gray-600">類別</label>
+                  <input className="w-full border rounded px-3 py-2 mt-1" placeholder="例：住宅、商業" value={form.category}
+                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+                </div>
               </div>
               <div>
                 <label className="text-gray-600">資產類型</label>

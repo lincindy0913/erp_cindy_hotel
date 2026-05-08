@@ -1525,6 +1525,8 @@ model Asset {
   areaSqm          Decimal?         @map("area_sqm") @db.Decimal(14, 2)
   acquisitionDate  String?          @map("acquisition_date") @db.VarChar(20)
   notes                String?          @db.Text
+  serialNo             String?          @map("serial_no") @db.VarChar(50)
+  category             String?          @db.VarChar(100)
   isAvailableForRental Boolean          @default(false) @map("is_available_for_rental")
   hasHouseTax          Boolean          @default(false) @map("has_house_tax")
   hasLandTax           Boolean          @default(false) @map("has_land_tax")

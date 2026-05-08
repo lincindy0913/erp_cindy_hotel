@@ -96,6 +96,12 @@ export async function PATCH(request, { params }) {
     if (body.acquisitionDate !== undefined) {
       data.acquisitionDate = body.acquisitionDate == null || body.acquisitionDate === '' ? null : String(body.acquisitionDate).trim();
     }
+    if (body.serialNo !== undefined) {
+      data.serialNo = body.serialNo == null || body.serialNo === '' ? null : String(body.serialNo).trim();
+    }
+    if (body.category !== undefined) {
+      data.category = body.category == null || body.category === '' ? null : String(body.category).trim();
+    }
     if (body.isAvailableForRental !== undefined) data.isAvailableForRental = body.isAvailableForRental === true;
     if (body.hasHouseTax !== undefined) data.hasHouseTax = body.hasHouseTax === true;
     if (body.hasLandTax !== undefined) data.hasLandTax = body.hasLandTax === true;

@@ -81,6 +81,8 @@ export async function POST(request) {
           areaSqm: areaSqm != null ? areaSqm : null,
           acquisitionDate: body.acquisitionDate?.trim() || null,
           notes: body.notes?.trim() || null,
+          serialNo: body.serialNo?.trim() || null,
+          category: body.category?.trim() || null,
           isAvailableForRental: body.isAvailableForRental === true,
           hasHouseTax: body.hasHouseTax === true,
           hasLandTax: body.hasLandTax === true,
