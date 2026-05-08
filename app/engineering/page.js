@@ -94,6 +94,8 @@ function EngineeringPageInner() {
   const [paymentOrders, setPaymentOrders] = useState([]);
   /** 儀表板用：全工程案收款累計（不受收款 tab 篩選影響） */
   const [allIncomesForDash, setAllIncomesForDash] = useState([]);
+  const [allInputInvsForDash, setAllInputInvsForDash] = useState([]);
+  const [allOutputInvsForDash, setAllOutputInvsForDash] = useState([]);
 
   // 搜尋篩選
   const [searchDateFrom, setSearchDateFrom] = useState('');
@@ -226,6 +228,8 @@ function EngineeringPageInner() {
       if (o.status === '已執行') paidExecuted += getActualPaid(o);
     }
     const sumIncome = allIncomesForDash.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const sumInputInvoices = allInputInvsForDash.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+    const sumOutputInvoices = allOutputInvsForDash.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
     const today = new Date().toISOString().slice(0, 10);
     const weekLater = new Date();
     weekLater.setDate(weekLater.getDate() + 7);
@@ -254,11 +258,13 @@ function EngineeringPageInner() {
       sumVendorContracts,
       paidExecuted,
       sumIncome,
+      sumInputInvoices,
+      sumOutputInvoices,
       overdueTerms,
       dueThisWeek,
       projectCount: projects.length,
     };
-  }, [projects, contracts, paymentOrders, allIncomesForDash]);
+  }, [projects, contracts, paymentOrders, allIncomesForDash, allInputInvsForDash, allOutputInvsForDash]);
 
   function handlePayPrint() {
     const rows = sortedPaymentOrders;
@@ -403,6 +409,7 @@ function EngineeringPageInner() {
   useEffect(() => {
     fetchProjects();
     fetchSuppliers();
+    refreshDashInvoices();
   }, []);
 
   useEffect(() => {
@@ -507,6 +514,21 @@ function EngineeringPageInner() {
       setAllIncomesForDash(Array.isArray(data) ? data : []);
     } catch {
       setAllIncomesForDash([]);
+    }
+  }
+
+  async function refreshDashInvoices() {
+    try {
+      const [iRes, oRes] = await Promise.all([
+        fetch('/api/engineering/input-invoices'),
+        fetch('/api/engineering/output-invoices'),
+      ]);
+      const [iData, oData] = await Promise.all([iRes.json(), oRes.json()]);
+      setAllInputInvsForDash(Array.isArray(iData) ? iData : []);
+      setAllOutputInvsForDash(Array.isArray(oData) ? oData : []);
+    } catch {
+      setAllInputInvsForDash([]);
+      setAllOutputInvsForDash([]);
     }
   }
 
@@ -623,6 +645,7 @@ function EngineeringPageInner() {
       showToast(editingInputInv ? '已更新' : '已新增', 'success');
       setShowInputModal(false);
       fetchInputInvoices(invProjectFilter || undefined);
+      refreshDashInvoices();
     } catch { showToast('儲存失敗', 'error'); }
     finally { setInputInvSaving(false); }
   }
@@ -631,6 +654,7 @@ function EngineeringPageInner() {
     if (!confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`)) return;
     await fetch(`/api/engineering/input-invoices/${inv.id}`, { method: 'DELETE' });
     fetchInputInvoices(invProjectFilter || undefined);
+    refreshDashInvoices();
   }
 
   async function saveOutputInvoice() {
@@ -646,6 +670,7 @@ function EngineeringPageInner() {
       showToast(editingOutputInv ? '已更新' : '已新增', 'success');
       setShowOutputModal(false);
       fetchOutputInvoices(invProjectFilter || undefined);
+      refreshDashInvoices();
     } catch { showToast('儲存失敗', 'error'); }
     finally { setOutputInvSaving(false); }
   }
@@ -654,6 +679,7 @@ function EngineeringPageInner() {
     if (!confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`)) return;
     await fetch(`/api/engineering/output-invoices/${inv.id}`, { method: 'DELETE' });
     fetchOutputInvoices(invProjectFilter || undefined);
+    refreshDashInvoices();
   }
 
   function openAddProject() {
@@ -1340,7 +1366,7 @@ ${projectRows.map(p => `<tr>
 
               {/* ── 列表視圖 ── */}
               {mgmtView === 'table' && (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 text-xs text-gray-500">
                       <tr>
@@ -1351,6 +1377,8 @@ ${projectRows.map(p => `<tr>
                         <th className="px-4 py-3 text-right font-medium">預算</th>
                         <th className="px-4 py-3 font-medium" style={{width:'160px'}}>合約/預算</th>
                         <th className="px-4 py-3 font-medium" style={{width:'160px'}}>已付/合約</th>
+                        <th className="px-4 py-3 text-right font-medium text-blue-600">進項發票</th>
+                        <th className="px-4 py-3 text-right font-medium text-green-600">銷項發票</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1375,6 +1403,8 @@ ${projectRows.map(p => `<tr>
                             const isPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount);
                             return !isPaid && t.dueDate < new Date().toISOString().slice(0, 10);
                           }).length, 0);
+                        const inputInvTotal = allInputInvsForDash.filter(i => i.projectId === proj.id).reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+                        const outputInvTotal = allOutputInvsForDash.filter(i => i.projectId === proj.id).reduce((s, i) => s + Number(i.totalAmount || 0), 0);
                         const statusStyle = proj.status === '進行中' ? 'bg-blue-100 text-blue-700' : proj.status === '已結案' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
                         return (
                           <tr key={proj.id} className={`hover:bg-gray-50 ${overBudget ? 'bg-red-50/30' : ''}`}>
@@ -1414,6 +1444,22 @@ ${projectRows.map(p => `<tr>
                                 <span className="text-xs text-gray-500 whitespace-nowrap">{paidPct.toFixed(0)}%</span>
                               </div>
                             </td>
+                            <td className="px-4 py-3 text-right text-xs">
+                              {inputInvTotal > 0 ? (
+                                <button type="button" onClick={() => { setInvProjectFilter(String(proj.id)); switchEngineeringTab('inputInvoices'); }}
+                                  className="text-blue-700 font-medium hover:underline">
+                                  NT$ {formatNum(inputInvTotal)}
+                                </button>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right text-xs">
+                              {outputInvTotal > 0 ? (
+                                <button type="button" onClick={() => { setInvProjectFilter(String(proj.id)); switchEngineeringTab('outputInvoices'); }}
+                                  className="text-green-700 font-medium hover:underline">
+                                  NT$ {formatNum(outputInvTotal)}
+                                </button>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
                           </tr>
                         );
                       })}
@@ -1424,6 +1470,8 @@ ${projectRows.map(p => `<tr>
                       const tContracts = tot.reduce((s, p) => s + contracts.filter(c => c.projectId === p.id).reduce((cs, c) => cs + Number(c.totalAmount || 0), 0), 0);
                       const tPaid = tot.reduce((s, p) => s + contracts.filter(c => c.projectId === p.id).reduce((cs, c) =>
                         cs + (c.terms || []).reduce((ts, t) => ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0), 0), 0), 0);
+                      const tInputInv = tot.reduce((s, p) => s + allInputInvsForDash.filter(i => i.projectId === p.id).reduce((is, i) => is + Number(i.totalAmount || 0), 0), 0);
+                      const tOutputInv = tot.reduce((s, p) => s + allOutputInvsForDash.filter(i => i.projectId === p.id).reduce((is, i) => is + Number(i.totalAmount || 0), 0), 0);
                       return (
                         <tfoot className="bg-gray-50 font-semibold text-sm border-t border-gray-200">
                           <tr>
@@ -1431,6 +1479,8 @@ ${projectRows.map(p => `<tr>
                             <td className="px-4 py-3 text-right text-gray-700">NT$ {formatNum(tBudget)}</td>
                             <td className="px-4 py-3 text-xs text-gray-600">合約 NT$ {formatNum(tContracts)}</td>
                             <td className="px-4 py-3 text-xs text-green-700">已付 NT$ {formatNum(tPaid)}</td>
+                            <td className="px-4 py-3 text-right text-xs text-blue-700">{tInputInv > 0 ? `NT$ ${formatNum(tInputInv)}` : '—'}</td>
+                            <td className="px-4 py-3 text-right text-xs text-green-700">{tOutputInv > 0 ? `NT$ ${formatNum(tOutputInv)}` : '—'}</td>
                           </tr>
                         </tfoot>
                       );

@@ -24,6 +24,8 @@ export default function EngineeringHeaderInsights({ stats, onSwitchTab }) {
     sumVendorContracts,
     paidExecuted,
     sumIncome,
+    sumInputInvoices,
+    sumOutputInvoices,
     overdueTerms,
     dueThisWeek,
   } = stats;
@@ -82,7 +84,7 @@ export default function EngineeringHeaderInsights({ stats, onSwitchTab }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
           <p className="text-xs text-gray-500">工程案（進行中）</p>
           <p className="text-lg font-bold text-gray-800">{activeProjects} <span className="text-xs font-normal text-gray-400">/ {projectCount}</span></p>
@@ -107,6 +109,16 @@ export default function EngineeringHeaderInsights({ stats, onSwitchTab }) {
           <p className="text-xs text-gray-500">收款登錄累計</p>
           <p className="text-lg font-bold text-teal-700">${formatNum(sumIncome)}</p>
         </div>
+        <button type="button" onClick={() => onSwitchTab('inputInvoices')}
+          className="bg-white rounded-lg border border-blue-200 p-3 shadow-sm text-left hover:bg-blue-50 transition-colors">
+          <p className="text-xs text-blue-600">進項發票累計</p>
+          <p className="text-lg font-bold text-blue-800">${formatNum(sumInputInvoices ?? 0)}</p>
+        </button>
+        <button type="button" onClick={() => onSwitchTab('outputInvoices')}
+          className="bg-white rounded-lg border border-green-200 p-3 shadow-sm text-left hover:bg-green-50 transition-colors">
+          <p className="text-xs text-green-600">銷項發票累計</p>
+          <p className="text-lg font-bold text-green-800">${formatNum(sumOutputInvoices ?? 0)}</p>
+        </button>
       </div>
     </div>
   );
