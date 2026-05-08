@@ -1680,7 +1680,7 @@ export default function BnbPage() {
               </button>
               <button
                 onClick={() => { setShowImportPanel(v => !v); setImportResult(null); }}
-                className={`px-3 py-1.5 text-sm rounded-lg border flex items-center gap-1 transition-colors ${showImportPanel ? 'bg-violet-100 text-violet-700 border-violet-300' : 'hover:bg-gray-50 text-gray-600'}`}>
+                className={`px-3 py-1.5 text-sm rounded-lg border flex items-center gap-1 transition-colors font-medium ${showImportPanel ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100'}`}>
                 ↑ 雲掌櫃匯入
               </button>
               <div className="ml-auto flex items-end gap-2">
