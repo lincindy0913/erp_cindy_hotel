@@ -1121,8 +1121,12 @@ ${projectRows.map(p => `<tr>
                     <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{(searchDateFrom || searchDateTo || searchSupplierId || searchWarehouse) ? '無符合條件的工程案' : '尚無工程案，請新增'}</td></tr>
                   ) : sortedProjects.map(p => (
                     <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-mono">{p.code}</td>
-                      <td className="px-4 py-2 font-medium">{p.name}</td>
+                      <td className="px-4 py-2 font-mono">
+                        <Link href={`/engineering/${p.id}`} className="text-amber-700 hover:underline">{p.code}</Link>
+                      </td>
+                      <td className="px-4 py-2 font-medium">
+                        <Link href={`/engineering/${p.id}`} className="hover:text-amber-700 hover:underline">{p.name}</Link>
+                      </td>
                       <td className="px-4 py-2">{p.clientName || '－'}</td>
                       <td className="px-4 py-2">{p.warehouseRef?.name || p.warehouse || '－'} {p.departmentRef ? `／${p.departmentRef.name}` : ''}</td>
                       <td className="px-4 py-2 text-xs">{p.location || '－'} {(p.buildingNo || p.permitNo) ? `（${[p.buildingNo, p.permitNo].filter(Boolean).join('、')}）` : ''}</td>
@@ -1409,7 +1413,7 @@ ${projectRows.map(p => `<tr>
                         return (
                           <tr key={proj.id} className={`hover:bg-gray-50 ${overBudget ? 'bg-red-50/30' : ''}`}>
                             <td className="px-4 py-3">
-                              <div className="font-medium text-gray-800">{proj.code}</div>
+                              <Link href={`/engineering/${proj.id}`} className="font-medium text-amber-700 hover:underline">{proj.code}</Link>
                               <div className="text-xs text-gray-500 truncate max-w-[180px]">{proj.name}</div>
                             </td>
                             <td className="px-4 py-3">
@@ -1623,6 +1627,7 @@ ${projectRows.map(p => `<tr>
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle}`}>{proj.status}</span>
                           {overBudget && <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">超支</span>}
                           <span className="font-semibold text-gray-800">{proj.code} {proj.name}</span>
+                          <Link href={`/engineering/${proj.id}`} onClick={e => e.stopPropagation()} className="text-xs text-amber-600 hover:underline ml-1">詳情</Link>
                         </div>
                         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
                           {proj.clientName && <span>業主：{proj.clientName}</span>}
