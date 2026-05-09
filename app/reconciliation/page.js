@@ -246,6 +246,20 @@ function ReconciliationPageInner() {
 
     return (
     <div className="space-y-4">
+      {/* 提示：已整合到 PMS 收入 */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-amber-500 text-lg shrink-0">ℹ️</span>
+          <div>
+            <p className="text-sm font-medium text-amber-800">信用卡對帳已整合至 PMS 收入管理</p>
+            <p className="text-xs text-amber-600 mt-0.5">建議前往 PMS 收入頁面的「信用卡對帳」tab 操作，功能更完整且同步。此處保留為舊版備查介面。</p>
+          </div>
+        </div>
+        <a href="/pms-income?tab=creditCardStatement" className="shrink-0 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-amber-600">
+          前往新版 →
+        </a>
+      </div>
+
       {/* Inner sub-tabs */}
       <div className="flex border-b">
         <button

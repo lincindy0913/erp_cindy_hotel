@@ -4,6 +4,8 @@ import Navigation from '@/components/Navigation';
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
 const fmtPct = (n, d) => (d ? ((n / d) * 100).toFixed(1) + '%' : '—');
+const diff = (a, b) => (a == null || b == null) ? null : a - b;
+const diffPct = (a, b) => (!b || b === 0) ? null : (((a - b) / Math.abs(b)) * 100).toFixed(1) + '%';
 
 const LEVEL1_COLOR = {
   '收入': 'text-blue-700',
@@ -23,6 +25,7 @@ export default function ProfitLossPage() {
   const [yearMonth, setYearMonth] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [compareYearMonth, setCompareYearMonth] = useState('');
   const [warehouses, setWarehouses] = useState([]);
   const [warehouse,  setWarehouse]  = useState('');
   const [data,  setData]   = useState(null);
@@ -31,11 +34,6 @@ export default function ProfitLossPage() {
   const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
-    fetch('/api/pms-income/batches?limit=1')
-      .then(r => r.json())
-      .then(() => {})
-      .catch(() => {});
-    // 取館別列表
     fetch('/api/cashflow/accounts')
       .then(r => r.json())
       .then(d => {
@@ -47,14 +45,15 @@ export default function ProfitLossPage() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const q = `yearMonth=${yearMonth}${warehouse ? `&warehouse=${encodeURIComponent(warehouse)}` : ''}`;
+      let q = `yearMonth=${yearMonth}${warehouse ? `&warehouse=${encodeURIComponent(warehouse)}` : ''}`;
+      if (compareYearMonth) q += `&compareYearMonth=${compareYearMonth}`;
       const res = await fetch(`/api/reports/profit-loss?${q}`);
       const d   = await res.json();
       if (!res.ok) { setError(d.error?.message || '載入失敗'); setData(null); }
       else setData(d);
     } catch { setError('載入失敗'); }
     setLoading(false);
-  }, [yearMonth, warehouse]);
+  }, [yearMonth, compareYearMonth, warehouse]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -62,7 +61,17 @@ export default function ProfitLossPage() {
     setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
   }
 
-  const s = data?.summary || {};
+  const s  = data?.summary || {};
+  const cs = data?.compareSummary;
+  const hasCompare = !!cs;
+
+  // Build a map of compare groups keyed by level1|plGroup
+  const compareGroupMap = {};
+  if (data?.compareGroups) {
+    for (const g of data.compareGroups) {
+      compareGroupMap[`${g.level1}|${g.plGroup}`] = g;
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -71,10 +80,14 @@ export default function ProfitLossPage() {
 
         {/* 篩選列 */}
         <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-end justify-between">
-          <div className="flex gap-3 items-end">
+          <div className="flex gap-3 items-end flex-wrap">
             <div>
               <label className="block text-xs text-gray-500 mb-1">月份</label>
               <input type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">對比月份（選填）</label>
+              <input type="month" value={compareYearMonth} onChange={e => setCompareYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">館別（空白=全部）</label>
@@ -83,15 +96,18 @@ export default function ProfitLossPage() {
                 {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
+            {compareYearMonth && (
+              <button onClick={() => setCompareYearMonth('')} className="text-xs text-gray-400 hover:text-gray-600 border rounded px-2 py-1.5">清除對比</button>
+            )}
             <button onClick={load} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700">重新載入</button>
           </div>
           <div className="text-sm text-gray-500">
             損益表 {data?.yearMonth} {data?.warehouse || '（全館）'}
+            {hasCompare && <span className="text-gray-400 ml-2">vs {data.compareYearMonth}</span>}
           </div>
         </div>
 
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
-
         {loading && <div className="text-center py-12 text-gray-400">計算中…</div>}
 
         {data && !loading && (
@@ -99,15 +115,25 @@ export default function ProfitLossPage() {
             {/* 損益摘要卡片 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: '營業收入',   val: s.totalIncome,       color: 'border-blue-500',  text: 'text-blue-700' },
-                { label: '毛利',       val: s.grossProfit,       color: 'border-teal-500',  text: 'text-teal-700', pct: fmtPct(s.grossProfit, s.totalIncome) },
-                { label: '營業淨利',   val: s.operatingIncome,   color: 'border-green-500', text: 'text-green-700', pct: fmtPct(s.operatingIncome, s.totalIncome) },
-                { label: '稅前淨利',   val: s.netIncome,         color: s.netIncome >= 0 ? 'border-green-500' : 'border-red-500', text: s.netIncome >= 0 ? 'text-green-700' : 'text-red-700', pct: fmtPct(s.netIncome, s.totalIncome) },
-              ].map(({ label, val, color, text, pct }) => (
+                { label: '營業收入',   val: s.totalIncome,       cval: cs?.totalIncome,       color: 'border-blue-500',  text: 'text-blue-700' },
+                { label: '毛利',       val: s.grossProfit,       cval: cs?.grossProfit,       color: 'border-teal-500',  text: 'text-teal-700', pct: fmtPct(s.grossProfit, s.totalIncome) },
+                { label: '營業淨利',   val: s.operatingIncome,   cval: cs?.operatingIncome,   color: 'border-green-500', text: 'text-green-700', pct: fmtPct(s.operatingIncome, s.totalIncome) },
+                { label: '稅前淨利',   val: s.netIncome,         cval: cs?.netIncome,         color: s.netIncome >= 0 ? 'border-green-500' : 'border-red-500', text: s.netIncome >= 0 ? 'text-green-700' : 'text-red-700', pct: fmtPct(s.netIncome, s.totalIncome) },
+              ].map(({ label, val, cval, color, text, pct }) => (
                 <div key={label} className={`bg-white rounded-xl shadow-sm p-4 border-l-4 ${color}`}>
                   <p className="text-xs text-gray-500">{label}</p>
                   <p className={`text-xl font-bold ${text}`}>{fmt(val)}</p>
                   {pct && <p className="text-xs text-gray-400">{pct}</p>}
+                  {hasCompare && cval != null && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      對比 {fmt(cval)}
+                      {diff(val, cval) !== null && (
+                        <span className={diff(val, cval) >= 0 ? 'text-green-600 ml-1' : 'text-red-500 ml-1'}>
+                          {diff(val, cval) >= 0 ? '▲' : '▼'}{fmt(Math.abs(diff(val, cval)))}
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -126,52 +152,69 @@ export default function ProfitLossPage() {
 
             {/* 損益表主體 */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b bg-gray-50 flex justify-between">
+              <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
                 <h2 className="font-bold text-gray-800">損益明細</h2>
-                <button onClick={() => {
-                  const all = {};
-                  (data.groups || []).forEach(g => { all[`${g.level1}|${g.plGroup}`] = true; });
-                  setExpandedGroups(all);
-                }} className="text-xs text-blue-600 hover:underline">展開全部</button>
+                <div className="flex gap-3 items-center">
+                  {hasCompare && (
+                    <span className="text-xs text-gray-400">
+                      本期 {data.yearMonth} · 對比 {data.compareYearMonth}
+                    </span>
+                  )}
+                  <button onClick={() => {
+                    const all = {};
+                    (data.groups || []).forEach(g => { all[`${g.level1}|${g.plGroup}`] = true; });
+                    setExpandedGroups(all);
+                  }} className="text-xs text-blue-600 hover:underline">展開全部</button>
+                </div>
               </div>
+
+              {/* 表頭（有對比期時顯示） */}
+              {hasCompare && (
+                <div className="flex justify-end items-center px-6 py-2 bg-blue-50 border-b text-xs text-gray-500 gap-6">
+                  <span className="w-28 text-right font-medium">本期 {data.yearMonth}</span>
+                  <span className="w-28 text-right font-medium">對比 {data.compareYearMonth}</span>
+                  <span className="w-20 text-right font-medium">增減</span>
+                  <span className="w-16 text-right font-medium">增減率</span>
+                </div>
+              )}
 
               <div className="divide-y divide-gray-100">
                 {/* 一、營業收入 */}
-                <SectionHeader label="一、營業收入" amount={s.totalIncome} total={s.totalIncome} />
+                <SectionHeader label="一、營業收入" amount={s.totalIncome} cAmount={cs?.totalIncome} total={s.totalIncome} hasCompare={hasCompare} />
                 {(data.groups || []).filter(g => g.level1 === '收入').map(g => (
-                  <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} total={s.totalIncome}
+                  <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} compareGroup={compareGroupMap[`${g.level1}|${g.plGroup}`]} total={s.totalIncome} hasCompare={hasCompare}
                     expanded={expandedGroups[`${g.level1}|${g.plGroup}`]}
                     onToggle={() => toggleGroup(`${g.level1}|${g.plGroup}`)} />
                 ))}
 
                 {/* 二、收款成本 */}
-                <SectionHeader label="二、收款成本" amount={-s.ccFee} total={s.totalIncome} negative />
+                <SectionHeader label="二、收款成本" amount={-s.ccFee} cAmount={cs ? -cs.ccFee : null} total={s.totalIncome} negative hasCompare={hasCompare} />
                 {(data.groups || []).filter(g => g.plGroup === '收款成本').map(g => (
-                  <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} total={s.totalIncome} isExpense
+                  <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} compareGroup={compareGroupMap[`${g.level1}|${g.plGroup}`]} total={s.totalIncome} isExpense hasCompare={hasCompare}
                     expanded={expandedGroups[`${g.level1}|${g.plGroup}`]}
                     onToggle={() => toggleGroup(`${g.level1}|${g.plGroup}`)} />
                 ))}
 
                 {/* 毛利 */}
-                <SubtotalRow label="毛利" amount={s.grossProfit} total={s.totalIncome} highlight="teal" />
+                <SubtotalRow label="毛利" amount={s.grossProfit} cAmount={cs?.grossProfit} total={s.totalIncome} highlight="teal" hasCompare={hasCompare} />
 
                 {/* 三、營業費用 */}
-                <SectionHeader label="三、營業費用" amount={-s.totalOpExp} total={s.totalIncome} negative />
+                <SectionHeader label="三、營業費用" amount={-s.totalOpExp} cAmount={cs ? -cs.totalOpExp : null} total={s.totalIncome} negative hasCompare={hasCompare} />
                 {(data.groups || []).filter(g => g.level1 === '費用' && g.plGroup !== '收款成本').map(g => (
-                  <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} total={s.totalIncome} isExpense
+                  <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} compareGroup={compareGroupMap[`${g.level1}|${g.plGroup}`]} total={s.totalIncome} isExpense hasCompare={hasCompare}
                     expanded={expandedGroups[`${g.level1}|${g.plGroup}`]}
                     onToggle={() => toggleGroup(`${g.level1}|${g.plGroup}`)} />
                 ))}
 
                 {/* 營業淨利 */}
-                <SubtotalRow label="四、營業淨利（EBIT）" amount={s.operatingIncome} total={s.totalIncome} highlight="green" />
+                <SubtotalRow label="四、營業淨利（EBIT）" amount={s.operatingIncome} cAmount={cs?.operatingIncome} total={s.totalIncome} highlight="green" hasCompare={hasCompare} />
 
                 {/* 五、業外 */}
                 {(data.groups || []).filter(g => g.level1 === '業外').length > 0 && (
                   <>
-                    <SectionHeader label="五、業外收支" amount={s.bizOutsideNet} total={s.totalIncome} />
+                    <SectionHeader label="五、業外收支" amount={s.bizOutsideNet} cAmount={cs?.bizOutsideNet} total={s.totalIncome} hasCompare={hasCompare} />
                     {(data.groups || []).filter(g => g.level1 === '業外').map(g => (
-                      <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} total={s.totalIncome}
+                      <GroupRow key={`${g.level1}|${g.plGroup}`} group={g} compareGroup={compareGroupMap[`${g.level1}|${g.plGroup}`]} total={s.totalIncome} hasCompare={hasCompare}
                         expanded={expandedGroups[`${g.level1}|${g.plGroup}`]}
                         onToggle={() => toggleGroup(`${g.level1}|${g.plGroup}`)} />
                     ))}
@@ -179,7 +222,7 @@ export default function ProfitLossPage() {
                 )}
 
                 {/* 稅前淨利 */}
-                <SubtotalRow label="稅前淨利" amount={s.netIncome} total={s.totalIncome} highlight={s.netIncome >= 0 ? 'green' : 'red'} bold />
+                <SubtotalRow label="稅前淨利" amount={s.netIncome} cAmount={cs?.netIncome} total={s.totalIncome} highlight={s.netIncome >= 0 ? 'green' : 'red'} bold hasCompare={hasCompare} />
               </div>
             </div>
 
@@ -199,34 +242,53 @@ export default function ProfitLossPage() {
   );
 }
 
-function SectionHeader({ label, amount, total, negative }) {
+function SectionHeader({ label, amount, cAmount, total, negative, hasCompare }) {
   return (
     <div className="flex justify-between items-center px-6 py-3 bg-gray-50 font-semibold text-sm">
       <span className="text-gray-700">{label}</span>
-      <span className={`tabular-nums ${(negative ? amount < 0 : amount >= 0) ? 'text-green-700' : 'text-red-600'}`}>
-        {fmt(amount)}
-        <span className="ml-2 text-xs font-normal text-gray-400">{total ? fmtPct(Math.abs(amount), total) : ''}</span>
-      </span>
+      <div className="flex items-center gap-6">
+        {hasCompare && (
+          <>
+            <span className="w-28 text-right tabular-nums text-gray-500 text-xs">{fmt(cAmount)}</span>
+            <span className="w-20 text-right tabular-nums text-xs text-gray-400">{amount != null && cAmount != null ? fmt(amount - cAmount) : '—'}</span>
+            <span className="w-16 text-right text-xs text-gray-400">{diffPct(amount, cAmount)}</span>
+          </>
+        )}
+        <span className={`tabular-nums ${(negative ? amount < 0 : amount >= 0) ? 'text-green-700' : 'text-red-600'} w-28 text-right`}>
+          {fmt(amount)}
+          <span className="ml-2 text-xs font-normal text-gray-400">{total ? fmtPct(Math.abs(amount), total) : ''}</span>
+        </span>
+      </div>
     </div>
   );
 }
 
-function SubtotalRow({ label, amount, total, highlight, bold }) {
+function SubtotalRow({ label, amount, cAmount, total, highlight, bold, hasCompare }) {
   const colors = { teal: 'bg-teal-50 border-teal-200 text-teal-800', green: 'bg-green-50 border-green-200 text-green-800', red: 'bg-red-50 border-red-200 text-red-800' };
   const cls = colors[highlight] || 'bg-gray-100 border-gray-200 text-gray-800';
   return (
     <div className={`flex justify-between items-center px-6 py-3 border-t-2 ${cls} ${bold ? 'font-bold text-base' : 'font-semibold text-sm'}`}>
       <span>{label}</span>
-      <span className="tabular-nums">
-        {fmt(amount)}
-        <span className="ml-2 text-xs font-normal opacity-70">{total ? fmtPct(Math.abs(amount), total) : ''}</span>
-      </span>
+      <div className="flex items-center gap-6">
+        {hasCompare && (
+          <>
+            <span className="w-28 text-right tabular-nums opacity-70 text-sm">{fmt(cAmount)}</span>
+            <span className="w-20 text-right tabular-nums text-sm opacity-70">{amount != null && cAmount != null ? fmt(amount - cAmount) : '—'}</span>
+            <span className="w-16 text-right text-sm opacity-70">{diffPct(amount, cAmount)}</span>
+          </>
+        )}
+        <span className="tabular-nums w-28 text-right">
+          {fmt(amount)}
+          <span className="ml-2 text-xs font-normal opacity-70">{total ? fmtPct(Math.abs(amount), total) : ''}</span>
+        </span>
+      </div>
     </div>
   );
 }
 
-function GroupRow({ group, total, isExpense, expanded, onToggle }) {
-  const net = isExpense ? -group.groupExpense : group.groupNet;
+function GroupRow({ group, compareGroup, total, isExpense, expanded, onToggle, hasCompare }) {
+  const net  = isExpense ? -group.groupExpense : group.groupNet;
+  const cNet = compareGroup ? (isExpense ? -compareGroup.groupExpense : compareGroup.groupNet) : null;
   const bgCls = GROUP_BG[group.plGroup] || '';
   return (
     <>
@@ -235,10 +297,21 @@ function GroupRow({ group, total, isExpense, expanded, onToggle }) {
           <span className="text-gray-400 text-xs">{expanded ? '▼' : '▶'}</span>
           {group.plGroup}
         </span>
-        <span className={`text-sm tabular-nums font-medium ${net >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
-          {fmt(Math.abs(net))}
-          <span className="ml-2 text-xs font-normal text-gray-400">{total ? fmtPct(Math.abs(net), total) : ''}</span>
-        </span>
+        <div className="flex items-center gap-6">
+          {hasCompare && (
+            <>
+              <span className="w-28 text-right tabular-nums text-xs text-gray-400">{cNet != null ? fmt(Math.abs(cNet)) : '—'}</span>
+              <span className={`w-20 text-right tabular-nums text-xs ${cNet != null && net - cNet >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {cNet != null ? fmt(Math.abs(net - cNet)) : '—'}
+              </span>
+              <span className="w-16 text-right text-xs text-gray-400">{diffPct(net, cNet)}</span>
+            </>
+          )}
+          <span className={`text-sm tabular-nums font-medium w-28 text-right ${net >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+            {fmt(Math.abs(net))}
+            <span className="ml-2 text-xs font-normal text-gray-400">{total ? fmtPct(Math.abs(net), total) : ''}</span>
+          </span>
+        </div>
       </div>
       {expanded && (group.categories || []).map(cat => {
         const catNet = isExpense ? cat.expense : (cat.income - cat.expense);
@@ -252,5 +325,3 @@ function GroupRow({ group, total, isExpense, expanded, onToggle }) {
     </>
   );
 }
-
-

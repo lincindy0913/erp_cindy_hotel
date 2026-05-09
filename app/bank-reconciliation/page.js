@@ -34,6 +34,21 @@ export default function BankReconciliationPage() {
   const [lineForm, setLineForm]   = useState({ txDate: '', description: '', creditAmount: '', debitAmount: '', runningBalance: '', note: '' });
   const [addingLine, setAddingLine] = useState(false);
 
+  // 補建現金流 modal
+  const [buildModal, setBuildModal] = useState(null); // { line } or null
+  const [buildCategoryId, setBuildCategoryId] = useState('');
+  const [buildDesc, setBuildDesc] = useState('');
+  const [buildLoading, setBuildLoading] = useState(false);
+  const [categories, setCategories] = useState([]);
+
+  // 載入現金流科目（補建用）
+  useEffect(() => {
+    fetch('/api/cashflow/categories')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setCategories(Array.isArray(d) ? d.filter(c => c.isActive) : []))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     fetch('/api/cashflow/accounts')
       .then(r => r.json())
@@ -151,6 +166,34 @@ export default function BankReconciliationPage() {
     if (res.ok) { setSuccess(`自動配對完成：新配對 ${data.matched} 筆，剩餘未配對 ${data.unmatchedAfter} 筆`); await loadDetail(detail.id); }
     else setError(data.error?.message || '自動配對失敗');
     setAutoMatching(false);
+  }
+
+  async function handleBuildTx() {
+    if (!buildModal || !detail) return;
+    setBuildLoading(true);
+    const res  = await fetch(
+      `/api/bank-reconciliation/${detail.id}/lines/${buildModal.line.id}/build-transaction`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryId: buildCategoryId || undefined, description: buildDesc || undefined }),
+      }
+    );
+    const data = await res.json();
+    if (res.ok) {
+      setSuccess(`補建完成：${data.transactionNo}（${data.type} ${Number(data.amount).toLocaleString('zh-TW')}）`);
+      setBuildModal(null);
+      await loadDetail(detail.id);
+    } else {
+      setError(data.error?.message || '補建失敗');
+    }
+    setBuildLoading(false);
+  }
+
+  function openBuildModal(line) {
+    setBuildModal({ line });
+    setBuildDesc(line.description || '');
+    setBuildCategoryId('');
   }
 
   // 計算統計
@@ -300,9 +343,12 @@ export default function BankReconciliationPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <div className="flex gap-1 justify-center">
+                            <div className="flex gap-1 justify-center flex-wrap">
                               {line.matchStatus === '未配對' && (
-                                <button onClick={() => approveException(line.id)} className="text-[10px] text-blue-600 hover:underline">例外</button>
+                                <>
+                                  <button onClick={() => approveException(line.id)} className="text-[10px] text-blue-600 hover:underline">例外</button>
+                                  <button onClick={() => openBuildModal(line)} className="text-[10px] text-green-600 hover:underline font-medium">補建</button>
+                                </>
                               )}
                               {line.matchedTxId && (
                                 <button onClick={() => matchLine(line.id, null)} className="text-[10px] text-amber-600 hover:underline">解除</button>
@@ -406,6 +452,66 @@ export default function BankReconciliationPage() {
           <button onClick={() => setDetail(null)} className="text-sm text-gray-500 hover:underline">← 返回列表</button>
         )}
       </div>
+
+      {/* 補建現金流 Modal */}
+      {buildModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="font-bold text-gray-800 mb-4">補建現金流交易</h3>
+
+            <div className="space-y-3 mb-5">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <p className="text-gray-500 text-xs mb-1">來源存摺明細</p>
+                <p className="font-medium">{buildModal.line.txDate} · {buildModal.line.description || '（無說明）'}</p>
+                <p className={`font-bold mt-1 ${Number(buildModal.line.creditAmount) > 0 ? 'text-green-700' : 'text-red-600'}`}>
+                  {Number(buildModal.line.creditAmount) > 0
+                    ? `存入 ${Number(buildModal.line.creditAmount).toLocaleString('zh-TW')}`
+                    : `提出 ${Number(buildModal.line.debitAmount).toLocaleString('zh-TW')}`}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">交易說明（可修改）</label>
+                <input
+                  type="text"
+                  value={buildDesc}
+                  onChange={e => setBuildDesc(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm w-full"
+                  placeholder="說明"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">損益科目（選填）</label>
+                <select
+                  value={buildCategoryId}
+                  onChange={e => setBuildCategoryId(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm w-full"
+                >
+                  <option value="">— 不指定 —</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}{c.plGroup ? ` (${c.plGroup})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setBuildModal(null)}
+                className="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50"
+              >取消</button>
+              <button
+                onClick={handleBuildTx}
+                disabled={buildLoading}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {buildLoading ? '補建中…' : '確認補建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

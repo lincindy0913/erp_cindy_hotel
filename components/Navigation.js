@@ -38,9 +38,10 @@ const CLOSE_BOOK_ITEMS = [
   { href: '/year-end', label: '年結', linkClass: 'link-year-end', requiredPermission: 'yearend.view' },
 ];
 
-// 報表下拉：損益表
+// 報表下拉：損益表、現金流量表
 const REPORTS_ITEMS = [
   { href: '/reports/profit-loss', label: '損益表', linkClass: 'link-analytics', requiredPermission: 'cashflow.view' },
+  { href: '/reports/cash-flow', label: '現金流量表', linkClass: 'link-analytics', requiredPermission: 'cashflow.view' },
 ];
 
 // 資料設定 dropdown items
