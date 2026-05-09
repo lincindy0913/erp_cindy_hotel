@@ -18,6 +18,9 @@ export async function PUT(request, { params }) {
     if (data.warehouse !== undefined) updateData.warehouse = data.warehouse || null;
     if (data.accountingSubjectId !== undefined) updateData.accountingSubjectId = data.accountingSubjectId ? parseInt(data.accountingSubjectId) : null;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (data.level1 !== undefined) updateData.level1 = data.level1 || null;
+    if (data.plGroup !== undefined) updateData.plGroup = data.plGroup || null;
+    if (data.plOrder !== undefined) updateData.plOrder = data.plOrder != null ? parseInt(data.plOrder) : null;
 
     const category = await prisma.cashCategory.update({
       where: { id },

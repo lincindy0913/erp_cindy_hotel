@@ -17,8 +17,16 @@ const TABS = [
   { key: 'subject-query', label: '科目查詢' },
   { key: 'report', label: '現金流量表' },
   { key: 'forecast', label: '資金預測' },
-  { key: 'cash-count', label: '現金盤點' }
+  { key: 'cash-count', label: '現金盤點' },
+  { key: 'category-mgmt', label: '損益科目管理' },
 ];
+
+const PL_LEVEL1_OPTIONS = ['收入', '費用', '業外'];
+const PL_GROUP_SUGGESTIONS = {
+  '收入': ['住宿收入', '餐飲收入', '其他營業收入'],
+  '費用': ['收款成本', '人事費用', '行政費用', '行銷費用', '維修費用', '業外費用'],
+  '業外': ['業外收入', '業外支出', '業外收支'],
+};
 
 export default function CashFlowPage() {
   const { data: session } = useSession();
@@ -40,7 +48,16 @@ export default function CashFlowPage() {
 
   // Category form
   const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({ name: '', type: '收入', warehouse: '', accountingSubjectId: '' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', type: '收入', warehouse: '', accountingSubjectId: '', level1: '', plGroup: '', plOrder: '' });
+
+  // Category management tab state
+  const [editCatId, setEditCatId] = useState(null);
+  const [editCatForm, setEditCatForm] = useState({});
+  const [seedLoading, setSeedLoading] = useState(false);
+  const [seedResult, setSeedResult] = useState(null);
+  const [noCatStats, setNoCatStats] = useState(null);
+  const [batchCatForm, setBatchCatForm] = useState({ categoryId: '', type: '', sourceType: '', startDate: '', endDate: '', noCategoryOnly: true });
+  const [batchLoading, setBatchLoading] = useState(false);
   const [accountingSubjects, setAccountingSubjects] = useState([]);
 
   // Transaction form
@@ -142,7 +159,8 @@ export default function CashFlowPage() {
       fetchSuppliers(),
       fetchWarehouses(),
       fetchAccountingSubjects(),
-      fetchOverviewCategorySummary()
+      fetchOverviewCategorySummary(),
+      fetchNoCatStats(),
     ]);
     setLoading(false);
   }
@@ -338,12 +356,17 @@ export default function CashFlowPage() {
       const res = await fetch('/api/cashflow/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(categoryForm)
+        body: JSON.stringify({
+          ...categoryForm,
+          plOrder: categoryForm.plOrder ? parseInt(categoryForm.plOrder) : null,
+          accountingSubjectId: categoryForm.accountingSubjectId ? parseInt(categoryForm.accountingSubjectId) : null,
+        })
       });
       if (res.ok) {
         setShowCategoryForm(false);
-        setCategoryForm({ name: '', type: '收入', warehouse: '', accountingSubjectId: '' });
+        setCategoryForm({ name: '', type: '收入', warehouse: '', accountingSubjectId: '', level1: '', plGroup: '', plOrder: '' });
         fetchCategories();
+        fetchNoCatStats();
       } else {
         const err = await res.json();
         showToast(err.error || '建立失敗', 'error');
@@ -362,6 +385,78 @@ export default function CashFlowPage() {
         showToast(err.error || '刪除失敗', 'error');
       }
     } catch { showToast('刪除類別失敗', 'error'); }
+  }
+
+  async function handleUpdateCategory(e) {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/cashflow/categories/${editCatId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editCatForm,
+          plOrder: editCatForm.plOrder ? parseInt(editCatForm.plOrder) : null,
+          accountingSubjectId: editCatForm.accountingSubjectId ? parseInt(editCatForm.accountingSubjectId) : null,
+        }),
+      });
+      if (res.ok) {
+        setEditCatId(null);
+        fetchCategories();
+        showToast('科目已更新', 'success');
+      } else {
+        const err = await res.json();
+        showToast(err.error?.message || err.error || '更新失敗', 'error');
+      }
+    } catch { showToast('更新科目失敗', 'error'); }
+  }
+
+  async function handleSeedCategories() {
+    if (!confirm('這將新增預設損益科目（不刪除現有科目）。確定執行？')) return;
+    setSeedLoading(true); setSeedResult(null);
+    try {
+      const res = await fetch('/api/cash-categories/seed', { method: 'POST' });
+      const d = await res.json();
+      setSeedResult(d);
+      fetchCategories();
+      showToast(`初始化完成：新增 ${d.created} 筆，補欄位 ${d.updated ?? 0} 筆，跳過 ${d.skipped} 筆`, 'success');
+    } catch { showToast('初始化失敗', 'error'); }
+    setSeedLoading(false);
+  }
+
+  async function fetchNoCatStats() {
+    try {
+      const res = await fetch('/api/cashflow/transactions/batch-categorize');
+      if (res.ok) setNoCatStats(await res.json());
+    } catch {}
+  }
+
+  async function handleBatchCategorize(e) {
+    e.preventDefault();
+    if (!batchCatForm.categoryId) { showToast('請選擇目標科目', 'error'); return; }
+    const payload = {
+      categoryId: parseInt(batchCatForm.categoryId),
+      noCategoryOnly: batchCatForm.noCategoryOnly,
+      type:       batchCatForm.type       || undefined,
+      sourceType: batchCatForm.sourceType || undefined,
+      startDate:  batchCatForm.startDate  || undefined,
+      endDate:    batchCatForm.endDate    || undefined,
+    };
+    setBatchLoading(true);
+    try {
+      const res = await fetch('/api/cashflow/transactions/batch-categorize', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        showToast(`已更新 ${d.updatedCount} 筆交易的科目`, 'success');
+        fetchNoCatStats();
+      } else {
+        showToast(d.error?.message || d.error || '批量更新失敗', 'error');
+      }
+    } catch { showToast('批量更新失敗', 'error'); }
+    setBatchLoading(false);
   }
 
   // ==================== Transaction CRUD ====================
@@ -740,6 +835,16 @@ export default function CashFlowPage() {
         {/* ==================== Tab 2: Transactions ==================== */}
         {activeTab === 'transactions' && (
           <div>
+            {/* 未分類提示 */}
+            {noCatStats && noCatStats.noCategory > 0 && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-center justify-between text-sm">
+                <span className="text-amber-700">
+                  有 <strong>{noCatStats.noCategory}</strong> 筆交易未設定損益科目，損益表將顯示為「未分類」。
+                </span>
+                <button onClick={() => setActiveTab('category-mgmt')}
+                  className="text-amber-800 underline text-xs hover:text-amber-900">前往損益科目管理 →</button>
+              </div>
+            )}
             {/* Filters */}
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-3">
@@ -1826,6 +1931,277 @@ export default function CashFlowPage() {
         {/* === Cash Count Tab (spec26) === */}
         {activeTab === 'cash-count' && (
           <CashCountTab accounts={accounts.filter(a => a.type === '現金')} warehouses={warehouses} />
+        )}
+
+        {/* ==================== Tab: 損益科目管理 ==================== */}
+        {activeTab === 'category-mgmt' && (
+          <div className="space-y-6">
+
+            {/* 未分類提示 + 初始化按鈕 */}
+            <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-center justify-between">
+              <div>
+                {noCatStats && noCatStats.noCategory > 0 ? (
+                  <p className="text-sm text-amber-700 font-medium">
+                    目前有 <span className="font-bold">{noCatStats.noCategory}</span> 筆交易（共 {noCatStats.total} 筆中的 {noCatStats.pct}%）尚未設定損益科目，損益表將顯示為「未分類」。
+                  </p>
+                ) : noCatStats ? (
+                  <p className="text-sm text-green-700">所有交易均已設定損益科目。</p>
+                ) : null}
+              </div>
+              <button
+                onClick={handleSeedCategories}
+                disabled={seedLoading}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
+              >
+                {seedLoading ? '初始化中…' : '一鍵初始化損益科目'}
+              </button>
+            </div>
+
+            {/* 批量補科目 */}
+            {noCatStats && noCatStats.noCategory > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-amber-800 mb-3">批量補充損益科目</h3>
+                <form onSubmit={handleBatchCategorize} className="flex flex-wrap gap-3 items-end">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">交易類別</label>
+                    <select value={batchCatForm.type} onChange={e => setBatchCatForm(p => ({ ...p, type: e.target.value }))}
+                      className="border rounded-lg px-3 py-1.5 text-sm">
+                      <option value="">全部類別</option>
+                      <option value="收入">收入</option>
+                      <option value="支出">支出</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">來源類型</label>
+                    <select value={batchCatForm.sourceType} onChange={e => setBatchCatForm(p => ({ ...p, sourceType: e.target.value }))}
+                      className="border rounded-lg px-3 py-1.5 text-sm">
+                      <option value="">全部來源</option>
+                      <option value="pms_income_settlement">PMS結算</option>
+                      <option value="pms_income_fee">PMS手續費</option>
+                      <option value="pms_manual_commission">PMS佣金</option>
+                      <option value="cashier_payment">出納付款</option>
+                      <option value="rental_income">租賃收入</option>
+                      <option value="fixed_expense">固定費用</option>
+                      <option value="common_expense">一般費用</option>
+                      <option value="cc_statement_income">CC撥款收入</option>
+                      <option value="cc_statement_fee">CC手續費</option>
+                      <option value="engineering_income">工程收入</option>
+                      <option value="manual">手動</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">起始日期</label>
+                    <input type="date" value={batchCatForm.startDate} onChange={e => setBatchCatForm(p => ({ ...p, startDate: e.target.value }))}
+                      className="border rounded-lg px-3 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">結束日期</label>
+                    <input type="date" value={batchCatForm.endDate} onChange={e => setBatchCatForm(p => ({ ...p, endDate: e.target.value }))}
+                      className="border rounded-lg px-3 py-1.5 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">套用至科目 *</label>
+                    <select value={batchCatForm.categoryId} onChange={e => setBatchCatForm(p => ({ ...p, categoryId: e.target.value }))}
+                      className="border rounded-lg px-3 py-1.5 text-sm" required>
+                      <option value="">選擇損益科目…</option>
+                      {['收入', '支出'].map(t => {
+                        const cats = categories.filter(c => c.type === t && c.isActive);
+                        if (!cats.length) return null;
+                        return (
+                          <optgroup key={t} label={t}>
+                            {cats.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}{c.plGroup ? ` (${c.plGroup})` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                      <input type="checkbox" checked={batchCatForm.noCategoryOnly}
+                        onChange={e => setBatchCatForm(p => ({ ...p, noCategoryOnly: e.target.checked }))}
+                        className="rounded" />
+                      僅更新未分類交易
+                    </label>
+                  </div>
+                  <button type="submit" disabled={batchLoading}
+                    className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50">
+                    {batchLoading ? '套用中…' : '批量套用科目'}
+                  </button>
+                </form>
+                {noCatStats?.bySourceType?.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="text-xs text-gray-500">未分類分布：</span>
+                    {noCatStats.bySourceType.slice(0, 6).map(r => (
+                      <span key={r.sourceType} className="text-xs bg-white border rounded px-2 py-0.5 text-gray-600">
+                        {r.sourceType} ({r.count})
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 科目列表 */}
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b flex justify-between items-center bg-gray-50">
+                <h3 className="font-semibold text-sm text-gray-700">現金流科目列表（{categories.length} 筆）</h3>
+                <button onClick={() => { setShowCategoryForm(v => !v); }}
+                  className="text-sm bg-emerald-600 text-white px-3 py-1 rounded-lg hover:bg-emerald-700">
+                  + 新增科目
+                </button>
+              </div>
+
+              {/* 新增科目表單 */}
+              {showCategoryForm && (
+                <div className="p-4 border-b bg-emerald-50">
+                  <form onSubmit={handleCreateCategory} className="flex flex-wrap gap-3 items-end">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">科目名稱 *</label>
+                      <input value={categoryForm.name} onChange={e => setCategoryForm(p => ({ ...p, name: e.target.value }))}
+                        className="border rounded-lg px-3 py-1.5 text-sm w-36" placeholder="科目名稱" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">類型 *</label>
+                      <select value={categoryForm.type} onChange={e => setCategoryForm(p => ({ ...p, type: e.target.value }))}
+                        className="border rounded-lg px-3 py-1.5 text-sm">
+                        <option value="收入">收入</option>
+                        <option value="支出">支出</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">損益分類</label>
+                      <select value={categoryForm.level1} onChange={e => setCategoryForm(p => ({ ...p, level1: e.target.value }))}
+                        className="border rounded-lg px-3 py-1.5 text-sm">
+                        <option value="">不設定</option>
+                        {PL_LEVEL1_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">損益群組</label>
+                      <input value={categoryForm.plGroup} onChange={e => setCategoryForm(p => ({ ...p, plGroup: e.target.value }))}
+                        list="pl-group-list" className="border rounded-lg px-3 py-1.5 text-sm w-32" placeholder="例：住宿收入" />
+                      <datalist id="pl-group-list">
+                        {Object.values(PL_GROUP_SUGGESTIONS).flat().map(g => <option key={g} value={g} />)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">排序</label>
+                      <input type="number" value={categoryForm.plOrder} onChange={e => setCategoryForm(p => ({ ...p, plOrder: e.target.value }))}
+                        className="border rounded-lg px-3 py-1.5 text-sm w-20" placeholder="10" min="1" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="submit" className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-700">儲存</button>
+                      <button type="button" onClick={() => setShowCategoryForm(false)} className="border px-3 py-1.5 rounded-lg text-sm">取消</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">科目名稱</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">類型</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">損益分類</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">損益群組</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">排序</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">交易筆數</th>
+                    <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {categories.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">尚無科目，請先按「一鍵初始化損益科目」</td></tr>
+                  )}
+                  {categories.map(cat => (
+                    editCatId === cat.id ? (
+                      /* 編輯列 */
+                      <tr key={cat.id} className="bg-blue-50">
+                        <td className="px-3 py-2" colSpan={7}>
+                          <form onSubmit={handleUpdateCategory} className="flex flex-wrap gap-2 items-end">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">科目名稱</label>
+                              <input value={editCatForm.name || ''} onChange={e => setEditCatForm(p => ({ ...p, name: e.target.value }))}
+                                className="border rounded px-2 py-1 text-sm w-32" required />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">類型</label>
+                              <select value={editCatForm.type || ''} onChange={e => setEditCatForm(p => ({ ...p, type: e.target.value }))}
+                                className="border rounded px-2 py-1 text-sm">
+                                <option value="收入">收入</option>
+                                <option value="支出">支出</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">損益分類</label>
+                              <select value={editCatForm.level1 || ''} onChange={e => setEditCatForm(p => ({ ...p, level1: e.target.value }))}
+                                className="border rounded px-2 py-1 text-sm">
+                                <option value="">不設定</option>
+                                {PL_LEVEL1_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">損益群組</label>
+                              <input value={editCatForm.plGroup || ''} onChange={e => setEditCatForm(p => ({ ...p, plGroup: e.target.value }))}
+                                list="pl-group-list-edit" className="border rounded px-2 py-1 text-sm w-28" placeholder="住宿收入" />
+                              <datalist id="pl-group-list-edit">
+                                {Object.values(PL_GROUP_SUGGESTIONS).flat().map(g => <option key={g} value={g} />)}
+                              </datalist>
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-0.5">排序</label>
+                              <input type="number" value={editCatForm.plOrder || ''} onChange={e => setEditCatForm(p => ({ ...p, plOrder: e.target.value }))}
+                                className="border rounded px-2 py-1 text-sm w-16" min="1" />
+                            </div>
+                            <div className="flex gap-1">
+                              <button type="submit" className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">儲存</button>
+                              <button type="button" onClick={() => setEditCatId(null)} className="border px-3 py-1 rounded text-sm">取消</button>
+                            </div>
+                          </form>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={cat.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5">
+                          <span className="font-medium text-gray-800">{cat.name}</span>
+                          {cat.systemCode && <span className="ml-1 text-xs text-gray-400 font-mono">({cat.systemCode})</span>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${cat.type === '收入' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {cat.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {cat.level1 ? (
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              cat.level1 === '收入' ? 'bg-blue-100 text-blue-700' :
+                              cat.level1 === '費用' ? 'bg-orange-100 text-orange-700' :
+                              'bg-purple-100 text-purple-700'
+                            }`}>{cat.level1}</span>
+                          ) : <span className="text-xs text-gray-300">未設定</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-sm text-gray-600">{cat.plGroup || <span className="text-gray-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-center text-sm text-gray-500">{cat.plOrder ?? <span className="text-gray-300">—</span>}</td>
+                        <td className="px-4 py-2.5 text-right text-sm text-gray-500">{cat._count?.transactions ?? 0}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex gap-2 justify-center">
+                            <button onClick={() => { setEditCatId(cat.id); setEditCatForm({ name: cat.name, type: cat.type, level1: cat.level1 || '', plGroup: cat.plGroup || '', plOrder: cat.plOrder || '', accountingSubjectId: cat.accountingSubjectId || '' }); }}
+                              className="text-xs text-blue-600 hover:underline">編輯</button>
+                            <button onClick={() => handleDeleteCategory(cat.id)}
+                              className="text-xs text-red-500 hover:underline">刪除</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </main>
     </div>

@@ -185,9 +185,11 @@ export default function ProfitLossPage() {
 
             {/* 未分類交易提醒 */}
             {(data.groups || []).some(g => g.plGroup?.includes('未分類')) && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-700">
-                有交易未指定科目（列為「未分類」），建議至「現金流」補充科目，以取得完整損益報告。
-                也可至「資料設定 → 現金科目」執行科目初始化。
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-700 flex items-center justify-between gap-3">
+                <span>有交易未指定科目（列為「未分類」），損益表數據不完整。</span>
+                <a href="/cashflow#category-mgmt" className="underline font-medium whitespace-nowrap hover:text-yellow-900">
+                  前往損益科目管理 →
+                </a>
               </div>
             )}
           </>
