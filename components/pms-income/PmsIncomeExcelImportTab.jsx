@@ -107,11 +107,6 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
   const fileInputRef = useRef(null);
   const wh = WAREHOUSES?.length ? WAREHOUSES : ['麗格', '麗軒', '民宿'];
 
-  // Fetch calendar + batch list whenever warehouse or calMonth changes
-  useEffect(() => {
-    loadRecentBatches();
-  }, [loadRecentBatches]);
-
   const [duplicateWarning, setDuplicateWarning] = useState(null); // null | date string
   const [recentBatches, setRecentBatches] = useState([]);
   const [deletingBatch, setDeletingBatch] = useState(null);
@@ -130,6 +125,11 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       })
       .catch(() => {});
   }, [calMonth, warehouse]);
+
+  // Fetch calendar + batch list whenever warehouse or calMonth changes
+  useEffect(() => {
+    loadRecentBatches();
+  }, [loadRecentBatches]);
 
   const deleteBatch = useCallback(async (batch) => {
     if (!confirm(`確定要整批刪除「${batch.businessDate} ${batch.batchNo}」嗎？\n共 ${batch.recordCount ?? '?'} 筆記錄，此操作無法還原。`)) return;
