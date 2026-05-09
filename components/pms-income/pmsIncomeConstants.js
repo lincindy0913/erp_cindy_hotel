@@ -5,6 +5,9 @@ export const WAREHOUSES_FALLBACK = ['麗格', '麗軒', '民宿'];
 export const TABS = [
   { key: 'overview', label: '每日匯入總覽' },
   { key: 'excelImport', label: '飯店 Excel 匯入' },
+  { key: 'reservations', label: '訂房明細' },
+  { key: 'depositRecon', label: '訂金核對' },
+  { key: 'ccFeeRecon', label: '付款稽核' },
   { key: 'otaDeposit', label: 'OTA 訂金' },
   { key: 'otaRecon', label: 'OTA 對帳比對' },
   { key: 'otaCommission', label: 'OTA 傭金' },

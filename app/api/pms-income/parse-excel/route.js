@@ -222,6 +222,87 @@ export async function POST(request) {
       }
     }
 
+    // ── 5a. Parse individual reservation rows (rows between masterHeader+1 and first section) ──
+    const reservationRows = [];
+    if (masterHeaderRow >= 0) {
+      const mhRow = matrix[masterHeaderRow];
+      const headers = Array.isArray(mhRow) ? mhRow.map(v => norm(cellStr(v))) : [];
+
+      // find col indices in master header
+      const hIdx = name => headers.indexOf(name) >= 0 ? headers.indexOf(name) : -1;
+      const hIdxAny = (...names) => {
+        for (const n of names) { const i = hIdx(n); if (i >= 0) return i; }
+        return -1;
+      };
+
+      const colMap = {
+        reservationNo:  hIdxAny('住房序號', '序號'),
+        bookingNo:      hIdxAny('訂單號', '訂房序號', '訂單號碼'),
+        roomNo:         hIdxAny('房號', '房間號'),
+        roomType:       hIdxAny('房型', '房間類型'),
+        guestName:      hIdxAny('住客姓名', '客人姓名', '姓名'),
+        companyName:    hIdxAny('公司名稱', '公司'),
+        discountName:   hIdxAny('優待碼', '折讓名稱', '優惠碼'),
+        checkIn:        hIdxAny('入住日期', '到達日期', '住宿日期'),
+        checkOut:       hIdxAny('退房日期', '離開日期'),
+        roomRate:       hIdxAny('住宿金額', '房費'),
+        serviceFee:     hIdxAny('服務費'),
+        cash:           hIdxAny('現金'),
+        creditCard:     hIdxAny('信用卡'),
+        wireTransfer:   hIdxAny('電匯', '票據'),
+        commission:     hIdxAny('佣金'),
+        discount:       hIdxAny('折讓'),
+        complimentary:  hIdxAny('招待'),
+        depositIn:      hIdxAny('收訂金'),
+        depositOut:     hIdxAny('沖訂金'),
+        receivable:     hIdxAny('應收帳款'),
+        voucher:        hIdxAny('禮券'),
+        totalRevenue:   hIdxAny('貸方合計', '住宿合計', '總金額'),
+      };
+
+      // first boundary: creditHeaderRow, debitHeaderRow, occupancyAnchorRow (pick earliest after masterHeader)
+      const boundaries = [creditHeaderRow, debitHeaderRow, occupancyAnchorRow, totalsRow]
+        .filter(r => r > masterHeaderRow);
+      const endRow = boundaries.length > 0 ? Math.min(...boundaries) : matrix.length;
+
+      for (let r = masterHeaderRow + 1; r < endRow; r++) {
+        const row = matrix[r];
+        if (!Array.isArray(row)) continue;
+        const c0 = norm(cellStr(row[0]));
+        if (!c0) continue;
+        // reservation rows have numeric col[0] (住房序號)
+        if (!/^\d+$/.test(c0)) continue;
+
+        const get = idx => (idx >= 0 ? cellStr(row[idx]) : '');
+        const getNum = idx => (idx >= 0 ? toNum(row[idx]) : null);
+
+        reservationRows.push({
+          reservationNo:  get(colMap.reservationNo) || c0,
+          bookingNo:      get(colMap.bookingNo),
+          roomNo:         get(colMap.roomNo),
+          roomType:       get(colMap.roomType),
+          guestName:      get(colMap.guestName),
+          companyName:    get(colMap.companyName),
+          discountName:   get(colMap.discountName),
+          checkIn:        get(colMap.checkIn),
+          checkOut:       get(colMap.checkOut),
+          roomRate:       getNum(colMap.roomRate) || 0,
+          serviceFee:     getNum(colMap.serviceFee) || 0,
+          cash:           getNum(colMap.cash) || 0,
+          creditCard:     getNum(colMap.creditCard) || 0,
+          wireTransfer:   getNum(colMap.wireTransfer) || 0,
+          commission:     getNum(colMap.commission) || 0,
+          discount:       getNum(colMap.discount) || 0,
+          complimentary:  getNum(colMap.complimentary) || 0,
+          depositIn:      getNum(colMap.depositIn) || 0,
+          depositOut:     getNum(colMap.depositOut) || 0,
+          receivable:     getNum(colMap.receivable) || 0,
+          voucher:        getNum(colMap.voucher) || 0,
+          totalRevenue:   getNum(colMap.totalRevenue) || 0,
+        });
+      }
+    }
+
     // ── 5. 發票稅額 from 合計 row (master header cols 發票1稅額, 發票2稅額) ──
     let invoiceTaxTotal = null;
     let guestCount = null;
@@ -345,6 +426,7 @@ export async function POST(request) {
       warehouse: null,
       businessDate: businessDate || null,
       records,
+      reservationRows,
       sectionMode: creditHeaderRow >= 0 || debitHeaderRow >= 0,
       roomCount: '',
       occupancyRate: occupancyRate != null ? String(occupancyRate) : '',

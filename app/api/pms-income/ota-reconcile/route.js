@@ -177,7 +177,102 @@ export async function POST(request) {
       .reduce((s, r) => s + Number(r.amount), 0);
     const commDiff       = Math.round((pmsCommTotal - otaCommTotal) * 100) / 100;
 
+    // ── Per-reservation matching + save PmsOtaReconLog/Lines ──
+    const billingMonth = effectiveFrom ? effectiveFrom.slice(0, 7) : new Date().toISOString().slice(0, 7);
+
+    // Load PMS reservation records for the same date range
+    const pmsReservations = warehouse
+      ? await prisma.pmsReservationRecord.findMany({
+          where: {
+            warehouse,
+            ...(effectiveFrom ? { businessDate: { gte: effectiveFrom } } : {}),
+            ...(effectiveTo   ? { businessDate: { lte: effectiveTo }   } : {}),
+          },
+          select: { id: true, reservationNo: true, bookingNo: true, guestName: true, checkIn: true, commission: true },
+        })
+      : [];
+
+    // Build recon lines by matching OTA rows to PMS reservations
+    let matchedCount = 0, unmatchedCount = 0, totalDiff = 0;
+    const reconLinesData = [];
+
+    for (const otaRow of activeRows) {
+      let matched = null;
+
+      // 1. Exact reservationNo match
+      if (otaRow.reservationNo) {
+        matched = pmsReservations.find(p =>
+          (p.reservationNo && p.reservationNo === otaRow.reservationNo) ||
+          (p.bookingNo && p.bookingNo === otaRow.reservationNo)
+        ) || null;
+      }
+
+      // 2. Fuzzy: guestName + arrival date
+      if (!matched && otaRow.guestName && otaRow.arrival) {
+        const otaNameLower = otaRow.guestName.toLowerCase();
+        matched = pmsReservations.find(p => {
+          if (!p.guestName) return false;
+          const pmsNameLower = p.guestName.toLowerCase();
+          const nameMatch = otaNameLower.includes(pmsNameLower) || pmsNameLower.includes(otaNameLower);
+          const dateMatch = !p.checkIn || p.checkIn === otaRow.arrival;
+          return nameMatch && dateMatch;
+        }) || null;
+      }
+
+      const pmsCommAmt = matched ? Number(matched.commission) : 0;
+      const diff = otaRow.commissionAmt - pmsCommAmt;
+
+      let matchStatus = 'unmatched';
+      if (matched) {
+        if (Math.abs(diff) <= 1) matchStatus = 'matched';
+        else if (matched.guestName?.toLowerCase() !== otaRow.guestName?.toLowerCase()) matchStatus = 'name_diff';
+        else matchStatus = 'amount_diff';
+      }
+
+      if (matchStatus === 'matched') matchedCount++;
+      else unmatchedCount++;
+      totalDiff += diff;
+
+      reconLinesData.push({
+        reservationId:      matched?.id || null,
+        otaReservationNo:   otaRow.reservationNo || null,
+        otaGuestName:       otaRow.guestName || null,
+        otaArrival:         otaRow.arrival || null,
+        otaDeparture:       otaRow.departure || null,
+        otaFinalAmount:     otaRow.finalAmount,
+        otaCommissionAmt:   otaRow.commissionAmt,
+        otaCommissionPct:   otaRow.commissionPct ? otaRow.commissionPct / 100 : null,
+        otaStatus:          otaRow.status || null,
+        pmsCommissionAmt:   pmsCommAmt,
+        matchStatus,
+        diffAmount:         Math.round(diff * 100) / 100,
+      });
+    }
+
+    // Save to DB inside transaction
+    const savedLog = await prisma.$transaction(async (tx) => {
+      const log = await tx.pmsOtaReconLog.create({
+        data: {
+          warehouse: warehouse || '全部',
+          otaSource: source,
+          billingMonth,
+          dateFrom: effectiveFrom || null,
+          dateTo: effectiveTo || null,
+          matchedCount,
+          unmatchedCount,
+          totalDiff: Math.round(totalDiff * 100) / 100,
+        },
+      });
+      if (reconLinesData.length > 0) {
+        await tx.pmsOtaReconLine.createMany({
+          data: reconLinesData.map(l => ({ ...l, reconLogId: log.id })),
+        });
+      }
+      return log;
+    });
+
     return NextResponse.json({
+      reconLogId: savedLog.id,
       source,
       dateRange: { from: effectiveFrom, to: effectiveTo },
       warehouse: warehouse || '全部',
@@ -185,6 +280,8 @@ export async function POST(request) {
       activeCount:  activeRows.length,
       cancelledCount: cancelledRows.length,
       pmsRecordCount: pmsRecords.length,
+      matchedCount,
+      unmatchedCount,
       summary: {
         otaRoomTotal:  Math.round(otaRoomTotal  * 100) / 100,
         otaCommTotal:  Math.round(otaCommTotal  * 100) / 100,
@@ -194,6 +291,7 @@ export async function POST(request) {
       },
       otaRows:    filtered,
       pmsRecords: pmsRecords.map(r => ({ ...r, amount: Number(r.amount) })),
+      reconLines: reconLinesData.map((l, i) => ({ ...l, id: i })),
     });
   } catch (error) {
     return handleApiError(error);

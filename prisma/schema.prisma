@@ -777,7 +777,11 @@ model PmsImportBatch {
   verifiedBy          String?  @map("verified_by") @db.VarChar(255)
   verifiedAt          DateTime? @map("verified_at")
 
-  records PmsIncomeRecord[]
+  records      PmsIncomeRecord[]
+  reservations PmsReservationRecord[]
+
+  reservationCount    Int?     @default(0) @map("reservation_count")
+  hasReservationRows  Boolean  @default(false) @map("has_reservation_rows")
 
   @@unique([warehouse, businessDate])
   @@index([warehouse, businessDate])
@@ -3144,9 +3148,10 @@ model VendorItineraryBilling {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  supplier Supplier?    @relation(fields: [supplierId], references: [id])
-  account  CashAccount? @relation(fields: [accountId], references: [id])
-  items    VendorItineraryItem[]
+  supplier     Supplier?    @relation(fields: [supplierId], references: [id])
+  account      CashAccount? @relation(fields: [accountId], references: [id])
+  items        VendorItineraryItem[]
+  reservations PmsReservationRecord[]
 
   @@index([warehouse])
   @@index([billingMonth])
@@ -3174,4 +3179,130 @@ model VendorItineraryItem {
 
   @@index([billingId])
   @@map("vendor_itinerary_items")
+}
+
+model PmsReservationRecord {
+  id               Int      @id @default(autoincrement())
+  batchId          Int      @map("batch_id")
+  warehouse        String   @db.VarChar(100)
+  businessDate     String   @map("business_date") @db.VarChar(10)
+
+  // 訂房基本資料
+  bookingNo        String?  @map("booking_no") @db.VarChar(50)
+  reservationNo    String?  @map("reservation_no") @db.VarChar(50)
+  roomNo           String?  @map("room_no") @db.VarChar(20)
+  roomType         String?  @map("room_type") @db.VarChar(100)
+  guestName        String?  @map("guest_name") @db.VarChar(255)
+  companyName      String?  @map("company_name") @db.VarChar(255)
+  discountName     String?  @map("discount_name") @db.VarChar(255)
+  checkIn          String?  @map("check_in") @db.VarChar(10)
+  checkOut         String?  @map("check_out") @db.VarChar(10)
+
+  // 收入金額
+  roomRate         Decimal  @default(0) @map("room_rate") @db.Decimal(12, 2)
+  serviceFee       Decimal  @default(0) @map("service_fee") @db.Decimal(12, 2)
+  otherCharges     Decimal  @default(0) @map("other_charges") @db.Decimal(12, 2)
+  totalRevenue     Decimal  @default(0) @map("total_revenue") @db.Decimal(12, 2)
+
+  // 付款方式
+  cash             Decimal  @default(0) @db.Decimal(12, 2)
+  creditCard       Decimal  @default(0) @map("credit_card") @db.Decimal(12, 2)
+  wireTransfer     Decimal  @default(0) @map("wire_transfer") @db.Decimal(12, 2)
+  commission       Decimal  @default(0) @db.Decimal(12, 2)
+  discount         Decimal  @default(0) @db.Decimal(12, 2)
+  complimentary    Decimal  @default(0) @db.Decimal(12, 2)
+  depositIn        Decimal  @default(0) @map("deposit_in") @db.Decimal(12, 2)
+  depositOut       Decimal  @default(0) @map("deposit_out") @db.Decimal(12, 2)
+  receivable       Decimal  @default(0) @db.Decimal(12, 2)
+  voucher          Decimal  @default(0) @db.Decimal(12, 2)
+
+  // 來源分類
+  source           String   @default("電話") @db.VarChar(50)  // 電話|OTA-Booking|OTA-Agoda|代訂中心|月租|其他
+  sourceOverride   String?  @map("source_override") @db.VarChar(50)
+
+  // 現金流狀態
+  cashStatus       String   @default("待確認") @map("cash_status") @db.VarChar(20)
+  wireStatus       String   @default("待確認") @map("wire_status") @db.VarChar(20)
+  commissionStatus String   @default("待確認") @map("commission_status") @db.VarChar(20)
+  depositStatus    String   @default("待確認") @map("deposit_status") @db.VarChar(20)
+
+  // 信用卡手續費核對
+  creditCardStatus String   @default("待核對") @map("credit_card_status") @db.VarChar(20)
+  ccFeeRate        Decimal? @map("cc_fee_rate") @db.Decimal(6, 4)
+  ccFeeAmount      Decimal? @map("cc_fee_amount") @db.Decimal(12, 2)
+  ccNetAmount      Decimal? @map("cc_net_amount") @db.Decimal(12, 2)
+  ccActualNet      Decimal? @map("cc_actual_net") @db.Decimal(12, 2)
+  ccDiff           Decimal? @map("cc_diff") @db.Decimal(12, 2)
+  ccSettleDate     String?  @map("cc_settle_date") @db.VarChar(10)
+
+  // 廠商行程帳單連結
+  vendorBillingId  Int?     @map("vendor_billing_id")
+
+  // 自動產生的現金流交易 IDs (逗號分隔)
+  cashTransactionIds String? @map("cash_transaction_ids") @db.VarChar(500)
+
+  note             String?  @db.VarChar(500)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  batch         PmsImportBatch        @relation(fields: [batchId], references: [id])
+  vendorBilling VendorItineraryBilling? @relation(fields: [vendorBillingId], references: [id])
+  otaReconLines PmsOtaReconLine[]
+
+  @@index([warehouse])
+  @@index([businessDate])
+  @@index([batchId])
+  @@index([source])
+  @@index([vendorBillingId])
+  @@map("pms_reservation_records")
+}
+
+model PmsOtaReconLog {
+  id             Int      @id @default(autoincrement())
+  warehouse      String   @db.VarChar(100)
+  otaSource      String   @map("ota_source") @db.VarChar(50)  // Booking|Agoda|Expedia
+  billingMonth   String   @map("billing_month") @db.VarChar(7)  // YYYY-MM
+  dateFrom       String?  @map("date_from") @db.VarChar(10)
+  dateTo         String?  @map("date_to") @db.VarChar(10)
+  matchedCount   Int      @default(0) @map("matched_count")
+  unmatchedCount Int      @default(0) @map("unmatched_count")
+  totalDiff      Decimal  @default(0) @map("total_diff") @db.Decimal(12, 2)
+  importedBy     String?  @map("imported_by") @db.VarChar(255)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  lines PmsOtaReconLine[]
+
+  @@index([warehouse])
+  @@index([billingMonth])
+  @@map("pms_ota_recon_logs")
+}
+
+model PmsOtaReconLine {
+  id                 Int      @id @default(autoincrement())
+  reconLogId         Int      @map("recon_log_id")
+  reservationId      Int?     @map("reservation_id")
+
+  // OTA 對帳單資料
+  otaReservationNo   String?  @map("ota_reservation_no") @db.VarChar(100)
+  otaGuestName       String?  @map("ota_guest_name") @db.VarChar(255)
+  otaArrival         String?  @map("ota_arrival") @db.VarChar(10)
+  otaDeparture       String?  @map("ota_departure") @db.VarChar(10)
+  otaFinalAmount     Decimal  @default(0) @map("ota_final_amount") @db.Decimal(12, 2)
+  otaCommissionAmt   Decimal  @default(0) @map("ota_commission_amt") @db.Decimal(12, 2)
+  otaCommissionPct   Decimal? @map("ota_commission_pct") @db.Decimal(6, 4)
+  otaStatus          String?  @map("ota_status") @db.VarChar(50)
+
+  // PMS 對應資料
+  pmsCommissionAmt   Decimal  @default(0) @map("pms_commission_amt") @db.Decimal(12, 2)
+
+  // 比對結果
+  matchStatus        String   @default("unmatched") @map("match_status") @db.VarChar(20)  // matched|amount_diff|name_diff|unmatched
+  diffAmount         Decimal  @default(0) @map("diff_amount") @db.Decimal(12, 2)
+
+  reconLog    PmsOtaReconLog        @relation(fields: [reconLogId], references: [id], onDelete: Cascade)
+  reservation PmsReservationRecord? @relation(fields: [reservationId], references: [id])
+
+  @@index([reconLogId])
+  @@index([reservationId])
+  @@map("pms_ota_recon_lines")
 }

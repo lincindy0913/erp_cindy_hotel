@@ -119,11 +119,13 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
           guestCount:     guestCount     ? parseInt(guestCount)         : null,
           breakfastCount: breakfastCount ? parseInt(breakfastCount)     : null,
           occupiedRooms:  occupiedRooms  ? parseInt(occupiedRooms)      : null,
+          reservationRows: parsed?.reservationRows || [],
         }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error?.message || '匯入失敗');
-      setSuccess(`匯入成功！批次號：${result.batchNo}，共 ${result.recordCount} 筆${result.isReplacement ? '（已覆蓋舊資料）' : ''}`);
+      const resNote = result.reservationCount > 0 ? `，訂房明細 ${result.reservationCount} 筆` : '';
+      setSuccess(`匯入成功！批次號：${result.batchNo}，共 ${result.recordCount} 筆${resNote}${result.isReplacement ? '（已覆蓋舊資料）' : ''}`);
       setParsed(null); setRecords([]);
     } catch (e) {
       setSubmitError(e.message);
@@ -247,6 +249,13 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
               ))}
             </div>
           </div>
+
+          {/* 訂房明細 row count notice */}
+          {parsed.reservationRows?.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-2 text-xs text-blue-800">
+              已偵測到 <strong>{parsed.reservationRows.length}</strong> 筆個別訂房序號記錄，匯入後將自動建立訂房明細（可在「訂房明細」頁查詢）。
+            </div>
+          )}
 
           {/* Excel 原始合計 reference */}
           {parsed.excelTotals && (

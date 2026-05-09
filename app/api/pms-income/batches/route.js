@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission, requireSession } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,6 +131,37 @@ export async function POST(request) {
       }
     }
 
+    const reservationRows = Array.isArray(data.reservationRows) ? data.reservationRows : [];
+
+    // Pre-load travel agency configs for source classification (outside transaction)
+    const travelAgencies = await prisma.travelAgencyCommissionConfig.findMany({
+      where: { isActive: true },
+      select: { companyName: true },
+    });
+    const agencyNames = new Set(travelAgencies.map(a => a.companyName.trim()));
+
+    // Find primary bank account for this warehouse (for auto CashTransactions)
+    const bankAccount = await prisma.cashAccount.findFirst({
+      where: { warehouse: data.warehouse, type: '銀行存款', isActive: true },
+      select: { id: true },
+    });
+
+    function classifySource(row) {
+      const company = (row.companyName || '').trim();
+      const discount = (row.discountName || '').trim();
+      // NET- prefix or "Booking" keyword → Booking
+      if (/NET-/i.test(discount) || /booking/i.test(company) || /booking/i.test(discount)) return 'OTA-Booking';
+      // Agoda
+      if (/agoda/i.test(company) || /agoda/i.test(discount)) return 'OTA-Agoda';
+      // Expedia
+      if (/expedia/i.test(company) || /expedia/i.test(discount)) return 'OTA-Expedia';
+      // 代訂中心
+      if (agencyNames.has(company)) return '代訂中心';
+      // 月租
+      if (/月租/.test(discount) || /月租/.test(company)) return '月租';
+      return '電話';
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Check for duplicate (same warehouse + businessDate)
       const existing = await tx.pmsImportBatch.findUnique({
@@ -181,6 +213,8 @@ export async function POST(request) {
           guestCount: data.guestCount != null && data.guestCount !== '' ? parseInt(data.guestCount) : null,
           breakfastCount: data.breakfastCount != null && data.breakfastCount !== '' ? parseInt(data.breakfastCount) : null,
           occupiedRooms: data.occupiedRooms != null && data.occupiedRooms !== '' ? parseInt(data.occupiedRooms) : null,
+          reservationCount: reservationRows.length,
+          hasReservationRows: reservationRows.length > 0,
         }
       });
 
@@ -200,6 +234,99 @@ export async function POST(request) {
 
       await tx.pmsIncomeRecord.createMany({ data: recordsData });
 
+      // Create reservation records + auto cash transactions
+      const autoTxIds = [];
+      for (const row of reservationRows) {
+        const source = classifySource(row);
+
+        const reservation = await tx.pmsReservationRecord.create({
+          data: {
+            batchId: batch.id,
+            warehouse: data.warehouse,
+            businessDate: data.businessDate,
+            reservationNo:  row.reservationNo || null,
+            bookingNo:      row.bookingNo || null,
+            roomNo:         row.roomNo || null,
+            roomType:       row.roomType || null,
+            guestName:      row.guestName || null,
+            companyName:    row.companyName || null,
+            discountName:   row.discountName || null,
+            checkIn:        row.checkIn || null,
+            checkOut:       row.checkOut || null,
+            roomRate:       parseFloat(row.roomRate) || 0,
+            serviceFee:     parseFloat(row.serviceFee) || 0,
+            otherCharges:   parseFloat(row.otherCharges) || 0,
+            totalRevenue:   parseFloat(row.totalRevenue) || 0,
+            cash:           parseFloat(row.cash) || 0,
+            creditCard:     parseFloat(row.creditCard) || 0,
+            wireTransfer:   parseFloat(row.wireTransfer) || 0,
+            commission:     parseFloat(row.commission) || 0,
+            discount:       parseFloat(row.discount) || 0,
+            complimentary:  parseFloat(row.complimentary) || 0,
+            depositIn:      parseFloat(row.depositIn) || 0,
+            depositOut:     parseFloat(row.depositOut) || 0,
+            receivable:     parseFloat(row.receivable) || 0,
+            voucher:        parseFloat(row.voucher) || 0,
+            source,
+          },
+        });
+
+        const rowTxIds = [];
+
+        // Auto CashTransaction only when a bank account is configured for this warehouse
+        if (bankAccount) {
+          const cashAmt = parseFloat(row.cash) || 0;
+          if (cashAmt > 0) {
+            const txNo = await nextCashTransactionNo(tx, data.businessDate);
+            const cashTx = await tx.cashTransaction.create({
+              data: {
+                transactionNo: txNo,
+                transactionDate: data.businessDate,
+                type: '收入',
+                amount: cashAmt,
+                accountId: bankAccount.id,
+                description: `PMS 現金收入 - ${row.guestName || row.reservationNo || ''}`,
+                warehouse: data.warehouse,
+                isAutoCreated: true,
+                sourceType: 'PmsReservation',
+                sourceRecordId: reservation.id,
+              },
+            });
+            rowTxIds.push(cashTx.id);
+            autoTxIds.push(cashTx.id);
+          }
+
+          const wireAmt = parseFloat(row.wireTransfer) || 0;
+          if (wireAmt > 0) {
+            const txNo = await nextCashTransactionNo(tx, data.businessDate);
+            const wireTx = await tx.cashTransaction.create({
+              data: {
+                transactionNo: txNo,
+                transactionDate: data.businessDate,
+                type: '收入',
+                amount: wireAmt,
+                accountId: bankAccount.id,
+                description: `PMS 轉帳收入 - ${row.guestName || row.reservationNo || ''}`,
+                warehouse: data.warehouse,
+                isAutoCreated: true,
+                sourceType: 'PmsReservation',
+                sourceRecordId: reservation.id,
+              },
+            });
+            rowTxIds.push(wireTx.id);
+            autoTxIds.push(wireTx.id);
+          }
+        }
+
+        // Update reservation with cashTransactionIds
+        if (rowTxIds.length > 0) {
+          await tx.pmsReservationRecord.update({
+            where: { id: reservation.id },
+            data: { cashTransactionIds: rowTxIds.join(',') },
+          });
+        }
+      }
+
       // Return batch with record count
       return {
         ...batch,
@@ -210,6 +337,8 @@ export async function POST(request) {
         avgRoomRate: batch.avgRoomRate ? Number(batch.avgRoomRate) : null,
         importedAt: batch.importedAt.toISOString(),
         recordCount: data.records.length,
+        reservationCount: reservationRows.length,
+        autoTxCount: autoTxIds.length,
         isReplacement: !!existing
       };
     });
