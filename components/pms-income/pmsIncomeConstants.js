@@ -9,6 +9,7 @@ export const TABS = [
   { key: 'otaRecon', label: 'OTA 對帳比對' },
   { key: 'otaCommission', label: 'OTA 傭金' },
   { key: 'bookingCenter', label: '代訂中心' },
+  { key: 'vendorBilling', label: '廠商行程帳單' },
   { key: 'records', label: '收入記錄明細' },
   { key: 'settlement', label: '月度核對結算' },
   { key: 'statistics', label: '月度統計報表' },

@@ -21,6 +21,7 @@ import PmsIncomeExcelImportTab from '@/components/pms-income/PmsIncomeExcelImpor
 import PmsIncomePresetRecordsTab from '@/components/pms-income/PmsIncomePresetRecordsTab';
 import PmsIncomeBookingCenterTab from '@/components/pms-income/PmsIncomeBookingCenterTab';
 import PmsIncomeOtaReconTab from '@/components/pms-income/PmsIncomeOtaReconTab';
+import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBillingTab';
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
@@ -594,6 +595,10 @@ function PmsIncomePage() {
 
         {activeTab === 'bookingCenter' && (
           <PmsIncomeBookingCenterTab WAREHOUSES={WAREHOUSES} setActiveTab={setActiveTab} />
+        )}
+
+        {activeTab === 'vendorBilling' && (
+          <PmsIncomeVendorBillingTab WAREHOUSES={WAREHOUSES} />
         )}
 
         {activeTab === 'records' && (
