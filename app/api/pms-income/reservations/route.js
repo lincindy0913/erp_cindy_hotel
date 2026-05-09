@@ -14,6 +14,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse');
     const month = searchParams.get('month'); // YYYY-MM
+    const dateFrom = searchParams.get('dateFrom'); // YYYY-MM-DD
+    const dateTo = searchParams.get('dateTo');     // YYYY-MM-DD
     const source = searchParams.get('source');
     const depositStatus = searchParams.get('depositStatus');
     const creditCardStatus = searchParams.get('creditCardStatus');
@@ -21,7 +23,15 @@ export async function GET(request) {
 
     const where = {};
     if (warehouse) where.warehouse = warehouse;
-    if (month) where.businessDate = { startsWith: month };
+    if (dateFrom && dateTo) {
+      where.businessDate = { gte: dateFrom, lte: dateTo };
+    } else if (dateFrom) {
+      where.businessDate = { gte: dateFrom };
+    } else if (dateTo) {
+      where.businessDate = { lte: dateTo };
+    } else if (month) {
+      where.businessDate = { startsWith: month };
+    }
     if (source) where.source = source;
     if (depositStatus) where.depositStatus = depositStatus;
     if (creditCardStatus) where.creditCardStatus = creditCardStatus;

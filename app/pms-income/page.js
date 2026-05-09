@@ -21,6 +21,7 @@ import PmsIncomeExcelImportTab from '@/components/pms-income/PmsIncomeExcelImpor
 import PmsIncomePresetRecordsTab from '@/components/pms-income/PmsIncomePresetRecordsTab';
 import PmsIncomeBookingCenterTab from '@/components/pms-income/PmsIncomeBookingCenterTab';
 import PmsIncomeOtaReconTab from '@/components/pms-income/PmsIncomeOtaReconTab';
+import PmsIncomeOtaCommissionTab from '@/components/pms-income/PmsIncomeOtaCommissionTab';
 import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBillingTab';
 import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
 import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
@@ -595,14 +596,7 @@ function PmsIncomePage() {
         )}
 
         {activeTab === 'otaCommission' && (
-          <PmsIncomePresetRecordsTab
-            preset="otaCommission"
-            title="OTA 傭金（飯店 PMS 明細）"
-            subtitle="篩選：PMS 欄位含「佣金」或會計科目 6101（佣金費用）；可與「旅行社佣金配置」「每月手動代訂」交叉核對。"
-            WAREHOUSES={WAREHOUSES}
-            accent="orange"
-            onGoFullRecords={() => setActiveTab('records')}
-          />
+          <PmsIncomeOtaCommissionTab WAREHOUSES={WAREHOUSES} />
         )}
 
         {activeTab === 'bookingCenter' && (

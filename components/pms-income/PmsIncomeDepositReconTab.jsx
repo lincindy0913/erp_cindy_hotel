@@ -13,19 +13,30 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [rows, setRows] = useState([]);
+  const [allRows, setAllRows] = useState([]); // all months for cumulative calc
   const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('全部');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ take: '500' });
+      // Fetch this month's deposit rows
+      const params = new URLSearchParams({ take: '1000' });
       if (warehouse) params.set('warehouse', warehouse);
       if (month) params.set('month', month);
-      // show rows where depositIn > 0 or depositOut > 0
       const res = await fetch(`/api/pms-income/reservations?${params}`);
+
+      // Fetch all-time for cumulative outstanding (no month filter)
+      const paramsAll = new URLSearchParams({ take: '5000' });
+      if (warehouse) paramsAll.set('warehouse', warehouse);
+      const resAll = await fetch(`/api/pms-income/reservations?${paramsAll}`);
+
       if (res.ok) {
         const all = await res.json();
         setRows(all.filter(r => r.depositIn > 0 || r.depositOut > 0));
+      }
+      if (resAll.ok) {
+        setAllRows(await resAll.json());
       }
     } finally {
       setLoading(false);
@@ -34,9 +45,30 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Monthly stats
   const totalIn = rows.reduce((s, r) => s + (r.depositIn || 0), 0);
   const totalOut = rows.reduce((s, r) => s + (r.depositOut || 0), 0);
-  const net = totalIn - totalOut;
+  const monthNet = totalIn - totalOut;
+
+  // Status breakdown
+  const byStatus = { '已核對': { in: 0, out: 0, count: 0 }, '待確認': { in: 0, out: 0, count: 0 }, '差異': { in: 0, out: 0, count: 0 } };
+  for (const r of rows) {
+    const key = r.depositStatus === '已核對' ? '已核對' : r.depositStatus === '差異' ? '差異' : '待確認';
+    byStatus[key].in += r.depositIn || 0;
+    byStatus[key].out += r.depositOut || 0;
+    byStatus[key].count++;
+  }
+
+  // Cumulative outstanding (all-time sum of depositIn - depositOut)
+  const cumulativeIn  = allRows.reduce((s, r) => s + (r.depositIn || 0), 0);
+  const cumulativeOut = allRows.reduce((s, r) => s + (r.depositOut || 0), 0);
+  const outstanding   = cumulativeIn - cumulativeOut;
+
+  // Filter displayed rows
+  const displayed = statusFilter === '全部' ? rows : rows.filter(r => {
+    if (statusFilter === '待確認') return r.depositStatus !== '已核對' && r.depositStatus !== '差異';
+    return r.depositStatus === statusFilter;
+  });
 
   async function setStatus(id, depositStatus) {
     const res = await fetch(`/api/pms-income/reservations/${id}`, {
@@ -52,6 +84,7 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="block text-xs text-gray-500 mb-1">館別</label>
@@ -66,24 +99,62 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
         <button onClick={load} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">重新整理</button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      {/* Monthly KPI */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white border rounded-lg p-3">
-          <div className="text-xs text-gray-500">收訂金合計</div>
+          <div className="text-xs text-gray-500">本月收訂金</div>
           <div className="text-lg font-semibold text-green-600">{totalIn.toLocaleString('zh-TW')}</div>
         </div>
         <div className="bg-white border rounded-lg p-3">
-          <div className="text-xs text-gray-500">沖訂金合計</div>
+          <div className="text-xs text-gray-500">本月沖訂金</div>
           <div className="text-lg font-semibold text-red-600">{totalOut.toLocaleString('zh-TW')}</div>
         </div>
         <div className="bg-white border rounded-lg p-3">
-          <div className="text-xs text-gray-500">預收款淨額</div>
-          <div className={`text-lg font-semibold ${net >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{net.toLocaleString('zh-TW')}</div>
+          <div className="text-xs text-gray-500">本月淨增減</div>
+          <div className={`text-lg font-semibold ${monthNet >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+            {monthNet >= 0 ? '+' : ''}{monthNet.toLocaleString('zh-TW')}
+          </div>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="text-xs text-amber-700">累計預收款餘額（全期）</div>
+          <div className={`text-lg font-semibold ${outstanding >= 0 ? 'text-amber-700' : 'text-red-600'}`}>
+            {outstanding.toLocaleString('zh-TW')}
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">收 {cumulativeIn.toLocaleString('zh-TW')} − 沖 {cumulativeOut.toLocaleString('zh-TW')}</div>
         </div>
       </div>
 
+      {/* Status breakdown */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { key: '已核對', label: '已核對', color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
+          { key: '待確認', label: '待確認 / 其他', color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' },
+          { key: '差異', label: '差異', color: 'text-red-700', bg: 'bg-red-50 border-red-200' },
+        ].map(s => (
+          <button
+            key={s.key}
+            onClick={() => setStatusFilter(prev => prev === s.key ? '全部' : s.key)}
+            className={`border rounded-lg p-3 text-left transition-all ${s.bg} ${statusFilter === s.key ? 'ring-2 ring-blue-400' : ''}`}
+          >
+            <div className={`text-xs font-medium ${s.color}`}>{s.label}</div>
+            <div className="text-sm font-bold mt-1">{byStatus[s.key]?.count || 0} 筆</div>
+            <div className="text-xs text-gray-500">
+              收 {(byStatus[s.key]?.in || 0).toLocaleString('zh-TW')}　沖 {(byStatus[s.key]?.out || 0).toLocaleString('zh-TW')}
+            </div>
+          </button>
+        ))}
+      </div>
+      {statusFilter !== '全部' && (
+        <div className="flex items-center gap-2 text-xs text-blue-600">
+          <span>篩選中：{statusFilter}</span>
+          <button onClick={() => setStatusFilter('全部')} className="underline">清除篩選</button>
+        </div>
+      )}
+
+      {/* Table */}
       {loading ? (
         <div className="text-center py-8 text-gray-400">載入中...</div>
-      ) : rows.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div className="text-center py-8 text-gray-400">本月無訂金記錄</div>
       ) : (
         <div className="overflow-x-auto border rounded-lg">
@@ -101,7 +172,7 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map(r => {
+              {displayed.map(r => {
                 const netAmt = (r.depositIn || 0) - (r.depositOut || 0);
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
@@ -122,25 +193,30 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
                     </td>
                     <td className="px-3 py-2 text-center">
                       {r.depositStatus !== '已核對' ? (
-                        <button
-                          onClick={() => setStatus(r.id, '已核對')}
-                          className="text-xs text-green-600 hover:underline"
-                        >
-                          確認核對
-                        </button>
+                        <button onClick={() => setStatus(r.id, '已核對')} className="text-xs text-green-600 hover:underline mr-2">確認</button>
                       ) : (
-                        <button
-                          onClick={() => setStatus(r.id, '待確認')}
-                          className="text-xs text-gray-400 hover:underline"
-                        >
-                          取消確認
-                        </button>
+                        <button onClick={() => setStatus(r.id, '待確認')} className="text-xs text-gray-400 hover:underline mr-2">取消</button>
+                      )}
+                      {r.depositStatus !== '差異' && (
+                        <button onClick={() => setStatus(r.id, '差異')} className="text-xs text-red-500 hover:underline">差異</button>
                       )}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot className="bg-gray-50 text-xs font-semibold">
+              <tr>
+                <td colSpan={3} className="px-3 py-2 text-gray-600">合計（{displayed.length} 筆）</td>
+                <td className="px-3 py-2 text-right text-green-700">
+                  {displayed.reduce((s, r) => s + (r.depositIn || 0), 0).toLocaleString('zh-TW')}
+                </td>
+                <td className="px-3 py-2 text-right text-red-600">
+                  {displayed.reduce((s, r) => s + (r.depositOut || 0), 0).toLocaleString('zh-TW')}
+                </td>
+                <td colSpan={3} />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { formatNumber } from './pmsIncomeFormatters';
 
 export default function PmsIncomeSettlementTab({
@@ -16,6 +17,29 @@ export default function PmsIncomeSettlementTab({
   handleVerifyMonth,
   handleVerifyBatches,
 }) {
+  const [resvStats, setResvStats] = useState(null);
+  const [resvLoading, setResvLoading] = useState(false);
+
+  useEffect(() => {
+    if (!settlementWarehouse || !settlementYearMonth) { setResvStats(null); return; }
+    setResvLoading(true);
+    const params = new URLSearchParams({ take: '2000' });
+    params.set('warehouse', settlementWarehouse);
+    params.set('month', settlementYearMonth);
+    fetch(`/api/pms-income/reservations?${params}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(rows => {
+        const totalRevenue    = rows.reduce((s, r) => s + (r.totalRevenue || 0), 0);
+        const totalCash       = rows.reduce((s, r) => s + (r.cash || 0), 0);
+        const totalCC         = rows.reduce((s, r) => s + (r.creditCard || 0), 0);
+        const totalWire       = rows.reduce((s, r) => s + (r.wireTransfer || 0), 0);
+        const totalCommission = rows.reduce((s, r) => s + (r.commission || 0), 0);
+        setResvStats({ count: rows.length, totalRevenue, totalCash, totalCC, totalWire, totalCommission });
+      })
+      .catch(() => setResvStats(null))
+      .finally(() => setResvLoading(false));
+  }, [settlementWarehouse, settlementYearMonth]);
+
   return (
     <div className="space-y-4">
       <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
@@ -133,6 +157,42 @@ export default function PmsIncomeSettlementTab({
               {settlementStatus.verifiedAt ? new Date(settlementStatus.verifiedAt).toLocaleString('zh-TW') : ''}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* 訂房明細摘要 */}
+      {(resvStats || resvLoading) && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-semibold text-indigo-800">訂房明細摘要（PmsReservationRecord）</span>
+            {resvLoading && <span className="text-xs text-indigo-400">載入中...</span>}
+          </div>
+          {resvStats && (
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {[
+                { label: '訂單筆數', value: resvStats.count + ' 筆', sub: '' },
+                { label: '總收入', value: formatNumber(resvStats.totalRevenue), sub: '' },
+                { label: '現金', value: formatNumber(resvStats.totalCash), sub: '' },
+                { label: '信用卡', value: formatNumber(resvStats.totalCC), sub: '' },
+                { label: '轉帳', value: formatNumber(resvStats.totalWire), sub: '' },
+                { label: '佣金', value: formatNumber(resvStats.totalCommission), sub: '' },
+              ].map(k => (
+                <div key={k.label} className="bg-white rounded-lg border p-3">
+                  <div className="text-xs text-gray-500">{k.label}</div>
+                  <div className="text-sm font-bold text-indigo-700">{k.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {resvStats && settlementStatus && (
+            <div className="mt-3 text-xs text-indigo-700 bg-indigo-100 rounded px-3 py-2">
+              批次貸方合計：{formatNumber(settlementStatus.creditTotal)}
+              　訂房明細總收入：{formatNumber(resvStats.totalRevenue)}
+              {Math.abs(settlementStatus.creditTotal - resvStats.totalRevenue) < 1
+                ? '　✓ 兩者吻合'
+                : `　⚠ 差異 ${(settlementStatus.creditTotal - resvStats.totalRevenue).toLocaleString('zh-TW')}（訂房資料可能不完整）`}
+            </div>
+          )}
         </div>
       )}
 

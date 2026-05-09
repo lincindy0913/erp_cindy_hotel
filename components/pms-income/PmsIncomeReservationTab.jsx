@@ -6,12 +6,12 @@ const DEPOSIT_STATUS_OPTIONS = ['全部', '待確認', '已核對', '差異'];
 const CC_STATUS_OPTIONS = ['全部', '待核對', '已核對'];
 
 const SOURCE_COLORS = {
-  '電話': 'bg-gray-100 text-gray-700',
+  '電話':        'bg-gray-100 text-gray-700',
   'OTA-Booking': 'bg-blue-100 text-blue-700',
-  'OTA-Agoda': 'bg-red-100 text-red-700',
+  'OTA-Agoda':   'bg-red-100 text-red-700',
   'OTA-Expedia': 'bg-yellow-100 text-yellow-800',
-  '代訂中心': 'bg-purple-100 text-purple-700',
-  '月租': 'bg-green-100 text-green-700',
+  '代訂中心':    'bg-purple-100 text-purple-700',
+  '月租':        'bg-green-100 text-green-700',
 };
 
 function fmt(n) {
@@ -21,30 +21,60 @@ function fmt(n) {
   return v.toLocaleString('zh-TW');
 }
 
+function downloadCsv(rows) {
+  const headers = ['日期', '房號', '住客', '房型', '公司', '來源', '住宿金額', '現金', '信用卡', '轉帳', '佣金', '收訂金', '沖訂金', '訂金狀態', '信用卡核對'];
+  const lines = [headers.join(',')];
+  for (const r of rows) {
+    const src = r.sourceOverride || r.source;
+    lines.push([
+      r.businessDate, r.roomNo || '', r.guestName || '', r.roomType || '', r.companyName || '',
+      src, r.totalRevenue || 0, r.cash || 0, r.creditCard || 0, r.wireTransfer || 0,
+      r.commission || 0, r.depositIn || 0, r.depositOut || 0, r.depositStatus, r.creditCardStatus,
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  }
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `訂房明細_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
   const [warehouse, setWarehouse] = useState(WAREHOUSES[0] || '');
+  const [useRange, setUseRange] = useState(false);
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [sourceFilter, setSourceFilter] = useState('全部');
   const [depositFilter, setDepositFilter] = useState('全部');
   const [ccFilter, setCcFilter] = useState('全部');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState(null); // detail modal
+  const [selected, setSelected] = useState(null);
   const [pushMode, setPushMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [billingId, setBillingId] = useState('');
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState('');
+  const [reclassifying, setReclassifying] = useState(false);
+  const [reclassMsg, setReclassMsg] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ take: '500' });
+      const params = new URLSearchParams({ take: '1000' });
       if (warehouse) params.set('warehouse', warehouse);
-      if (month) params.set('month', month);
+      if (useRange) {
+        if (dateFrom) params.set('dateFrom', dateFrom);
+        if (dateTo) params.set('dateTo', dateTo);
+      } else {
+        if (month) params.set('month', month);
+      }
       if (sourceFilter !== '全部') params.set('source', sourceFilter);
       if (depositFilter !== '全部') params.set('depositStatus', depositFilter);
       if (ccFilter !== '全部') params.set('creditCardStatus', ccFilter);
@@ -53,7 +83,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
     } finally {
       setLoading(false);
     }
-  }, [warehouse, month, sourceFilter, depositFilter, ccFilter]);
+  }, [warehouse, useRange, month, dateFrom, dateTo, sourceFilter, depositFilter, ccFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -64,13 +94,15 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
   const totalCommission = rows.reduce((s, r) => s + (r.commission || 0), 0);
 
   const sourceCounts = {};
-  for (const r of rows) sourceCounts[r.source] = (sourceCounts[r.source] || 0) + 1;
+  for (const r of rows) {
+    const src = r.sourceOverride || r.source;
+    sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+  }
 
   async function pushToVendorBilling() {
     if (!billingId) { setPushMsg('請輸入廠商帳單 ID'); return; }
     if (checkedIds.size === 0) { setPushMsg('請勾選要推送的訂單'); return; }
-    setPushing(true);
-    setPushMsg('');
+    setPushing(true); setPushMsg('');
     try {
       const res = await fetch('/api/pms-income/vendor-billing/push-reservations', {
         method: 'POST',
@@ -80,14 +112,33 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
       const json = await res.json();
       if (res.ok) {
         setPushMsg(`已推送 ${json.count} 筆至帳單 #${billingId}`);
-        setCheckedIds(new Set());
-        setPushMode(false);
-        load();
+        setCheckedIds(new Set()); setPushMode(false); load();
       } else {
         setPushMsg(json.error?.message || '推送失敗');
       }
     } catch { setPushMsg('網路錯誤'); }
     finally { setPushing(false); }
+  }
+
+  async function reclassify() {
+    if (!month && !useRange) { setReclassMsg('請先選擇月份'); return; }
+    if (useRange) { setReclassMsg('日期區間模式下請切換回月份模式再重新分類'); return; }
+    setReclassifying(true); setReclassMsg('');
+    try {
+      const res = await fetch('/api/pms-income/reservations/reclassify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ warehouse, month }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setReclassMsg(`已重新分類 ${json.updated} 筆`);
+        load();
+      } else {
+        setReclassMsg(json.error?.message || '分類失敗');
+      }
+    } catch { setReclassMsg('網路錯誤'); }
+    finally { setReclassifying(false); }
   }
 
   async function updateRow(id, patch) {
@@ -113,8 +164,24 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">月份</label>
-          <input type="month" className="border rounded px-2 py-1 text-sm" value={month} onChange={e => setMonth(e.target.value)} />
+          <label className="block text-xs text-gray-500 mb-1">
+            篩選方式&nbsp;
+            <button
+              onClick={() => setUseRange(r => !r)}
+              className="text-blue-600 text-xs underline"
+            >
+              {useRange ? '切換回月份' : '切換日期區間'}
+            </button>
+          </label>
+          {useRange ? (
+            <div className="flex gap-1 items-center">
+              <input type="date" className="border rounded px-2 py-1 text-sm" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <span className="text-gray-400 text-xs">~</span>
+              <input type="date" className="border rounded px-2 py-1 text-sm" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </div>
+          ) : (
+            <input type="month" className="border rounded px-2 py-1 text-sm" value={month} onChange={e => setMonth(e.target.value)} />
+          )}
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">來源</label>
@@ -134,8 +201,13 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
             {CC_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
-        <button onClick={load} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
-          重新整理
+        <button onClick={load} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">重新整理</button>
+        <button
+          onClick={() => downloadCsv(rows)}
+          disabled={rows.length === 0}
+          className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-40"
+        >
+          匯出 CSV
         </button>
         <button
           onClick={() => { setPushMode(m => !m); setCheckedIds(new Set()); setPushMsg(''); }}
@@ -143,15 +215,28 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
         >
           {pushMode ? '取消推送' : '推送至廠商帳單'}
         </button>
+        <button
+          onClick={reclassify}
+          disabled={reclassifying || useRange}
+          className="px-3 py-1 text-sm border border-orange-400 text-orange-600 rounded hover:bg-orange-50 disabled:opacity-40"
+          title={useRange ? '請切換到月份模式再重新分類' : ''}
+        >
+          {reclassifying ? '分類中...' : '重新分類來源'}
+        </button>
+        {reclassMsg && (
+          <span className={`text-xs ${reclassMsg.startsWith('已重新') ? 'text-green-600' : 'text-red-600'}`}>
+            {reclassMsg}
+          </span>
+        )}
       </div>
 
-      {/* Push to vendor billing panel */}
+      {/* Push panel */}
       {pushMode && (
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex flex-wrap gap-3 items-center">
           <span className="text-sm text-purple-700">已勾選 {checkedIds.size} 筆（建議篩選來源 = 代訂中心）</span>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">廠商帳單 ID：</label>
-            <input type="number" className="border rounded px-2 py-1 text-sm w-24" value={billingId} onChange={e => setBillingId(e.target.value)} placeholder="帳單 ID" />
+            <input type="number" className="border rounded px-2 py-1 text-sm w-24" value={billingId} onChange={e => setBillingId(e.target.value)} />
           </div>
           <button onClick={pushToVendorBilling} disabled={pushing} className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50">
             {pushing ? '推送中...' : '確認推送'}
@@ -176,7 +261,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
         ))}
       </div>
 
-      {/* Source breakdown */}
+      {/* Source chips */}
       <div className="flex flex-wrap gap-2">
         {Object.entries(sourceCounts).map(([src, cnt]) => (
           <span key={src} className={`px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_COLORS[src] || 'bg-gray-100 text-gray-700'}`}>
@@ -195,7 +280,14 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-600 text-xs">
               <tr>
-                {pushMode && <th className="px-3 py-2"><input type="checkbox" checked={checkedIds.size === rows.length && rows.length > 0} onChange={() => setCheckedIds(checkedIds.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))} /></th>}
+                {pushMode && (
+                  <th className="px-3 py-2">
+                    <input type="checkbox"
+                      checked={checkedIds.size === rows.length && rows.length > 0}
+                      onChange={() => setCheckedIds(checkedIds.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))}
+                    />
+                  </th>
+                )}
                 <th className="px-3 py-2 text-left">日期</th>
                 <th className="px-3 py-2 text-left">房號</th>
                 <th className="px-3 py-2 text-left">住客</th>
@@ -211,48 +303,52 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map(r => (
-                <tr key={r.id} className={`hover:bg-gray-50 ${checkedIds.has(r.id) ? 'bg-purple-50' : ''}`}>
-                  {pushMode && <td className="px-3 py-2 text-center"><input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => { const n = new Set(checkedIds); n.has(r.id) ? n.delete(r.id) : n.add(r.id); setCheckedIds(n); }} /></td>}
-                  <td className="px-3 py-2 whitespace-nowrap">{r.businessDate}</td>
-                  <td className="px-3 py-2">{r.roomNo || '-'}</td>
-                  <td className="px-3 py-2 max-w-[120px] truncate" title={r.guestName}>{r.guestName || '-'}</td>
-                  <td className="px-3 py-2">{r.roomType || '-'}</td>
-                  <td className="px-3 py-2 text-right">{fmt(r.totalRevenue)}</td>
-                  <td className="px-3 py-2 text-right">{fmt(r.cash)}</td>
-                  <td className="px-3 py-2 text-right">{fmt(r.creditCard)}</td>
-                  <td className="px-3 py-2 text-right">{fmt(r.commission)}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`px-1.5 py-0.5 rounded text-xs ${SOURCE_COLORS[r.sourceOverride || r.source] || 'bg-gray-100 text-gray-600'}`}>
-                      {r.sourceOverride || r.source}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`px-1.5 py-0.5 rounded text-xs ${r.depositStatus === '已核對' ? 'bg-green-100 text-green-700' : r.depositStatus === '差異' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {r.depositStatus}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`px-1.5 py-0.5 rounded text-xs ${r.creditCardStatus === '已核對' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {r.creditCardStatus}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      onClick={() => setSelected(r)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      詳情
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map(r => {
+                const src = r.sourceOverride || r.source;
+                return (
+                  <tr key={r.id} className={`hover:bg-gray-50 ${checkedIds.has(r.id) ? 'bg-purple-50' : ''}`}>
+                    {pushMode && (
+                      <td className="px-3 py-2 text-center">
+                        <input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => {
+                          const n = new Set(checkedIds);
+                          n.has(r.id) ? n.delete(r.id) : n.add(r.id);
+                          setCheckedIds(n);
+                        }} />
+                      </td>
+                    )}
+                    <td className="px-3 py-2 whitespace-nowrap">{r.businessDate}</td>
+                    <td className="px-3 py-2">{r.roomNo || '-'}</td>
+                    <td className="px-3 py-2 max-w-[120px] truncate" title={r.guestName}>{r.guestName || '-'}</td>
+                    <td className="px-3 py-2">{r.roomType || '-'}</td>
+                    <td className="px-3 py-2 text-right">{fmt(r.totalRevenue)}</td>
+                    <td className="px-3 py-2 text-right">{fmt(r.cash)}</td>
+                    <td className="px-3 py-2 text-right">{fmt(r.creditCard)}</td>
+                    <td className="px-3 py-2 text-right">{fmt(r.commission)}</td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${SOURCE_COLORS[src] || 'bg-gray-100 text-gray-600'}`}>{src}</span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${
+                        r.depositStatus === '已核對' ? 'bg-green-100 text-green-700' :
+                        r.depositStatus === '差異' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                      }`}>{r.depositStatus}</span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${r.creditCardStatus === '已核對' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {r.creditCardStatus}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <button onClick={() => setSelected(r)} className="text-xs text-blue-600 hover:underline">詳情</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Detail modal */}
       {selected && (
         <ReservationDetailModal
           row={selected}
@@ -269,7 +365,7 @@ function ReservationDetailModal({ row, onClose, onSave }) {
   const [depositStatus, setDepositStatus] = useState(row.depositStatus || '待確認');
   const [note, setNote] = useState(row.note || '');
 
-  function fmt(n) {
+  function f(n) {
     if (!n || n === 0) return '-';
     return Number(n).toLocaleString('zh-TW');
   }
@@ -292,14 +388,14 @@ function ReservationDetailModal({ row, onClose, onSave }) {
           </div>
           <hr />
           <div className="grid grid-cols-2 gap-2">
-            <div><span className="text-gray-500">住宿金額：</span>{fmt(row.roomRate)}</div>
-            <div><span className="text-gray-500">服務費：</span>{fmt(row.serviceFee)}</div>
-            <div><span className="text-gray-500">現金：</span>{fmt(row.cash)}</div>
-            <div><span className="text-gray-500">信用卡：</span>{fmt(row.creditCard)}</div>
-            <div><span className="text-gray-500">轉帳：</span>{fmt(row.wireTransfer)}</div>
-            <div><span className="text-gray-500">佣金：</span>{fmt(row.commission)}</div>
-            <div><span className="text-gray-500">收訂金：</span>{fmt(row.depositIn)}</div>
-            <div><span className="text-gray-500">沖訂金：</span>{fmt(row.depositOut)}</div>
+            <div><span className="text-gray-500">住宿金額：</span>{f(row.roomRate)}</div>
+            <div><span className="text-gray-500">服務費：</span>{f(row.serviceFee)}</div>
+            <div><span className="text-gray-500">現金：</span>{f(row.cash)}</div>
+            <div><span className="text-gray-500">信用卡：</span>{f(row.creditCard)}</div>
+            <div><span className="text-gray-500">轉帳：</span>{f(row.wireTransfer)}</div>
+            <div><span className="text-gray-500">佣金：</span>{f(row.commission)}</div>
+            <div><span className="text-gray-500">收訂金：</span>{f(row.depositIn)}</div>
+            <div><span className="text-gray-500">沖訂金：</span>{f(row.depositOut)}</div>
           </div>
           <hr />
           <div>
