@@ -1,32 +1,126 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { formatNumber } from './pmsIncomeFormatters';
 import { DEFAULT_PMS_COLUMNS } from './pmsIncomeConstants';
+
+function detectWarehouse(filename, warehouses) {
+  const lower = filename.toLowerCase();
+  for (const wh of warehouses) {
+    if (lower.includes(wh.toLowerCase())) return wh;
+  }
+  // Common abbreviations
+  if (/\blg\b|ligge|li.?ge/.test(lower)) return warehouses.find(w => /麗格/.test(w)) || '';
+  if (/\blx\b|li.?xuan/.test(lower))     return warehouses.find(w => /麗軒/.test(w)) || '';
+  if (/mins[hu]|minshu/.test(lower))     return warehouses.find(w => /民宿/.test(w)) || '';
+  return warehouses[0] || '';
+}
+
+function MonthCalendar({ importedDates, month }) {
+  const [year, mon] = month.split('-').map(Number);
+  const today = new Date().toISOString().slice(0, 10);
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  const firstDow = new Date(year, mon - 1, 1).getDay();
+  const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${year}-${String(mon).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+
+  const importedCount = Object.values(importedDates).filter(Boolean).length;
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-semibold text-gray-700">{year} 年 {mon} 月 匯入進度</span>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+          已匯入 {importedCount} / {daysInMonth} 天
+        </span>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
+        {DAY_LABELS.map(d => <div key={d} className="text-gray-400 font-medium py-0.5">{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((date, i) => {
+          if (!date) return <div key={i} className="h-7" />;
+          const d = parseInt(date.slice(8));
+          const isImported = !!importedDates[date];
+          const isToday = date === today;
+          const isPast = date < today;
+          return (
+            <div key={date}
+              className={`h-7 flex items-center justify-center rounded text-xs font-medium
+                ${isImported
+                  ? 'bg-green-500 text-white'
+                  : isToday
+                    ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-400'
+                    : isPast
+                      ? 'bg-red-50 text-red-400'
+                      : 'text-gray-300'}`}
+              title={isImported ? `${date} 已匯入` : isPast ? `${date} 未匯入` : date}
+            >
+              {d}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-3 mt-3 text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" /> 已匯入</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-50 border border-red-200 inline-block" /> 未匯入</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-300 inline-block" /> 今天</span>
+      </div>
+    </div>
+  );
+}
 
 export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
   const [isDragging,  setIsDragging]  = useState(false);
   const [parsing,     setParsing]     = useState(false);
   const [parseError,  setParseError]  = useState('');
-  const [parsed,      setParsed]      = useState(null);   // raw parse result for reference totals
+  const [parsed,      setParsed]      = useState(null);
+  const [mode,        setMode]        = useState('quick'); // 'quick' | 'detail'
 
-  // form state (populated after parse)
-  const [warehouse,     setWarehouse]     = useState('');
-  const [businessDate,  setBusinessDate]  = useState('');
-  const [fileName,      setFileName]      = useState('');
-  const [roomCount,     setRoomCount]     = useState('');
-  const [occupancyRate, setOccupancyRate] = useState('');
-  const [avgRoomRate,   setAvgRoomRate]   = useState('');
-  const [guestCount,    setGuestCount]    = useState('');
-  const [breakfastCount,setBreakfastCount]= useState('');
-  const [occupiedRooms, setOccupiedRooms] = useState('');
-  const [records,       setRecords]       = useState([]);
+  const [warehouse,      setWarehouse]      = useState('');
+  const [businessDate,   setBusinessDate]   = useState('');
+  const [fileName,       setFileName]       = useState('');
+  const [roomCount,      setRoomCount]      = useState('');
+  const [occupancyRate,  setOccupancyRate]  = useState('');
+  const [avgRoomRate,    setAvgRoomRate]    = useState('');
+  const [guestCount,     setGuestCount]     = useState('');
+  const [breakfastCount, setBreakfastCount] = useState('');
+  const [occupiedRooms,  setOccupiedRooms]  = useState('');
+  const [records,        setRecords]        = useState([]);
 
   const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [success,     setSuccess]     = useState('');
 
+  // Calendar state
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [importedDates, setImportedDates] = useState({});
+
   const fileInputRef = useRef(null);
+  const wh = WAREHOUSES?.length ? WAREHOUSES : ['麗格', '麗軒', '民宿'];
+
+  // Fetch calendar data whenever warehouse or calMonth changes
+  useEffect(() => {
+    const [y, m] = calMonth.split('-');
+    const params = new URLSearchParams({ year: y, month: parseInt(m) });
+    if (warehouse) params.set('warehouse', warehouse);
+    fetch(`/api/pms-income/batches?${params}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(batches => {
+        const map = {};
+        for (const b of batches) map[b.businessDate] = true;
+        setImportedDates(map);
+      })
+      .catch(() => {});
+  }, [calMonth, warehouse]);
 
   const processFile = useCallback(async (f) => {
     if (!f) return;
@@ -42,7 +136,9 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || '解析失敗');
 
-      setWarehouse(WAREHOUSES[0] || '');
+      // Auto-detect warehouse from filename
+      const detectedWh = detectWarehouse(f.name, wh);
+      setWarehouse(detectedWh || wh[0] || '');
       setBusinessDate(data.businessDate || new Date().toISOString().slice(0, 10));
       setFileName(data.fileName || f.name);
       setRoomCount(data.roomCount     || '');
@@ -64,34 +160,40 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
         .map(d => ({ ...d, amount: '' }));
       setRecords([...excelRecs, ...defaults]);
       setParsed(data);
+      setMode('quick');
     } catch (e) {
       setParseError(e.message);
     } finally {
       setParsing(false);
     }
-  }, [WAREHOUSES]);
+  }, [wh]);
 
   const onDrop = (e) => {
     e.preventDefault(); setIsDragging(false);
     const f = e.dataTransfer.files[0];
     if (f) processFile(f);
   };
-
   const onFileChange = (e) => {
     const f = e.target.files[0];
     if (f) processFile(f);
     e.target.value = '';
   };
-
   const setAmount = (idx, val) =>
     setRecords(r => r.map((rec, i) => i === idx ? { ...rec, amount: val } : rec));
 
+  const creditRecs = records.filter(r => r.entryType === '貸方');
+  const debitRecs  = records.filter(r => r.entryType === '借方');
+  const creditSum  = creditRecs.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const debitSum   = debitRecs.reduce( (s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const diff       = creditSum - debitSum;
+  const balanced   = Math.abs(diff) < 0.01;
+
   const submit = async () => {
-    if (!warehouse)     { setSubmitError('請選擇館別'); return; }
-    if (!businessDate)  { setSubmitError('請選擇營業日期'); return; }
+    if (!warehouse)    { setSubmitError('請選擇館別'); return; }
+    if (!businessDate) { setSubmitError('請選擇營業日期'); return; }
 
     const valid = records
-      .filter(r => r.amount !== '' && r.amount != null && r.amount !== '0' && parseFloat(r.amount) !== 0)
+      .filter(r => r.amount !== '' && r.amount != null && parseFloat(r.amount) !== 0)
       .map(r => ({
         pmsColumnName:  r.pmsColumnName,
         entryType:      r.entryType,
@@ -101,8 +203,8 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       }));
     if (valid.length === 0) { setSubmitError('請至少輸入一筆金額'); return; }
 
-    const creditTotal = valid.filter(r => r.entryType === '貸方').reduce((s, r) => s + r.amount, 0);
-    const debitTotal  = valid.filter(r => r.entryType === '借方').reduce((s, r) => s + r.amount, 0);
+    const cTotal = valid.filter(r => r.entryType === '貸方').reduce((s, r) => s + r.amount, 0);
+    const dTotal = valid.filter(r => r.entryType === '借方').reduce((s, r) => s + r.amount, 0);
 
     setSubmitting(true); setSubmitError('');
     try {
@@ -112,21 +214,32 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
         body:    JSON.stringify({
           warehouse, businessDate,
           fileName: fileName || `PMS_${warehouse}_${businessDate}.xlsx`,
-          records: valid, creditTotal, debitTotal, difference: creditTotal - debitTotal,
-          roomCount:      roomCount      ? parseInt(roomCount)          : null,
-          occupancyRate:  occupancyRate  ? parseFloat(occupancyRate)    : null,
-          avgRoomRate:    avgRoomRate    ? parseFloat(avgRoomRate)      : null,
-          guestCount:     guestCount     ? parseInt(guestCount)         : null,
-          breakfastCount: breakfastCount ? parseInt(breakfastCount)     : null,
-          occupiedRooms:  occupiedRooms  ? parseInt(occupiedRooms)      : null,
+          records: valid, creditTotal: cTotal, debitTotal: dTotal, difference: cTotal - dTotal,
+          roomCount:      roomCount      ? parseInt(roomCount)       : null,
+          occupancyRate:  occupancyRate  ? parseFloat(occupancyRate) : null,
+          avgRoomRate:    avgRoomRate    ? parseFloat(avgRoomRate)   : null,
+          guestCount:     guestCount     ? parseInt(guestCount)      : null,
+          breakfastCount: breakfastCount ? parseInt(breakfastCount)  : null,
+          occupiedRooms:  occupiedRooms  ? parseInt(occupiedRooms)   : null,
           reservationRows: parsed?.reservationRows || [],
         }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error?.message || '匯入失敗');
       const resNote = result.reservationCount > 0 ? `，訂房明細 ${result.reservationCount} 筆` : '';
-      setSuccess(`匯入成功！批次號：${result.batchNo}，共 ${result.recordCount} 筆${resNote}${result.isReplacement ? '（已覆蓋舊資料）' : ''}`);
+      setSuccess(`✓ 匯入成功！批次號：${result.batchNo}，共 ${result.recordCount} 筆${resNote}${result.isReplacement ? '（已覆蓋舊資料）' : ''}`);
       setParsed(null); setRecords([]);
+      // Refresh calendar
+      const [y, m] = calMonth.split('-');
+      const params = new URLSearchParams({ year: y, month: parseInt(m) });
+      if (warehouse) params.set('warehouse', warehouse);
+      fetch(`/api/pms-income/batches?${params}`)
+        .then(r => r.ok ? r.json() : [])
+        .then(batches => {
+          const map = {};
+          for (const b of batches) map[b.businessDate] = true;
+          setImportedDates(map);
+        });
     } catch (e) {
       setSubmitError(e.message);
     } finally {
@@ -136,202 +249,282 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
 
   const reset = () => {
     setParsed(null); setRecords([]); setParseError(''); setSuccess(''); setSubmitError('');
-    setFileName(''); setBusinessDate(''); setRoomCount(''); setOccupancyRate('');
-    setAvgRoomRate(''); setGuestCount(''); setBreakfastCount(''); setOccupiedRooms('');
+    setFileName(''); setBusinessDate('');
+    setRoomCount(''); setOccupancyRate(''); setAvgRoomRate('');
+    setGuestCount(''); setBreakfastCount(''); setOccupiedRooms('');
   };
 
-  const creditRecs = records.filter(r => r.entryType === '貸方');
-  const debitRecs  = records.filter(r => r.entryType === '借方');
-  const creditSum  = creditRecs.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-  const debitSum   = debitRecs.reduce( (s, r) => s + (parseFloat(r.amount) || 0), 0);
-  const balanced   = Math.abs(creditSum - debitSum) < 0.01;
-  const wh         = WAREHOUSES.length ? WAREHOUSES : ['麗格', '麗軒', '民宿'];
+  // ── Not yet parsed: upload zone + calendar ──
+  if (!parsed) {
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* Upload zone */}
+          <div className="md:col-span-3 bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-800">上傳飯店 PMS 日營業報表</h3>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <label>館別篩選：</label>
+                <select className="border rounded px-2 py-0.5 text-xs" value={warehouse} onChange={e => setWarehouse(e.target.value)}>
+                  <option value="">全部</option>
+                  {wh.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+                <label>月份：</label>
+                <input type="month" className="border rounded px-2 py-0.5 text-xs" value={calMonth} onChange={e => setCalMonth(e.target.value)} />
+              </div>
+            </div>
 
-  return (
-    <div className="space-y-5">
+            <div
+              onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={onDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors
+                ${isDragging ? 'border-teal-400 bg-teal-50' : 'border-gray-200 hover:border-teal-300 hover:bg-teal-50/40'}`}
+            >
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFileChange} />
+              {parsing ? (
+                <p className="text-teal-600 font-medium">解析中…</p>
+              ) : (
+                <>
+                  <div className="text-4xl mb-2">📊</div>
+                  <p className="text-gray-600 font-medium">拖曳或點擊上傳日營業報表</p>
+                  <p className="text-xs text-gray-400 mt-1">支援 .xlsx / .xls — 館別從檔名自動帶入</p>
+                </>
+              )}
+            </div>
 
-      {/* ── 上傳區塊 ── */}
-      {!parsed ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <h3 className="text-sm font-semibold text-gray-800">上傳飯店 PMS 日營業報表</h3>
+            {parseError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{parseError}</div>}
 
-          {/* drag zone */}
-          <div
-            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors
-              ${isDragging ? 'border-teal-400 bg-teal-50' : 'border-gray-200 hover:border-teal-300 hover:bg-teal-50/40'}`}
-          >
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFileChange} />
-            {parsing ? (
-              <p className="text-teal-600 font-medium">解析中…</p>
-            ) : (
-              <>
-                <div className="text-4xl mb-2">📊</div>
-                <p className="text-gray-600 font-medium">拖曳或點擊上傳日營業報表</p>
-                <p className="text-xs text-gray-400 mt-1">支援 .xlsx / .xls（日營業報表格式）</p>
-              </>
+            {success && (
+              <div className="p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm space-y-2">
+                <p className="font-semibold">{success}</p>
+                <span className="text-xs text-green-700 underline cursor-pointer" onClick={() => setSuccess('')}>再上傳下一筆</span>
+                <span className="mx-2 text-green-400">·</span>
+                <span className="text-xs text-teal-700 underline cursor-pointer" onClick={() => setActiveTab('overview')}>前往每日匯入總覽</span>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-teal-100 bg-teal-50/60 px-5 py-3 text-xs text-teal-900 space-y-1">
+              <p className="font-semibold text-teal-800">每日操作流程</p>
+              <ol className="list-decimal list-inside space-y-0.5 text-teal-900/90">
+                <li>飯店 PMS 匯出當日<strong>日營業報表</strong>（.xls / .xlsx）</li>
+                <li>拖曳上傳 — 館別、日期、金額<strong>自動帶入</strong></li>
+                <li>確認摘要無誤後按「確認匯入」（5 秒完成）</li>
+              </ol>
+            </div>
+          </div>
+
+          {/* Calendar */}
+          <div className="md:col-span-2">
+            <MonthCalendar importedDates={importedDates} month={calMonth} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Quick mode: compact summary ──
+  if (mode === 'quick') {
+    return (
+      <div className="space-y-4 max-w-lg mx-auto">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
+          {/* File header */}
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-semibold text-gray-800">📊 {fileName}</p>
+              <p className="text-xs text-gray-400 mt-0.5">已解析，請確認後匯入</p>
+            </div>
+            <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600 underline">重新上傳</button>
+          </div>
+
+          {/* Basic info */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">館別 *</label>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm font-medium" value={warehouse} onChange={e => setWarehouse(e.target.value)}>
+                {wh.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">營業日期 *</label>
+              <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm font-medium" value={businessDate} onChange={e => setBusinessDate(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Summary numbers */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">貸方合計（收入）</span>
+              <span className="text-base font-bold text-teal-700">{formatNumber(creditSum)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">借方合計（付款）</span>
+              <span className="text-base font-bold text-amber-700">{formatNumber(debitSum)}</span>
+            </div>
+            <div className={`flex justify-between items-center border-t pt-3 ${balanced ? 'text-green-700' : 'text-red-600'}`}>
+              <span className="text-sm font-semibold">差額</span>
+              <span className="text-base font-bold">{balanced ? '✓ 0 平衡' : `✗ ${formatNumber(diff)}`}</span>
+            </div>
+            {parsed?.reservationRows?.length > 0 && (
+              <div className="flex justify-between items-center text-blue-700 text-xs pt-1">
+                <span>訂房明細</span>
+                <span>{parsed.reservationRows.length} 筆（自動建立）</span>
+              </div>
             )}
           </div>
 
-          {parseError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{parseError}</div>}
-
-          {success && (
-            <div className="p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm space-y-2">
-              <p className="font-semibold">{success}</p>
-              <button onClick={() => setSuccess('')} className="text-xs text-green-700 underline">再上傳下一筆</button>
-              <span className="mx-2 text-green-400">·</span>
-              <button onClick={() => setActiveTab('overview')} className="text-xs text-teal-700 underline">前往每日匯入總覽</button>
+          {!balanced && (
+            <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+              貸借不平衡，請點「展開詳細核對」確認各欄位金額。
             </div>
           )}
 
-          <div className="rounded-xl border border-teal-100 bg-teal-50/60 px-5 py-4 text-sm text-teal-900">
-            <p className="font-semibold text-teal-800 mb-1">操作說明</p>
-            <ol className="list-decimal list-inside space-y-1 text-teal-900/90">
-              <li>於飯店 PMS 匯出<strong>日營業報表</strong>（.xls / .xlsx）。</li>
-              <li>拖曳或點擊上方區域上傳，系統自動解析本日貸方 / 借方金額。</li>
-              <li>確認館別、日期與金額後，按「確認匯入」存檔。</li>
-            </ol>
+          {submitError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{submitError}</div>}
+
+          {/* Action buttons */}
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="w-full py-3 text-base font-bold bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? '匯入中…' : '確認匯入'}
+          </button>
+
+          <button
+            onClick={() => setMode('detail')}
+            className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            展開詳細核對 →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Detail mode: full form ──
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-wrap items-center gap-4">
+        <div>
+          <span className="text-sm font-semibold text-gray-800">📊 {fileName}</span>
+          <span className="text-xs text-gray-400 ml-2">詳細核對模式</span>
+        </div>
+        <button onClick={() => setMode('quick')} className="text-xs text-teal-600 underline">← 返回快速模式</button>
+        <button onClick={reset} className="ml-auto text-xs text-gray-500 hover:text-gray-800 underline">重新上傳</button>
+      </div>
+
+      {/* 基本資訊 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">基本資訊</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">館別 *</label>
+            <select className="w-full border rounded-lg px-3 py-1.5 text-sm" value={warehouse} onChange={e => setWarehouse(e.target.value)}>
+              {wh.map(w => <option key={w} value={w}>{w}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">營業日期 *</label>
+            <input type="date" className="w-full border rounded-lg px-3 py-1.5 text-sm" value={businessDate} onChange={e => setBusinessDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">檔案名稱</label>
+            <input type="text" className="w-full border rounded-lg px-3 py-1.5 text-sm" value={fileName} onChange={e => setFileName(e.target.value)} />
           </div>
         </div>
-      ) : (
-        /* ── 解析結果表單 ── */
-        <div className="space-y-4">
+      </div>
 
-          {/* header bar */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-800">📊 {fileName}</span>
-              <span className="text-xs text-gray-400">已解析，請核對後匯入</span>
+      {/* 住宿統計 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">住宿統計</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+          {[
+            ['房間數',    roomCount,      setRoomCount],
+            ['住房率(%)', occupancyRate,  setOccupancyRate],
+            ['平均房價',  avgRoomRate,    setAvgRoomRate],
+            ['住宿人數',  guestCount,     setGuestCount],
+            ['早餐人數',  breakfastCount, setBreakfastCount],
+            ['住宿間數',  occupiedRooms,  setOccupiedRooms],
+          ].map(([label, val, setter]) => (
+            <div key={label}>
+              <label className="block text-xs text-gray-500 mb-1">{label}</label>
+              <input type="number" className="w-full border rounded-lg px-2 py-1.5 text-sm text-right" value={val} onChange={e => setter(e.target.value)} placeholder="0" />
             </div>
-            <button onClick={reset} className="ml-auto text-xs text-gray-500 hover:text-gray-800 underline">重新上傳</button>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          {/* 基本資訊 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">基本資訊</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">館別 *</label>
-                <select className="w-full border rounded-lg px-3 py-1.5 text-sm" value={warehouse} onChange={e => setWarehouse(e.target.value)}>
-                  {wh.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">營業日期 *</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-1.5 text-sm" value={businessDate} onChange={e => setBusinessDate(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">檔案名稱</label>
-                <input type="text" className="w-full border rounded-lg px-3 py-1.5 text-sm" value={fileName} onChange={e => setFileName(e.target.value)} />
-              </div>
-            </div>
-          </div>
-
-          {/* 住宿統計 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3">住宿統計</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-              {[
-                ['房間數',    roomCount,      setRoomCount,      'number'],
-                ['住房率(%)', occupancyRate,  setOccupancyRate,  'number'],
-                ['平均房價',  avgRoomRate,    setAvgRoomRate,    'number'],
-                ['住宿人數',  guestCount,     setGuestCount,     'number'],
-                ['早餐人數',  breakfastCount, setBreakfastCount, 'number'],
-                ['住宿間數',  occupiedRooms,  setOccupiedRooms,  'number'],
-              ].map(([label, val, setter]) => (
-                <div key={label}>
-                  <label className="block text-xs text-gray-500 mb-1">{label}</label>
-                  <input type="number" className="w-full border rounded-lg px-2 py-1.5 text-sm text-right" value={val} onChange={e => setter(e.target.value)} placeholder="0" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 訂房明細 row count notice */}
-          {parsed.reservationRows?.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-2 text-xs text-blue-800">
-              已偵測到 <strong>{parsed.reservationRows.length}</strong> 筆個別訂房序號記錄，匯入後將自動建立訂房明細（可在「訂房明細」頁查詢）。
-            </div>
-          )}
-
-          {/* Excel 原始合計 reference */}
-          {parsed.excelTotals && (
-            <div className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-3 text-xs text-amber-800 flex flex-wrap gap-4">
-              <span className="font-semibold">Excel 原始對照：</span>
-              {parsed.excelTotals.creditTotal && <span>貸方合計 <strong>{formatNumber(parsed.excelTotals.creditTotal)}</strong></span>}
-              {parsed.excelTotals.debitTotal  && <span>借方合計 <strong>{formatNumber(parsed.excelTotals.debitTotal)}</strong></span>}
-              {parsed.excelTotals.grossRevenue && <span>營業總額 <strong>{formatNumber(parsed.excelTotals.grossRevenue)}</strong></span>}
-              {parsed.excelTotals.netRevenue  && <span>營業淨額 <strong>{formatNumber(parsed.excelTotals.netRevenue)}</strong></span>}
-              {parsed.excelTotals.invoiceTax  && <span>發票稅額 <strong>{formatNumber(parsed.excelTotals.invoiceTax)}</strong></span>}
-            </div>
-          )}
-
-          {/* 貸方科目 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h4 className="text-sm font-bold text-teal-700 mb-3 border-b border-teal-100 pb-1">貸方科目（收入）</h4>
-            <div className="space-y-2">
-              {records.map((rec, idx) => rec.entryType !== '貸方' ? null : (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
-                  <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode}</div>
-                  <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
-                  <div className="col-span-4">
-                    <input type="number" step="1" min="0" placeholder="0"
-                      value={rec.amount}
-                      onChange={e => setAmount(idx, e.target.value)}
-                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-teal-400 focus:border-teal-400" />
-                  </div>
-                </div>
-              ))}
-              <div className="text-right text-sm font-bold text-teal-700 pr-1">貸方合計：{formatNumber(creditSum)}</div>
-            </div>
-          </div>
-
-          {/* 借方科目 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h4 className="text-sm font-bold text-amber-700 mb-3 border-b border-amber-100 pb-1">借方科目（資產／支出）</h4>
-            <div className="space-y-2">
-              {records.map((rec, idx) => rec.entryType !== '借方' ? null : (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
-                  <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode}</div>
-                  <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
-                  <div className="col-span-4">
-                    <input type="number" step="1" min="0" placeholder="0"
-                      value={rec.amount}
-                      onChange={e => setAmount(idx, e.target.value)}
-                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-amber-400 focus:border-amber-400" />
-                  </div>
-                </div>
-              ))}
-              <div className="text-right text-sm font-bold text-amber-700 pr-1">借方合計：{formatNumber(debitSum)}</div>
-            </div>
-          </div>
-
-          {/* 差額 */}
-          <div className={`rounded-xl px-5 py-3 text-right text-sm font-bold ${balanced ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-            差額（貸－借）：{formatNumber(creditSum - debitSum)}
-            {balanced ? ' ✓ 平衡' : ' ✗ 不平衡，請核對'}
-          </div>
-
-          {submitError && <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm">{submitError}</div>}
-          {success     && <div className="p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm font-semibold">{success}</div>}
-
-          {/* 操作按鈕 */}
-          <div className="flex justify-between items-center">
-            <button onClick={reset} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
-              ← 重新上傳
-            </button>
-            <button onClick={submit} disabled={submitting}
-              className="px-6 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 font-medium">
-              {submitting ? '匯入中…' : '確認匯入'}
-            </button>
-          </div>
+      {parsed?.reservationRows?.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-2 text-xs text-blue-800">
+          已偵測到 <strong>{parsed.reservationRows.length}</strong> 筆訂房序號記錄，匯入後將自動建立訂房明細。
         </div>
       )}
+
+      {parsed?.excelTotals && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl px-5 py-3 text-xs text-amber-800 flex flex-wrap gap-4">
+          <span className="font-semibold">Excel 原始對照：</span>
+          {parsed.excelTotals.creditTotal  && <span>貸方合計 <strong>{formatNumber(parsed.excelTotals.creditTotal)}</strong></span>}
+          {parsed.excelTotals.debitTotal   && <span>借方合計 <strong>{formatNumber(parsed.excelTotals.debitTotal)}</strong></span>}
+          {parsed.excelTotals.grossRevenue && <span>營業總額 <strong>{formatNumber(parsed.excelTotals.grossRevenue)}</strong></span>}
+          {parsed.excelTotals.netRevenue   && <span>營業淨額 <strong>{formatNumber(parsed.excelTotals.netRevenue)}</strong></span>}
+        </div>
+      )}
+
+      {/* 貸方科目 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-bold text-teal-700 mb-3 border-b border-teal-100 pb-1">貸方科目（收入）</h4>
+        <div className="space-y-2">
+          {records.map((rec, idx) => rec.entryType !== '貸方' ? null : (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+              <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
+              <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode}</div>
+              <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
+              <div className="col-span-4">
+                <input type="number" step="1" min="0" placeholder="0"
+                  value={rec.amount} onChange={e => setAmount(idx, e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-teal-400" />
+              </div>
+            </div>
+          ))}
+          <div className="text-right text-sm font-bold text-teal-700 pr-1">貸方合計：{formatNumber(creditSum)}</div>
+        </div>
+      </div>
+
+      {/* 借方科目 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h4 className="text-sm font-bold text-amber-700 mb-3 border-b border-amber-100 pb-1">借方科目（資產／支出）</h4>
+        <div className="space-y-2">
+          {records.map((rec, idx) => rec.entryType !== '借方' ? null : (
+            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+              <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
+              <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode}</div>
+              <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
+              <div className="col-span-4">
+                <input type="number" step="1" min="0" placeholder="0"
+                  value={rec.amount} onChange={e => setAmount(idx, e.target.value)}
+                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-amber-400" />
+              </div>
+            </div>
+          ))}
+          <div className="text-right text-sm font-bold text-amber-700 pr-1">借方合計：{formatNumber(debitSum)}</div>
+        </div>
+      </div>
+
+      <div className={`rounded-xl px-5 py-3 text-right text-sm font-bold ${balanced ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+        差額（貸－借）：{formatNumber(diff)}{balanced ? ' ✓ 平衡' : ' ✗ 不平衡，請核對'}
+      </div>
+
+      {submitError && <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm">{submitError}</div>}
+      {success     && <div className="p-4 bg-green-50 border border-green-200 text-green-800 rounded-xl text-sm font-semibold">{success}</div>}
+
+      <div className="flex justify-between items-center">
+        <button onClick={() => setMode('quick')} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">← 返回快速模式</button>
+        <button onClick={submit} disabled={submitting}
+          className="px-6 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 font-medium">
+          {submitting ? '匯入中…' : '確認匯入'}
+        </button>
+      </div>
     </div>
   );
 }
