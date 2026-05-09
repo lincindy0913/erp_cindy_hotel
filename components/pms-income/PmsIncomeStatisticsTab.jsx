@@ -125,65 +125,108 @@ export default function PmsIncomeStatisticsTab({
             </div>
           )}
 
-          {!statsMonth && Array.isArray(statsData) && (
-            <div className="bg-white rounded-lg shadow-sm border p-4">
-              <h3 className="text-sm font-bold text-gray-700 mb-3">月度摘要表</h3>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-2 font-medium">月份</th>
-                    <th className="px-3 py-2 font-medium text-right">淨收入</th>
-                    <th className="px-3 py-2 font-medium text-center">匯入天數</th>
-                    <th className="px-3 py-2 font-medium text-center">當月天數</th>
-                    <th className="px-3 py-2 font-medium text-center">完成率</th>
-                    <th className="px-3 py-2 font-medium">涵蓋館別</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {statsData.map((m, i) => (
-                    <tr key={i} className="border-t hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium">{m.month}月</td>
-                      <td
-                        className={`px-3 py-2 text-right font-medium ${
-                          m.total >= 0 ? 'text-teal-700' : 'text-red-600'
-                        }`}
-                      >
-                        {formatNumber(m.total)}
-                      </td>
-                      <td className="px-3 py-2 text-center">{m.importedDays}</td>
-                      <td className="px-3 py-2 text-center">{m.totalDays}</td>
-                      <td className="px-3 py-2 text-center">
-                        {m.totalDays > 0 ? `${Math.round((m.importedDays / m.totalDays) * 100)}%` : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-gray-500">
-                        {Object.keys(m.byWarehouse || {}).join(', ') || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 border-gray-300 font-bold">
-                    <td className="px-3 py-2">全年合計</td>
-                    <td className="px-3 py-2 text-right text-teal-800">
-                      {formatNumber(statsData.reduce((s, m) => s + m.total, 0))}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {statsData.reduce((s, m) => s + m.importedDays, 0)}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {statsData.reduce((s, m) => s + m.totalDays, 0)}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {(() => {
-                        const totalDays = statsData.reduce((s, m) => s + m.totalDays, 0);
-                        const importedDays = statsData.reduce((s, m) => s + m.importedDays, 0);
-                        return totalDays > 0 ? `${Math.round((importedDays / totalDays) * 100)}%` : '-';
-                      })()}
-                    </td>
-                    <td className="px-3 py-2" />
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
+          {!statsMonth && Array.isArray(statsData) && (() => {
+            // Collect all warehouses across all months
+            const whSet = new Set();
+            for (const m of statsData) Object.keys(m.byWarehouse || {}).forEach(w => whSet.add(w));
+            const warehouses = [...whSet];
+            const showWhCompare = warehouses.length > 1;
+            const yearTotal = statsData.reduce((s, m) => s + m.total, 0);
+
+            return (
+              <>
+                {/* Multi-warehouse annual KPI cards */}
+                {showWhCompare && (
+                  <div className="bg-white rounded-lg shadow-sm border p-4">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">各館別年度合計</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {warehouses.map((wh, wi) => {
+                        const whTotal = statsData.reduce((s, m) => s + (m.byWarehouse?.[wh]?.net || 0), 0);
+                        const pct = yearTotal > 0 ? Math.round(whTotal / yearTotal * 100) : 0;
+                        const COLORS = ['border-teal-400','border-blue-400','border-amber-400','border-purple-400'];
+                        const TXT = ['text-teal-700','text-blue-700','text-amber-700','text-purple-700'];
+                        return (
+                          <div key={wh} className={`border-l-4 ${COLORS[wi % 4]} bg-white rounded-lg p-3 border border-gray-100`}>
+                            <div className="text-xs text-gray-500">{wh}</div>
+                            <div className={`text-base font-bold ${TXT[wi % 4]}`}>{formatNumber(whTotal)}</div>
+                            <div className="text-xs text-gray-400">佔比 {pct}%</div>
+                          </div>
+                        );
+                      })}
+                      <div className="border-l-4 border-gray-400 bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="text-xs text-gray-500">全館合計</div>
+                        <div className="text-base font-bold text-gray-800">{formatNumber(yearTotal)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Monthly detail table */}
+                <div className="bg-white rounded-lg shadow-sm border p-4">
+                  <h3 className="text-sm font-bold text-gray-700 mb-3">月度摘要表</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[500px]">
+                      <thead>
+                        <tr className="bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium">月份</th>
+                          <th className="px-3 py-2 font-medium text-right">淨收入</th>
+                          {showWhCompare && warehouses.map(wh => (
+                            <th key={wh} className="px-3 py-2 font-medium text-right hidden md:table-cell">{wh}</th>
+                          ))}
+                          <th className="px-3 py-2 font-medium text-center">完成率</th>
+                          <th className="px-3 py-2 font-medium text-center">匯入天數</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statsData.map((m, i) => (
+                          <tr key={i} className="border-t hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium">{m.month}月</td>
+                            <td className={`px-3 py-2 text-right font-medium ${m.total >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
+                              {formatNumber(m.total)}
+                            </td>
+                            {showWhCompare && warehouses.map(wh => (
+                              <td key={wh} className="px-3 py-2 text-right text-xs text-gray-500 hidden md:table-cell">
+                                {formatNumber(m.byWarehouse?.[wh]?.net || 0)}
+                              </td>
+                            ))}
+                            <td className="px-3 py-2 text-center">
+                              {m.totalDays > 0 ? (
+                                <span className={`text-xs font-medium ${Math.round(m.importedDays / m.totalDays * 100) >= 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                                  {Math.round((m.importedDays / m.totalDays) * 100)}%
+                                </span>
+                              ) : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-center text-xs text-gray-500">
+                              {m.importedDays}/{m.totalDays}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
+                          <td className="px-3 py-2">全年合計</td>
+                          <td className="px-3 py-2 text-right text-teal-800">{formatNumber(yearTotal)}</td>
+                          {showWhCompare && warehouses.map(wh => (
+                            <td key={wh} className="px-3 py-2 text-right text-gray-700 hidden md:table-cell">
+                              {formatNumber(statsData.reduce((s, m) => s + (m.byWarehouse?.[wh]?.net || 0), 0))}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2 text-center">
+                            {(() => {
+                              const td = statsData.reduce((s, m) => s + m.totalDays, 0);
+                              const id = statsData.reduce((s, m) => s + m.importedDays, 0);
+                              return td > 0 ? `${Math.round(id / td * 100)}%` : '-';
+                            })()}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {statsData.reduce((s,m)=>s+m.importedDays,0)}/{statsData.reduce((s,m)=>s+m.totalDays,0)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </>
       ) : (
         <div className="text-center py-8 text-gray-400">無資料</div>

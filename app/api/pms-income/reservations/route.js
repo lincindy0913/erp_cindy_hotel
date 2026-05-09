@@ -87,11 +87,16 @@ export async function GET(request) {
     const source = searchParams.get('source');
     const depositStatus = searchParams.get('depositStatus');
     const creditCardStatus = searchParams.get('creditCardStatus');
+    const guestName = searchParams.get('guestName'); // cross-month search
+    const onlyOverridden = searchParams.get('onlyOverridden') === '1'; // source override filter
     const take = parseInt(searchParams.get('take') || '500');
 
     const where = {};
     if (warehouse) where.warehouse = warehouse;
-    if (dateFrom && dateTo) {
+    // Guest name search overrides date filters (cross-month)
+    if (guestName) {
+      where.guestName = { contains: guestName, mode: 'insensitive' };
+    } else if (dateFrom && dateTo) {
       where.businessDate = { gte: dateFrom, lte: dateTo };
     } else if (dateFrom) {
       where.businessDate = { gte: dateFrom };
@@ -103,6 +108,7 @@ export async function GET(request) {
     if (source) where.source = source;
     if (depositStatus) where.depositStatus = depositStatus;
     if (creditCardStatus) where.creditCardStatus = creditCardStatus;
+    if (onlyOverridden) where.sourceOverride = { not: null };
 
     const rows = await prisma.pmsReservationRecord.findMany({
       where,
