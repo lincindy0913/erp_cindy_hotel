@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const SOURCE_OPTIONS = ['全部', '電話', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '代訂中心', '月租'];
-const SOURCE_EDIT_OPTIONS = ['電話', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '代訂中心', '月租', '其他'];
+const SOURCE_OPTIONS = ['全部', '電話', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租'];
+const SOURCE_EDIT_OPTIONS = ['電話', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租', '其他', '自訂…'];
 const DEPOSIT_STATUS_OPTIONS = ['全部', '待確認', '已核對', '差異'];
 const CC_STATUS_OPTIONS = ['全部', '待核對', '已核對'];
 const DEPOSIT_CYCLE = ['待確認', '已核對', '差異'];
@@ -12,6 +12,8 @@ const SOURCE_COLORS = {
   'OTA-Booking': 'bg-blue-100 text-blue-700',
   'OTA-Agoda':   'bg-red-100 text-red-700',
   'OTA-Expedia': 'bg-yellow-100 text-yellow-800',
+  '攜程網':      'bg-cyan-100 text-cyan-700',
+  '易遊網':      'bg-teal-100 text-teal-700',
   '代訂中心':    'bg-purple-100 text-purple-700',
   '月租':        'bg-green-100 text-green-700',
   '其他':        'bg-gray-100 text-gray-600',
@@ -75,19 +77,30 @@ async function downloadXlsx(rows, month, warehouse) {
 function SourceCell({ row, onSave, locked }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customVal, setCustomVal] = useState('');
   const ref = useRef(null);
   const src = row.sourceOverride || row.source;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setCustomMode(false); setCustomVal(''); return; }
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
   const choose = async (val) => {
+    if (val === '自訂…') { setCustomMode(true); return; }
     setOpen(false); setSaving(true);
     await onSave({ sourceOverride: val===src && !row.sourceOverride ? null : (val===row.source ? null : val) });
+    setSaving(false);
+  };
+
+  const saveCustom = async () => {
+    const v = customVal.trim();
+    if (!v) { setCustomMode(false); return; }
+    setOpen(false); setCustomMode(false); setSaving(true);
+    await onSave({ sourceOverride: v });
     setSaving(false);
   };
 
@@ -102,15 +115,29 @@ function SourceCell({ row, onSave, locked }) {
         {src}{row.sourceOverride && row.sourceOverride!==row.source && ' ✎'}
       </span>
       {open && (
-        <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[130px]">
+        <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[140px]">
           <div className="px-2 py-1 text-xs text-gray-400 border-b">自動：{row.source}</div>
-          {SOURCE_EDIT_OPTIONS.map(o=>(
-            <button key={o} onMouseDown={()=>choose(o)}
-              className={`block w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${(row.sourceOverride||row.source)===o?'font-bold text-blue-700':'text-gray-700'}`}>
-              <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${SOURCE_COLORS[o]?.split(' ')[0]||'bg-gray-300'}`}/>{o}
-            </button>
-          ))}
-          {row.sourceOverride && <button onMouseDown={()=>choose(row.source)} className="block w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 border-t">↩ 還原自動</button>}
+          {customMode ? (
+            <div className="p-2 space-y-1">
+              <input autoFocus className="border rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-blue-300"
+                placeholder="輸入自訂來源…" value={customVal} onChange={e=>setCustomVal(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter')saveCustom();if(e.key==='Escape')setCustomMode(false);}} />
+              <div className="flex gap-1">
+                <button onMouseDown={saveCustom} className="flex-1 text-xs bg-blue-600 text-white rounded px-2 py-1">確認</button>
+                <button onMouseDown={()=>setCustomMode(false)} className="text-xs border rounded px-2 py-1 text-gray-500">返回</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {SOURCE_EDIT_OPTIONS.map(o=>(
+                <button key={o} onMouseDown={()=>choose(o)}
+                  className={`block w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${(row.sourceOverride||row.source)===o?'font-bold text-blue-700':'text-gray-700'}`}>
+                  <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${SOURCE_COLORS[o]?.split(' ')[0]||'bg-gray-300'}`}/>{o}
+                </button>
+              ))}
+              {row.sourceOverride && <button onMouseDown={()=>choose(row.source)} className="block w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 border-t">↩ 還原自動</button>}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -126,15 +153,22 @@ function DepositBadge({ row, onSave, locked }) {
     const next = DEPOSIT_CYCLE[(DEPOSIT_CYCLE.indexOf(row.depositStatus)+1)%DEPOSIT_CYCLE.length];
     setSaving(true); await onSave({depositStatus:next}); setSaving(false);
   };
+  const amtParts = [
+    row.depositIn  ? `入${Number(row.depositIn).toLocaleString('zh-TW')}`  : '',
+    row.depositOut ? `沖${Number(row.depositOut).toLocaleString('zh-TW')}` : '',
+  ].filter(Boolean).join(' ');
   return (
-    <span onClick={cycle}
-      className={`px-1.5 py-0.5 rounded text-xs border transition-all
-        ${locked?'cursor-default opacity-70':'cursor-pointer hover:opacity-80'}
-        ${saving?'opacity-40':''}
-        ${DEPOSIT_COLORS[row.depositStatus]||DEPOSIT_COLORS['待確認']}`}
-      title={locked?'已結算鎖定':'點擊切換'}>
-      {saving?'…':row.depositStatus}
-    </span>
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-xs text-gray-400 tabular-nums leading-none">{amtParts}</span>
+      <span onClick={cycle}
+        className={`px-1.5 py-0.5 rounded text-xs border transition-all
+          ${locked?'cursor-default opacity-70':'cursor-pointer hover:opacity-80'}
+          ${saving?'opacity-40':''}
+          ${DEPOSIT_COLORS[row.depositStatus]||DEPOSIT_COLORS['待確認']}`}
+        title={locked?'已結算鎖定':`${amtParts} — 點擊切換狀態`}>
+        {saving?'…':row.depositStatus}
+      </span>
+    </div>
   );
 }
 
@@ -154,6 +188,32 @@ function CCBadge({ row, onSave, locked }) {
         ${CC_COLORS[row.creditCardStatus]||CC_COLORS['待核對']}`}
       title={locked?'已結算鎖定':'點擊切換'}>
       {saving?'…':(row.creditCardStatus==='已核對'?'✓ 已核對':row.creditCardStatus)}
+    </span>
+  );
+}
+
+// ── Amount cell (inline editable) ──
+function AmountCell({ row, field, onSave, locked, className = '' }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  const start = () => { if (locked) return; setVal(String(row[field] || '')); setEditing(true); };
+  const commit = async () => {
+    setEditing(false);
+    const num = parseFloat(val);
+    const newVal = isNaN(num) ? 0 : num;
+    if (newVal !== (row[field] || 0)) await onSave({ [field]: newVal });
+  };
+  if (editing) {
+    return <input autoFocus type="number" step="1"
+      className="border rounded px-1 py-0.5 text-xs w-20 text-right focus:ring-1 focus:ring-blue-300 tabular-nums"
+      value={val} onChange={e=>setVal(e.target.value)}
+      onBlur={commit} onKeyDown={e=>{if(e.key==='Enter')commit();if(e.key==='Escape')setEditing(false);}} />;
+  }
+  return (
+    <span onClick={start}
+      className={`tabular-nums block text-right ${locked?'cursor-default':'cursor-pointer hover:text-blue-600 hover:underline decoration-dashed'} ${className}`}
+      title={locked?'已結算鎖定':'點擊修改金額'}>
+      {fmt(row[field])||<span className="text-gray-200">—</span>}
     </span>
   );
 }
@@ -180,9 +240,31 @@ function NoteCell({ row, onSave, locked }) {
 // ── Detail Modal ──
 function DetailModal({ row, onClose, onSave }) {
   const [sourceOverride, setSourceOverride] = useState(row.sourceOverride||'');
+  const [customSrc, setCustomSrc] = useState('');
+  const [showCustomSrc, setShowCustomSrc] = useState(false);
   const [depositStatus, setDepositStatus] = useState(row.depositStatus||'待確認');
+  const [depositIn,  setDepositIn]  = useState(row.depositIn  ?? '');
+  const [depositOut, setDepositOut] = useState(row.depositOut ?? '');
   const [note, setNote] = useState(row.note||'');
   const f = n => { const v=Number(n); return (!v||isNaN(v))?'—':v.toLocaleString('zh-TW'); };
+
+  const handleSrcChange = e => {
+    if (e.target.value === '自訂…') { setShowCustomSrc(true); }
+    else { setShowCustomSrc(false); setSourceOverride(e.target.value); }
+  };
+
+  const save = () => {
+    const src = showCustomSrc ? customSrc.trim() || null : (sourceOverride || null);
+    onSave({
+      sourceOverride: src,
+      depositStatus,
+      depositIn:  parseFloat(depositIn)  || 0,
+      depositOut: parseFloat(depositOut) || 0,
+      note,
+    });
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
@@ -195,22 +277,36 @@ function DetailModal({ row, onClose, onSave }) {
             <div><span className="text-gray-400">入住</span><br/>{row.checkIn||'—'}</div>
             <div><span className="text-gray-400">退房</span><br/>{row.checkOut||'—'}</div>
             <div><span className="text-gray-400">公司</span><br/>{row.companyName||'—'}</div>
-            <div><span className="text-gray-400">住宿金額</span><br/>{f(row.roomRate)}</div>
-            <div><span className="text-gray-400">收訂金</span><br/>{f(row.depositIn)}</div>
-            <div><span className="text-gray-400">沖訂金</span><br/>{f(row.depositOut)}</div>
+            <div><span className="text-gray-400">住宿金額</span><br/>{f(row.totalRevenue)}</div>
+            <div><span className="text-gray-400">現金</span><br/>{f(row.cash)}</div>
+            <div><span className="text-gray-400">信用卡</span><br/>{f(row.creditCard)}</div>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">來源覆寫</label>
-            <select className="border rounded px-2 py-1.5 w-full text-sm" value={sourceOverride} onChange={e=>setSourceOverride(e.target.value)}>
+            <select className="border rounded px-2 py-1.5 w-full text-sm" value={showCustomSrc?'自訂…':sourceOverride} onChange={handleSrcChange}>
               <option value="">（自動：{row.source}）</option>
               {SOURCE_EDIT_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
             </select>
+            {showCustomSrc && (
+              <input className="mt-1 border rounded px-2 py-1.5 w-full text-sm" placeholder="輸入自訂來源名稱…"
+                value={customSrc} onChange={e=>setCustomSrc(e.target.value)} autoFocus />
+            )}
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">訂金狀態</label>
-            <select className="border rounded px-2 py-1.5 w-full text-sm" value={depositStatus} onChange={e=>setDepositStatus(e.target.value)}>
-              {['待確認','已核對','差異','無訂金'].map(o=><option key={o} value={o}>{o}</option>)}
-            </select>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">訂金狀態</label>
+              <select className="border rounded px-2 py-1.5 w-full text-sm" value={depositStatus} onChange={e=>setDepositStatus(e.target.value)}>
+                {['待確認','已核對','差異','無訂金'].map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">收訂金</label>
+              <input type="number" step="1" className="border rounded px-2 py-1.5 w-full text-sm" value={depositIn} onChange={e=>setDepositIn(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">沖訂金</label>
+              <input type="number" step="1" className="border rounded px-2 py-1.5 w-full text-sm" value={depositOut} onChange={e=>setDepositOut(e.target.value)} />
+            </div>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">備註</label>
@@ -219,8 +315,7 @@ function DetailModal({ row, onClose, onSave }) {
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t">
           <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded text-gray-600">取消</button>
-          <button onClick={()=>{onSave({sourceOverride:sourceOverride||null,depositStatus,note});onClose();}}
-            className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">儲存</button>
+          <button onClick={save} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">儲存</button>
         </div>
       </div>
     </div>
@@ -704,9 +799,10 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
 
       {!locked && (
         <div className="text-xs text-gray-400 flex gap-3 flex-wrap">
-          <span>💡 直接點擊表格內的標籤可編輯：</span>
-          <span className="text-blue-500">來源</span>·<span className="text-green-600">訂金</span>·<span className="text-green-600">信用卡核對</span>·<span className="text-gray-500">備註</span>
-          <span className="text-red-400">— 紅色垃圾桶可刪除單筆</span>
+          <span>💡 直接點擊表格內可編輯：</span>
+          <span className="text-blue-500">來源</span>·<span className="text-orange-500">金額</span>·<span className="text-green-600">訂金狀態</span>·<span className="text-green-600">信用卡核對</span>·<span className="text-gray-500">備註</span>
+          <span className="text-purple-400">— ↗ 推廠商帳單</span>
+          <span className="text-red-400">· 🗑 刪除</span>
         </div>
       )}
 
@@ -768,16 +864,20 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
                     <td className="px-3 py-1.5 max-w-[120px] truncate font-medium text-gray-800" title={r.guestName}>{r.guestName||'—'}</td>
                     <td className="px-3 py-1.5 max-w-[100px] truncate text-xs text-gray-400 hidden md:table-cell" title={r.companyName}>{r.companyName||''}</td>
                     <td className="px-3 py-1.5 text-center"><SourceCell row={r} onSave={p=>updateRow(r.id,p)} locked={locked} /></td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(r.totalRevenue)||<span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 hidden md:table-cell">{fmt(r.cash)||<span className="text-gray-200">—</span>}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(r.creditCard)||<span className="text-gray-200">—</span>}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-red-600 hidden md:table-cell">{fmt(r.commission)||<span className="text-gray-200">—</span>}</td>
+                    <td className="px-3 py-1.5 text-right"><AmountCell row={r} field="totalRevenue" onSave={p=>updateRow(r.id,p)} locked={locked} className="text-gray-700" /></td>
+                    <td className="px-3 py-1.5 text-right hidden md:table-cell"><AmountCell row={r} field="cash" onSave={p=>updateRow(r.id,p)} locked={locked} className="text-gray-600" /></td>
+                    <td className="px-3 py-1.5 text-right"><AmountCell row={r} field="creditCard" onSave={p=>updateRow(r.id,p)} locked={locked} className="text-gray-700" /></td>
+                    <td className="px-3 py-1.5 text-right hidden md:table-cell"><AmountCell row={r} field="commission" onSave={p=>updateRow(r.id,p)} locked={locked} className="text-red-600" /></td>
                     <td className="px-3 py-1.5 text-center"><DepositBadge row={r} onSave={p=>updateRow(r.id,p)} locked={locked} /></td>
                     <td className="px-3 py-1.5 text-center hidden sm:table-cell"><CCBadge row={r} onSave={p=>updateRow(r.id,p)} locked={locked} /></td>
                     <td className="px-3 py-1.5 hidden lg:table-cell"><NoteCell row={r} onSave={p=>updateRow(r.id,p)} locked={locked} /></td>
                     <td className="px-2 py-1.5 text-center whitespace-nowrap">
                       <button onClick={()=>setDetailRow(r)} className="text-gray-300 hover:text-gray-500 text-xs mr-1" title="詳情">⋯</button>
-                      {!locked && <button onClick={()=>deleteRow(r.id)} className="text-red-200 hover:text-red-500 text-xs" title="刪除">🗑</button>}
+                      {!locked && <>
+                        <button onClick={()=>{setPushMode(true);setBatchMode(false);setCheckedIds(new Set([r.id]));}}
+                          className="text-purple-200 hover:text-purple-500 text-xs mr-1" title="推送至廠商帳單">↗</button>
+                        <button onClick={()=>deleteRow(r.id)} className="text-red-200 hover:text-red-500 text-xs" title="刪除">🗑</button>
+                      </>}
                     </td>
                   </tr>
                 );

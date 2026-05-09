@@ -58,10 +58,12 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const today     = new Date().toISOString().slice(0, 10);
   const arTotal   = billings.filter(b => b.direction === 'AR').reduce((s, b) => s + b.totalAmount, 0);
   const apTotal   = billings.filter(b => b.direction === 'AP').reduce((s, b) => s + b.totalAmount, 0);
   const settled   = billings.filter(b => b.status === '已結帳').reduce((s, b) => s + b.settledAmount, 0);
   const unsettled = billings.filter(b => b.status !== '已結帳').reduce((s, b) => s + b.totalAmount, 0);
+  const overdueCount = billings.filter(b => b.status !== '已結帳' && b.dueDate && b.dueDate < today).length;
 
   const create = async () => {
     if (!form.warehouse || !form.supplierName || !form.direction || !form.billingMonth) {
@@ -111,6 +113,13 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
           </div>
         ))}
       </div>
+
+      {overdueCount > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 flex items-center gap-2 text-sm text-red-700">
+          <span className="font-bold">⚠ {overdueCount} 筆帳單已超過到期日未結帳</span>
+          <span className="text-xs text-red-500">（已以紅底標示）</span>
+        </div>
+      )}
 
       {/* filter bar */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-3">
@@ -167,31 +176,38 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
                 <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">載入中…</td></tr>
               ) : billings.length === 0 ? (
                 <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">尚無帳單資料</td></tr>
-              ) : billings.map(b => (
-                <tr key={b.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedId(b.id)}>
-                  <td className="px-4 py-2.5 font-medium">{b.billingMonth}</td>
-                  <td className="px-4 py-2.5">{b.warehouse}</td>
-                  <td className="px-4 py-2.5">{b.supplierName}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${b.direction === 'AR' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {DIRECTION_LABEL[b.direction] || b.direction}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-500">{b.itemCount} 項</td>
-                  <td className="px-4 py-2.5 font-medium text-right"><Num v={b.totalAmount} /></td>
-                  <td className="px-4 py-2.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[b.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {b.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-500">{b.dueDate || '—'}</td>
-                  <td className="px-4 py-2.5">
-                    <button className="text-xs text-indigo-600 hover:underline" onClick={e => { e.stopPropagation(); setSelectedId(b.id); }}>
-                      開啟
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              ) : billings.map(b => {
+                const isOverdue = b.status !== '已結帳' && b.dueDate && b.dueDate < today;
+                return (
+                  <tr key={b.id}
+                    className={`cursor-pointer ${isOverdue ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}
+                    onClick={() => setSelectedId(b.id)}>
+                    <td className="px-4 py-2.5 font-medium">{b.billingMonth}</td>
+                    <td className="px-4 py-2.5">{b.warehouse}</td>
+                    <td className="px-4 py-2.5">{b.supplierName}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${b.direction === 'AR' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                        {DIRECTION_LABEL[b.direction] || b.direction}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-500">{b.itemCount} 項</td>
+                    <td className="px-4 py-2.5 font-medium text-right"><Num v={b.totalAmount} /></td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[b.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {b.status}
+                      </span>
+                    </td>
+                    <td className={`px-4 py-2.5 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                      {b.dueDate || '—'}{isOverdue && ' ⚠'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button className="text-xs text-indigo-600 hover:underline" onClick={e => { e.stopPropagation(); setSelectedId(b.id); }}>
+                        開啟
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

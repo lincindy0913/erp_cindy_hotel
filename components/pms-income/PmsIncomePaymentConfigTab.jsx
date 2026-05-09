@@ -1,6 +1,71 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { DEFAULT_PMS_COLUMNS } from './pmsIncomeConstants';
+
+function CcFeeOverview({ buildings }) {
+  const [allConfigs, setAllConfigs] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/pms-income/payment-method-config')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setAllConfigs(data))
+      .catch(() => {});
+  }, []);
+
+  if (!buildings.length) return null;
+
+  const ccCols = DEFAULT_PMS_COLUMNS.filter(c => c.entryType === '借方');
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border">
+      <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-gray-700">跨館費率一覽</h3>
+        <span className="text-xs text-gray-400">借方項目 · 各館別手續費% 及入帳延遲天數</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              <th className="px-4 py-2 text-left whitespace-nowrap">項目</th>
+              {buildings.map(w => (
+                <th key={w} className="px-4 py-2 text-center whitespace-nowrap">{w}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {ccCols.map(col => (
+              <tr key={col.pmsColumnName} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium text-gray-700">{col.pmsColumnName}</td>
+                {buildings.map(w => {
+                  const cfg = allConfigs.find(c => (c.warehouse ?? '') === w && c.pmsColumnName === col.pmsColumnName);
+                  if (!cfg) return <td key={w} className="px-4 py-2 text-center text-gray-300">—</td>;
+                  const hasFee = cfg.feePercentage > 0;
+                  const hasDelay = cfg.settlementDelayDays > 0;
+                  return (
+                    <td key={w} className="px-4 py-2 text-center">
+                      {hasFee && (
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium mr-1 ${col.pmsColumnName === '信用卡' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {cfg.feePercentage}%
+                        </span>
+                      )}
+                      {hasDelay && (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-amber-50 text-amber-700">
+                          +{cfg.settlementDelayDays}天
+                        </span>
+                      )}
+                      {!hasFee && !hasDelay && <span className="text-gray-300">0%</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export default function PmsIncomePaymentConfigTab({
   paymentConfigWarehouse,
@@ -151,6 +216,8 @@ export default function PmsIncomePaymentConfigTab({
           </table>
         </div>
       </div>
+
+      <CcFeeOverview buildings={paymentConfigBuildings} />
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <h4 className="text-sm font-bold text-amber-800 mb-2">信用卡收入設定建議</h4>

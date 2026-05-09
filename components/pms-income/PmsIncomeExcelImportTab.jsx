@@ -107,22 +107,44 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
   const fileInputRef = useRef(null);
   const wh = WAREHOUSES?.length ? WAREHOUSES : ['麗格', '麗軒', '民宿'];
 
-  // Fetch calendar data whenever warehouse or calMonth changes
+  // Fetch calendar + batch list whenever warehouse or calMonth changes
   useEffect(() => {
+    loadRecentBatches();
+  }, [loadRecentBatches]);
+
+  const [duplicateWarning, setDuplicateWarning] = useState(null); // null | date string
+  const [recentBatches, setRecentBatches] = useState([]);
+  const [deletingBatch, setDeletingBatch] = useState(null);
+
+  const loadRecentBatches = useCallback(async () => {
     const [y, m] = calMonth.split('-');
     const params = new URLSearchParams({ year: y, month: parseInt(m) });
     if (warehouse) params.set('warehouse', warehouse);
     fetch(`/api/pms-income/batches?${params}`)
       .then(r => r.ok ? r.json() : [])
-      .then(batches => {
+      .then(data => {
+        setRecentBatches(Array.isArray(data) ? data.sort((a, b) => b.businessDate.localeCompare(a.businessDate)) : []);
         const map = {};
-        for (const b of batches) map[b.businessDate] = true;
+        for (const b of data) map[b.businessDate] = true;
         setImportedDates(map);
       })
       .catch(() => {});
   }, [calMonth, warehouse]);
 
-  const [duplicateWarning, setDuplicateWarning] = useState(null); // null | date string
+  const deleteBatch = useCallback(async (batch) => {
+    if (!confirm(`確定要整批刪除「${batch.businessDate} ${batch.batchNo}」嗎？\n共 ${batch.recordCount ?? '?'} 筆記錄，此操作無法還原。`)) return;
+    setDeletingBatch(batch.id);
+    try {
+      const res = await fetch(`/api/pms-income/batches/${batch.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || '刪除失敗');
+      await loadRecentBatches();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setDeletingBatch(null);
+    }
+  }, [loadRecentBatches]);
 
   const processFile = useCallback(async (f) => {
     if (!f) return;
@@ -244,17 +266,7 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       const resNote = result.reservationCount > 0 ? `，訂房明細 ${result.reservationCount} 筆` : '';
       setSuccess(`✓ 匯入成功！批次號：${result.batchNo}，共 ${result.recordCount} 筆${resNote}${result.isReplacement ? '（已覆蓋舊資料）' : ''}`);
       setParsed(null); setRecords([]);
-      // Refresh calendar
-      const [y, m] = calMonth.split('-');
-      const params = new URLSearchParams({ year: y, month: parseInt(m) });
-      if (warehouse) params.set('warehouse', warehouse);
-      fetch(`/api/pms-income/batches?${params}`)
-        .then(r => r.ok ? r.json() : [])
-        .then(batches => {
-          const map = {};
-          for (const b of batches) map[b.businessDate] = true;
-          setImportedDates(map);
-        });
+      loadRecentBatches();
     } catch (e) {
       setSubmitError(e.message);
     } finally {
@@ -335,6 +347,66 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
             <MonthCalendar importedDates={importedDates} month={calMonth} />
           </div>
         </div>
+
+        {/* Recent batch list with rollback */}
+        {recentBatches.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-700">
+                {calMonth} 匯入批次（{recentBatches.length} 個）
+              </h3>
+              <span className="text-xs text-gray-400">點擊「整批刪除」可回滾錯誤匯入</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">營業日期</th>
+                    <th className="px-3 py-2 text-left">批次號</th>
+                    <th className="px-3 py-2 text-center">狀態</th>
+                    <th className="px-3 py-2 text-right">貸方</th>
+                    <th className="px-3 py-2 text-right">借方</th>
+                    <th className="px-3 py-2 text-center">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {recentBatches.map(b => (
+                    <tr key={b.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium">{b.businessDate}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-gray-500">{b.batchNo}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          b.status === '已結算' ? 'bg-green-100 text-green-700' :
+                          b.status === '已核對' ? 'bg-blue-100 text-blue-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>{b.status}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-teal-700 font-mono text-xs">
+                        {Number(b.creditTotal).toLocaleString('zh-TW')}
+                      </td>
+                      <td className="px-3 py-2 text-right text-amber-700 font-mono text-xs">
+                        {Number(b.debitTotal).toLocaleString('zh-TW')}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {b.status === '已結算' ? (
+                          <span className="text-xs text-gray-400">已結算（不可刪除）</span>
+                        ) : (
+                          <button
+                            onClick={() => deleteBatch(b)}
+                            disabled={deletingBatch === b.id}
+                            className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:opacity-40"
+                          >
+                            {deletingBatch === b.id ? '刪除中…' : '整批刪除'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

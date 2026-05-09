@@ -661,6 +661,7 @@ function PmsIncomePage() {
             handleSettleMonth={settlementTab.handleSettleMonth}
             handleVerifyMonth={settlementTab.handleVerifyMonth}
             handleVerifyBatches={settlementTab.handleVerifyBatches}
+            handleUnlockMonth={settlementTab.handleUnlockMonth}
           />
         )}
 

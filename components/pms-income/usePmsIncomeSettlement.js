@@ -126,6 +126,31 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
     [setError, setSuccess, fetchSettlementData]
   );
 
+  const handleUnlockMonth = useCallback(async () => {
+    if (!confirm(
+      `確定解除 ${settlementWarehouse} ${settlementYearMonth} 的月結狀態嗎？\n` +
+      `⚠ 結算時已建立的現金流交易「不會」自動刪除，請自行至現金流頁面核查。`
+    )) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/pms-income/settle/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ warehouse: settlementWarehouse, yearMonth: settlementYearMonth }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(data.message || '已解除月結');
+        fetchSettlementData();
+      } else {
+        setError(data.error?.message || data.error || '解鎖失敗');
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  }, [settlementWarehouse, settlementYearMonth, setLoading, setError, setSuccess, fetchSettlementData]);
+
   return {
     settlementWarehouse,
     setSettlementWarehouse,
@@ -138,5 +163,6 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
     handleVerifyMonth,
     handleSettleMonth,
     handleVerifyBatches,
+    handleUnlockMonth,
   };
 }

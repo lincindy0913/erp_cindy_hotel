@@ -11,9 +11,15 @@ function kfmt(n) {
   return n.toLocaleString('zh-TW');
 }
 
+function prevMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  if (m === 1) return `${y - 1}-12`;
+  return `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 export default function PmsIncomeMiniDashboard({ WAREHOUSES = [] }) {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats]       = useState(null);
+  const [loading, setLoading]   = useState(true);
   const [warehouse, setWarehouse] = useState('');
 
   const month = (() => {
@@ -26,17 +32,33 @@ export default function PmsIncomeMiniDashboard({ WAREHOUSES = [] }) {
     const params = new URLSearchParams({ take: '2000', month });
     if (warehouse) params.set('warehouse', warehouse);
 
+    const prevMon = prevMonth(month);
+
     Promise.all([
       fetch(`/api/pms-income/reservations?${params}`).then(r => r.ok ? r.json() : []),
-      fetch(`/api/pms-income/reservations/deposit-summary?month=${month}${warehouse ? `&warehouse=${warehouse}` : ''}`).then(r => r.ok ? r.json() : null),
-    ]).then(([rows, summary]) => {
-      const revenue    = rows.reduce((s, r) => s + (r.totalRevenue || 0), 0);
-      const otaRevenue = rows.filter(r => OTA_SOURCES.has(r.sourceOverride || r.source))
-                             .reduce((s, r) => s + (r.totalRevenue || 0), 0);
-      const otaPct     = revenue > 0 ? Math.round(otaRevenue / revenue * 100) : 0;
-      const ccPending  = rows.filter(r => r.creditCard > 0 && r.creditCardStatus !== '已核對').length;
+      fetch(`/api/pms-income/reservations/deposit-summary?month=${month}${warehouse ? `&warehouse=${encodeURIComponent(warehouse)}` : ''}`).then(r => r.ok ? r.json() : null),
+      // Previous month revenue for MoM
+      fetch(`/api/pms-income/reservations?take=2000&month=${prevMon}${warehouse ? `&warehouse=${encodeURIComponent(warehouse)}` : ''}`).then(r => r.ok ? r.json() : []),
+      // Vendor billing overdue
+      fetch(`/api/pms-income/vendor-billing?${warehouse ? `warehouse=${encodeURIComponent(warehouse)}` : ''}`).then(r => r.ok ? r.json() : []),
+    ]).then(([rows, summary, prevRows, billings]) => {
+      const today   = new Date().toISOString().slice(0, 10);
+      const revenue = rows.reduce((s, r) => s + (r.totalRevenue || 0), 0);
+      const prevRev = prevRows.reduce((s, r) => s + (r.totalRevenue || 0), 0);
+      const momPct  = prevRev > 0 ? Math.round((revenue - prevRev) / prevRev * 100) : null;
+
+      const otaRevenue = rows
+        .filter(r => OTA_SOURCES.has(r.sourceOverride || r.source))
+        .reduce((s, r) => s + (r.totalRevenue || 0), 0);
+      const otaPct  = revenue > 0 ? Math.round(otaRevenue / revenue * 100) : 0;
+      const ccPending = rows.filter(r => r.creditCard > 0 && r.creditCardStatus !== '已核對').length;
       const outstanding = summary ? (summary.all.depositIn - summary.all.depositOut) : 0;
-      setStats({ revenue, otaPct, ccPending, outstanding, count: rows.length });
+
+      const overdueCount = billings.filter(b =>
+        b.status !== '已結帳' && b.dueDate && b.dueDate < today
+      ).length;
+
+      setStats({ revenue, prevRev, momPct, otaPct, ccPending, outstanding, overdueCount, count: rows.length });
     }).finally(() => setLoading(false));
   }, [warehouse, month]);
 
@@ -59,24 +81,38 @@ export default function PmsIncomeMiniDashboard({ WAREHOUSES = [] }) {
         <span className="text-xs text-teal-300">載入中…</span>
       ) : stats ? (
         <>
-          <KpiItem label="本月收入" value={kfmt(stats.revenue)} sub={`${stats.count} 筆`} />
-          <KpiItem label="OTA 佔比" value={`${stats.otaPct}%`} accent={stats.otaPct > 60} />
-          <KpiItem label="信用卡待核" value={stats.ccPending} accent={stats.ccPending > 0} warn />
+          <KpiItem
+            label="本月收入"
+            value={kfmt(stats.revenue)}
+            sub={stats.momPct !== null
+              ? `vs 上月 ${stats.momPct >= 0 ? '+' : ''}${stats.momPct}%`
+              : `${stats.count} 筆`}
+            accentSub={stats.momPct !== null && stats.momPct < 0}
+          />
+          <KpiItem label="OTA 佔比" value={`${stats.otaPct}%`} />
+          <KpiItem label="信用卡待核" value={stats.ccPending} warn={stats.ccPending > 0} />
           <KpiItem label="訂金餘額（全期）" value={kfmt(stats.outstanding)} />
+          {stats.overdueCount > 0 && (
+            <KpiItem label="廠商帳款逾期" value={`${stats.overdueCount} 筆`} warn />
+          )}
         </>
       ) : null}
     </div>
   );
 }
 
-function KpiItem({ label, value, sub, warn, accent }) {
+function KpiItem({ label, value, sub, warn, accentSub }) {
   return (
     <div className="flex flex-col min-w-[70px]">
       <span className="text-xs text-teal-300">{label}</span>
-      <span className={`text-sm font-bold leading-tight ${warn && value > 0 ? 'text-amber-300' : accent ? 'text-teal-100' : 'text-white'}`}>
+      <span className={`text-sm font-bold leading-tight ${warn ? 'text-amber-300' : 'text-white'}`}>
         {value}
-        {sub && <span className="text-xs font-normal text-teal-300 ml-1">{sub}</span>}
       </span>
+      {sub && (
+        <span className={`text-xs leading-tight ${accentSub ? 'text-red-300' : 'text-teal-300'}`}>
+          {sub}
+        </span>
+      )}
     </div>
   );
 }

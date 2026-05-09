@@ -16,7 +16,12 @@ export default function PmsIncomeSettlementTab({
   handleSettleMonth,
   handleVerifyMonth,
   handleVerifyBatches,
+  handleUnlockMonth,
 }) {
+  const exportXlsx = () => {
+    const url = `/api/pms-income/export/monthly-report?warehouse=${encodeURIComponent(settlementWarehouse)}&yearMonth=${settlementYearMonth}`;
+    window.open(url, '_blank');
+  };
   const [resvStats, setResvStats] = useState(null);
   const [resvLoading, setResvLoading] = useState(false);
 
@@ -95,8 +100,19 @@ export default function PmsIncomeSettlementTab({
         </button>
         <div className="flex-1" />
 
+        {/* 匯出報表按鈕 — 不論狀態均可匯出 */}
+        {settlementBatches.length > 0 && (
+          <button
+            type="button"
+            onClick={exportXlsx}
+            className="px-3 py-2 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+          >
+            ↓ 匯出報表
+          </button>
+        )}
+
         {settlementStatus ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold ${
                 settlementStatus.status === '已結算'
@@ -119,10 +135,20 @@ export default function PmsIncomeSettlementTab({
               </button>
             )}
             {settlementStatus.status === '已結算' && (
-              <span className="text-xs text-gray-500">
-                結算者: {settlementStatus.settledBy} |{' '}
-                {settlementStatus.settledAt ? new Date(settlementStatus.settledAt).toLocaleString('zh-TW') : ''}
-              </span>
+              <>
+                <span className="text-xs text-gray-500">
+                  結算者: {settlementStatus.settledBy} |{' '}
+                  {settlementStatus.settledAt ? new Date(settlementStatus.settledAt).toLocaleString('zh-TW') : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleUnlockMonth}
+                  className="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
+                  title="解除月結狀態（不刪除已建立的現金流交易）"
+                >
+                  解除月結
+                </button>
+              </>
             )}
           </div>
         ) : (
