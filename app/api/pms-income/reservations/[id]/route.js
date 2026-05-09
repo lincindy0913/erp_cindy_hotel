@@ -3,6 +3,9 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,16 +54,47 @@ export async function PATCH(request, { params }) {
       'cashStatus', 'wireStatus', 'commissionStatus', 'depositStatus', 'creditCardStatus',
       'ccFeeRate', 'ccFeeAmount', 'ccNetAmount', 'ccActualNet', 'ccDiff', 'ccSettleDate',
       'vendorBillingId',
+      // Amount fields — allowed for manual correction
+      'totalRevenue', 'cash', 'creditCard', 'wireTransfer', 'commission',
+      'depositIn', 'depositOut', 'receivable', 'voucher',
     ];
     const updateData = {};
     for (const k of allowed) {
       if (k in body) updateData[k] = body[k];
     }
 
+    // Fetch before state for audit (only when status/amount fields change)
+    const before = await prisma.pmsReservationRecord.findUnique({ where: { id } });
+
     const updated = await prisma.pmsReservationRecord.update({
       where: { id },
       data: updateData,
     });
+
+    // Audit log for meaningful changes
+    const session = await getServerSession(authOptions);
+    if (session) {
+      const changedKeys = Object.keys(updateData);
+      const noteFields = ['creditCardStatus', 'depositStatus', 'sourceOverride',
+        'totalRevenue', 'cash', 'creditCard', 'wireTransfer', 'commission',
+        'depositIn', 'depositOut'];
+      if (changedKeys.some(k => noteFields.includes(k))) {
+        const beforeSnap = {};
+        const afterSnap  = {};
+        for (const k of changedKeys) {
+          beforeSnap[k] = before?.[k];
+          afterSnap[k]  = updated[k];
+        }
+        await auditFromSession(prisma, session, {
+          action: AUDIT_ACTIONS.CASH_TRANSACTION_UPDATE,
+          targetModule: 'pms_reservation',
+          targetId: id,
+          beforeState: beforeSnap,
+          afterState: afterSnap,
+          note: `訂房記錄修改 id=${id} ${updated.guestName || ''} ${updated.businessDate || ''}`,
+        }).catch(() => {});
+      }
+    }
 
     return NextResponse.json({
       ...updated,

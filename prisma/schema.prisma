@@ -3238,7 +3238,7 @@ model PmsReservationRecord {
   // 廠商行程帳單連結
   vendorBillingId  Int?     @map("vendor_billing_id")
 
-  // 自動產生的現金流交易 IDs (逗號分隔)
+  // 自動產生的現金流交易 IDs (逗號分隔，已棄用，保留向下相容)
   cashTransactionIds String? @map("cash_transaction_ids") @db.VarChar(500)
 
   note             String?  @db.VarChar(500)
@@ -3248,6 +3248,7 @@ model PmsReservationRecord {
   batch         PmsImportBatch        @relation(fields: [batchId], references: [id])
   vendorBilling VendorItineraryBilling? @relation(fields: [vendorBillingId], references: [id])
   otaReconLines PmsOtaReconLine[]
+  cashLinks     PmsReservationCashLink[]
 
   @@index([warehouse])
   @@index([businessDate])
@@ -3255,6 +3256,20 @@ model PmsReservationRecord {
   @@index([source])
   @@index([vendorBillingId])
   @@map("pms_reservation_records")
+}
+
+/// 訂房記錄與現金流交易的多對多連結（取代逗號分隔的 cashTransactionIds）
+model PmsReservationCashLink {
+  id                Int      @id @default(autoincrement())
+  reservationId     Int      @map("reservation_id")
+  cashTransactionId Int      @map("cash_transaction_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  reservation PmsReservationRecord @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@unique([reservationId, cashTransactionId])
+  @@index([cashTransactionId])
+  @@map("pms_reservation_cash_links")
 }
 
 model PmsOtaReconLog {

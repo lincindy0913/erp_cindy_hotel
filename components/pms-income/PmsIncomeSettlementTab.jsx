@@ -144,7 +144,7 @@ export default function PmsIncomeSettlementTab({
                   type="button"
                   onClick={handleUnlockMonth}
                   className="px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded-lg hover:bg-red-50"
-                  title="解除月結狀態（不刪除已建立的現金流交易）"
+                  title="解除月結狀態（將自動沖銷相關現金流交易）"
                 >
                   解除月結
                 </button>

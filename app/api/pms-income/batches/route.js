@@ -318,11 +318,16 @@ export async function POST(request) {
           }
         }
 
-        // Update reservation with cashTransactionIds
+        // Update reservation with cashTransactionIds (deprecated field, kept for compat)
+        // and populate junction table
         if (rowTxIds.length > 0) {
           await tx.pmsReservationRecord.update({
             where: { id: reservation.id },
             data: { cashTransactionIds: rowTxIds.join(',') },
+          });
+          await tx.pmsReservationCashLink.createMany({
+            data: rowTxIds.map(txId => ({ reservationId: reservation.id, cashTransactionId: txId })),
+            skipDuplicates: true,
           });
         }
       }

@@ -3,13 +3,15 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { recalcBalance } from '@/lib/recalc-balance';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
-// POST: 解除月結 — 將 已結算 狀態倒退回 已核對（不刪除現金流交易，由會計自行處理）
+// POST: 解除月結 — 倒退狀態並自動沖銷月結現金流交易
 export async function POST(request) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_IMPORT]);
   if (!auth.ok) return auth.response;
@@ -34,8 +36,9 @@ export async function POST(request) {
     const [y, m] = yearMonth.split('-').map(Number);
     const lastDay = new Date(y, m, 0).getDate();
     const startDate = `${yearMonth}-01`;
-    const endDate   = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
+    const endDate = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
 
+    // Step 1: 倒退 PMS 狀態（批次 + 月結）
     await prisma.$transaction([
       prisma.pmsImportBatch.updateMany({
         where: { warehouse, businessDate: { gte: startDate, lte: endDate }, status: '已結算' },
@@ -47,19 +50,86 @@ export async function POST(request) {
       }),
     ]);
 
+    // Step 2: 找出本月的月結現金流交易（未被沖銷的）
+    const settleTxs = await prisma.cashTransaction.findMany({
+      where: {
+        warehouse,
+        sourceType: { in: ['pms_income_settlement', 'pms_income_fee'] },
+        autoCreationReason: { contains: yearMonth },
+        isReversal: false,
+        reversedById: null,
+      },
+      select: {
+        id: true, type: true, amount: true, accountId: true,
+        warehouse: true, categoryId: true, sourceType: true,
+      },
+    });
+
+    let reversedCount = 0;
+
+    if (settleTxs.length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+
+      await prisma.$transaction(async (tx) => {
+        const affectedAccountIds = new Set();
+
+        for (const orig of settleTxs) {
+          const txNo = await nextCashTransactionNo(tx, today);
+          const reversalTx = await tx.cashTransaction.create({
+            data: {
+              transactionNo: txNo,
+              transactionDate: today,
+              // 收入 → 支出，支出 → 收入（對沖）
+              type: orig.type === '收入' ? '支出' : '收入',
+              warehouse: orig.warehouse,
+              accountId: orig.accountId,
+              categoryId: orig.categoryId,
+              amount: orig.amount,
+              fee: 0,
+              hasFee: false,
+              description: `[沖銷] PMS月度結算 ${yearMonth} 解鎖 — ${orig.warehouse}`,
+              sourceType: orig.sourceType,
+              isAutoCreated: true,
+              autoCreationReason: `PMS月度結算解鎖 ${yearMonth}`,
+              isReversal: true,
+              reversalOfId: orig.id,
+              status: '已確認',
+            },
+          });
+
+          await tx.cashTransaction.update({
+            where: { id: orig.id },
+            data: { reversedById: reversalTx.id },
+          });
+
+          affectedAccountIds.add(orig.accountId);
+        }
+
+        for (const acctId of affectedAccountIds) {
+          await recalcBalance(tx, acctId);
+        }
+
+        reversedCount = settleTxs.length;
+      });
+    }
+
+    // 稽核日誌
     const session = await getServerSession(authOptions);
     if (session) {
       await auditFromSession(prisma, session, {
         action: AUDIT_ACTIONS.MONTH_END_UNLOCK,
         targetModule: 'pms_income',
-        afterState: { warehouse, yearMonth },
-        note: `PMS月結解鎖 ${warehouse} ${yearMonth}（現金流交易需手動核查）`,
+        afterState: { warehouse, yearMonth, reversedCount },
+        note: `PMS月結解鎖 ${warehouse} ${yearMonth}（自動沖銷 ${reversedCount} 筆現金流交易）`,
       });
     }
 
     return NextResponse.json({
       success: true,
-      message: `${warehouse} ${yearMonth} 已解除月結，狀態退回「已核對」。注意：結算時建立的現金流交易需手動刪除。`,
+      reversedCount,
+      message: reversedCount > 0
+        ? `${warehouse} ${yearMonth} 已解除月結，並自動沖銷 ${reversedCount} 筆現金流交易。`
+        : `${warehouse} ${yearMonth} 已解除月結（無需沖銷現金流交易）。`,
     });
   } catch (error) {
     return handleApiError(error);

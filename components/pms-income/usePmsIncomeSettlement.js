@@ -129,7 +129,7 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
   const handleUnlockMonth = useCallback(async () => {
     if (!confirm(
       `確定解除 ${settlementWarehouse} ${settlementYearMonth} 的月結狀態嗎？\n` +
-      `⚠ 結算時已建立的現金流交易「不會」自動刪除，請自行至現金流頁面核查。`
+      `系統將自動沖銷結算時建立的現金流交易（以今日日期建立對沖分錄）。`
     )) return;
     setLoading(true);
     try {

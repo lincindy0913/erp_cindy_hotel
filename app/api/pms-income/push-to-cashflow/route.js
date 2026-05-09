@@ -22,6 +22,24 @@ export async function POST(request) {
     const endDate = data.endDate ? String(data.endDate).trim() : null;
     const recordIds = Array.isArray(data.recordIds) ? data.recordIds.map(id => parseInt(id)).filter(Boolean) : null;
 
+    // 防護：不允許對已月結的批次推送（避免與月結現金流重複計帳）
+    if (!recordIds || recordIds.length === 0) {
+      const settledWhere = { status: '已結算' };
+      if (warehouse) settledWhere.warehouse = warehouse;
+      if (startDate && endDate) settledWhere.businessDate = { gte: startDate, lte: endDate };
+      else if (startDate) settledWhere.businessDate = { gte: startDate };
+      else if (endDate) settledWhere.businessDate = { lte: endDate };
+
+      const settledCount = await prisma.pmsImportBatch.count({ where: settledWhere });
+      if (settledCount > 0) {
+        return createErrorResponse(
+          'SETTLEMENT_CONFLICT',
+          `所選日期範圍內有 ${settledCount} 個已月結批次，推送現金流會造成重複計帳。請先至「月度結算」解除月結後再操作。`,
+          409
+        );
+      }
+    }
+
     const where = { entryType: '借方' };
     if (recordIds && recordIds.length > 0) {
       where.id = { in: recordIds };
