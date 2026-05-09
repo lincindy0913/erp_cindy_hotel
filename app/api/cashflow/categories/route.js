@@ -32,7 +32,11 @@ export async function GET() {
     const result = categories.map(c => ({
       ...c,
       totalAmount: sumMap.get(c.id) || 0,
-      createdAt: c.createdAt.toISOString()
+      createdAt: c.createdAt.toISOString(),
+      // P&L fields (may be null for older categories)
+      level1: c.level1 || null,
+      plGroup: c.plGroup || null,
+      plOrder: c.plOrder || null,
     }));
 
     return NextResponse.json(result);
@@ -62,6 +66,9 @@ export async function POST(request) {
         type: data.type,
         warehouse: data.warehouse || null,
         accountingSubjectId: data.accountingSubjectId ? parseInt(data.accountingSubjectId) : null,
+        level1: data.level1 || null,
+        plGroup: data.plGroup || null,
+        plOrder: data.plOrder ? parseInt(data.plOrder) : null,
         isActive: true
       },
       include: {

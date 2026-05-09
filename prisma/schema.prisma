@@ -462,6 +462,10 @@ model CashCategory {
   isActive             Boolean  @default(true) @map("is_active")
   isSystemDefault      Boolean  @default(false) @map("is_system_default")
   systemCode           String?  @map("system_code") @db.VarChar(50)
+  // P&L 分層欄位
+  level1               String?  @map("level1") @db.VarChar(20)   // 收入 | 費用 | 業外
+  plGroup              String?  @map("pl_group") @db.VarChar(50) // 住宿收入 | 收款成本 | 人事費用 | 行政費用 | 業外
+  plOrder              Int?     @map("pl_order")                  // 損益表顯示排序
   createdAt            DateTime @default(now()) @map("created_at")
 
   accountingSubject AccountingSubject? @relation(fields: [accountingSubjectId], references: [id])
@@ -470,6 +474,7 @@ model CashCategory {
   @@index([type])
   @@index([systemCode])
   @@index([accountingSubjectId])
+  @@index([level1, plGroup])
   @@map("cash_categories")
 }
 
@@ -1981,26 +1986,32 @@ model CreditCardMerchantConfig {
 model CreditCardStatement {
   id                Int       @id @default(autoincrement())
   merchantConfigId  Int?      @map("merchant_config_id")
-  warehouseId       Int       @map("warehouse_id")
-  warehouse         String    @db.VarChar(100)                   // 館別名稱
-  bankName          String    @map("bank_name") @db.VarChar(100) // 銀行名稱
+  warehouseId       Int?      @map("warehouse_id")
+  warehouse         String    @db.VarChar(100)                    // 館別名稱
+  bankName          String?   @map("bank_name") @db.VarChar(100)  // 銀行名稱（舊欄位）
+  provider          String?   @db.VarChar(100)                    // 收單機構：國泰世華、玉山 etc
   merchantId        String?   @map("merchant_id") @db.VarChar(50) // 特店代號
   merchantName      String?   @map("merchant_name") @db.VarChar(200)
   billingDate       String    @map("billing_date") @db.VarChar(20)  // 請款日
-  paymentDate       String?   @map("payment_date") @db.VarChar(20) // 撥款日期
-  accountNo         String?   @map("account_no") @db.VarChar(100)  // 入帳帳號
-  totalCount        Int       @default(0) @map("total_count")      // 請款筆數
+  paymentDate       String?   @map("payment_date") @db.VarChar(20)  // 撥款日期
+  bankAccountId     Int?      @map("bank_account_id")               // 入帳銀行帳戶 FK → CashAccount
+  accountNo         String?   @map("account_no") @db.VarChar(100)   // 入帳帳號（舊欄位）
+  totalCount        Int       @default(0) @map("total_count")       // 請款筆數
   totalAmount       Decimal   @default(0) @map("total_amount") @db.Decimal(14, 2)  // 請款金額
-  adjustment        Decimal   @default(0) @db.Decimal(14, 2)       // 調整
+  adjustment        Decimal   @default(0) @db.Decimal(14, 2)        // 調整
   totalFee          Decimal   @default(0) @map("total_fee") @db.Decimal(14, 2)     // 手續費
   serviceFee        Decimal   @default(0) @map("service_fee") @db.Decimal(14, 2)   // 服務費
   otherFee          Decimal   @default(0) @map("other_fee") @db.Decimal(14, 2)     // 費用
   netAmount         Decimal   @default(0) @map("net_amount") @db.Decimal(14, 2)    // 撥款淨額
-  pmsAmount         Decimal?  @map("pms_amount") @db.Decimal(14, 2)  // PMS 信用卡收入
-  difference        Decimal?  @db.Decimal(14, 2)                     // 差異金額
-  status            String    @default("pending") @db.VarChar(20)    // pending/matched/confirmed
+  pmsAmount         Decimal?  @map("pms_amount") @db.Decimal(14, 2)   // PMS 信用卡收入
+  difference        Decimal?  @db.Decimal(14, 2)                       // 差異金額
+  cardBreakdown     Json?     @map("card_breakdown")                   // {VISA:{count,amount,fee},...}
+  status            String    @default("pending") @db.VarChar(20)      // pending/matched/confirmed/已核對/有差異/已建帳
+  incomeTxId        Int?      @map("income_tx_id")   // 建帳後的收入 CashTransaction
+  feeTxId           Int?      @map("fee_tx_id")      // 建帳後的手續費 CashTransaction
   confirmedBy       String?   @map("confirmed_by") @db.VarChar(255)
   confirmedAt       DateTime? @map("confirmed_at")
+  importedBy        String?   @map("imported_by") @db.VarChar(255)
   note              String?   @db.Text
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
@@ -2011,7 +2022,7 @@ model CreditCardStatement {
   @@index([warehouseId])
   @@index([billingDate])
   @@index([status])
-  @@index([warehouseId, billingDate]) // composite for filtered month+warehouse queries
+  @@index([warehouse, billingDate])
   @@map("credit_card_statements")
 }
 
@@ -3320,4 +3331,53 @@ model PmsOtaReconLine {
   @@index([reconLogId])
   @@index([reservationId])
   @@map("pms_ota_recon_lines")
+}
+
+// ============================================
+// 存簿核對（銀行調節表 — 手動逐筆配對）
+// ============================================
+
+/// 銀行存摺調節表主檔 — 每帳戶每月一筆
+model BankStatement {
+  id                   Int       @id @default(autoincrement())
+  accountId            Int       @map("account_id")   // FK → CashAccount
+  yearMonth            String    @map("year_month") @db.VarChar(7)  // 2026-03
+  openingBalance       Decimal   @map("opening_balance") @db.Decimal(12, 2)       // 系統期初
+  openingBankBalance   Decimal?  @map("opening_bank_balance") @db.Decimal(12, 2)  // 存摺期初（人工）
+  closingBankBalance   Decimal?  @map("closing_bank_balance") @db.Decimal(12, 2)  // 存摺期末（人工）
+  status               String    @default("核對中") @db.VarChar(20) // 核對中|已平衡|有差異
+  note                 String?   @db.VarChar(500)
+  reconciledAt         DateTime? @map("reconciled_at")
+  reconciledBy         String?   @map("reconciled_by") @db.VarChar(255)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  lines BankReconLine[]
+
+  @@unique([accountId, yearMonth])
+  @@index([accountId])
+  @@index([yearMonth])
+  @@map("bank_statements")
+}
+
+/// 銀行存摺逐筆明細 — 與 CashTransaction 配對（手動核對用）
+model BankReconLine {
+  id               Int      @id @default(autoincrement())
+  bankStatementId  Int      @map("bank_statement_id")
+  txDate           String   @map("tx_date") @db.VarChar(10)  // YYYY-MM-DD
+  description      String?  @db.VarChar(500)
+  creditAmount     Decimal  @default(0) @map("credit_amount") @db.Decimal(12, 2)  // 存入
+  debitAmount      Decimal  @default(0) @map("debit_amount") @db.Decimal(12, 2)   // 提出
+  runningBalance   Decimal? @map("running_balance") @db.Decimal(12, 2)             // 存摺餘額
+  matchedTxId      Int?     @map("matched_tx_id")  // 配對的 CashTransaction.id
+  matchStatus      String   @default("未配對") @map("match_status") @db.VarChar(20) // 未配對|已配對|例外核准
+  note             String?  @db.VarChar(500)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  bankStatement BankStatement @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+
+  @@index([bankStatementId])
+  @@index([txDate])
+  @@index([matchStatus])
+  @@map("bank_recon_lines")
 }

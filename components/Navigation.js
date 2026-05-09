@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { ROLE_LABELS, ROLE_COLORS, hasPermission } from '@/lib/permissions';
 import NotificationBell from '@/components/NotificationBell';
 
-// 主選單順序：儀錶板 → 庫存 → 進貨 → 發票登錄 → 付款 → 支票 → 費用 → 貸款 → 出納 → 代墊款 → 現金流 → 存簿對帳 → PMS收入 → 租屋管理 → 工程 → 分析 → 結帳(下拉)
+// 主選單順序：儀錶板 → 庫存 → 進貨 → 發票登錄 → 付款 → 支票 → 費用 → 貸款 → 出納 → 代墊款 → 現金流 → 存簿對帳 → 存簿核對 → PMS收入 → 租屋管理 → 工程 → 分析 → 結帳(下拉) → 報表(下拉)
 const NAV_ITEMS = [
   { href: '/', label: '儀錶板', linkClass: 'link-dashboard', requiredPermission: null },
   { href: '/inventory', label: '庫存', linkClass: 'link-inventory', requiredPermission: 'inventory.view' },
@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
   { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
   { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
+  { href: '/bank-reconciliation', label: '存簿核對', linkClass: 'link-reconciliation', requiredPermission: 'cashflow.view' },
   { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
   { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
@@ -35,6 +36,11 @@ const NAV_ITEMS = [
 const CLOSE_BOOK_ITEMS = [
   { href: '/month-end', label: '月結', linkClass: 'link-monthend', requiredPermission: 'monthend.view' },
   { href: '/year-end', label: '年結', linkClass: 'link-year-end', requiredPermission: 'yearend.view' },
+];
+
+// 報表下拉：損益表
+const REPORTS_ITEMS = [
+  { href: '/reports/profit-loss', label: '損益表', linkClass: 'link-analytics', requiredPermission: 'cashflow.view' },
 ];
 
 // 資料設定 dropdown items
@@ -80,6 +86,13 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   const visibleCloseBookItems = CLOSE_BOOK_ITEMS.filter(item => canAccess(item.requiredPermission));
   const isCloseBookActive = CLOSE_BOOK_ITEMS.some(item => pathname === item.href);
 
+  // 報表下拉
+  const visibleReportsItems = REPORTS_ITEMS.filter(item => canAccess(item.requiredPermission));
+  const isReportsActive = REPORTS_ITEMS.some(item => pathname === item.href);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const reportsRef = useRef(null);
+  const reportsTimeoutRef = useRef(null);
+
   // 過濾資料設定 dropdown 項目
   const visibleSettingsItems = DATA_SETTINGS_ITEMS.filter(item => {
     if (item.adminOnly) return isAdmin;
@@ -114,6 +127,7 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (closeBookTimeoutRef.current) clearTimeout(closeBookTimeoutRef.current);
+      if (reportsTimeoutRef.current) clearTimeout(reportsTimeoutRef.current);
     };
   }, []);
 
@@ -188,6 +202,33 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
                         >
                           {item.label}
                         </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 報表 dropdown */}
+              {visibleReportsItems.length > 0 && (
+                <div
+                  className="relative"
+                  ref={reportsRef}
+                  onMouseEnter={() => { if (reportsTimeoutRef.current) clearTimeout(reportsTimeoutRef.current); setReportsOpen(true); }}
+                  onMouseLeave={() => { reportsTimeoutRef.current = setTimeout(() => setReportsOpen(false), 150); }}
+                >
+                  <button className={`link-analytics flex items-center gap-1 ${isReportsActive ? 'active font-medium' : ''}`}>
+                    報表
+                    <svg className={`w-3 h-3 transition-transform ${reportsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {reportsOpen && (
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[120px] z-50">
+                      {visibleReportsItems.map(item => (
+                        <Link key={item.href} href={item.href}
+                          className={`block px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${pathname === item.href ? 'font-medium bg-gray-50' : 'text-gray-700'}`}
+                          onClick={() => setReportsOpen(false)}
+                        >{item.label}</Link>
                       ))}
                     </div>
                   )}

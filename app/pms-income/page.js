@@ -26,6 +26,7 @@ import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBi
 import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
 import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
 import PmsIncomeCCFeeReconTab from '@/components/pms-income/PmsIncomeCCFeeReconTab';
+import PmsIncomeCreditCardTab from '@/components/pms-income/PmsIncomeCreditCardTab';
 import PmsIncomeMiniDashboard from '@/components/pms-income/PmsIncomeMiniDashboard';
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
@@ -582,6 +583,10 @@ function PmsIncomePage() {
 
         {activeTab === 'ccFeeRecon' && (
           <PmsIncomeCCFeeReconTab WAREHOUSES={WAREHOUSES} />
+        )}
+
+        {activeTab === 'creditCardStatement' && (
+          <PmsIncomeCreditCardTab WAREHOUSES={WAREHOUSES} />
         )}
 
         {activeTab === 'otaDeposit' && (

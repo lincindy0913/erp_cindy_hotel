@@ -8,6 +8,7 @@ export const TABS = [
   { key: 'reservations', label: '訂房明細' },
   { key: 'depositRecon', label: '訂金核對' },
   { key: 'ccFeeRecon', label: '付款稽核' },
+  { key: 'creditCardStatement', label: '信用卡對帳單' },
   { key: 'otaDeposit', label: 'OTA 訂金' },
   { key: 'otaRecon', label: 'OTA 對帳比對' },
   { key: 'otaCommission', label: 'OTA 傭金' },
