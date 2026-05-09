@@ -559,11 +559,8 @@ function PmsIncomePage() {
 
         {activeTab === 'excelImport' && (
           <PmsIncomeExcelImportTab
+            WAREHOUSES={WAREHOUSES}
             setActiveTab={setActiveTab}
-            onOpenUpload={() => {
-              setActiveTab('overview');
-              setShowUploadModal(true);
-            }}
           />
         )}
 
