@@ -6,6 +6,74 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
+export async function POST(request) {
+  const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.PMS_IMPORT]);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = await request.json();
+    const {
+      warehouse, businessDate, guestName, companyName, roomNo, source,
+      totalRevenue, cash, creditCard, wireTransfer, commission,
+      depositIn, depositOut, note,
+    } = body;
+
+    if (!warehouse || !businessDate) {
+      return NextResponse.json({ error: { message: '館別和日期為必填' } }, { status: 400 });
+    }
+
+    // Find or create a manual batch for this warehouse+date
+    const manualPrefix = `MANUAL-${businessDate.replace(/-/g, '')}`;
+    let batch = await prisma.pmsImportBatch.findFirst({
+      where: { warehouse, businessDate, batchNo: { startsWith: manualPrefix } },
+    });
+    if (!batch) {
+      batch = await prisma.pmsImportBatch.create({
+        data: {
+          batchNo: `${manualPrefix}-${warehouse.slice(0, 2)}`,
+          warehouse,
+          businessDate,
+          fileName: '手動新增',
+          status: '已匯入',
+        },
+      });
+    }
+
+    const record = await prisma.pmsReservationRecord.create({
+      data: {
+        batchId:      batch.id,
+        warehouse,
+        businessDate,
+        guestName:    guestName    || null,
+        companyName:  companyName  || null,
+        roomNo:       roomNo       || null,
+        source:       source       || '電話',
+        totalRevenue: totalRevenue || 0,
+        cash:         cash         || 0,
+        creditCard:   creditCard   || 0,
+        wireTransfer: wireTransfer || 0,
+        commission:   commission   || 0,
+        depositIn:    depositIn    || 0,
+        depositOut:   depositOut   || 0,
+        note:         note         || null,
+      },
+    });
+
+    return NextResponse.json({
+      ...record,
+      totalRevenue: Number(record.totalRevenue),
+      cash:         Number(record.cash),
+      creditCard:   Number(record.creditCard),
+      wireTransfer: Number(record.wireTransfer),
+      commission:   Number(record.commission),
+      depositIn:    Number(record.depositIn),
+      depositOut:   Number(record.depositOut),
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
 export async function GET(request) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.PMS_IMPORT]);
   if (!auth.ok) return auth.response;

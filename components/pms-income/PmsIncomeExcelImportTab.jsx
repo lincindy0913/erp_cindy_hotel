@@ -122,13 +122,15 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       .catch(() => {});
   }, [calMonth, warehouse]);
 
+  const [duplicateWarning, setDuplicateWarning] = useState(null); // null | date string
+
   const processFile = useCallback(async (f) => {
     if (!f) return;
     const ext = f.name.toLowerCase();
     if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls')) {
       setParseError('請上傳 Excel 檔案（.xlsx 或 .xls）'); return;
     }
-    setParsing(true); setParseError(''); setParsed(null); setSuccess(''); setSubmitError('');
+    setParsing(true); setParseError(''); setParsed(null); setSuccess(''); setSubmitError(''); setDuplicateWarning(null);
     try {
       const fd = new FormData();
       fd.append('file', f);
@@ -138,9 +140,22 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
 
       // Auto-detect warehouse from filename
       const detectedWh = detectWarehouse(f.name, wh);
+      const detectedDate = data.businessDate || new Date().toISOString().slice(0, 10);
       setWarehouse(detectedWh || wh[0] || '');
-      setBusinessDate(data.businessDate || new Date().toISOString().slice(0, 10));
+      setBusinessDate(detectedDate);
       setFileName(data.fileName || f.name);
+
+      // Check for duplicate import
+      if (detectedWh && detectedDate) {
+        fetch(`/api/pms-income/batches?startDate=${detectedDate}&endDate=${detectedDate}${detectedWh ? `&warehouse=${encodeURIComponent(detectedWh)}` : ''}`)
+          .then(r => r.ok ? r.json() : [])
+          .then(batches => {
+            if (batches.some(b => !b.batchNo?.startsWith('MANUAL-'))) {
+              setDuplicateWarning(detectedDate);
+            }
+          })
+          .catch(() => {});
+      }
       setRoomCount(data.roomCount     || '');
       setOccupancyRate(data.occupancyRate || '');
       setAvgRoomRate(data.avgRoomRate  || '');
@@ -377,6 +392,13 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
           {!balanced && (
             <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
               貸借不平衡，請點「展開詳細核對」確認各欄位金額。
+            </div>
+          )}
+
+          {duplicateWarning && (
+            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+              <span className="text-base leading-none">⚠️</span>
+              <span><strong>{duplicateWarning}</strong> 已有匯入批次！繼續匯入將<strong>覆蓋</strong>同日資料，請確認是否重傳。</span>
             </div>
           )}
 

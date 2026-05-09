@@ -27,6 +27,12 @@ const CC_COLORS = {
   '待核對': 'bg-gray-100 text-gray-500 border-gray-200',
 };
 
+const EMPTY_ADD_FORM = {
+  guestName: '', companyName: '', roomNo: '', source: '電話',
+  totalRevenue: '', cash: '', creditCard: '', wireTransfer: '',
+  commission: '', depositIn: '', depositOut: '', note: '',
+};
+
 function fmt(n) {
   const v = Number(n);
   if (n == null || isNaN(v) || v === 0) return '';
@@ -49,6 +55,46 @@ function downloadCsv(rows) {
   const a = document.createElement('a');
   a.href = url; a.download = `訂房明細_${new Date().toISOString().slice(0,10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
+}
+
+async function downloadXlsx(rows, month, warehouse) {
+  const XLSX = (await import('xlsx')).default;
+
+  // Sheet 1: Summary by source
+  const srcMap = {};
+  for (const r of rows) {
+    const src = r.sourceOverride || r.source;
+    if (!srcMap[src]) srcMap[src] = { 來源: src, 筆數: 0, 總收入: 0, 現金: 0, 信用卡: 0, 轉帳: 0, 佣金: 0 };
+    srcMap[src].筆數++;
+    srcMap[src].總收入   += r.totalRevenue  || 0;
+    srcMap[src].現金     += r.cash          || 0;
+    srcMap[src].信用卡   += r.creditCard    || 0;
+    srcMap[src].轉帳     += r.wireTransfer  || 0;
+    srcMap[src].佣金     += r.commission    || 0;
+  }
+  const summaryData = Object.values(srcMap);
+  summaryData.push({
+    來源: '合計', 筆數: rows.length,
+    總收入: rows.reduce((s,r)=>s+(r.totalRevenue||0),0),
+    現金: rows.reduce((s,r)=>s+(r.cash||0),0),
+    信用卡: rows.reduce((s,r)=>s+(r.creditCard||0),0),
+    轉帳: rows.reduce((s,r)=>s+(r.wireTransfer||0),0),
+    佣金: rows.reduce((s,r)=>s+(r.commission||0),0),
+  });
+
+  // Sheet 2: Detail
+  const detailData = rows.map(r => ({
+    日期: r.businessDate, 房號: r.roomNo||'', 住客: r.guestName||'', 公司: r.companyName||'',
+    來源: r.sourceOverride||r.source, 住宿金額: r.totalRevenue||0,
+    現金: r.cash||0, 信用卡: r.creditCard||0, 轉帳: r.wireTransfer||0, 佣金: r.commission||0,
+    收訂金: r.depositIn||0, 沖訂金: r.depositOut||0,
+    訂金狀態: r.depositStatus, 信用卡核對: r.creditCardStatus, 備註: r.note||'',
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), '來源摘要');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailData), '訂房明細');
+  XLSX.writeFile(wb, `月報_${warehouse}_${month}.xlsx`);
 }
 
 // ── Inline editable: Source tag ──
@@ -156,7 +202,6 @@ function CCBadge({ row, onSave }) {
 function NoteCell({ row, onSave }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(row.note || '');
-  const ref = useRef(null);
 
   const save = async () => {
     setEditing(false);
@@ -166,7 +211,6 @@ function NoteCell({ row, onSave }) {
   if (editing) {
     return (
       <input
-        ref={ref}
         autoFocus
         className="border rounded px-1.5 py-0.5 text-xs w-28 focus:ring-1 focus:ring-blue-300"
         value={val}
@@ -188,7 +232,7 @@ function NoteCell({ row, onSave }) {
   );
 }
 
-// ── Inline editable: Source override via small modal for full detail ──
+// ── Detail Modal ──
 function DetailModal({ row, onClose, onSave }) {
   const [sourceOverride, setSourceOverride] = useState(row.sourceOverride || '');
   const [depositStatus, setDepositStatus] = useState(row.depositStatus || '待確認');
@@ -240,6 +284,115 @@ function DetailModal({ row, onClose, onSave }) {
   );
 }
 
+// ── Manual Add Modal ──
+function AddReservationModal({ warehouse, month, WAREHOUSES, onClose, onSave }) {
+  const defaultDate = month ? `${month}-01` : new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({ ...EMPTY_ADD_FORM, businessDate: defaultDate });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const f = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const submit = async () => {
+    if (!form.guestName && !form.roomNo) { setErr('請填寫住客或房號'); return; }
+    setSaving(true); setErr('');
+    try {
+      const body = {
+        warehouse, businessDate: form.businessDate,
+        guestName: form.guestName || null, companyName: form.companyName || null,
+        roomNo: form.roomNo || null, source: form.source,
+        totalRevenue: parseFloat(form.totalRevenue) || 0,
+        cash:         parseFloat(form.cash)         || 0,
+        creditCard:   parseFloat(form.creditCard)   || 0,
+        wireTransfer: parseFloat(form.wireTransfer) || 0,
+        commission:   parseFloat(form.commission)   || 0,
+        depositIn:    parseFloat(form.depositIn)    || 0,
+        depositOut:   parseFloat(form.depositOut)   || 0,
+        note: form.note || null,
+      };
+      const res = await fetch('/api/pms-income/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || '新增失敗');
+      onSave(data);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center px-5 py-3 border-b">
+          <h3 className="font-semibold text-sm">手動新增訂房記錄</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">日期 *</label>
+              <input type="date" className="border rounded px-2 py-1.5 w-full text-sm" value={form.businessDate} onChange={f('businessDate')} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">來源</label>
+              <select className="border rounded px-2 py-1.5 w-full text-sm" value={form.source} onChange={f('source')}>
+                {SOURCE_EDIT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">住客名稱</label>
+              <input className="border rounded px-2 py-1.5 w-full text-sm" value={form.guestName} onChange={f('guestName')} placeholder="王小明" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">房號</label>
+              <input className="border rounded px-2 py-1.5 w-full text-sm" value={form.roomNo} onChange={f('roomNo')} placeholder="101" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">公司</label>
+              <input className="border rounded px-2 py-1.5 w-full text-sm" value={form.companyName} onChange={f('companyName')} />
+            </div>
+          </div>
+
+          <div className="border-t pt-3">
+            <p className="text-xs text-gray-400 mb-2">金額（留空視為 0）</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['totalRevenue','住宿金額'], ['cash','現金'],
+                ['creditCard','信用卡'],   ['wireTransfer','轉帳'],
+                ['commission','佣金'],     ['depositIn','收訂金'],
+                ['depositOut','沖訂金'],
+              ].map(([k, label]) => (
+                <div key={k}>
+                  <label className="block text-xs text-gray-500 mb-1">{label}</label>
+                  <input type="number" className="border rounded px-2 py-1.5 w-full text-sm" value={form[k]} onChange={f(k)} step="1" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">備註</label>
+            <input className="border rounded px-2 py-1.5 w-full text-sm" value={form.note} onChange={f('note')} />
+          </div>
+
+          {err && <div className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{err}</div>}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded text-gray-600">取消</button>
+          <button onClick={submit} disabled={saving}
+            className="px-4 py-1.5 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">
+            {saving ? '新增中…' : '確認新增'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ──
 export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
   const [warehouse, setWarehouse] = useState(WAREHOUSES[0] || '');
@@ -256,13 +409,26 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
+
+  // Push mode (vendor billing)
   const [pushMode, setPushMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [billingId, setBillingId] = useState('');
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState('');
+
+  // Batch verify mode
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchChecked, setBatchChecked] = useState(new Set());
+  const [batching, setBatching] = useState(false);
+  const [batchMsg, setBatchMsg] = useState('');
+
+  // Reclassify
   const [reclassifying, setReclassifying] = useState(false);
   const [reclassMsg, setReclassMsg] = useState('');
+
+  // Manual add modal
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -287,7 +453,6 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Optimistic update: apply patch locally then persist
   async function updateRow(id, patch) {
     setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
     const res = await fetch(`/api/pms-income/reservations/${id}`, {
@@ -296,7 +461,6 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
       body: JSON.stringify(patch),
     });
     if (!res.ok) {
-      // Revert on failure
       load();
     } else {
       const updated = await res.json();
@@ -319,6 +483,28 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
       else setPushMsg(json.error?.message || '推送失敗');
     } catch { setPushMsg('網路錯誤'); }
     finally { setPushing(false); }
+  }
+
+  async function batchUpdate(patch) {
+    if (batchChecked.size === 0) { setBatchMsg('請勾選要更新的訂單'); return; }
+    setBatching(true); setBatchMsg('');
+    try {
+      const res = await fetch('/api/pms-income/reservations/bulk-patch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...batchChecked], patch }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setBatchMsg(`已更新 ${json.updated} 筆`);
+        // Apply optimistically
+        setRows(prev => prev.map(r => batchChecked.has(r.id) ? { ...r, ...patch } : r));
+        setBatchChecked(new Set());
+      } else {
+        setBatchMsg(json.error?.message || '更新失敗');
+      }
+    } catch { setBatchMsg('網路錯誤'); }
+    finally { setBatching(false); }
   }
 
   async function reclassify() {
@@ -349,10 +535,12 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
     sourceCounts[src] = (sourceCounts[src] || 0) + 1;
   }
 
+  const anyCheckMode = pushMode || batchMode;
+
   return (
     <div className="space-y-3">
       {/* Filter bar */}
-      <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex flex-wrap gap-2 items-end shadow-sm">
+      <div className="bg-white border border-gray-100 rounded-xl px-3 py-3 flex flex-wrap gap-2 items-end shadow-sm">
         <div>
           <label className="block text-xs text-gray-400 mb-1">館別</label>
           <select className="border rounded-lg px-2 py-1.5 text-sm" value={warehouse} onChange={e => setWarehouse(e.target.value)}>
@@ -382,13 +570,13 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
             {SOURCE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
-        <div>
+        <div className="hidden sm:block">
           <label className="block text-xs text-gray-400 mb-1">訂金</label>
           <select className="border rounded-lg px-2 py-1.5 text-sm" value={depositFilter} onChange={e => setDepositFilter(e.target.value)}>
             {DEPOSIT_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
-        <div>
+        <div className="hidden sm:block">
           <label className="block text-xs text-gray-400 mb-1">信用卡</label>
           <select className="border rounded-lg px-2 py-1.5 text-sm" value={ccFilter} onChange={e => setCcFilter(e.target.value)}>
             {CC_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
@@ -397,9 +585,18 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
         <div className="flex gap-1.5 items-end flex-wrap">
           <button onClick={load} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">整理</button>
           <button onClick={() => downloadCsv(rows)} disabled={!rows.length} className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40">↓ CSV</button>
-          <button onClick={() => { setPushMode(m=>!m); setCheckedIds(new Set()); }}
+          <button onClick={() => downloadXlsx(rows, month, warehouse)} disabled={!rows.length} className="px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40">↓ XLSX</button>
+          <button onClick={() => { setBatchMode(m=>!m); setBatchChecked(new Set()); setBatchMsg(''); setPushMode(false); }}
+            className={`px-3 py-1.5 text-sm rounded-lg ${batchMode ? 'bg-indigo-600 text-white' : 'border border-indigo-400 text-indigo-600 hover:bg-indigo-50'}`}>
+            {batchMode ? '取消批次' : '批次核對'}
+          </button>
+          <button onClick={() => { setPushMode(m=>!m); setCheckedIds(new Set()); setBatchMode(false); }}
             className={`px-3 py-1.5 text-sm rounded-lg ${pushMode ? 'bg-purple-600 text-white' : 'border border-purple-400 text-purple-600 hover:bg-purple-50'}`}>
-            {pushMode ? '取消' : '推廠商'}
+            {pushMode ? '取消推廠商' : '推廠商'}
+          </button>
+          <button onClick={() => setShowAddModal(true)}
+            className="px-3 py-1.5 text-sm rounded-lg border border-teal-400 text-teal-600 hover:bg-teal-50">
+            + 手動新增
           </button>
           {!useRange && (
             <button onClick={reclassify} disabled={reclassifying}
@@ -410,6 +607,28 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
           {reclassMsg && <span className="text-xs text-green-600">{reclassMsg}</span>}
         </div>
       </div>
+
+      {/* Batch mode action bar */}
+      {batchMode && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex flex-wrap gap-3 items-center text-sm">
+          <span className="text-indigo-700 font-medium">批次核對模式 — 已勾選 {batchChecked.size} 筆</span>
+          <button onClick={() => batchUpdate({ creditCardStatus: '已核對' })} disabled={batching || batchChecked.size === 0}
+            className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg disabled:opacity-50">
+            {batching ? '…' : '信用卡全部已核'}
+          </button>
+          <button onClick={() => batchUpdate({ depositStatus: '已核對' })} disabled={batching || batchChecked.size === 0}
+            className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg disabled:opacity-50">
+            訂金全部已核
+          </button>
+          <button onClick={() => batchUpdate({ creditCardStatus: '已核對', depositStatus: '已核對' })} disabled={batching || batchChecked.size === 0}
+            className="px-3 py-1.5 text-xs bg-teal-600 text-white rounded-lg disabled:opacity-50">
+            兩者全部已核
+          </button>
+          <button onClick={() => setBatchChecked(new Set(rows.map(r => r.id)))} className="text-xs text-indigo-600 hover:underline">全選</button>
+          <button onClick={() => setBatchChecked(new Set())} className="text-xs text-gray-400 hover:underline">清除</button>
+          {batchMsg && <span className="text-xs text-green-600">{batchMsg}</span>}
+        </div>
+      )}
 
       {/* Push panel */}
       {pushMode && (
@@ -471,61 +690,79 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
         <div className="text-center py-12 text-gray-400">尚無訂房明細資料</div>
       ) : (
         <div className="overflow-x-auto border border-gray-100 rounded-xl shadow-sm">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-gray-50 text-gray-500 text-xs sticky top-0 z-10">
               <tr>
-                {pushMode && <th className="px-2 py-2">
+                {anyCheckMode && <th className="px-2 py-2">
                   <input type="checkbox"
-                    checked={checkedIds.size === rows.length && rows.length > 0}
-                    onChange={() => setCheckedIds(checkedIds.size === rows.length ? new Set() : new Set(rows.map(r => r.id)))} />
+                    checked={
+                      batchMode
+                        ? (batchChecked.size === rows.length && rows.length > 0)
+                        : (checkedIds.size === rows.length && rows.length > 0)
+                    }
+                    onChange={() => {
+                      if (batchMode) {
+                        setBatchChecked(batchChecked.size === rows.length ? new Set() : new Set(rows.map(r => r.id)));
+                      } else {
+                        setCheckedIds(checkedIds.size === rows.length ? new Set() : new Set(rows.map(r => r.id)));
+                      }
+                    }} />
                 </th>}
                 <th className="px-3 py-2 text-left whitespace-nowrap">日期</th>
                 <th className="px-2 py-2 text-left">房號</th>
                 <th className="px-3 py-2 text-left">住客</th>
-                <th className="px-3 py-2 text-left">公司</th>
+                <th className="px-3 py-2 text-left hidden md:table-cell">公司</th>
                 <th className="px-3 py-2 text-center">來源 ✎</th>
                 <th className="px-3 py-2 text-right">住宿金額</th>
-                <th className="px-3 py-2 text-right">現金</th>
+                <th className="px-3 py-2 text-right hidden md:table-cell">現金</th>
                 <th className="px-3 py-2 text-right">信用卡</th>
-                <th className="px-3 py-2 text-right">佣金</th>
+                <th className="px-3 py-2 text-right hidden md:table-cell">佣金</th>
                 <th className="px-3 py-2 text-center whitespace-nowrap">訂金 ✎</th>
-                <th className="px-3 py-2 text-center whitespace-nowrap">信用卡核對 ✎</th>
-                <th className="px-3 py-2 text-left whitespace-nowrap">備註 ✎</th>
+                <th className="px-3 py-2 text-center whitespace-nowrap hidden sm:table-cell">信用卡核對 ✎</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap hidden lg:table-cell">備註 ✎</th>
                 <th className="px-2 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map(r => {
                 const hasAnomaly = (!r.totalRevenue && !r.cash && !r.creditCard && !r.wireTransfer);
+                const isBatchChecked = batchChecked.has(r.id);
+                const isPushChecked = checkedIds.has(r.id);
                 return (
                   <tr key={r.id}
                     className={`transition-colors
-                      ${checkedIds.has(r.id) ? 'bg-purple-50' : hasAnomaly ? 'bg-orange-50/60' : 'hover:bg-blue-50/40'}`}>
-                    {pushMode && (
+                      ${isBatchChecked ? 'bg-indigo-50' : isPushChecked ? 'bg-purple-50' : hasAnomaly ? 'bg-orange-50/60' : 'hover:bg-blue-50/40'}`}>
+                    {anyCheckMode && (
                       <td className="px-2 py-1.5 text-center">
-                        <input type="checkbox" checked={checkedIds.has(r.id)} onChange={() => {
-                          const n = new Set(checkedIds); n.has(r.id) ? n.delete(r.id) : n.add(r.id); setCheckedIds(n);
-                        }} />
+                        <input type="checkbox"
+                          checked={batchMode ? isBatchChecked : isPushChecked}
+                          onChange={() => {
+                            if (batchMode) {
+                              const n = new Set(batchChecked); n.has(r.id) ? n.delete(r.id) : n.add(r.id); setBatchChecked(n);
+                            } else {
+                              const n = new Set(checkedIds); n.has(r.id) ? n.delete(r.id) : n.add(r.id); setCheckedIds(n);
+                            }
+                          }} />
                       </td>
                     )}
                     <td className="px-3 py-1.5 whitespace-nowrap text-xs text-gray-600">{r.businessDate}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-500">{r.roomNo||'—'}</td>
                     <td className="px-3 py-1.5 max-w-[120px] truncate font-medium text-gray-800" title={r.guestName}>{r.guestName||'—'}</td>
-                    <td className="px-3 py-1.5 max-w-[100px] truncate text-xs text-gray-400" title={r.companyName}>{r.companyName||''}</td>
+                    <td className="px-3 py-1.5 max-w-[100px] truncate text-xs text-gray-400 hidden md:table-cell" title={r.companyName}>{r.companyName||''}</td>
                     <td className="px-3 py-1.5 text-center">
                       <SourceCell row={r} onSave={patch => updateRow(r.id, patch)} />
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(r.totalRevenue)||<span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">{fmt(r.cash)||<span className="text-gray-200">—</span>}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 hidden md:table-cell">{fmt(r.cash)||<span className="text-gray-200">—</span>}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">{fmt(r.creditCard)||<span className="text-gray-200">—</span>}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-red-600">{fmt(r.commission)||<span className="text-gray-200">—</span>}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-red-600 hidden md:table-cell">{fmt(r.commission)||<span className="text-gray-200">—</span>}</td>
                     <td className="px-3 py-1.5 text-center">
                       <DepositBadge row={r} onSave={patch => updateRow(r.id, patch)} />
                     </td>
-                    <td className="px-3 py-1.5 text-center">
+                    <td className="px-3 py-1.5 text-center hidden sm:table-cell">
                       <CCBadge row={r} onSave={patch => updateRow(r.id, patch)} />
                     </td>
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-1.5 hidden lg:table-cell">
                       <NoteCell row={r} onSave={patch => updateRow(r.id, patch)} />
                     </td>
                     <td className="px-2 py-1.5 text-center">
@@ -537,12 +774,12 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
             </tbody>
             <tfoot className="bg-gray-50 text-xs font-semibold border-t-2 border-gray-200">
               <tr>
-                <td colSpan={pushMode ? 6 : 5} className="px-3 py-2 text-gray-500">合計 {rows.length} 筆</td>
+                <td colSpan={anyCheckMode ? 6 : 5} className="px-3 py-2 text-gray-500">合計 {rows.length} 筆</td>
                 <td className="px-3 py-2 text-right text-gray-700">{totalRevenue ? totalRevenue.toLocaleString('zh-TW') : '—'}</td>
-                <td className="px-3 py-2 text-right">{rows.reduce((s,r)=>s+(r.cash||0),0)||''}</td>
+                <td className="px-3 py-2 text-right hidden md:table-cell">{rows.reduce((s,r)=>s+(r.cash||0),0)||''}</td>
                 <td className="px-3 py-2 text-right">{totalCC ? totalCC.toLocaleString('zh-TW') : ''}</td>
-                <td className="px-3 py-2 text-right text-red-600">{totalCommission ? totalCommission.toLocaleString('zh-TW') : ''}</td>
-                <td colSpan={4} />
+                <td className="px-3 py-2 text-right text-red-600 hidden md:table-cell">{totalCommission ? totalCommission.toLocaleString('zh-TW') : ''}</td>
+                <td colSpan={anyCheckMode ? 5 : 4} />
               </tr>
             </tfoot>
           </table>
@@ -554,6 +791,19 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
           row={detailRow}
           onClose={() => setDetailRow(null)}
           onSave={patch => { updateRow(detailRow.id, patch); setDetailRow(null); }}
+        />
+      )}
+
+      {showAddModal && (
+        <AddReservationModal
+          warehouse={warehouse}
+          month={!useRange ? month : undefined}
+          WAREHOUSES={WAREHOUSES}
+          onClose={() => setShowAddModal(false)}
+          onSave={(newRow) => {
+            setRows(prev => [newRow, ...prev]);
+            setShowAddModal(false);
+          }}
         />
       )}
     </div>

@@ -13,31 +13,22 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [rows, setRows] = useState([]);
-  const [allRows, setAllRows] = useState([]); // all months for cumulative calc
+  const [summary, setSummary] = useState(null); // from deposit-summary API
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('全部');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch this month's deposit rows
-      const params = new URLSearchParams({ take: '1000' });
-      if (warehouse) params.set('warehouse', warehouse);
-      if (month) params.set('month', month);
-      const res = await fetch(`/api/pms-income/reservations?${params}`);
-
-      // Fetch all-time for cumulative outstanding (no month filter)
-      const paramsAll = new URLSearchParams({ take: '5000' });
-      if (warehouse) paramsAll.set('warehouse', warehouse);
-      const resAll = await fetch(`/api/pms-income/reservations?${paramsAll}`);
-
-      if (res.ok) {
-        const all = await res.json();
+      const [rowsRes, sumRes] = await Promise.all([
+        fetch(`/api/pms-income/reservations?take=1000${warehouse ? `&warehouse=${warehouse}` : ''}&month=${month}`),
+        fetch(`/api/pms-income/reservations/deposit-summary?month=${month}${warehouse ? `&warehouse=${warehouse}` : ''}`),
+      ]);
+      if (rowsRes.ok) {
+        const all = await rowsRes.json();
         setRows(all.filter(r => r.depositIn > 0 || r.depositOut > 0));
       }
-      if (resAll.ok) {
-        setAllRows(await resAll.json());
-      }
+      if (sumRes.ok) setSummary(await sumRes.json());
     } finally {
       setLoading(false);
     }
@@ -45,23 +36,32 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Monthly stats
-  const totalIn = rows.reduce((s, r) => s + (r.depositIn || 0), 0);
+  // Monthly stats from rows
+  const totalIn  = rows.reduce((s, r) => s + (r.depositIn  || 0), 0);
   const totalOut = rows.reduce((s, r) => s + (r.depositOut || 0), 0);
   const monthNet = totalIn - totalOut;
 
-  // Status breakdown
+  // Status breakdown — from summary API if available, else from rows
   const byStatus = { '已核對': { in: 0, out: 0, count: 0 }, '待確認': { in: 0, out: 0, count: 0 }, '差異': { in: 0, out: 0, count: 0 } };
-  for (const r of rows) {
-    const key = r.depositStatus === '已核對' ? '已核對' : r.depositStatus === '差異' ? '差異' : '待確認';
-    byStatus[key].in += r.depositIn || 0;
-    byStatus[key].out += r.depositOut || 0;
-    byStatus[key].count++;
+  if (summary?.byStatus) {
+    for (const s of summary.byStatus) {
+      const key = s.status === '已核對' ? '已核對' : s.status === '差異' ? '差異' : '待確認';
+      byStatus[key].in    += s.depositIn;
+      byStatus[key].out   += s.depositOut;
+      byStatus[key].count += s.count;
+    }
+  } else {
+    for (const r of rows) {
+      const key = r.depositStatus === '已核對' ? '已核對' : r.depositStatus === '差異' ? '差異' : '待確認';
+      byStatus[key].in  += r.depositIn  || 0;
+      byStatus[key].out += r.depositOut || 0;
+      byStatus[key].count++;
+    }
   }
 
-  // Cumulative outstanding (all-time sum of depositIn - depositOut)
-  const cumulativeIn  = allRows.reduce((s, r) => s + (r.depositIn || 0), 0);
-  const cumulativeOut = allRows.reduce((s, r) => s + (r.depositOut || 0), 0);
+  // Cumulative outstanding from summary API (server-side aggregation)
+  const cumulativeIn  = summary?.all?.depositIn  ?? rows.reduce((s, r) => s + (r.depositIn  || 0), 0);
+  const cumulativeOut = summary?.all?.depositOut ?? rows.reduce((s, r) => s + (r.depositOut || 0), 0);
   const outstanding   = cumulativeIn - cumulativeOut;
 
   // Filter displayed rows
@@ -79,6 +79,9 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
     if (res.ok) {
       const updated = await res.json();
       setRows(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+      // Refresh summary
+      fetch(`/api/pms-income/reservations/deposit-summary?month=${month}${warehouse ? `&warehouse=${warehouse}` : ''}`)
+        .then(r => r.ok ? r.json() : null).then(s => { if (s) setSummary(s); });
     }
   }
 
@@ -163,10 +166,10 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
               <tr>
                 <th className="px-3 py-2 text-left">日期</th>
                 <th className="px-3 py-2 text-left">住客</th>
-                <th className="px-3 py-2 text-left">公司</th>
+                <th className="px-3 py-2 text-left hidden sm:table-cell">公司</th>
                 <th className="px-3 py-2 text-right">收訂金</th>
                 <th className="px-3 py-2 text-right">沖訂金</th>
-                <th className="px-3 py-2 text-right">淨額</th>
+                <th className="px-3 py-2 text-right hidden sm:table-cell">淨額</th>
                 <th className="px-3 py-2 text-center">狀態</th>
                 <th className="px-3 py-2 text-center">操作</th>
               </tr>
@@ -178,10 +181,10 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
                   <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-3 py-2">{r.businessDate}</td>
                     <td className="px-3 py-2">{r.guestName || '-'}</td>
-                    <td className="px-3 py-2 text-xs text-gray-500">{r.companyName || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500 hidden sm:table-cell">{r.companyName || '-'}</td>
                     <td className="px-3 py-2 text-right text-green-700">{fmt(r.depositIn)}</td>
                     <td className="px-3 py-2 text-right text-red-600">{fmt(r.depositOut)}</td>
-                    <td className="px-3 py-2 text-right font-medium">{netAmt !== 0 ? netAmt.toLocaleString('zh-TW') : '-'}</td>
+                    <td className="px-3 py-2 text-right font-medium hidden sm:table-cell">{netAmt !== 0 ? netAmt.toLocaleString('zh-TW') : '-'}</td>
                     <td className="px-3 py-2 text-center">
                       <span className={`px-1.5 py-0.5 rounded text-xs ${
                         r.depositStatus === '已核對' ? 'bg-green-100 text-green-700' :
@@ -207,7 +210,8 @@ export default function PmsIncomeDepositReconTab({ WAREHOUSES = [] }) {
             </tbody>
             <tfoot className="bg-gray-50 text-xs font-semibold">
               <tr>
-                <td colSpan={3} className="px-3 py-2 text-gray-600">合計（{displayed.length} 筆）</td>
+                <td colSpan={2} className="px-3 py-2 text-gray-600">合計（{displayed.length} 筆）</td>
+                <td className="hidden sm:table-cell" />
                 <td className="px-3 py-2 text-right text-green-700">
                   {displayed.reduce((s, r) => s + (r.depositIn || 0), 0).toLocaleString('zh-TW')}
                 </td>

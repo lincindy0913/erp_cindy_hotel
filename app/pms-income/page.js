@@ -26,6 +26,7 @@ import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBi
 import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
 import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
 import PmsIncomeCCFeeReconTab from '@/components/pms-income/PmsIncomeCCFeeReconTab';
+import PmsIncomeMiniDashboard from '@/components/pms-income/PmsIncomeMiniDashboard';
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
@@ -490,6 +491,9 @@ function PmsIncomePage() {
             <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
           </div>
         )}
+
+        {/* Mini Dashboard KPI strip */}
+        <PmsIncomeMiniDashboard WAREHOUSES={WAREHOUSES} />
 
         {/* Tab navigation */}
         <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200">
