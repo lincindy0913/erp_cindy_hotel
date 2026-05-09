@@ -218,6 +218,11 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
   const setAmount = (idx, val) =>
     setRecords(r => r.map((rec, i) => i === idx ? { ...rec, amount: val } : rec));
 
+  const setField = (idx, field, val) =>
+    setRecords(r => r.map((rec, i) => i === idx ? { ...rec, [field]: val } : rec));
+
+  const [editingIdx, setEditingIdx] = useState(null);
+
   const creditRecs = records.filter(r => r.entryType === '貸方');
   const debitRecs  = records.filter(r => r.entryType === '借方');
   const creditSum  = creditRecs.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
@@ -570,14 +575,39 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
         <h4 className="text-sm font-bold text-teal-700 mb-3 border-b border-teal-100 pb-1">貸方科目（收入）</h4>
         <div className="space-y-2">
           {records.map((rec, idx) => rec.entryType !== '貸方' ? null : (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-              <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
-              <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode}</div>
-              <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
-              <div className="col-span-4">
+            <div key={idx} className={`grid grid-cols-12 gap-2 items-center ${editingIdx === idx ? 'bg-teal-50 -mx-2 px-2 py-1 rounded' : ''}`}>
+              {editingIdx === idx ? (
+                <>
+                  <input type="text" value={rec.pmsColumnName || ''} onChange={e => setField(idx, 'pmsColumnName', e.target.value)}
+                    placeholder="PMS 欄位名"
+                    className="col-span-3 border border-teal-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-teal-400" />
+                  <input type="text" value={rec.accountingCode || ''} onChange={e => setField(idx, 'accountingCode', e.target.value)}
+                    placeholder="科目代碼"
+                    className="col-span-2 border border-teal-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-teal-400" />
+                  <input type="text" value={rec.accountingName || ''} onChange={e => setField(idx, 'accountingName', e.target.value)}
+                    placeholder="科目名稱"
+                    className="col-span-3 border border-teal-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-teal-400" />
+                </>
+              ) : (
+                <>
+                  <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
+                  <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode || <span className="text-amber-500 italic">未對應</span>}</div>
+                  <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
+                </>
+              )}
+              <div className="col-span-3">
                 <input type="number" step="1" min="0" placeholder="0"
                   value={rec.amount} onChange={e => setAmount(idx, e.target.value)}
                   className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-teal-400" />
+              </div>
+              <div className="col-span-1 text-right">
+                {editingIdx === idx ? (
+                  <button onClick={() => setEditingIdx(null)} title="儲存"
+                    className="px-2 py-1 text-xs bg-teal-600 text-white rounded hover:bg-teal-700">✓ 存</button>
+                ) : (
+                  <button onClick={() => setEditingIdx(idx)} title="編輯欄位"
+                    className="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50">✎ 編</button>
+                )}
               </div>
             </div>
           ))}
@@ -590,14 +620,39 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
         <h4 className="text-sm font-bold text-amber-700 mb-3 border-b border-amber-100 pb-1">借方科目（資產／支出）</h4>
         <div className="space-y-2">
           {records.map((rec, idx) => rec.entryType !== '借方' ? null : (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-              <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
-              <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode}</div>
-              <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
-              <div className="col-span-4">
+            <div key={idx} className={`grid grid-cols-12 gap-2 items-center ${editingIdx === idx ? 'bg-amber-50 -mx-2 px-2 py-1 rounded' : ''}`}>
+              {editingIdx === idx ? (
+                <>
+                  <input type="text" value={rec.pmsColumnName || ''} onChange={e => setField(idx, 'pmsColumnName', e.target.value)}
+                    placeholder="PMS 欄位名"
+                    className="col-span-3 border border-amber-300 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-amber-400" />
+                  <input type="text" value={rec.accountingCode || ''} onChange={e => setField(idx, 'accountingCode', e.target.value)}
+                    placeholder="科目代碼"
+                    className="col-span-2 border border-amber-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-amber-400" />
+                  <input type="text" value={rec.accountingName || ''} onChange={e => setField(idx, 'accountingName', e.target.value)}
+                    placeholder="科目名稱"
+                    className="col-span-3 border border-amber-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-amber-400" />
+                </>
+              ) : (
+                <>
+                  <div className="col-span-3 text-sm text-gray-700">{rec.pmsColumnName}</div>
+                  <div className="col-span-2 text-xs text-gray-400">{rec.accountingCode || <span className="text-amber-500 italic">未對應</span>}</div>
+                  <div className="col-span-3 text-xs text-gray-500">{rec.accountingName}</div>
+                </>
+              )}
+              <div className="col-span-3">
                 <input type="number" step="1" min="0" placeholder="0"
                   value={rec.amount} onChange={e => setAmount(idx, e.target.value)}
                   className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-amber-400" />
+              </div>
+              <div className="col-span-1 text-right">
+                {editingIdx === idx ? (
+                  <button onClick={() => setEditingIdx(null)} title="儲存"
+                    className="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700">✓ 存</button>
+                ) : (
+                  <button onClick={() => setEditingIdx(idx)} title="編輯欄位"
+                    className="px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded hover:bg-gray-50">✎ 編</button>
+                )}
               </div>
             </div>
           ))}

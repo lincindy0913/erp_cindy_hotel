@@ -124,10 +124,10 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '記錄不可為空', 400);
     }
 
-    // Validate each record
+    // Validate each record (accountingCode/accountingName 可為空 — 對應 Excel 中未對應到會計科目的欄位)
     for (const rec of data.records) {
-      if (!rec.pmsColumnName || !rec.entryType || rec.amount === undefined || !rec.accountingCode || !rec.accountingName) {
-        return createErrorResponse('REQUIRED_FIELD_MISSING', '每筆記錄需包含 pmsColumnName, entryType, amount, accountingCode, accountingName', 400);
+      if (!rec.pmsColumnName || !rec.entryType || rec.amount === undefined) {
+        return createErrorResponse('REQUIRED_FIELD_MISSING', '每筆記錄需包含 pmsColumnName, entryType, amount', 400);
       }
     }
 
@@ -218,7 +218,7 @@ export async function POST(request) {
         }
       });
 
-      // Create all income records
+      // Create all income records (空字串的 accountingCode/Name 正規化為 null)
       const recordsData = data.records.map(rec => ({
         importBatchId: batch.id,
         warehouse: data.warehouse,
@@ -226,8 +226,8 @@ export async function POST(request) {
         entryType: rec.entryType,
         pmsColumnName: rec.pmsColumnName,
         amount: parseFloat(rec.amount),
-        accountingCode: rec.accountingCode,
-        accountingName: rec.accountingName,
+        accountingCode: rec.accountingCode || null,
+        accountingName: rec.accountingName || null,
         note: rec.note || null,
         isModified: false
       }));
