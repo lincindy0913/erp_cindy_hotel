@@ -237,27 +237,32 @@ export async function POST(request) {
 
       const colMap = {
         reservationNo:  hIdxAny('住房序號', '序號'),
-        bookingNo:      hIdxAny('訂單號', '訂房序號', '訂單號碼'),
+        bookingNo:      hIdxAny('訂房序號', '訂單號', '訂單號碼'),
         roomNo:         hIdxAny('房號', '房間號'),
-        roomType:       hIdxAny('房型', '房間類型'),
-        guestName:      hIdxAny('住客姓名', '客人姓名', '姓名'),
-        companyName:    hIdxAny('公司名稱', '公司'),
-        discountName:   hIdxAny('優待碼', '折讓名稱', '優惠碼'),
-        checkIn:        hIdxAny('入住日期', '到達日期', '住宿日期'),
-        checkOut:       hIdxAny('退房日期', '離開日期'),
-        roomRate:       hIdxAny('住宿金額', '房費'),
+        roomType:       hIdxAny('住休', '房型', '房間類型'),
+        guestName:      hIdxAny('姓名', '住客姓名', '客人姓名'),
+        companyName:    hIdxAny('公司名稱或專案', '公司名稱', '公司'),
+        discountName:   hIdxAny('折扣名稱', '優待碼', '折讓名稱', '優惠碼'),
+        checkIn:        hIdxAny('遷入日期', '入住日期', '到達日期', '住宿日期'),
+        checkOut:       hIdxAny('遷出日期', '退房日期', '離開日期'),
+        roomRate:       hIdxAny('房租', '住宿金額', '房費'),
         serviceFee:     hIdxAny('服務費'),
         cash:           hIdxAny('現金'),
         creditCard:     hIdxAny('信用卡'),
-        wireTransfer:   hIdxAny('電匯', '票據'),
+        wireTransfer:   hIdxAny('電匯收款', '電匯', '票據', '轉帳入'),
         commission:     hIdxAny('佣金'),
         discount:       hIdxAny('折讓'),
         complimentary:  hIdxAny('招待'),
         depositIn:      hIdxAny('收訂金'),
         depositOut:     hIdxAny('沖訂金'),
-        receivable:     hIdxAny('應收帳款'),
-        voucher:        hIdxAny('禮券'),
-        totalRevenue:   hIdxAny('貸方合計', '住宿合計', '總金額'),
+        receivable:     hIdxAny('應收帳', '應收帳款', '賒帳'),
+        voucher:        hIdxAny('禮券收款', '禮券'),
+        totalRevenue:   hIdxAny('營業收入小計', '貸方合計', '住宿合計', '總金額'),
+        otherChargesA:  hIdxAny('延時費'),
+        otherChargesB:  hIdxAny('加床費'),
+        otherChargesC:  hIdxAny('餐飲部'),
+        otherChargesD:  hIdxAny('其他收入'),
+        otherChargesE:  hIdxAny('旅遊行程'),
       };
 
       // first boundary: creditHeaderRow, debitHeaderRow, occupancyAnchorRow (pick earliest after masterHeader)
@@ -274,7 +279,18 @@ export async function POST(request) {
         if (!/^\d+$/.test(c0)) continue;
 
         const get = idx => (idx >= 0 ? cellStr(row[idx]) : '');
-        const getNum = idx => (idx >= 0 ? toNum(row[idx]) : null);
+        const getNum = idx => (idx >= 0 ? (toNum(row[idx]) || 0) : 0);
+        // Strip timestamp from date fields: "2026/05/01 21:30:28" → "2026-05-01"
+        const getDate = idx => {
+          const raw = get(idx);
+          if (!raw) return '';
+          const m = raw.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+          return m ? `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}` : raw.slice(0, 10);
+        };
+
+        const otherCharges = getNum(colMap.otherChargesA) + getNum(colMap.otherChargesB) +
+                             getNum(colMap.otherChargesC) + getNum(colMap.otherChargesD) +
+                             getNum(colMap.otherChargesE);
 
         reservationRows.push({
           reservationNo:  get(colMap.reservationNo) || c0,
@@ -284,21 +300,22 @@ export async function POST(request) {
           guestName:      get(colMap.guestName),
           companyName:    get(colMap.companyName),
           discountName:   get(colMap.discountName),
-          checkIn:        get(colMap.checkIn),
-          checkOut:       get(colMap.checkOut),
-          roomRate:       getNum(colMap.roomRate) || 0,
-          serviceFee:     getNum(colMap.serviceFee) || 0,
-          cash:           getNum(colMap.cash) || 0,
-          creditCard:     getNum(colMap.creditCard) || 0,
-          wireTransfer:   getNum(colMap.wireTransfer) || 0,
-          commission:     getNum(colMap.commission) || 0,
-          discount:       getNum(colMap.discount) || 0,
-          complimentary:  getNum(colMap.complimentary) || 0,
-          depositIn:      getNum(colMap.depositIn) || 0,
-          depositOut:     getNum(colMap.depositOut) || 0,
-          receivable:     getNum(colMap.receivable) || 0,
-          voucher:        getNum(colMap.voucher) || 0,
-          totalRevenue:   getNum(colMap.totalRevenue) || 0,
+          checkIn:        getDate(colMap.checkIn),
+          checkOut:       getDate(colMap.checkOut),
+          roomRate:       getNum(colMap.roomRate),
+          serviceFee:     getNum(colMap.serviceFee),
+          otherCharges,
+          cash:           getNum(colMap.cash),
+          creditCard:     getNum(colMap.creditCard),
+          wireTransfer:   getNum(colMap.wireTransfer),
+          commission:     getNum(colMap.commission),
+          discount:       getNum(colMap.discount),
+          complimentary:  getNum(colMap.complimentary),
+          depositIn:      getNum(colMap.depositIn),
+          depositOut:     getNum(colMap.depositOut),
+          receivable:     getNum(colMap.receivable),
+          voucher:        getNum(colMap.voucher),
+          totalRevenue:   getNum(colMap.totalRevenue),
         });
       }
     }

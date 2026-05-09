@@ -7,7 +7,7 @@ import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
-// GET: reservations with credit card > 0 for a given warehouse+month
+// GET: reservations with credit card > 0 + matching CreditCardStatement for the month
 export async function GET(request) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.PMS_IMPORT]);
   if (!auth.ok) return auth.response;
@@ -15,28 +15,56 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse');
-    const month = searchParams.get('month');
+    const month = searchParams.get('month'); // YYYY-MM
 
     const where = { creditCard: { gt: 0 } };
     if (warehouse) where.warehouse = warehouse;
     if (month) where.businessDate = { startsWith: month };
 
-    const rows = await prisma.pmsReservationRecord.findMany({
-      where,
-      orderBy: [{ businessDate: 'asc' }, { id: 'asc' }],
-      take: 1000,
-    });
+    const [rows, ccStatements] = await Promise.all([
+      prisma.pmsReservationRecord.findMany({
+        where,
+        orderBy: [{ businessDate: 'asc' }, { id: 'asc' }],
+        take: 1000,
+      }),
+      // Fetch CreditCardStatement for this warehouse+month
+      month ? prisma.creditCardStatement.findMany({
+        where: {
+          ...(warehouse ? { warehouse } : {}),
+          billingDate: {
+            startsWith: month.replace('-', '/'),
+          },
+        },
+        select: {
+          id: true, warehouse: true, bankName: true, billingDate: true, paymentDate: true,
+          totalCount: true, totalAmount: true, totalFee: true, netAmount: true,
+          status: true, pmsAmount: true, difference: true,
+        },
+        orderBy: { billingDate: 'asc' },
+        take: 50,
+      }) : Promise.resolve([]),
+    ]);
 
-    return NextResponse.json(rows.map(r => ({
-      ...r,
-      creditCard:    Number(r.creditCard),
-      totalRevenue:  Number(r.totalRevenue),
-      ccFeeRate:     r.ccFeeRate ? Number(r.ccFeeRate) : null,
-      ccFeeAmount:   r.ccFeeAmount ? Number(r.ccFeeAmount) : null,
-      ccNetAmount:   r.ccNetAmount ? Number(r.ccNetAmount) : null,
-      ccActualNet:   r.ccActualNet ? Number(r.ccActualNet) : null,
-      ccDiff:        r.ccDiff ? Number(r.ccDiff) : null,
-    })));
+    return NextResponse.json({
+      reservations: rows.map(r => ({
+        ...r,
+        creditCard:    Number(r.creditCard),
+        totalRevenue:  Number(r.totalRevenue),
+        ccFeeRate:     r.ccFeeRate ? Number(r.ccFeeRate) : null,
+        ccFeeAmount:   r.ccFeeAmount ? Number(r.ccFeeAmount) : null,
+        ccNetAmount:   r.ccNetAmount ? Number(r.ccNetAmount) : null,
+        ccActualNet:   r.ccActualNet ? Number(r.ccActualNet) : null,
+        ccDiff:        r.ccDiff ? Number(r.ccDiff) : null,
+      })),
+      ccStatements: ccStatements.map(s => ({
+        ...s,
+        totalAmount: Number(s.totalAmount),
+        totalFee:    Number(s.totalFee),
+        netAmount:   Number(s.netAmount),
+        pmsAmount:   s.pmsAmount != null ? Number(s.pmsAmount) : null,
+        difference:  s.difference != null ? Number(s.difference) : null,
+      })),
+    });
   } catch (error) {
     return handleApiError(error);
   }
