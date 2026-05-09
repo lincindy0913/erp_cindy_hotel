@@ -294,7 +294,7 @@ function PmsIncomePage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'paymentConfig') fetchPaymentConfigs();
+    if (activeTab === 'paymentConfig' || activeTab === 'travelAgency') fetchPaymentConfigs();
   }, [activeTab, fetchPaymentConfigs]);
 
   async function handleSavePaymentConfig(cfg) {
@@ -804,8 +804,24 @@ function PmsIncomePage() {
                     <input type="number" min="1" max="28" value={travelAgencyForm.paymentDueDay} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentDueDay: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="5" />
                   </div>
                   <div>
-                    <label className="block text-gray-600 mb-1">支付方式</label>
-                    <input value={travelAgencyForm.paymentMethod} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="銀行轉帳" />
+                    <label className="block text-gray-600 mb-1">支付帳戶</label>
+                    {paymentConfigAccounts.length > 0 ? (
+                      <select
+                        value={travelAgencyForm.paymentMethod || ''}
+                        onChange={e => setTravelAgencyForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                      >
+                        <option value="">未設定</option>
+                        {paymentConfigAccounts.map(a => (
+                          <option key={a.id} value={a.name}>{a.name}（{a.type}）</option>
+                        ))}
+                        {travelAgencyForm.paymentMethod && !paymentConfigAccounts.some(a => a.name === travelAgencyForm.paymentMethod) && (
+                          <option value={travelAgencyForm.paymentMethod}>{travelAgencyForm.paymentMethod}（原始值）</option>
+                        )}
+                      </select>
+                    ) : (
+                      <input value={travelAgencyForm.paymentMethod} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="銀行轉帳" />
+                    )}
                   </div>
                 </>
               )}
