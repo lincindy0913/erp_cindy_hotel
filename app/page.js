@@ -62,6 +62,8 @@ export default function Dashboard() {
   const [ntfSummary, setNtfSummary] = useState({ total: 0, critical: 0, urgent: 0, warning: 0 });
   const [ntfLoading, setNtfLoading] = useState(true);
   const [ntfWarningExpanded, setNtfWarningExpanded] = useState(false);
+  const [plData, setPlData] = useState(null);
+  const [plLoading, setPlLoading] = useState(false);
 
   // Always fetch public summary
   useEffect(() => {
@@ -102,6 +104,7 @@ export default function Dashboard() {
     fetchNotifications();
     fetchExecutiveData();
     fetchLatestReport();
+    fetchPlData();
   }, [isLoggedIn, fetchNotifications]);
 
   async function fetchDashboardData(refresh = false) {
@@ -136,6 +139,7 @@ export default function Dashboard() {
       fetch('/api/dashboard/summary?refresh=true').then(r => r.ok ? r.json() : null).then(d => { if (d) setSummary(d); }),
       fetchNotifications(true),
       fetchLatestReport(),
+      fetchPlData(),
     ]);
   }
 
@@ -151,6 +155,17 @@ export default function Dashboard() {
     } catch (error) {
       console.error('取得月度報告失敗:', error);
     }
+  }
+
+  async function fetchPlData() {
+    setPlLoading(true);
+    try {
+      const d = new Date();
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const res = await fetch(`/api/reports/profit-loss?yearMonth=${ym}`);
+      if (res.ok) setPlData(await res.json());
+    } catch {}
+    setPlLoading(false);
   }
 
   const kpis = dashboardData.kpis || {};
@@ -461,6 +476,36 @@ export default function Dashboard() {
                 colorClass={(dashboardData.riskAlerts?.expiringLoans || 0) > 0 ? 'text-purple-700' : 'text-gray-400'}
                 borderClass="border-l-4 border-l-purple-400"
               />
+            </div>
+
+            {/* P&L Summary */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="text-sm font-semibold text-gray-700">本月損益摘要（現金流科目）</h2>
+                <Link href="/reports/profit-loss" className="text-xs text-blue-600 hover:underline">完整損益表 →</Link>
+              </div>
+              {plLoading ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
+                  {[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-lg animate-pulse" />)}
+                </div>
+              ) : plData?.summary ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-gray-100">
+                  {[
+                    { label: '營業收入', val: plData.summary.totalIncome, color: 'text-blue-700' },
+                    { label: '毛利', val: plData.summary.grossProfit, color: 'text-teal-700', pct: plData.summary.totalIncome ? ((plData.summary.grossProfit / plData.summary.totalIncome) * 100).toFixed(1) + '%' : null },
+                    { label: '營業淨利', val: plData.summary.operatingIncome, color: 'text-green-700', pct: plData.summary.totalIncome ? ((plData.summary.operatingIncome / plData.summary.totalIncome) * 100).toFixed(1) + '%' : null },
+                    { label: '稅前淨利', val: plData.summary.netIncome, color: (plData.summary.netIncome || 0) >= 0 ? 'text-green-700' : 'text-red-600', pct: plData.summary.totalIncome ? ((plData.summary.netIncome / plData.summary.totalIncome) * 100).toFixed(1) + '%' : null },
+                  ].map(({ label, val, color, pct }) => (
+                    <div key={label} className="px-5 py-4">
+                      <p className="text-xs text-gray-500 mb-1">{label}</p>
+                      <p className={`text-lg font-bold tabular-nums ${color}`}>{NT(val)}</p>
+                      {pct && <p className="text-xs text-gray-400 mt-0.5">{pct}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-5 py-4 text-xs text-gray-400">本月無損益資料，請先設定現金流科目</p>
+              )}
             </div>
 
             {/* Row 3: 本日待辦 + 財務概況 */}

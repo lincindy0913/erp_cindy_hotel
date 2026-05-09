@@ -631,6 +631,62 @@ export async function POST(request) {
       }
     });
 
+    // --- P&L snapshot (cash-category based) ---
+    try {
+      const plTxs = await prisma.cashTransaction.findMany({
+        where: {
+          transactionDate: { gte: periodStart, lte: periodEnd },
+          isReversal: false,
+          reversedById: null,
+          ...(warehouse ? { warehouse } : {}),
+        },
+        select: {
+          type: true, amount: true,
+          category: { select: { id: true, name: true, level1: true, plGroup: true, plOrder: true } }
+        }
+      });
+      const plMap = {};
+      for (const tx of plTxs) {
+        const cat     = tx.category;
+        const level1  = cat?.level1  || (tx.type === '收入' ? '收入' : '費用');
+        const plGroup = cat?.plGroup || (tx.type === '收入' ? '未分類收入' : '未分類費用');
+        const key     = `${level1}|${plGroup}`;
+        if (!plMap[key]) plMap[key] = { level1, plGroup, plOrder: cat?.plOrder || 999, income: 0, expense: 0 };
+        const amt = Number(tx.amount);
+        if (tx.type === '收入') plMap[key].income += amt;
+        else                    plMap[key].expense += amt;
+      }
+      const PL_ORD   = { '收入': 1, '費用': 2, '業外': 3 };
+      const plGroups = Object.values(plMap).sort((a, b) =>
+        ((PL_ORD[a.level1] || 9) - (PL_ORD[b.level1] || 9)) || a.plOrder - b.plOrder
+      );
+      const totalIncomePL   = plGroups.filter(g => g.level1 === '收入').reduce((s, g) => s + g.income - g.expense, 0);
+      const ccFee           = plGroups.find(g => g.plGroup === '收款成本')?.expense || 0;
+      const grossProfitPL   = totalIncomePL - ccFee;
+      const totalOpExpPL    = plGroups.filter(g => g.level1 === '費用' && g.plGroup !== '收款成本').reduce((s, g) => s + g.expense, 0);
+      const operatingPL     = grossProfitPL - totalOpExpPL;
+      const bizOutsidePL    = plGroups.filter(g => g.level1 === '業外').reduce((s, g) => s + g.income - g.expense, 0);
+      const netIncomePL     = operatingPL + bizOutsidePL;
+      reports.push({
+        reportType: '損益快照',
+        data: {
+          period: `${year}/${monthStr}`,
+          groups: plGroups.map(g => ({ ...g, income: Math.round(g.income), expense: Math.round(g.expense) })),
+          summary: {
+            totalIncome:     Math.round(totalIncomePL),
+            ccFee:           Math.round(ccFee),
+            grossProfit:     Math.round(grossProfitPL),
+            totalOpExp:      Math.round(totalOpExpPL),
+            operatingIncome: Math.round(operatingPL),
+            bizOutsideNet:   Math.round(bizOutsidePL),
+            netIncome:       Math.round(netIncomePL),
+          }
+        }
+      });
+    } catch (plErr) {
+      console.error('損益快照生成失敗（非阻斷）:', plErr.message);
+    }
+
     // ==========================================
     // 3. Create MonthEndStatus and Reports in DB
     // ==========================================
