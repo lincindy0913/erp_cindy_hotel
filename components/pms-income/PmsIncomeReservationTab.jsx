@@ -239,7 +239,51 @@ function SourceCell({ row, onSave, locked }) {
 // ── Deposit badge ──
 function DepositBadge({ row, onSave, locked }) {
   const [saving, setSaving] = useState(false);
-  if (!row.depositIn && !row.depositOut) return <span className="text-gray-300 text-xs">—</span>;
+  const [entering, setEntering] = useState(false);
+  const [inVal, setInVal] = useState('');
+
+  const submitEntry = async () => {
+    const num = parseFloat(inVal);
+    setEntering(false);
+    if (!isNaN(num) && num > 0) {
+      setSaving(true);
+      await onSave({ depositIn: num, depositStatus: '待確認' });
+      setSaving(false);
+    }
+    setInVal('');
+  };
+
+  // No deposit data yet — show entry prompt
+  if (!row.depositIn && !row.depositOut) {
+    if (locked) return <span className="text-gray-300 text-xs">—</span>;
+    if (entering) {
+      return (
+        <div className="flex flex-col items-center gap-0.5">
+          <input
+            autoFocus
+            type="number"
+            step="1"
+            placeholder="收訂金額"
+            className="border rounded px-1 py-0.5 text-xs w-20 text-right focus:ring-1 focus:ring-green-400 tabular-nums"
+            value={inVal}
+            onChange={e => setInVal(e.target.value)}
+            onBlur={submitEntry}
+            onKeyDown={e => { if (e.key === 'Enter') submitEntry(); if (e.key === 'Escape') { setEntering(false); setInVal(''); } }}
+          />
+        </div>
+      );
+    }
+    return (
+      <span
+        onClick={() => setEntering(true)}
+        className="text-gray-300 text-xs cursor-pointer hover:text-green-500 hover:underline decoration-dashed"
+        title="點擊輸入收訂金額"
+      >
+        {saving ? '…' : '+ 收訂金'}
+      </span>
+    );
+  }
+
   const cycle = async () => {
     if (saving || locked) return;
     const next = DEPOSIT_CYCLE[(DEPOSIT_CYCLE.indexOf(row.depositStatus)+1)%DEPOSIT_CYCLE.length];
