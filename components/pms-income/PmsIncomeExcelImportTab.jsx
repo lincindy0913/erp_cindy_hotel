@@ -159,6 +159,8 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       const res  = await fetch('/api/pms-income/parse-excel', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || '解析失敗');
+      // 顯示 Excel 欄位名稱，方便確認發票號碼欄位是否被正確偵測
+      if (data._debug) console.log('[PMS Excel] 表頭欄位:', data._debug.masterHeaders, '發票號碼欄:', data._debug.invoiceNoColIdx);
 
       // Auto-detect warehouse from filename
       const detectedWh = detectWarehouse(f.name, wh);

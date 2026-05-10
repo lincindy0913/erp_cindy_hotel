@@ -235,6 +235,21 @@ export async function POST(request) {
         return -1;
       };
 
+      // 發票號碼：先精確比對，再用「包含『發票』且不是稅額/日期」的欄位做 fallback
+      const invoiceNoIdx = (() => {
+        const exact = hIdxAny(
+          '發票號碼', '發票號', '統一發票號碼', '發票1號', '發票字號',
+          '電子發票號碼', '統一發票', '發票編號', '發票',
+        );
+        if (exact >= 0) return exact;
+        // fallback：搜尋 headers 中包含「發票」且不含「稅額」「日期」「2」的欄位
+        for (let i = 0; i < headers.length; i++) {
+          const h = headers[i];
+          if (h.includes('發票') && !h.includes('稅額') && !h.includes('日期') && !h.includes('2')) return i;
+        }
+        return -1;
+      })();
+
       const colMap = {
         reservationNo:  hIdxAny('住房序號', '序號'),
         bookingNo:      hIdxAny('訂房序號', '訂單號', '訂單號碼'),
@@ -263,7 +278,7 @@ export async function POST(request) {
         otherChargesC:  hIdxAny('餐飲部'),
         otherChargesD:  hIdxAny('其他收入'),
         otherChargesE:  hIdxAny('旅遊行程'),
-        invoiceNo:      hIdxAny('發票號碼', '發票號', '統一發票號碼'),
+        invoiceNo:      invoiceNoIdx,
         note:           hIdxAny('備註'),
       };
 
@@ -450,6 +465,11 @@ export async function POST(request) {
       }
     }
 
+    // 回傳 masterHeader 欄位名稱供除錯（前端可 console.log 確認欄位對應）
+    const masterHeaders = masterHeaderRow >= 0
+      ? (matrix[masterHeaderRow] || []).map((v, i) => ({ col: i, name: norm(cellStr(v)) })).filter(x => x.name)
+      : [];
+
     return NextResponse.json({
       warehouse: null,
       businessDate: businessDate || null,
@@ -464,6 +484,11 @@ export async function POST(request) {
       occupiedRooms: occupiedRooms != null ? String(Math.round(occupiedRooms)) : '',
       fileName,
       complimentaryAmount: complimentaryAmount != null ? String(complimentaryAmount) : '',
+      _debug: { masterHeaders, invoiceNoColIdx: masterHeaderRow >= 0 ? (() => {
+        const h = (matrix[masterHeaderRow] || []).map(v => norm(cellStr(v)));
+        const idx = h.findIndex((v, i) => v.includes('發票') && !v.includes('稅額') && !v.includes('2'));
+        return { colIdx: idx, colName: idx >= 0 ? h[idx] : null };
+      })() : null },
       excelTotals: {
         creditTotal: creditTotal != null ? String(Math.round(creditTotal)) : null,
         debitTotal: debitTotal != null ? String(Math.round(debitTotal)) : null,
