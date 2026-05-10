@@ -7,6 +7,7 @@ export const TABS = [
   { key: 'excelImport', label: '飯店 Excel 匯入' },
   { key: 'reservations', label: '訂房明細' },
   { key: 'depositRecon', label: '訂金核對' },
+  { key: 'invoiceQuery', label: '發票查詢' },
   { key: 'ccFeeRecon', label: '付款稽核' },
   { key: 'creditCardStatement', label: '信用卡對帳單' },
   { key: 'otaDeposit', label: 'OTA 訂金' },

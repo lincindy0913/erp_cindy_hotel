@@ -274,9 +274,12 @@ export async function POST(request) {
         const row = matrix[r];
         if (!Array.isArray(row)) continue;
         const c0 = norm(cellStr(row[0]));
-        if (!c0) continue;
-        // reservation rows have numeric col[0] (住房序號)
-        if (!/^\d+$/.test(c0)) continue;
+        // "訂金" deposit rows have empty col A but roomType = "訂金"
+        const roomTypeVal = colMap.roomType >= 0 ? norm(cellStr(row[colMap.roomType])) : '';
+        const isDepositRow = !c0 && roomTypeVal === '訂金';
+        if (!c0 && !isDepositRow) continue;
+        // reservation rows have numeric col[0] (住房序號); deposit rows bypass this check
+        if (c0 && !/^\d+$/.test(c0)) continue;
 
         const get = idx => (idx >= 0 ? cellStr(row[idx]) : '');
         const getNum = idx => (idx >= 0 ? (toNum(row[idx]) || 0) : 0);
@@ -293,7 +296,7 @@ export async function POST(request) {
                              getNum(colMap.otherChargesE);
 
         reservationRows.push({
-          reservationNo:  get(colMap.reservationNo) || c0,
+          reservationNo:  get(colMap.reservationNo) || c0 || (isDepositRow ? `訂金-${r}` : ''),
           bookingNo:      get(colMap.bookingNo),
           roomNo:         get(colMap.roomNo),
           roomType:       get(colMap.roomType),
