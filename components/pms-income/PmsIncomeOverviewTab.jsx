@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { formatNumber, formatDate } from './pmsIncomeFormatters';
 import PmsIncomeCalendarGrid from './PmsIncomeCalendarGrid';
 
@@ -22,8 +23,36 @@ export default function PmsIncomeOverviewTab({
   excelParsing,
   handleDeleteBatch,
 }) {
+  const [dupAlert, setDupAlert] = useState(null); // { groupCount, warehouse, yearMonth }
+  const prevBatchCountRef = useRef(-1);
+
+  useEffect(() => {
+    const prev = prevBatchCountRef.current;
+    prevBatchCountRef.current = batches.length;
+    if (prev < 0 || batches.length <= prev) return; // initial load or decrease — skip
+    // New batch added: auto-run duplicate scan for the current month
+    const yearMonth = overviewYear + '-' + String(overviewMonth).padStart(2, '0');
+    fetch(`/api/pms-income/reservations/duplicates?month=${yearMonth}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(groups => {
+        if (groups.length > 0) setDupAlert({ groupCount: groups.length, yearMonth });
+      })
+      .catch(() => {});
+  }, [batches.length, overviewYear, overviewMonth]);
+
   return (
     <div className="space-y-6">
+      {dupAlert && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-3 text-sm">
+          <span className="text-amber-500 text-lg leading-none mt-0.5">⚠</span>
+          <div className="flex-1">
+            <span className="font-semibold text-amber-800">發現 {dupAlert.groupCount} 組可能重複的訂房記錄</span>
+            <span className="text-amber-700"> — {dupAlert.yearMonth}</span>
+            <p className="text-xs text-amber-600 mt-0.5">請前往「訂房明細」→「掃描重複」頁面處理。</p>
+          </div>
+          <button onClick={() => setDupAlert(null)} className="text-amber-400 hover:text-amber-600 text-lg leading-none ml-2">×</button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <select

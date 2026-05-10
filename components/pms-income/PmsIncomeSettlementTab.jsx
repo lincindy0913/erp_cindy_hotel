@@ -39,7 +39,12 @@ export default function PmsIncomeSettlementTab({
         const totalCC         = rows.reduce((s, r) => s + (r.creditCard || 0), 0);
         const totalWire       = rows.reduce((s, r) => s + (r.wireTransfer || 0), 0);
         const totalCommission = rows.reduce((s, r) => s + (r.commission || 0), 0);
-        setResvStats({ count: rows.length, totalRevenue, totalCash, totalCC, totalWire, totalCommission });
+        const ccRows          = rows.filter(r => r.creditCard > 0).length;
+        const ccReconRows     = rows.filter(r => r.creditCard > 0 && r.creditCardStatus === '已核對').length;
+        const depositRows     = rows.filter(r => r.depositIn > 0).length;
+        const depositReconRows= rows.filter(r => r.depositIn > 0 && r.depositStatus === '已核對').length;
+        setResvStats({ count: rows.length, totalRevenue, totalCash, totalCC, totalWire, totalCommission,
+          ccRows, ccReconRows, depositRows, depositReconRows });
       })
       .catch(() => setResvStats(null))
       .finally(() => setResvLoading(false));
@@ -218,6 +223,49 @@ export default function PmsIncomeSettlementTab({
                 ? '　✓ 兩者吻合'
                 : `　⚠ 差異 ${(settlementStatus.creditTotal - resvStats.totalRevenue).toLocaleString('zh-TW')}（訂房資料可能不完整）`}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* 結算前核對清單 */}
+      {resvStats && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">結算前核對清單</h3>
+          <div className="space-y-2">
+            {[
+              {
+                label: '信用卡已核對',
+                done: resvStats.ccRows > 0 && resvStats.ccReconRows === resvStats.ccRows,
+                partial: resvStats.ccReconRows > 0 && resvStats.ccReconRows < resvStats.ccRows,
+                detail: resvStats.ccRows === 0 ? '無信用卡收款' : `${resvStats.ccReconRows} / ${resvStats.ccRows} 筆已核對`,
+              },
+              {
+                label: '訂金已核對',
+                done: resvStats.depositRows > 0 && resvStats.depositReconRows === resvStats.depositRows,
+                partial: resvStats.depositReconRows > 0 && resvStats.depositReconRows < resvStats.depositRows,
+                detail: resvStats.depositRows === 0 ? '無訂金記錄' : `${resvStats.depositReconRows} / ${resvStats.depositRows} 筆已核對`,
+              },
+              {
+                label: '佣金已登錄',
+                done: resvStats.totalCommission > 0,
+                partial: false,
+                detail: resvStats.totalCommission > 0 ? `合計 ${formatNumber(resvStats.totalCommission)}` : '尚無佣金記錄',
+              },
+            ].map(({ label, done, partial, detail }) => (
+              <div key={label} className="flex items-center gap-3 text-sm">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold
+                  ${done ? 'bg-green-100 text-green-600' : partial ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+                  {done ? '✓' : partial ? '!' : '○'}
+                </span>
+                <span className={`font-medium ${done ? 'text-green-700' : partial ? 'text-amber-700' : 'text-gray-500'}`}>{label}</span>
+                <span className="text-xs text-gray-400">{detail}</span>
+              </div>
+            ))}
+          </div>
+          {resvStats.ccRows > 0 && resvStats.ccReconRows < resvStats.ccRows && (
+            <p className="mt-3 text-xs text-amber-600 bg-amber-50 rounded px-3 py-2">
+              尚有 {resvStats.ccRows - resvStats.ccReconRows} 筆信用卡未核對，建議在結算前至「訂房明細」頁面完成核對。
+            </p>
           )}
         </div>
       )}

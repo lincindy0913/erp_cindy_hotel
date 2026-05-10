@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import { formatNumber } from './pmsIncomeFormatters';
 import PmsIncomeStatsChart from './PmsIncomeStatsChart';
 
@@ -12,9 +13,38 @@ export default function PmsIncomeStatisticsTab({
   loading,
   statsData,
 }) {
+  const [showCompare, setShowCompare] = useState(false);
+  const [compareYear, setCompareYear] = useState(statsYear - 1);
+  const [compareData, setCompareData] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+
+  const fetchCompareData = useCallback(async () => {
+    if (!showCompare) { setCompareData(null); return; }
+    setCompareLoading(true);
+    try {
+      let url = `/api/pms-income/monthly-summary?year=${compareYear}`;
+      if (statsMonth) url += `&month=${statsMonth}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setCompareData(data);
+    } catch { setCompareData(null); }
+    setCompareLoading(false);
+  }, [showCompare, compareYear, statsMonth]);
+
+  useEffect(() => { fetchCompareData(); }, [fetchCompareData]);
+  useEffect(() => { if (!showCompare) setCompareData(null); }, [showCompare]);
+
+  // Build a lookup map: compareYear monthly data by month index
+  const compareByMonth = Array.isArray(compareData)
+    ? Object.fromEntries(compareData.map(m => [m.month, m]))
+    : {};
+
+  const delta = (a, b) => (b == null ? null : a - b);
+  const deltaPct = (a, b) => (!b ? null : Math.round((a - b) / Math.abs(b) * 100));
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <select
           value={statsYear}
           onChange={(e) => setStatsYear(parseInt(e.target.value, 10))}
@@ -45,6 +75,29 @@ export default function PmsIncomeStatisticsTab({
         >
           查詢
         </button>
+
+        {/* Compare period toggle */}
+        <div className="flex items-center gap-2 ml-2 border-l pl-3">
+          <button
+            type="button"
+            onClick={() => setShowCompare(c => !c)}
+            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${showCompare ? 'bg-indigo-600 text-white border-indigo-600' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'}`}
+          >
+            {showCompare ? '✓ 同期比較' : '同期比較'}
+          </button>
+          {showCompare && (
+            <select
+              value={compareYear}
+              onChange={(e) => setCompareYear(parseInt(e.target.value, 10))}
+              className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400"
+            >
+              {[2023, 2024, 2025, 2026].map((y) => (
+                <option key={y} value={y}>{y}年（對比）</option>
+              ))}
+            </select>
+          )}
+          {showCompare && compareLoading && <span className="text-xs text-indigo-400">載入中…</span>}
+        </div>
       </div>
 
       {loading ? (
@@ -173,34 +226,59 @@ export default function PmsIncomeStatisticsTab({
                           {showWhCompare && warehouses.map(wh => (
                             <th key={wh} className="px-3 py-2 font-medium text-right hidden md:table-cell">{wh}</th>
                           ))}
+                          {showCompare && compareData && (
+                            <>
+                              <th className="px-3 py-2 font-medium text-right text-indigo-500">{compareYear}年</th>
+                              <th className="px-3 py-2 font-medium text-right text-indigo-400">增減</th>
+                              <th className="px-3 py-2 font-medium text-right text-indigo-400">增減率</th>
+                            </>
+                          )}
                           <th className="px-3 py-2 font-medium text-center">完成率</th>
                           <th className="px-3 py-2 font-medium text-center">匯入天數</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {statsData.map((m, i) => (
-                          <tr key={i} className="border-t hover:bg-gray-50">
-                            <td className="px-3 py-2 font-medium">{m.month}月</td>
-                            <td className={`px-3 py-2 text-right font-medium ${m.total >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
-                              {formatNumber(m.total)}
-                            </td>
-                            {showWhCompare && warehouses.map(wh => (
-                              <td key={wh} className="px-3 py-2 text-right text-xs text-gray-500 hidden md:table-cell">
-                                {formatNumber(m.byWarehouse?.[wh]?.net || 0)}
+                        {statsData.map((m, i) => {
+                          const cm = compareByMonth[m.month];
+                          const d = (showCompare && cm) ? delta(m.total, cm.total) : null;
+                          const dp = (showCompare && cm) ? deltaPct(m.total, cm.total) : null;
+                          return (
+                            <tr key={i} className="border-t hover:bg-gray-50">
+                              <td className="px-3 py-2 font-medium">{m.month}月</td>
+                              <td className={`px-3 py-2 text-right font-medium ${m.total >= 0 ? 'text-teal-700' : 'text-red-600'}`}>
+                                {formatNumber(m.total)}
                               </td>
-                            ))}
-                            <td className="px-3 py-2 text-center">
-                              {m.totalDays > 0 ? (
-                                <span className={`text-xs font-medium ${Math.round(m.importedDays / m.totalDays * 100) >= 100 ? 'text-green-600' : 'text-amber-600'}`}>
-                                  {Math.round((m.importedDays / m.totalDays) * 100)}%
-                                </span>
-                              ) : '-'}
-                            </td>
-                            <td className="px-3 py-2 text-center text-xs text-gray-500">
-                              {m.importedDays}/{m.totalDays}
-                            </td>
-                          </tr>
-                        ))}
+                              {showWhCompare && warehouses.map(wh => (
+                                <td key={wh} className="px-3 py-2 text-right text-xs text-gray-500 hidden md:table-cell">
+                                  {formatNumber(m.byWarehouse?.[wh]?.net || 0)}
+                                </td>
+                              ))}
+                              {showCompare && compareData && (
+                                <>
+                                  <td className="px-3 py-2 text-right text-xs text-indigo-400">
+                                    {cm ? formatNumber(cm.total) : '—'}
+                                  </td>
+                                  <td className={`px-3 py-2 text-right text-xs font-medium ${d == null ? 'text-gray-300' : d >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                    {d == null ? '—' : (d >= 0 ? '+' : '') + formatNumber(d)}
+                                  </td>
+                                  <td className={`px-3 py-2 text-right text-xs font-medium ${dp == null ? 'text-gray-300' : dp >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                    {dp == null ? '—' : (dp >= 0 ? '+' : '') + dp + '%'}
+                                  </td>
+                                </>
+                              )}
+                              <td className="px-3 py-2 text-center">
+                                {m.totalDays > 0 ? (
+                                  <span className={`text-xs font-medium ${Math.round(m.importedDays / m.totalDays * 100) >= 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                                    {Math.round((m.importedDays / m.totalDays) * 100)}%
+                                  </span>
+                                ) : '-'}
+                              </td>
+                              <td className="px-3 py-2 text-center text-xs text-gray-500">
+                                {m.importedDays}/{m.totalDays}
+                              </td>
+                            </tr>
+                          );
+                        })}
                         <tr className="border-t-2 border-gray-300 font-bold bg-gray-50">
                           <td className="px-3 py-2">全年合計</td>
                           <td className="px-3 py-2 text-right text-teal-800">{formatNumber(yearTotal)}</td>
@@ -209,6 +287,22 @@ export default function PmsIncomeStatisticsTab({
                               {formatNumber(statsData.reduce((s, m) => s + (m.byWarehouse?.[wh]?.net || 0), 0))}
                             </td>
                           ))}
+                          {showCompare && compareData && (() => {
+                            const compYearTotal = Array.isArray(compareData) ? compareData.reduce((s, m) => s + m.total, 0) : 0;
+                            const d = delta(yearTotal, compYearTotal);
+                            const dp = deltaPct(yearTotal, compYearTotal);
+                            return (
+                              <>
+                                <td className="px-3 py-2 text-right text-xs text-indigo-500">{formatNumber(compYearTotal)}</td>
+                                <td className={`px-3 py-2 text-right text-xs font-bold ${d >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                  {(d >= 0 ? '+' : '') + formatNumber(d)}
+                                </td>
+                                <td className={`px-3 py-2 text-right text-xs font-bold ${dp >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                                  {(dp >= 0 ? '+' : '') + dp + '%'}
+                                </td>
+                              </>
+                            );
+                          })()}
                           <td className="px-3 py-2 text-center">
                             {(() => {
                               const td = statsData.reduce((s, m) => s + m.totalDays, 0);

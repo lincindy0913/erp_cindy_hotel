@@ -1006,6 +1006,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
                   align="center"
                   className="whitespace-nowrap hidden sm:table-cell"
                 />
+                <th className="px-2 py-2 text-xs text-gray-500 text-center hidden sm:table-cell whitespace-nowrap">付款</th>
                 <SortTh
                   label={`備註${!locked ? ' ✎' : ''}`}
                   sortKey="note"
@@ -1071,6 +1072,22 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
                     <td className="px-3 py-1.5 text-center hidden sm:table-cell">
                       <CCBadge row={r} onSave={(p) => updateRow(r.id, p)} locked={locked} />
                     </td>
+                    <td className="px-2 py-1.5 text-center hidden sm:table-cell">
+                      <div className="flex gap-1 justify-center items-center">
+                        <span
+                          className={`w-2 h-2 rounded-full ${r.cash > 0 ? 'bg-green-400' : 'bg-gray-200'}`}
+                          title={`現金: ${r.cash > 0 ? r.cash.toLocaleString('zh-TW') : '無'}`}
+                        />
+                        <span
+                          className={`w-2 h-2 rounded-full ${r.creditCard > 0 && r.creditCardStatus === '已核對' ? 'bg-green-400' : r.creditCard > 0 ? 'bg-amber-400' : 'bg-gray-200'}`}
+                          title={`信用卡: ${r.creditCard > 0 ? r.creditCard.toLocaleString('zh-TW') : '無'} (${r.creditCardStatus})`}
+                        />
+                        <span
+                          className={`w-2 h-2 rounded-full ${r.commission > 0 ? 'bg-green-400' : 'bg-gray-200'}`}
+                          title={`佣金: ${r.commission > 0 ? r.commission.toLocaleString('zh-TW') : '無'}`}
+                        />
+                      </div>
+                    </td>
                     <td className="px-3 py-1.5 hidden lg:table-cell">
                       <NoteCell row={r} onSave={(p) => updateRow(r.id, p)} locked={locked} />
                     </td>
@@ -1111,7 +1128,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
                 <td className="px-3 py-2 text-right text-red-600 hidden md:table-cell">
                   {totalCommission ? totalCommission.toLocaleString('zh-TW') : ''}
                 </td>
-                <td colSpan={4} />
+                <td colSpan={5} />
               </tr>
             </tfoot>
           </table>
