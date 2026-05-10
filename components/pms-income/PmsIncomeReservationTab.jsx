@@ -360,14 +360,14 @@ function NoteCell({ row, onSave, locked }) {
   const [val, setVal] = useState(row.note||'');
   const save = async () => { setEditing(false); if (val!==(row.note||'')) await onSave({note:val||null}); };
   if (!locked && editing) {
-    return <input autoFocus className="border rounded px-1.5 py-0.5 text-xs w-28 focus:ring-1 focus:ring-blue-300"
+    return <input autoFocus className="border rounded px-1.5 py-0.5 text-xs w-40 focus:ring-1 focus:ring-blue-300"
       value={val} onChange={e=>setVal(e.target.value)}
       onBlur={save} onKeyDown={e=>{if(e.key==='Enter')save();if(e.key==='Escape'){setVal(row.note||'');setEditing(false);}}} />;
   }
   return (
     <span onClick={()=>!locked&&setEditing(true)}
-      className={`text-xs max-w-[100px] truncate block ${locked?'text-gray-400':'text-gray-500 cursor-pointer hover:text-blue-600 hover:underline'}`}
-      title={row.note||''}>
+      className={`text-xs block whitespace-pre-wrap break-words max-w-[160px] ${locked?'text-gray-400':'text-gray-600 cursor-pointer hover:text-blue-600 hover:underline'}`}
+      title={locked ? (row.note||'') : '點擊編輯備註'}>
       {row.note||<span className="text-gray-300">{locked?'—':'+ 備註'}</span>}
     </span>
   );
