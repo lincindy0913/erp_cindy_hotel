@@ -143,6 +143,9 @@ export default function CashFlowPage() {
   // Overview category summary (current month)
   const [overviewCategorySummary, setOverviewCategorySummary] = useState(null);
 
+  // PMS 現金流 mini-widget
+  const [pmsDashboard, setPmsDashboard] = useState(null);
+
   // Forecast state
   const [summaryData, setSummaryData] = useState(null);
   const [forecastWarehouse, setForecastWarehouse] = useState('');
@@ -161,6 +164,7 @@ export default function CashFlowPage() {
       fetchAccountingSubjects(),
       fetchOverviewCategorySummary(),
       fetchNoCatStats(),
+      fetchPmsDashboard(),
     ]);
     setLoading(false);
   }
@@ -174,6 +178,36 @@ export default function CashFlowPage() {
       const data = await res.json();
       setOverviewCategorySummary(data);
     } catch { setOverviewCategorySummary(null); }
+  }
+
+  async function fetchPmsDashboard() {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      // 取本月訂房資料（最多500筆）
+      const res = await fetch(`/api/pms-income/reservations?take=500&month=${yearMonth}`);
+      if (!res.ok) { setPmsDashboard(null); return; }
+      const rows = await res.json();
+      let cashTotal = 0, wireTotal = 0, ccTotal = 0, depositIn = 0;
+      let todayCash = 0, todayWire = 0, todayCc = 0;
+      const bySource = {};
+      for (const r of rows) {
+        cashTotal  += Number(r.cash  || 0);
+        wireTotal  += Number(r.wireTransfer || 0);
+        ccTotal    += Number(r.creditCard || 0);
+        depositIn  += Number(r.depositIn || 0);
+        if (r.businessDate === today) {
+          todayCash += Number(r.cash || 0);
+          todayWire += Number(r.wireTransfer || 0);
+          todayCc   += Number(r.creditCard || 0);
+        }
+        const src = r.sourceOverride || r.source || '其他';
+        bySource[src] = (bySource[src] || 0) + Number(r.totalRevenue || 0);
+      }
+      const totalRevenue = Object.values(bySource).reduce((s, v) => s + v, 0);
+      setPmsDashboard({ cashTotal, wireTotal, ccTotal, depositIn, todayCash, todayWire, todayCc, bySource, totalRevenue, yearMonth, count: rows.length });
+    } catch { setPmsDashboard(null); }
   }
 
   async function fetchAccountingSubjects() {
@@ -645,6 +679,44 @@ export default function CashFlowPage() {
                 {formatMoney(accounts.reduce((s, a) => s + a.currentBalance, 0))}
               </span>
             </div>
+
+            {/* PMS 現金流 mini-widget */}
+            {pmsDashboard && (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-indigo-800">PMS 本月收款概況（{pmsDashboard.yearMonth}・{pmsDashboard.count} 筆訂房）</h4>
+                  <a href="/pms-income?tab=reservations" className="text-xs text-indigo-600 hover:underline">查看明細 →</a>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  {[
+                    { label: '現金收款', val: pmsDashboard.cashTotal, today: pmsDashboard.todayCash, color: 'text-emerald-700' },
+                    { label: 'ATM / 匯款', val: pmsDashboard.wireTotal, today: pmsDashboard.todayWire, color: 'text-blue-700' },
+                    { label: '信用卡（待撥）', val: pmsDashboard.ccTotal, today: pmsDashboard.todayCc, color: 'text-purple-700' },
+                    { label: '預收訂金', val: pmsDashboard.depositIn, today: null, color: 'text-amber-700' },
+                  ].map(({ label, val, today, color }) => (
+                    <div key={label} className="bg-white rounded-lg p-3 shadow-sm">
+                      <div className="text-xs text-gray-500">{label}</div>
+                      <div className={`text-base font-semibold ${color}`}>{val > 0 ? val.toLocaleString('zh-TW') : '-'}</div>
+                      {today != null && today > 0 && (
+                        <div className="text-xs text-gray-400">今日 +{today.toLocaleString('zh-TW')}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(pmsDashboard.bySource).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(pmsDashboard.bySource)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 6)
+                      .map(([src, amt]) => (
+                        <span key={src} className="text-xs bg-white border border-indigo-200 rounded-full px-2 py-0.5 text-indigo-700">
+                          {src}：{amt.toLocaleString('zh-TW')}
+                        </span>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Monthly category summary */}
             {overviewCategorySummary && (

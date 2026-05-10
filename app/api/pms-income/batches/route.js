@@ -324,6 +324,52 @@ export async function POST(request) {
             rowTxIds.push(wireTx.id);
             autoTxIds.push(wireTx.id);
           }
+
+          // 信用卡：建立「待撥款」狀態的交易（撥款後在信用卡對帳單比對頁確認）
+          const ccAmt = parseFloat(row.creditCard) || 0;
+          if (ccAmt > 0) {
+            const txNo = await nextCashTransactionNo(tx, data.businessDate);
+            const ccTx = await tx.cashTransaction.create({
+              data: {
+                transactionNo: txNo,
+                transactionDate: data.businessDate,
+                type: '收入',
+                amount: ccAmt,
+                accountId: bankAccount.id,
+                description: `PMS 信用卡收入(待撥) - ${row.guestName || row.reservationNo || ''}`,
+                warehouse: data.warehouse,
+                isAutoCreated: true,
+                sourceType: 'PmsReservation',
+                sourceRecordId: reservation.id,
+                status: 'cc_pending',
+              },
+            });
+            rowTxIds.push(ccTx.id);
+            autoTxIds.push(ccTx.id);
+          }
+
+          // 訂金收款：建立「訂金待抵扣」狀態的預收款交易
+          const depositAmt = parseFloat(row.depositIn) || 0;
+          if (depositAmt > 0) {
+            const txNo = await nextCashTransactionNo(tx, data.businessDate);
+            const depositTx = await tx.cashTransaction.create({
+              data: {
+                transactionNo: txNo,
+                transactionDate: data.businessDate,
+                type: '收入',
+                amount: depositAmt,
+                accountId: bankAccount.id,
+                description: `PMS 訂金收款 - ${row.guestName || row.reservationNo || ''}`,
+                warehouse: data.warehouse,
+                isAutoCreated: true,
+                sourceType: 'PmsDeposit',
+                sourceRecordId: reservation.id,
+                status: '訂金待抵扣',
+              },
+            });
+            rowTxIds.push(depositTx.id);
+            autoTxIds.push(depositTx.id);
+          }
         }
 
         // Update reservation with cashTransactionIds (deprecated field, kept for compat)

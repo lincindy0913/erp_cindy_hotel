@@ -25,6 +25,7 @@ import PmsIncomeOtaCommissionTab from '@/components/pms-income/PmsIncomeOtaCommi
 import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBillingTab';
 import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
 import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
+import PmsIncomeMonthCloseTab from '@/components/pms-income/PmsIncomeMonthCloseTab';
 import PmsIncomeInvoiceTab from '@/components/pms-income/PmsIncomeInvoiceTab';
 import PmsIncomeCCFeeReconTab from '@/components/pms-income/PmsIncomeCCFeeReconTab';
 import PmsIncomeCreditCardTab from '@/components/pms-income/PmsIncomeCreditCardTab';
@@ -655,6 +656,10 @@ function PmsIncomePage() {
             recordsLimit={incomeRecords.recordsLimit}
             recordsPage={incomeRecords.recordsPage}
           />
+        )}
+
+        {activeTab === 'monthClose' && (
+          <PmsIncomeMonthCloseTab WAREHOUSES={WAREHOUSES} />
         )}
 
         {activeTab === 'settlement' && (

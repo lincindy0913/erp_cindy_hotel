@@ -3382,3 +3382,32 @@ model BankReconLine {
   @@index([matchStatus])
   @@map("bank_recon_lines")
 }
+
+// ============================================
+// PMS 月結確認
+// ============================================
+
+model PmsMonthClose {
+  id           Int       @id @default(autoincrement())
+  warehouse    String    @db.VarChar(100)
+  yearMonth    String    @map("year_month") @db.VarChar(7)   // YYYY-MM
+  status       String    @default("draft") @db.VarChar(20)  // draft|confirmed|locked
+  cashTotal    Decimal   @default(0) @map("cash_total") @db.Decimal(12, 2)
+  wireTotal    Decimal   @default(0) @map("wire_total") @db.Decimal(12, 2)
+  ccTotal      Decimal   @default(0) @map("cc_total") @db.Decimal(12, 2)
+  depositIn    Decimal   @default(0) @map("deposit_in") @db.Decimal(12, 2)
+  depositOut   Decimal   @default(0) @map("deposit_out") @db.Decimal(12, 2)
+  otaTotal     Decimal   @default(0) @map("ota_total") @db.Decimal(12, 2)
+  totalRevenue Decimal   @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  summary      Json?     // { bySource: {...}, reservationCount, ... }
+  closedBy     String?   @map("closed_by") @db.VarChar(255)
+  closedAt     DateTime? @map("closed_at")
+  note         String?   @db.VarChar(500)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([warehouse, yearMonth])
+  @@index([warehouse])
+  @@index([yearMonth])
+  @@map("pms_month_closes")
+}
