@@ -149,15 +149,13 @@ export async function POST(request) {
     function classifySource(row) {
       const company = (row.companyName || '').trim();
       const discount = (row.discountName || '').trim();
-      // NET- prefix or "Booking" keyword → Booking
       if (/NET-/i.test(discount) || /booking/i.test(company) || /booking/i.test(discount)) return 'OTA-Booking';
-      // Agoda
       if (/agoda/i.test(company) || /agoda/i.test(discount)) return 'OTA-Agoda';
-      // Expedia
       if (/expedia/i.test(company) || /expedia/i.test(discount)) return 'OTA-Expedia';
-      // 代訂中心
+      if (/攜程/.test(company)) return '攜程網';
+      if (/易遊/.test(company)) return '易遊網';
+      if (/一般散客/.test(company)) return '一般散客';
       if (agencyNames.has(company)) return '代訂中心';
-      // 月租
       if (/月租/.test(discount) || /月租/.test(company)) return '月租';
       return '電話';
     }

@@ -1,14 +1,15 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
-const SOURCE_OPTIONS = ['全部', '電話', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租'];
-const SOURCE_EDIT_OPTIONS = ['電話', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租', '其他', '自訂…'];
+const SOURCE_OPTIONS = ['全部', '電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租'];
+const SOURCE_EDIT_OPTIONS = ['電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租', '其他', '自訂…'];
 const DEPOSIT_STATUS_OPTIONS = ['全部', '待確認', '已核對', '差異'];
 const CC_STATUS_OPTIONS = ['全部', '待核對', '已核對'];
 const DEPOSIT_CYCLE = ['待確認', '已核對', '差異'];
 
 const SOURCE_COLORS = {
   '電話':        'bg-gray-100 text-gray-700',
+  '一般散客':    'bg-slate-100 text-slate-700',
   'OTA-Booking': 'bg-blue-100 text-blue-700',
   'OTA-Agoda':   'bg-red-100 text-red-700',
   'OTA-Expedia': 'bg-yellow-100 text-yellow-800',
@@ -382,6 +383,7 @@ function DetailModal({ row, onClose, onSave }) {
   const [depositIn,  setDepositIn]  = useState(row.depositIn  ?? '');
   const [depositOut, setDepositOut] = useState(row.depositOut ?? '');
   const [note, setNote] = useState(row.note||'');
+  const [invoiceNo, setInvoiceNo] = useState(row.invoiceNo||'');
   const f = n => { const v=Number(n); return (!v||isNaN(v))?'—':v.toLocaleString('zh-TW'); };
 
   const handleSrcChange = e => {
@@ -397,6 +399,7 @@ function DetailModal({ row, onClose, onSave }) {
       depositIn:  parseFloat(depositIn)  || 0,
       depositOut: parseFloat(depositOut) || 0,
       note,
+      invoiceNo: invoiceNo.trim() || null,
     });
     onClose();
   };
@@ -447,6 +450,11 @@ function DetailModal({ row, onClose, onSave }) {
           <div>
             <label className="block text-xs text-gray-500 mb-1">備註</label>
             <textarea rows={2} className="border rounded px-2 py-1.5 w-full text-sm" value={note} onChange={e=>setNote(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">發票號碼</label>
+            <input className="border rounded px-2 py-1.5 w-full text-sm font-mono" placeholder="如 AB12345678"
+              value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)} />
           </div>
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t">
@@ -1089,8 +1097,9 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
                     )}
                     <td className="px-3 py-1.5 whitespace-nowrap text-xs text-gray-600">{r.businessDate}</td>
                     <td className="px-2 py-1.5 text-xs text-gray-500">{r.roomNo || '—'}</td>
-                    <td className="px-3 py-1.5 max-w-[120px] truncate font-medium text-gray-800" title={r.guestName}>
-                      {r.guestName || '—'}
+                    <td className="px-3 py-1.5 max-w-[120px] font-medium text-gray-800" title={r.guestName}>
+                      <div className="truncate">{r.guestName || '—'}</div>
+                      {r.invoiceNo && <div className="text-xs text-indigo-500 font-mono truncate" title={`發票：${r.invoiceNo}`}>{r.invoiceNo}</div>}
                     </td>
                     <td className="px-3 py-1.5 max-w-[100px] truncate text-xs text-gray-400 hidden md:table-cell" title={r.companyName}>
                       {r.companyName || ''}

@@ -50,7 +50,7 @@ export async function PATCH(request, { params }) {
   try {
     const body = await request.json();
     const allowed = [
-      'sourceOverride', 'note',
+      'sourceOverride', 'note', 'invoiceNo',
       'cashStatus', 'wireStatus', 'commissionStatus', 'depositStatus', 'creditCardStatus',
       'ccFeeRate', 'ccFeeAmount', 'ccNetAmount', 'ccActualNet', 'ccDiff', 'ccSettleDate',
       'vendorBillingId',

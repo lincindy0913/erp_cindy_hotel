@@ -3253,6 +3253,7 @@ model PmsReservationRecord {
   cashTransactionIds String? @map("cash_transaction_ids") @db.VarChar(500)
 
   note             String?  @db.VarChar(500)
+  invoiceNo        String?  @map("invoice_no") @db.VarChar(50)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

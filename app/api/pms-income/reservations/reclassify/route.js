@@ -28,6 +28,9 @@ export async function POST(request) {
       if (/NET-/i.test(discount) || /booking/i.test(company) || /booking/i.test(discount)) return 'OTA-Booking';
       if (/agoda/i.test(company) || /agoda/i.test(discount)) return 'OTA-Agoda';
       if (/expedia/i.test(company) || /expedia/i.test(discount)) return 'OTA-Expedia';
+      if (/攜程/.test(company)) return '攜程網';
+      if (/易遊/.test(company)) return '易遊網';
+      if (/一般散客/.test(company)) return '一般散客';
       if (agencyNames.has(company)) return '代訂中心';
       if (/月租/.test(discount) || /月租/.test(company)) return '月租';
       return '電話';
