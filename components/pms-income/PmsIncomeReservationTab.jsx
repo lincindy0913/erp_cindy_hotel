@@ -780,6 +780,22 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
     } catch { setBatchMsg('網路錯誤'); } finally { setBatching(false); }
   }
 
+  async function batchDelete() {
+    if (selectedIds.size === 0) { setBatchMsg('請勾選要刪除的訂單'); return; }
+    if (!window.confirm(`確定要刪除已選的 ${selectedIds.size} 筆訂房記錄？此操作無法復原。`)) return;
+    setBatching(true); setBatchMsg('');
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/pms-income/reservations/${id}`, { method: 'DELETE' }))
+    );
+    const deleted = results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
+    const failed  = ids.length - deleted;
+    setRows(prev => prev.filter(r => !selectedIds.has(r.id) || results[ids.indexOf(r.id)]?.value?.ok === false));
+    setSelectedIds(new Set());
+    setBatchMsg(failed > 0 ? `已刪除 ${deleted} 筆，${failed} 筆失敗（可能已結算）` : `已刪除 ${deleted} 筆`);
+    setBatching(false);
+  }
+
   async function pushToVendorBilling() {
     if (!billingId) { setPushMsg('請輸入廠商帳單 ID'); return; }
     if (selectedIds.size === 0) { setPushMsg('請勾選要推送的訂單'); return; }
@@ -962,7 +978,9 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
           <button type="button" onClick={()=>batchUpdate({ creditCardStatus: '已核對' })} disabled={batching || selectedIds.size === 0} className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg disabled:opacity-50">{batching ? '…' : '批次·信用卡已核'}</button>
           <button type="button" onClick={()=>batchUpdate({ depositStatus: '已核對' })} disabled={batching || selectedIds.size === 0} className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg disabled:opacity-50">批次·訂金已核</button>
           <button type="button" onClick={()=>batchUpdate({ creditCardStatus: '已核對', depositStatus: '已核對' })} disabled={batching || selectedIds.size === 0} className="px-3 py-1.5 text-xs bg-teal-600 text-white rounded-lg disabled:opacity-50">批次·兩項已核</button>
-          {batchMsg && <span className="text-xs text-green-700">{batchMsg}</span>}
+          <span className="text-gray-300 hidden sm:inline">|</span>
+          <button type="button" onClick={batchDelete} disabled={batching || selectedIds.size === 0} className="px-3 py-1.5 text-xs bg-red-500 text-white rounded-lg disabled:opacity-50 hover:bg-red-600">🗑 批次刪除</button>
+          {batchMsg && <span className={`text-xs ${batchMsg.includes('失敗') ? 'text-red-600' : 'text-green-700'}`}>{batchMsg}</span>}
         </div>
       )}
 
