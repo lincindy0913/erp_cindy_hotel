@@ -4,6 +4,32 @@ import { useState, useCallback, useEffect } from 'react';
 import PmsIncomeVendorBillingDetail from './PmsIncomeVendorBillingDetail';
 
 const DIRECTION_LABEL = { AR: '應收', AP: '應付' };
+
+function downloadBillingCSV(billings, month) {
+  const cols = ['帳單月份', '館別', '廠商', '方向', '帳單金額', '已結帳金額', '未結帳金額', '狀態', '到期日', '備註'];
+  const lines = [
+    cols.join(','),
+    ...billings.map(b => [
+      b.billingMonth,
+      b.warehouse,
+      `"${(b.supplierName || '').replace(/"/g, '""')}"`,
+      DIRECTION_LABEL[b.direction] || b.direction,
+      b.totalAmount,
+      b.settledAmount,
+      (b.totalAmount - b.settledAmount).toFixed(0),
+      b.status,
+      b.dueDate || '',
+      `"${(b.notes || '').replace(/"/g, '""')}"`,
+    ].join(',')),
+  ];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `廠商帳款明細_${month || new Date().toISOString().slice(0, 7)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 const STATUS_COLOR = {
   草稿:  'bg-gray-100 text-gray-600',
   已送出: 'bg-blue-100 text-blue-700',
@@ -151,6 +177,11 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
         </div>
         <div className="ml-auto flex gap-2">
           <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">重新整理</button>
+          <button onClick={() => downloadBillingCSV(billings, fMonth)}
+            className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+            title="匯出當前篩選結果為 CSV（可用 Excel 開啟做請款單）">
+            匯出請款單 CSV
+          </button>
           <button onClick={() => { setShowCreate(true); setFormError(''); setForm(EMPTY_FORM); }}
             className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-medium">
             + 新增帳單

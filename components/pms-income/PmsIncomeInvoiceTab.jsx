@@ -23,6 +23,44 @@ function downloadCsv(rows) {
   URL.revokeObjectURL(url);
 }
 
+function downloadTaxReport(rows, yearMonth) {
+  const invoiced = rows.filter(r => r.invoiceNo);
+  if (invoiced.length === 0) { alert('尚無已開發票資料可申報'); return; }
+
+  // Group by 字軌 (first 2 chars of invoice number)
+  const byPrefix = {};
+  for (const r of invoiced) {
+    const inv    = (r.invoiceNo || '').trim().replace(/[-\s]/g, '');
+    const prefix = inv.slice(0, 2).toUpperCase();
+    const numStr = inv.slice(2).replace(/\D/g, '').padStart(8, '0');
+    const num    = parseInt(numStr, 10) || 0;
+    if (!byPrefix[prefix]) byPrefix[prefix] = { prefix, nums: [], totalInclTax: 0, count: 0 };
+    byPrefix[prefix].nums.push(num);
+    byPrefix[prefix].totalInclTax += Number(r.totalRevenue) || 0;
+    byPrefix[prefix].count++;
+  }
+
+  const cols = ['字軌', '起始號碼', '結束號碼', '使用張數', '銷售額（含稅）', '應稅銷售額（未稅）', '稅額（5%）', '免稅銷售額'];
+  const lines = [cols.join(',')];
+  for (const d of Object.values(byPrefix)) {
+    const sorted      = d.nums.filter(n => n > 0).sort((a, b) => a - b);
+    const start       = sorted.length ? String(sorted[0]).padStart(8, '0') : '00000000';
+    const end         = sorted.length ? String(sorted[sorted.length - 1]).padStart(8, '0') : '00000000';
+    const inclTax     = Math.round(d.totalInclTax);
+    const exclTax     = Math.round(inclTax / 1.05);
+    const taxAmt      = inclTax - exclTax;
+    lines.push([d.prefix, start, end, d.count, inclTax, exclTax, taxAmt, 0].join(','));
+  }
+
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `統一發票申報_${yearMonth || ''}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
   const now = new Date();
   const [warehouse, setWarehouse] = useState('全館');
@@ -137,7 +175,12 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
         </button>
         <button onClick={() => downloadCsv(filtered)}
           className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-          匯出 CSV
+          匯出明細 CSV
+        </button>
+        <button onClick={() => downloadTaxReport(filtered, monthStr)}
+          className="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          title="依字軌彙總，含起訖號碼、應稅/稅額，符合國稅局申報格式">
+          申報格式 CSV
         </button>
       </div>
 

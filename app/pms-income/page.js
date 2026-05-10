@@ -6,7 +6,7 @@ import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
-import { TABS, WAREHOUSES_FALLBACK, DEFAULT_PMS_COLUMNS } from '@/components/pms-income/pmsIncomeConstants';
+import { TABS, TAB_GROUPS, WAREHOUSES_FALLBACK, DEFAULT_PMS_COLUMNS } from '@/components/pms-income/pmsIncomeConstants';
 import PmsIncomeUploadModal from '@/components/pms-income/PmsIncomeUploadModal';
 import PmsIncomeAddRecordModal from '@/components/pms-income/PmsIncomeAddRecordModal';
 import PmsIncomeOverviewTab from '@/components/pms-income/PmsIncomeOverviewTab';
@@ -31,14 +31,12 @@ import PmsIncomeInvoiceTab from '@/components/pms-income/PmsIncomeInvoiceTab';
 import PmsIncomeCCFeeReconTab from '@/components/pms-income/PmsIncomeCCFeeReconTab';
 import PmsIncomeCreditCardTab from '@/components/pms-income/PmsIncomeCreditCardTab';
 import PmsIncomeMiniDashboard from '@/components/pms-income/PmsIncomeMiniDashboard';
+import PmsIncomeDailyTodoBar from '@/components/pms-income/PmsIncomeDailyTodoBar';
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
 
 const VALID_TAB_KEYS = new Set(TABS.map(t => t.key));
-const SETTINGS_TAB_KEYS = new Set(['travelAgency', 'paymentConfig', 'mapping']);
-const MAIN_TABS = TABS.filter(t => !SETTINGS_TAB_KEYS.has(t.key));
-const SETTINGS_TABS_LIST = TABS.filter(t => SETTINGS_TAB_KEYS.has(t.key));
 
 export default function PmsIncomePageWrapper() {
   return (
@@ -52,7 +50,6 @@ function PmsIncomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = VALID_TAB_KEYS.has(searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Redirect invalid ?tab= values so the URL stays clean
   useEffect(() => {
@@ -496,56 +493,47 @@ function PmsIncomePage() {
           </div>
         )}
 
+        {/* 每日待辦提示列 */}
+        <PmsIncomeDailyTodoBar WAREHOUSES={WAREHOUSES} setActiveTab={setActiveTab} />
+
         {/* Mini Dashboard KPI strip */}
         <PmsIncomeMiniDashboard WAREHOUSES={WAREHOUSES} />
 
-        {/* Tab navigation */}
-        <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200">
-          {MAIN_TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === tab.key
-                  ? 'bg-teal-600 text-white border-b-2 border-teal-600'
-                  : 'text-gray-600 hover:text-teal-700 hover:bg-teal-50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-          {/* Settings dropdown — collects travelAgency / paymentConfig / mapping */}
-          <div className="relative">
-            <button
-              onClick={() => setSettingsOpen(o => !o)}
-              onBlur={() => setTimeout(() => setSettingsOpen(false), 150)}
-              className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-1 ${
-                SETTINGS_TAB_KEYS.has(activeTab)
-                  ? 'bg-teal-600 text-white border-b-2 border-teal-600'
-                  : 'text-gray-600 hover:text-teal-700 hover:bg-teal-50'
-              }`}
-            >
-              ⚙ 設定 <span className="text-xs opacity-70">{settingsOpen ? '▲' : '▼'}</span>
-            </button>
-            {settingsOpen && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-max">
-                {SETTINGS_TABS_LIST.map(tab => (
-                  <button
-                    key={tab.key}
-                    onMouseDown={() => { setActiveTab(tab.key); setSettingsOpen(false); }}
-                    className={`block w-full text-left px-4 py-2.5 text-sm first:rounded-t-lg last:rounded-b-lg ${
-                      activeTab === tab.key
-                        ? 'bg-teal-50 text-teal-700 font-semibold'
-                        : 'text-gray-700 hover:bg-teal-50'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Sidebar + Content layout */}
+        <div className="flex gap-6 items-start">
+          {/* Left sidebar navigation */}
+          <aside className="w-52 flex-shrink-0 sticky top-4 self-start">
+            <nav className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+              {TAB_GROUPS.map((group, gi) => (
+                <div key={group.key} className={gi > 0 ? 'border-t border-gray-200' : ''}>
+                  <div className="px-3 py-2 text-xs font-semibold text-gray-400 bg-gray-50 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>{group.icon}</span>
+                    <span>{group.label}</span>
+                  </div>
+                  {group.tabs.map(tabKey => {
+                    const tab = TABS.find(t => t.key === tabKey);
+                    if (!tab) return null;
+                    return (
+                      <button
+                        key={tabKey}
+                        onClick={() => setActiveTab(tabKey)}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors border-t border-gray-50 ${
+                          activeTab === tabKey
+                            ? 'bg-teal-600 text-white font-medium'
+                            : 'text-gray-700 hover:bg-teal-50 hover:text-teal-700'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Content area */}
+          <div className="flex-1 min-w-0">
 
         {activeTab === 'overview' && (
           <PmsIncomeOverviewTab
@@ -741,6 +729,8 @@ function PmsIncomePage() {
         {activeTab === 'mapping' && (
           <PmsIncomeMappingTab loading={loading} mappingRules={mappingRules} />
         )}
+          </div>{/* end content area */}
+        </div>{/* end sidebar + content flex */}
       </div>
 
       {/* Modals */}

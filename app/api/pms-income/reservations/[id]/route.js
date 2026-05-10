@@ -63,8 +63,19 @@ export async function PATCH(request, { params }) {
       if (k in body) updateData[k] = body[k];
     }
 
-    // Fetch before state for audit (only when status/amount fields change)
+    // Fetch before state (for lock check + audit)
     const before = await prisma.pmsReservationRecord.findUnique({ where: { id } });
+    if (!before) return createErrorResponse('NOT_FOUND', '找不到記錄', 404);
+
+    // Reject if the month is locked
+    const yearMonth = before.businessDate.slice(0, 7);
+    const monthClose = await prisma.pmsMonthClose.findUnique({
+      where: { warehouse_yearMonth: { warehouse: before.warehouse, yearMonth } },
+      select: { status: true },
+    });
+    if (monthClose?.status === 'locked') {
+      return createErrorResponse('FORBIDDEN', `${yearMonth} 月份已鎖定，無法修改記錄。如需解鎖請聯絡主管。`, 403);
+    }
 
     const updated = await prisma.pmsReservationRecord.update({
       where: { id },

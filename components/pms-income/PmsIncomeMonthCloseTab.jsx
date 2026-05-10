@@ -120,6 +120,47 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
         <button onClick={calculate} disabled={saving || isLocked} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
           {saving ? '計算中...' : '重新計算月結'}
         </button>
+        <button
+          onClick={async () => {
+            try {
+              const res  = await fetch(`/api/pms-income/voucher?warehouse=${encodeURIComponent(warehouse)}&yearMonth=${yearMonth}`);
+              const data = await res.json();
+              if (!res.ok || !data.entries?.length) { alert('無傳票資料，請先確認該月份有匯入記錄'); return; }
+
+              // 月底日期
+              const lastDay = new Date(yearMonth.replace('-', '/') + '/01');
+              lastDay.setMonth(lastDay.getMonth() + 1); lastDay.setDate(0);
+              const vDate = `${yearMonth}-${String(lastDay.getDate()).padStart(2, '0')}`;
+
+              const cols = ['傳票日期', '摘要', '方向', '科目代碼', '科目名稱', '金額'];
+              const lines = [
+                cols.join(','),
+                ...data.entries.map(e => [
+                  vDate,
+                  `"${yearMonth} ${warehouse} 住宿收入月結"`,
+                  e.entryType,
+                  e.accountingCode,
+                  `"${e.accountingName}"`,
+                  e.total.toFixed(0),
+                ].join(',')),
+                // 借貸差異提示行（若不平衡）
+                ...(Math.abs(data.summary.diff) > 1
+                  ? [`${vDate},"【借貸差異 ${data.summary.diff.toFixed(0)} 請確認】",,,,`]
+                  : []),
+              ];
+              const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+              const url  = URL.createObjectURL(blob);
+              const a    = document.createElement('a');
+              a.href = url; a.download = `傳票_${warehouse}_${yearMonth}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            } catch { alert('匯出失敗'); }
+          }}
+          disabled={!record}
+          className="px-3 py-1 text-sm border border-indigo-300 text-indigo-700 rounded hover:bg-indigo-50 disabled:opacity-40"
+          title="匯出日記帳傳票格式（可匯入會計系統）"
+        >
+          匯出傳票 CSV
+        </button>
       </div>
 
       {msg && (

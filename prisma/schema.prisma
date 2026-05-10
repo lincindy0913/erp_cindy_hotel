@@ -3411,3 +3411,27 @@ model PmsMonthClose {
   @@index([yearMonth])
   @@map("pms_month_closes")
 }
+
+// ============================================
+// PMS OTA 月度撥款到帳確認
+// ============================================
+
+model PmsOtaPayment {
+  id             Int       @id @default(autoincrement())
+  warehouse      String    @db.VarChar(100)
+  yearMonth      String    @map("year_month") @db.VarChar(7)   // YYYY-MM
+  source         String    @db.VarChar(100)                     // OTA-Agoda, OTA-Booking...
+  expectedAmount Decimal   @default(0) @map("expected_amount") @db.Decimal(12, 2)
+  actualAmount   Decimal   @default(0) @map("actual_amount") @db.Decimal(12, 2)
+  diff           Decimal   @default(0) @db.Decimal(12, 2)
+  status         String    @default("待確認") @db.VarChar(20)  // 待確認|已到帳|有差異
+  confirmedDate  String?   @map("confirmed_date") @db.VarChar(10)
+  note           String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([warehouse, yearMonth, source])
+  @@index([warehouse])
+  @@index([yearMonth])
+  @@map("pms_ota_payments")
+}

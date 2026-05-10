@@ -35,6 +35,12 @@ function StatusBadge({ status }) {
   return <span className={`text-xs px-1.5 py-0.5 rounded ${map[status] || 'bg-gray-100 text-gray-500'}`}>{status}</span>;
 }
 
+const OTA_STATUS_BADGE = {
+  '待確認': 'bg-gray-100 text-gray-500',
+  '已到帳': 'bg-green-100 text-green-700',
+  '有差異': 'bg-red-100 text-red-700',
+};
+
 export default function PmsIncomeCashierSummaryTab({ WAREHOUSES = [] }) {
   const now = new Date();
   const [warehouse, setWarehouse] = useState(WAREHOUSES[0] || '');
@@ -45,6 +51,22 @@ export default function PmsIncomeCashierSummaryTab({ WAREHOUSES = [] }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
+  // OTA 撥款到帳確認
+  const [otaPayments,    setOtaPayments]    = useState([]);
+  const [otaConfirmRow,  setOtaConfirmRow]  = useState(null); // { source, netReceivable }
+  const [otaActualInput, setOtaActualInput] = useState('');
+  const [otaDateInput,   setOtaDateInput]   = useState('');
+  const [otaNoteInput,   setOtaNoteInput]   = useState('');
+  const [otaSaving,      setOtaSaving]      = useState(false);
+
+  const loadOtaPayments = useCallback(async () => {
+    if (!warehouse || !yearMonth) return;
+    try {
+      const res = await fetch(`/api/pms-income/ota-payment?warehouse=${encodeURIComponent(warehouse)}&yearMonth=${yearMonth}`);
+      if (res.ok) setOtaPayments(await res.json());
+    } catch {}
+  }, [warehouse, yearMonth]);
+
   const load = useCallback(async () => {
     if (!warehouse || !yearMonth) return;
     setLoading(true); setError('');
@@ -53,10 +75,37 @@ export default function PmsIncomeCashierSummaryTab({ WAREHOUSES = [] }) {
       const res = await fetch(`/api/pms-income/cashier-summary?${params}`);
       if (!res.ok) throw new Error((await res.json()).error?.message || '載入失敗');
       setData(await res.json());
+      await loadOtaPayments();
     } catch (e) {
       setError(e.message); setData(null);
     } finally { setLoading(false); }
-  }, [warehouse, yearMonth]);
+  }, [warehouse, yearMonth, loadOtaPayments]);
+
+  async function confirmOtaPayment() {
+    if (!otaConfirmRow) return;
+    setOtaSaving(true);
+    try {
+      const res = await fetch('/api/pms-income/ota-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          warehouse,
+          yearMonth,
+          source:          otaConfirmRow.source,
+          expectedAmount:  otaConfirmRow.netReceivable,
+          actualAmount:    parseFloat(otaActualInput) || 0,
+          confirmedDate:   otaDateInput || null,
+          note:            otaNoteInput || null,
+        }),
+      });
+      if (res.ok) {
+        setOtaConfirmRow(null);
+        await loadOtaPayments();
+      }
+    } finally {
+      setOtaSaving(false);
+    }
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -130,23 +179,44 @@ export default function PmsIncomeCashierSummaryTab({ WAREHOUSES = [] }) {
                   <th className="px-3 py-2 text-right">毛收入</th>
                   <th className="px-3 py-2 text-right">佣金（應扣）</th>
                   <th className="px-3 py-2 text-right font-semibold text-blue-700">淨應收</th>
+                  <th className="px-3 py-2 text-center">撥款到帳</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {data.ar.length === 0
                   ? <EmptyRow msg="本月無 OTA / 代訂中心訂房記錄" />
-                  : data.ar.map(r => (
-                    <tr key={r.source} className="hover:bg-blue-50/30">
-                      <td className="px-3 py-2 font-medium text-gray-800">{r.source}</td>
-                      <td className="px-3 py-2 text-xs text-gray-500">{r.type}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.count}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(r.totalRevenue)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-red-600">
-                        {r.commission > 0 ? `(${fmt(r.commission)})` : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-blue-700">{fmt(r.netReceivable)}</td>
-                    </tr>
-                  ))
+                  : data.ar.map(r => {
+                    const pay = otaPayments.find(p => p.source === r.source);
+                    return (
+                      <tr key={r.source} className="hover:bg-blue-50/30">
+                        <td className="px-3 py-2 font-medium text-gray-800">{r.source}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{r.type}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{r.count}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(r.totalRevenue)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-red-600">
+                          {r.commission > 0 ? `(${fmt(r.commission)})` : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-blue-700">{fmt(r.netReceivable)}</td>
+                        <td className="px-3 py-2 text-center">
+                          {pay?.status === '已到帳' ? (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700" title={`實收 ${fmt(pay.actualAmount)}・${pay.confirmedDate || ''}`}>
+                              ✓ 已到帳
+                            </span>
+                          ) : pay?.status === '有差異' ? (
+                            <button onClick={() => { setOtaConfirmRow(r); setOtaActualInput(pay.actualAmount || ''); setOtaDateInput(pay.confirmedDate || ''); setOtaNoteInput(pay.note || ''); }}
+                              className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200">
+                              差異 {fmt(pay.diff)}
+                            </button>
+                          ) : (
+                            <button onClick={() => { setOtaConfirmRow(r); setOtaActualInput(r.netReceivable || ''); setOtaDateInput(''); setOtaNoteInput(''); }}
+                              className="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50">
+                              確認到帳
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 }
               </tbody>
               {data.ar.length > 0 && (
@@ -262,6 +332,51 @@ export default function PmsIncomeCashierSummaryTab({ WAREHOUSES = [] }) {
             <div className="text-xs text-amber-600 mt-1">此為「收訂金 − 沖訂金」全期累計，即旅館帳上仍負債給未來住客的金額。</div>
           </div>
         </>
+      )}
+
+      {/* ── OTA 撥款到帳確認彈窗 ── */}
+      {otaConfirmRow && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-base font-bold text-gray-800">OTA 撥款到帳確認</h3>
+              <button onClick={() => setOtaConfirmRow(null)} className="text-gray-400 hover:text-gray-700">✕</button>
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-sm">
+              <div className="text-gray-500 text-xs mb-0.5">{otaConfirmRow.source}・{yearMonth}</div>
+              <div className="font-semibold text-blue-700">系統預期淨應收：NT$ {fmt(otaConfirmRow.netReceivable)}</div>
+            </div>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">實際到帳金額 *</label>
+                <input type="number" value={otaActualInput} onChange={e => setOtaActualInput(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-right font-medium" placeholder="0" />
+                {otaActualInput && Math.abs(parseFloat(otaActualInput) - otaConfirmRow.netReceivable) > 1 && (
+                  <div className="text-xs text-red-600 mt-1">
+                    差異：{(parseFloat(otaActualInput) - otaConfirmRow.netReceivable).toLocaleString('zh-TW')}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">入帳日期</label>
+                <input type="date" value={otaDateInput} onChange={e => setOtaDateInput(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">備註（差異說明）</label>
+                <input value={otaNoteInput} onChange={e => setOtaNoteInput(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="如：含退款扣除..." />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setOtaConfirmRow(null)} className="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50">取消</button>
+              <button onClick={confirmOtaPayment} disabled={!otaActualInput || otaSaving}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                {otaSaving ? '儲存中...' : '確認到帳'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -99,10 +99,22 @@ export async function POST(request, { params }) {
         },
       });
 
-      // 4. 重算帳戶餘額
+      // 4. 將同月的 cc_pending CashTransactions 標記為 cc_已建帳
+      const billingMonth = stmt.billingDate.slice(0, 7); // YYYY-MM
+      const ccPendingResult = await tx.cashTransaction.updateMany({
+        where: {
+          warehouse:       stmt.warehouse,
+          status:          'cc_pending',
+          transactionDate: { startsWith: billingMonth },
+          sourceType:      'PmsReservation',
+        },
+        data: { status: 'cc_已建帳' },
+      });
+
+      // 5. 重算帳戶餘額
       await recalcBalance(tx, stmt.bankAccountId);
 
-      return { incTxId: incTx.id, feeTxId: feeTx?.id ?? null };
+      return { incTxId: incTx.id, feeTxId: feeTx?.id ?? null, ccPendingLinked: ccPendingResult.count };
     });
 
     return NextResponse.json({ success: true, ...result });

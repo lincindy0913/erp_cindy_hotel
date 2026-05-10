@@ -26,6 +26,33 @@ export const TABS = [
   { key: 'mapping', label: 'PMS 科目對應設定' },
 ];
 
+export const TAB_GROUPS = [
+  {
+    key: 'daily',
+    label: '每日作業',
+    icon: '📋',
+    tabs: ['overview', 'excelImport', 'reservations', 'invoiceQuery'],
+  },
+  {
+    key: 'monthly',
+    label: '月結對帳',
+    icon: '📊',
+    tabs: ['depositRecon', 'ccFeeRecon', 'creditCardStatement', 'otaDeposit', 'otaRecon', 'monthClose'],
+  },
+  {
+    key: 'billing',
+    label: '帳款管理',
+    icon: '💰',
+    tabs: ['otaCommission', 'bookingCenter', 'vendorBilling', 'cashierSummary', 'settlement'],
+  },
+  {
+    key: 'settings',
+    label: '設定 & 報表',
+    icon: '⚙️',
+    tabs: ['records', 'statistics', 'travelAgency', 'manualCommission', 'paymentConfig', 'mapping'],
+  },
+];
+
 export const DEFAULT_PMS_COLUMNS = [
   { pmsColumnName: '住宿金額', entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
   { pmsColumnName: '月租金額', entryType: '貸方', accountingCode: '4111', accountingName: '住房收入' },
