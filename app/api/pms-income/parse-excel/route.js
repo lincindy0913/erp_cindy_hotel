@@ -249,7 +249,7 @@ export async function POST(request) {
         serviceFee:     hIdxAny('服務費'),
         cash:           hIdxAny('現金'),
         creditCard:     hIdxAny('信用卡'),
-        wireTransfer:   hIdxAny('電匯收款', '電匯', '票據', '轉帳入'),
+        wireTransfer:   hIdxAny('電匯收款', '電匯', '票據', '轉帳入', 'ATM轉帳', '匯票收款', '劃撥收款', 'ATM收款'),
         commission:     hIdxAny('佣金'),
         discount:       hIdxAny('折讓'),
         complimentary:  hIdxAny('招待'),
@@ -263,6 +263,8 @@ export async function POST(request) {
         otherChargesC:  hIdxAny('餐飲部'),
         otherChargesD:  hIdxAny('其他收入'),
         otherChargesE:  hIdxAny('旅遊行程'),
+        invoiceNo:      hIdxAny('發票號碼', '發票號', '統一發票號碼'),
+        note:           hIdxAny('備註'),
       };
 
       // first boundary: creditHeaderRow, debitHeaderRow, occupancyAnchorRow (pick earliest after masterHeader)
@@ -319,6 +321,8 @@ export async function POST(request) {
           receivable:     getNum(colMap.receivable),
           voucher:        getNum(colMap.voucher),
           totalRevenue:   getNum(colMap.totalRevenue),
+          invoiceNo:      get(colMap.invoiceNo) || null,
+          note:           get(colMap.note) || null,
         });
       }
     }

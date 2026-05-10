@@ -266,6 +266,8 @@ export async function POST(request) {
             receivable:     parseFloat(row.receivable) || 0,
             voucher:        parseFloat(row.voucher) || 0,
             source,
+            note:           row.note || null,
+            invoiceNo:      row.invoiceNo || null,
           },
         });
 
@@ -304,7 +306,7 @@ export async function POST(request) {
                 type: '收入',
                 amount: wireAmt,
                 accountId: bankAccount.id,
-                description: `PMS 轉帳收入 - ${row.guestName || row.reservationNo || ''}`,
+                description: `PMS 轉帳/ATM收入 - ${row.guestName || row.reservationNo || ''}${row.note ? ` [${row.note}]` : ''}`,
                 warehouse: data.warehouse,
                 isAutoCreated: true,
                 sourceType: 'PmsReservation',
