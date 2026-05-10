@@ -149,6 +149,9 @@ export async function POST(request) {
     function classifySource(row) {
       const company = (row.companyName || '').trim();
       const discount = (row.discountName || '').trim();
+      const roomType = (row.roomType || '').trim();
+      // 團體 rows (roomType = "團體") → 團體
+      if (roomType === '團體') return '團體';
       // Company name takes priority — check specific OTAs before generic NET- pattern
       if (/agoda/i.test(company)) return 'OTA-Agoda';
       if (/expedia/i.test(company)) return 'OTA-Expedia';

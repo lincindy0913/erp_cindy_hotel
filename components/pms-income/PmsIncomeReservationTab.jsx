@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
-const SOURCE_OPTIONS = ['全部', '電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租'];
-const SOURCE_EDIT_OPTIONS = ['電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '月租', '其他', '自訂…'];
+const SOURCE_OPTIONS = ['全部', '電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '團體', '月租'];
+const SOURCE_EDIT_OPTIONS = ['電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '團體', '月租', '其他', '自訂…'];
 const DEPOSIT_STATUS_OPTIONS = ['全部', '待確認', '已核對', '差異'];
 const CC_STATUS_OPTIONS = ['全部', '待核對', '已核對'];
 const DEPOSIT_CYCLE = ['待確認', '已核對', '差異'];
@@ -10,6 +10,7 @@ const DEPOSIT_CYCLE = ['待確認', '已核對', '差異'];
 const SOURCE_COLORS = {
   '電話':        'bg-gray-100 text-gray-700',
   '一般散客':    'bg-slate-100 text-slate-700',
+  '團體':        'bg-orange-100 text-orange-700',
   'OTA-Booking': 'bg-blue-100 text-blue-700',
   'OTA-Agoda':   'bg-red-100 text-red-700',
   'OTA-Expedia': 'bg-yellow-100 text-yellow-800',

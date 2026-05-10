@@ -255,7 +255,7 @@ export async function POST(request) {
         complimentary:  hIdxAny('招待'),
         depositIn:      hIdxAny('收訂金'),
         depositOut:     hIdxAny('沖訂金'),
-        receivable:     hIdxAny('應收帳', '應收帳款', '賒帳'),
+        receivable:     hIdxAny('應收帳', '應收帳款', '賒帳', '賒帳收回'),
         voucher:        hIdxAny('禮券收款', '禮券'),
         totalRevenue:   hIdxAny('營業收入小計', '貸方合計', '住宿合計', '總金額'),
         otherChargesA:  hIdxAny('延時費'),
@@ -276,11 +276,15 @@ export async function POST(request) {
         const row = matrix[r];
         if (!Array.isArray(row)) continue;
         const c0 = norm(cellStr(row[0]));
-        // "訂金" deposit rows have empty col A but roomType = "訂金"
         const roomTypeVal = colMap.roomType >= 0 ? norm(cellStr(row[colMap.roomType])) : '';
+        const c1 = colMap.bookingNo >= 0 ? norm(cellStr(row[colMap.bookingNo])) : '';
+        // Rows with empty col A to include:
+        //   訂金 rows  — roomType = "訂金"
+        //   團體/公帳  — col A empty but col B (訂房序號) has value
         const isDepositRow = !c0 && roomTypeVal === '訂金';
-        if (!c0 && !isDepositRow) continue;
-        // reservation rows have numeric col[0] (住房序號); deposit rows bypass this check
+        const isGroupRow   = !c0 && !!c1;
+        if (!c0 && !isDepositRow && !isGroupRow) continue;
+        // Normal rows: col A must be numeric (住房序號)
         if (c0 && !/^\d+$/.test(c0)) continue;
 
         const get = idx => (idx >= 0 ? cellStr(row[idx]) : '');
@@ -298,7 +302,7 @@ export async function POST(request) {
                              getNum(colMap.otherChargesE);
 
         reservationRows.push({
-          reservationNo:  get(colMap.reservationNo) || c0 || (isDepositRow ? `訂金-${r}` : ''),
+          reservationNo:  get(colMap.reservationNo) || c0 || c1 || (isDepositRow ? `訂金-${r}` : `列${r}`),
           bookingNo:      get(colMap.bookingNo),
           roomNo:         get(colMap.roomNo),
           roomType:       get(colMap.roomType),
