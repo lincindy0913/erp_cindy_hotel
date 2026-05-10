@@ -1,6 +1,27 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+
+function downloadCsv(rows) {
+  const cols = ['日期', '館別', '住客', '公司', '來源', '住宿金額', '發票號碼'];
+  const lines = [
+    cols.join(','),
+    ...rows.map(r => [
+      r.businessDate,
+      r.warehouse,
+      `"${(r.guestName || '').replace(/"/g, '""')}"`,
+      `"${(r.companyName || '').replace(/"/g, '""')}"`,
+      r.source || '',
+      r.totalRevenue || 0,
+      `"${(r.invoiceNo || '').replace(/"/g, '""')}"`,
+    ].join(',')),
+  ];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `發票報表.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
   const now = new Date();
@@ -24,13 +45,8 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
       if (warehouse !== '全館') params.set('warehouse', warehouse);
       const res = await fetch(`/api/pms-income/reservations?${params}`);
       if (!res.ok) throw new Error('載入失敗');
-      const data = await res.json();
-      setRows(data);
-    } catch {
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
+      setRows(await res.json());
+    } catch { setRows([]); } finally { setLoading(false); }
   }, [monthStr, warehouse]);
 
   useEffect(() => { load(); }, [load]);
@@ -46,17 +62,33 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
     setRows(prev => prev.map(r => r.id === id ? { ...r, invoiceNo: cleaned } : r));
   };
 
-  const filtered = rows.filter(r => {
+  const filtered = useMemo(() => rows.filter(r => {
     if (guestSearch && !(r.guestName || '').toLowerCase().includes(guestSearch.toLowerCase())) return false;
-    if (invoiceSearch) {
-      if (invoiceSearch === '__has__') return !!r.invoiceNo;
-      if (!(r.invoiceNo || '').toLowerCase().includes(invoiceSearch.toLowerCase())) return false;
-    }
+    if (invoiceSearch === '__has__') return !!r.invoiceNo;
+    if (invoiceSearch && !(r.invoiceNo || '').toLowerCase().includes(invoiceSearch.toLowerCase())) return false;
     return true;
-  });
+  }), [rows, guestSearch, invoiceSearch]);
 
-  const withInvoice = filtered.filter(r => r.invoiceNo);
-  const withoutInvoice = filtered.filter(r => !r.invoiceNo);
+  const withInvoice    = useMemo(() => filtered.filter(r => r.invoiceNo), [filtered]);
+  const withoutInvoice = useMemo(() => filtered.filter(r => !r.invoiceNo), [filtered]);
+
+  // 月報彙總
+  const invoiceAmount   = useMemo(() => withInvoice.reduce((s, r) => s + (r.totalRevenue || 0), 0), [withInvoice]);
+  const noInvoiceAmount = useMemo(() => withoutInvoice.reduce((s, r) => s + (r.totalRevenue || 0), 0), [withoutInvoice]);
+
+  // 來源分布（已開發票）
+  const bySource = useMemo(() => {
+    const m = {};
+    for (const r of withInvoice) {
+      const src = r.source || '其他';
+      if (!m[src]) m[src] = { count: 0, amount: 0 };
+      m[src].count++;
+      m[src].amount += r.totalRevenue || 0;
+    }
+    return Object.entries(m).sort((a, b) => b[1].amount - a[1].amount);
+  }, [withInvoice]);
+
+  const fmt = n => n ? Number(n).toLocaleString('zh-TW') : '0';
 
   return (
     <div className="space-y-4">
@@ -65,22 +97,22 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
         <div>
           <label className="block text-xs text-gray-500 mb-1">館別</label>
           <select value={warehouse} onChange={e => setWarehouse(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
             <option value="全館">全館</option>
             {buildingList.map(w => <option key={w} value={w}>{w}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">年份</label>
-          <select value={year} onChange={e => setYear(parseInt(e.target.value, 10))}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+          <select value={year} onChange={e => setYear(parseInt(e.target.value))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}年</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">月份</label>
-          <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500">
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
             {Array.from({ length: 12 }, (_, i) => i + 1).map(m =>
               <option key={m} value={m}>{m}月</option>)}
           </select>
@@ -88,38 +120,95 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
         <div>
           <label className="block text-xs text-gray-500 mb-1">住客搜尋</label>
           <input value={guestSearch} onChange={e => setGuestSearch(e.target.value)}
-            placeholder="姓名…"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32 focus:ring-2 focus:ring-teal-500" />
+            placeholder="姓名…" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-32" />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">發票號碼搜尋</label>
-          <input value={invoiceSearch === '__has__' ? '' : invoiceSearch} onChange={e => setInvoiceSearch(e.target.value)}
-            placeholder="如 AB12345678…"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-36 focus:ring-2 focus:ring-teal-500" />
+          <label className="block text-xs text-gray-500 mb-1">發票號碼</label>
+          <input value={invoiceSearch === '__has__' ? '' : invoiceSearch}
+            onChange={e => setInvoiceSearch(e.target.value)}
+            placeholder="如 AB12345678…" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-36" />
         </div>
-        <button onClick={() => setInvoiceSearch(invoiceSearch === '__has__' ? '' : '__has__')}
+        <button onClick={() => setInvoiceSearch(v => v === '__has__' ? '' : '__has__')}
           className={`px-3 py-2 text-sm rounded-lg border transition-colors ${invoiceSearch === '__has__' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
           只看已開發票
         </button>
-        <button onClick={load}
-          className="px-3 py-2 text-sm border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50">
+        <button onClick={load} className="px-3 py-2 text-sm border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-50">
           重新整理
+        </button>
+        <button onClick={() => downloadCsv(filtered)}
+          className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+          匯出 CSV
         </button>
       </div>
 
-      {/* Summary chips */}
-      <div className="flex gap-3 text-sm">
-        <span className="px-3 py-1 bg-gray-100 rounded-full text-gray-600">
-          本月共 <strong>{filtered.length}</strong> 筆訂房
-        </span>
-        <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full">
-          已開發票 <strong>{withInvoice.length}</strong> 筆
-        </span>
-        <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-full">
-          未開發票 <strong>{withoutInvoice.length}</strong> 筆
-        </span>
+      {/* ── 月度發票報表 ── */}
+      <div className="bg-white border rounded-xl p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">
+            {year}年{month}月 銷項發票月報（{warehouse === '全館' ? '全館' : warehouse}）
+          </h3>
+          <span className="text-xs text-gray-400">共 {filtered.length} 筆訂房</span>
+        </div>
+
+        {/* KPI 卡片 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+            <div className="text-xs text-indigo-600 mb-1">已開發票張數</div>
+            <div className="text-xl font-bold text-indigo-700">{withInvoice.length} 張</div>
+          </div>
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+            <div className="text-xs text-indigo-600 mb-1">已開發票金額</div>
+            <div className="text-xl font-bold text-indigo-700">NT$ {fmt(invoiceAmount)}</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="text-xs text-amber-600 mb-1">未開發票張數</div>
+            <div className="text-xl font-bold text-amber-700">{withoutInvoice.length} 張</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="text-xs text-amber-600 mb-1">未開發票金額</div>
+            <div className="text-xl font-bold text-amber-700">NT$ {fmt(noInvoiceAmount)}</div>
+          </div>
+        </div>
+
+        {/* 來源分布（已開發票） */}
+        {bySource.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-2">已開發票來源分布</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border rounded-lg overflow-hidden">
+                <thead className="bg-gray-50 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">來源</th>
+                    <th className="px-3 py-2 text-right">張數</th>
+                    <th className="px-3 py-2 text-right">金額</th>
+                    <th className="px-3 py-2 text-right">占比</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {bySource.map(([src, { count, amount }]) => (
+                    <tr key={src} className="hover:bg-gray-50">
+                      <td className="px-3 py-1.5 text-gray-700">{src}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{count}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-medium">{fmt(amount)}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-400">
+                        {invoiceAmount > 0 ? ((amount / invoiceAmount) * 100).toFixed(1) : 0}%
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-indigo-50 font-semibold text-xs">
+                    <td className="px-3 py-2 text-indigo-700">合計</td>
+                    <td className="px-3 py-2 text-right text-indigo-700">{withInvoice.length}</td>
+                    <td className="px-3 py-2 text-right text-indigo-700">{fmt(invoiceAmount)}</td>
+                    <td className="px-3 py-2 text-right text-indigo-500">100%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* 明細表格 */}
       {loading ? (
         <div className="text-center py-12 text-gray-400">載入中…</div>
       ) : filtered.length === 0 ? (
@@ -129,7 +218,7 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
           <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
-                <th className="px-3 py-2 text-left text-xs text-gray-500 whitespace-nowrap">日期</th>
+                <th className="px-3 py-2 text-left text-xs text-gray-500">日期</th>
                 <th className="px-3 py-2 text-left text-xs text-gray-500">館別</th>
                 <th className="px-3 py-2 text-left text-xs text-gray-500">住客</th>
                 <th className="px-3 py-2 text-left text-xs text-gray-500">公司</th>
@@ -157,11 +246,9 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     {editingId === r.id ? (
-                      <input
-                        autoFocus
+                      <input autoFocus
                         className="border rounded px-2 py-0.5 text-xs w-36 font-mono focus:ring-1 focus:ring-indigo-400 text-center"
-                        value={editVal}
-                        placeholder="發票號碼"
+                        value={editVal} placeholder="發票號碼"
                         onChange={e => setEditVal(e.target.value)}
                         onBlur={() => saveInvoice(r.id, editVal)}
                         onKeyDown={e => {
@@ -170,14 +257,10 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
                         }}
                       />
                     ) : (
-                      <span
-                        onClick={() => { setEditingId(r.id); setEditVal(r.invoiceNo || ''); }}
+                      <span onClick={() => { setEditingId(r.id); setEditVal(r.invoiceNo || ''); }}
                         className={`cursor-pointer inline-block px-2 py-0.5 rounded text-xs font-mono
-                          ${r.invoiceNo
-                            ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100'
-                            : 'text-gray-300 hover:text-indigo-400 hover:underline'}`}
-                        title="點擊輸入/修改發票號碼"
-                      >
+                          ${r.invoiceNo ? 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100' : 'text-gray-300 hover:text-indigo-400 hover:underline'}`}
+                        title="點擊輸入/修改發票號碼">
                         {r.invoiceNo || '+ 輸入發票'}
                       </span>
                     )}

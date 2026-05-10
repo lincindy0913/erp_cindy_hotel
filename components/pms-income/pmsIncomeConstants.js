@@ -16,6 +16,7 @@ export const TABS = [
   { key: 'bookingCenter', label: '代訂中心' },
   { key: 'vendorBilling', label: '廠商行程帳單' },
   { key: 'records', label: '收入記錄明細' },
+  { key: 'cashierSummary', label: '出納應收應付' },
   { key: 'monthClose', label: '月結確認' },
   { key: 'settlement', label: '月度核對結算' },
   { key: 'statistics', label: '月度統計報表' },

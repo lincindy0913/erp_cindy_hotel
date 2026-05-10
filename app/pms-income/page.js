@@ -26,6 +26,7 @@ import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBi
 import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
 import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
 import PmsIncomeMonthCloseTab from '@/components/pms-income/PmsIncomeMonthCloseTab';
+import PmsIncomeCashierSummaryTab from '@/components/pms-income/PmsIncomeCashierSummaryTab';
 import PmsIncomeInvoiceTab from '@/components/pms-income/PmsIncomeInvoiceTab';
 import PmsIncomeCCFeeReconTab from '@/components/pms-income/PmsIncomeCCFeeReconTab';
 import PmsIncomeCreditCardTab from '@/components/pms-income/PmsIncomeCreditCardTab';
@@ -656,6 +657,10 @@ function PmsIncomePage() {
             recordsLimit={incomeRecords.recordsLimit}
             recordsPage={incomeRecords.recordsPage}
           />
+        )}
+
+        {activeTab === 'cashierSummary' && (
+          <PmsIncomeCashierSummaryTab WAREHOUSES={WAREHOUSES} />
         )}
 
         {activeTab === 'monthClose' && (
