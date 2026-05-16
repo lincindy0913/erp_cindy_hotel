@@ -273,7 +273,10 @@ export const authOptions = {
   },
   cookies: {
     sessionToken: {
-      name: 'next-auth.session-token',
+      // Do NOT set name explicitly — let next-auth use its secure default:
+      // '__Secure-next-auth.session-token' on HTTPS (production) so withAuth
+      // middleware can find the cookie. Overriding to a non-prefixed name breaks
+      // withAuth which always looks for the __Secure- prefixed name on HTTPS.
       options: {
         httpOnly: true,
         sameSite: 'strict',
