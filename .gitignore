@@ -8,6 +8,7 @@
 /test-results/
 /blob-report/
 /playwright/.cache/
+/playwright-tests/
 /.pnp
 .pnp.js
 
