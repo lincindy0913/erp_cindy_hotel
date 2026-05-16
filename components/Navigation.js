@@ -286,7 +286,10 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
                     {renderRoleBadges()}
                   </span>
                   <button
-                    onClick={() => signOut({ callbackUrl: '/' })}
+                    onClick={async () => {
+                      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                      signOut({ callbackUrl: '/' });
+                    }}
                     className="text-sm text-red-600 hover:text-red-800 hover:underline"
                   >
                     登出

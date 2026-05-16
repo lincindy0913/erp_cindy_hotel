@@ -42,6 +42,16 @@ const nextConfig = {
 
     return [
       {
+        // Block cross-origin API access — only same-origin requests allowed
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin',  value: 'null' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PUT,PATCH,DELETE,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type,Authorization' },
+          { key: 'Access-Control-Max-Age',       value: '0' },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           // Content Security Policy

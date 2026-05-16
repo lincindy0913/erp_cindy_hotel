@@ -9,6 +9,16 @@ const SOURCE_COLORS = {
   '代訂中心':     'bg-purple-100 text-purple-700',
 };
 
+function cfgForSource(cfgList, source) {
+  return cfgList.find(c => {
+    const n = c.companyName.toLowerCase();
+    if (source === 'OTA-Booking') return /booking/.test(n);
+    if (source === 'OTA-Agoda')   return /agoda/.test(n);
+    if (source === 'OTA-Expedia') return /expedia/.test(n);
+    return c.companyName === source;
+  });
+}
+
 function fmt(n) {
   if (n == null || Number(n) === 0) return '-';
   return Number(n).toLocaleString('zh-TW');
@@ -23,6 +33,7 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
   const [sourceFilter, setSourceFilter] = useState('全部');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [configs, setConfigs] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +55,13 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
   }, [warehouse, month]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch('/api/pms-income/travel-agency-config')
+      .then(r => r.ok ? r.json() : [])
+      .then(setConfigs)
+      .catch(() => {});
+  }, []);
 
   const displayed = sourceFilter === '全部'
     ? rows
@@ -104,17 +122,28 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
       {/* Per-source breakdown */}
       {Object.keys(bySource).length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Object.entries(bySource).map(([src, s]) => (
-            <div key={src} className="bg-white border rounded-lg p-3">
-              <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-2 ${SOURCE_COLORS[src] || 'bg-gray-100 text-gray-700'}`}>{src}</span>
-              <div className="text-sm font-semibold">{s.count} 筆</div>
-              <div className="text-xs text-gray-500">收入：{s.totalRevenue.toLocaleString('zh-TW')}</div>
-              <div className="text-xs text-red-600">佣金：{s.totalCommission.toLocaleString('zh-TW')}</div>
-              {s.totalRevenue > 0 && (
-                <div className="text-xs text-gray-400">費率：{(s.totalCommission / s.totalRevenue * 100).toFixed(2)}%</div>
-              )}
-            </div>
-          ))}
+          {Object.entries(bySource).map(([src, s]) => {
+            const cfg = cfgForSource(configs, src);
+            const actualRate = s.totalRevenue > 0 ? s.totalCommission / s.totalRevenue * 100 : null;
+            const configRate = cfg ? Number(cfg.commissionPercentage) : null;
+            const rateDiff = actualRate !== null && configRate !== null ? Math.abs(actualRate - configRate) : null;
+            return (
+              <div key={src} className="bg-white border rounded-lg p-3">
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-2 ${SOURCE_COLORS[src] || 'bg-gray-100 text-gray-700'}`}>{src}</span>
+                <div className="text-sm font-semibold">{s.count} 筆</div>
+                <div className="text-xs text-gray-500">收入：{s.totalRevenue.toLocaleString('zh-TW')}</div>
+                <div className="text-xs text-red-600">佣金：{s.totalCommission.toLocaleString('zh-TW')}</div>
+                {actualRate !== null && (
+                  <div className="text-xs text-gray-400">實際費率：{actualRate.toFixed(2)}%</div>
+                )}
+                {configRate !== null && (
+                  <div className={`text-xs mt-0.5 ${rateDiff !== null && rateDiff > 2 ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+                    設定費率：{configRate}%{rateDiff !== null && rateDiff > 2 ? ` ⚠ 差異 ${rateDiff.toFixed(1)}%` : ''}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -134,7 +163,8 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
                 <th className="px-3 py-2 text-center">來源</th>
                 <th className="px-3 py-2 text-right">住宿金額</th>
                 <th className="px-3 py-2 text-right">佣金</th>
-                <th className="px-3 py-2 text-right">佣金率</th>
+                <th className="px-3 py-2 text-right">實際費率</th>
+                <th className="px-3 py-2 text-right">設定費率</th>
                 <th className="px-3 py-2 text-right">現金</th>
                 <th className="px-3 py-2 text-right">信用卡</th>
               </tr>
@@ -142,11 +172,14 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
             <tbody className="divide-y">
               {displayed.map(r => {
                 const src = r.sourceOverride || r.source;
-                const commRate = r.totalRevenue > 0 && r.commission > 0
-                  ? (r.commission / r.totalRevenue * 100).toFixed(2) + '%'
-                  : '-';
+                const actualRate = r.totalRevenue > 0 && r.commission > 0
+                  ? r.commission / r.totalRevenue * 100
+                  : null;
+                const cfg = cfgForSource(configs, src);
+                const configRate = cfg ? Number(cfg.commissionPercentage) : null;
+                const rateDiff = actualRate !== null && configRate !== null ? Math.abs(actualRate - configRate) : null;
                 return (
-                  <tr key={r.id} className="hover:bg-gray-50">
+                  <tr key={r.id} className={`hover:bg-gray-50 ${rateDiff !== null && rateDiff > 2 ? 'bg-orange-50' : ''}`}>
                     <td className="px-3 py-2 whitespace-nowrap">{r.businessDate}</td>
                     <td className="px-3 py-2 max-w-[100px] truncate" title={r.guestName}>{r.guestName || '-'}</td>
                     <td className="px-3 py-2 max-w-[150px] text-xs text-gray-500 truncate" title={r.companyName || r.discountName}>
@@ -157,7 +190,12 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
                     </td>
                     <td className="px-3 py-2 text-right">{fmt(r.totalRevenue)}</td>
                     <td className="px-3 py-2 text-right text-red-600 font-medium">{fmt(r.commission)}</td>
-                    <td className="px-3 py-2 text-right text-gray-500 text-xs">{commRate}</td>
+                    <td className="px-3 py-2 text-right text-gray-500 text-xs">{actualRate !== null ? actualRate.toFixed(2) + '%' : '-'}</td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      {configRate !== null
+                        ? <span className={rateDiff !== null && rateDiff > 2 ? 'text-orange-600 font-semibold' : 'text-gray-400'}>{configRate}%{rateDiff !== null && rateDiff > 2 ? ' ⚠' : ''}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-right">{fmt(r.cash)}</td>
                     <td className="px-3 py-2 text-right">{fmt(r.creditCard)}</td>
                   </tr>
@@ -169,7 +207,7 @@ export default function PmsIncomeOtaCommissionTab({ WAREHOUSES = [] }) {
                 <td colSpan={4} className="px-3 py-2 text-gray-600">合計（{displayed.length} 筆）</td>
                 <td className="px-3 py-2 text-right">{displayed.reduce((s, r) => s + (r.totalRevenue || 0), 0).toLocaleString('zh-TW')}</td>
                 <td className="px-3 py-2 text-right text-red-600">{displayed.reduce((s, r) => s + (r.commission || 0), 0).toLocaleString('zh-TW')}</td>
-                <td />
+                <td /><td />
                 <td className="px-3 py-2 text-right">{displayed.reduce((s, r) => s + (r.cash || 0), 0).toLocaleString('zh-TW')}</td>
                 <td className="px-3 py-2 text-right">{displayed.reduce((s, r) => s + (r.creditCard || 0), 0).toLocaleString('zh-TW')}</td>
               </tr>

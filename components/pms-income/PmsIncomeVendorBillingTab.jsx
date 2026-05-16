@@ -56,6 +56,9 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
   const [fDirection,    setFDirection]    = useState('');
   const [fStatus,       setFStatus]       = useState('');
 
+  // agency configs from travel-agency-config
+  const [configs, setConfigs] = useState([]);
+
   // new billing modal
   const [showCreate, setShowCreate] = useState(false);
   const [form,       setForm]       = useState(EMPTY_FORM);
@@ -83,6 +86,13 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
   }, [fWarehouse, fMonth, fDirection, fStatus]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch('/api/pms-income/travel-agency-config')
+      .then(r => r.ok ? r.json() : [])
+      .then(setConfigs)
+      .catch(() => {});
+  }, []);
 
   const today     = new Date().toISOString().slice(0, 10);
   const arTotal   = billings.filter(b => b.direction === 'AR').reduce((s, b) => s + b.totalAmount, 0);
@@ -177,6 +187,27 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
         </div>
         <div className="ml-auto flex gap-2">
           <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">重新整理</button>
+          <button
+            onClick={async () => {
+              if (!fWarehouse) { alert('請先選擇館別'); return; }
+              if (!fMonth)     { alert('請先選擇帳單月份'); return; }
+              if (!window.confirm(`確定要依佣金設定，自動建立 ${fWarehouse} ${fMonth} 的 OTA 帳單草稿？`)) return;
+              const res  = await fetch('/api/pms-income/vendor-billing/auto-generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ warehouse: fWarehouse, billingMonth: fMonth }),
+              });
+              const data = await res.json();
+              if (!res.ok) { alert(`建立失敗：${data.error?.message || '未知錯誤'}`); return; }
+              alert(`已建立 ${data.created} 筆 OTA 帳單草稿${data.skipped ? `（${data.skipped} 筆已存在略過）` : ''}`);
+              load();
+            }}
+            disabled={!fWarehouse || !fMonth}
+            className="px-3 py-1.5 text-sm rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40"
+            title="依佣金配置設定，自動計算本月各 OTA 佣金並建立草稿帳單"
+          >
+            一鍵建立本月帳單
+          </button>
           <button onClick={() => downloadBillingCSV(billings, fMonth)}
             className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
             title="匯出當前篩選結果為 CSV（可用 Excel 開啟做請款單）">
@@ -266,7 +297,29 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
 
             <div>
               <label className="block text-xs text-gray-500 mb-1">廠商名稱 *</label>
-              <input type="text" placeholder="旅行社或廠商名稱" className="w-full border rounded-lg px-3 py-1.5 text-sm" value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} />
+              {configs.filter(c => c.isActive).length > 0 && (
+                <select
+                  className="w-full border rounded-lg px-3 py-1.5 text-sm mb-1 text-gray-700"
+                  value={configs.find(c => c.companyName === form.supplierName) ? form.supplierName : ''}
+                  onChange={e => {
+                    if (!e.target.value) return;
+                    const cfg = configs.find(c => c.companyName === e.target.value);
+                    if (cfg) setForm(f => ({
+                      ...f,
+                      supplierName: cfg.companyName,
+                      direction: cfg.paymentType !== 'NONE' ? cfg.paymentType : f.direction,
+                    }));
+                  }}
+                >
+                  <option value="">— 從佣金配置選取廠商 —</option>
+                  {configs.filter(c => c.isActive).map(c => (
+                    <option key={c.id} value={c.companyName}>
+                      {c.companyName}（{c.paymentType === 'AP' ? '應付' : c.paymentType === 'AR' ? '應收' : '無'}・{c.commissionPercentage}%）
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input type="text" placeholder="旅行社或廠商名稱（或手動輸入）" className="w-full border rounded-lg px-3 py-1.5 text-sm" value={form.supplierName} onChange={e => setForm(f => ({ ...f, supplierName: e.target.value }))} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">

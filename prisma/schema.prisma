@@ -585,6 +585,11 @@ model User {
   passwordHistory         Json      @default("[]") @map("password_history") // Recent bcrypt hashes to prevent reuse
   failedLoginAttempts     Int       @default(0) @map("failed_login_attempts")
   lockedUntil             DateTime? @map("locked_until")
+  // 雙因素驗證 (TOTP)
+  totpSecret              String?   @map("totp_secret") @db.VarChar(500)
+  totpEnabled             Boolean   @default(false) @map("totp_enabled")
+  totpBackupCodes         String?   @map("totp_backup_codes") @db.Text
+  tokenVersion            Int       @default(0) @map("token_version")
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 

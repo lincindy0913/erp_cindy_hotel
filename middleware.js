@@ -7,11 +7,34 @@ const API_VERSION = '1.0';
 // Clients can send Api-Version header; for now we accept all and return current version.
 
 // ── CSRF protection ──
-// All /api/ routes are protected by JWT session auth (NextAuth).
-// CSRF origin-check is skipped for all API routes — JWT is the security boundary.
-// This prevents 403 errors when accessing from internal IP addresses (Docker/LAN).
-function validateCsrf(_req) {
-  return { ok: true };
+// State-changing requests (POST/PUT/PATCH/DELETE) to /api/ routes validate Origin/Referer.
+// JSON-only requests without Origin are allowed (browsers cannot forge JSON cross-origin).
+// JWT + SameSite=strict cookies + Origin check = layered CSRF defence.
+const CSRF_STATE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function validateCsrf(req) {
+  const method = req.method?.toUpperCase();
+  if (!CSRF_STATE_METHODS.has(method)) return { ok: true };
+
+  const origin  = req.headers.get('origin');
+  const referer = req.headers.get('referer');
+
+  // No Origin/Referer → only safe if content-type is JSON (cannot be forged cross-origin)
+  if (!origin && !referer) {
+    const ct = req.headers.get('content-type') || '';
+    return ct.includes('application/json') || ct === ''
+      ? { ok: true }
+      : { ok: false, reason: 'Missing Origin on state-changing request' };
+  }
+
+  const expectedHost = new URL(req.url).host;
+  const checkHost = origin || referer;
+  try {
+    if (new URL(checkHost).host === expectedHost) return { ok: true };
+    return { ok: false, reason: `Origin/Referer host mismatch` };
+  } catch {
+    return { ok: false, reason: 'Invalid Origin/Referer header' };
+  }
 }
 
 // ── Rate limiting (in-memory sliding window) ──
@@ -130,6 +153,17 @@ export default withAuth(
         return NextResponse.json(
           { error: { code: 'RATE_LIMITED', message: '請求過於頻繁，請稍後再試' } },
           { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs || 60000) / 1000)) } }
+        );
+      }
+    }
+
+    // ── CSRF validation for state-changing API requests ──
+    if (isApiRoute) {
+      const csrf = validateCsrf(req);
+      if (!csrf.ok) {
+        return NextResponse.json(
+          { error: { code: 'CSRF_REJECTED', message: '請求來源驗證失敗' } },
+          { status: 403 }
         );
       }
     }

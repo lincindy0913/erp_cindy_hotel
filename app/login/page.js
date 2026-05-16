@@ -1,15 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [email,     setEmail]     = useState('');
+  const [password,  setPassword]  = useState('');
+  const [totpCode,  setTotpCode]  = useState('');
+  const [step,      setStep]      = useState('password'); // 'password' | 'totp'
+  const [error,     setError]     = useState('');
+  const [loading,   setLoading]   = useState(false);
+  const totpRef = useRef(null);
+  const router  = useRouter();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -19,16 +22,32 @@ export default function LoginPage() {
     const result = await signIn('credentials', {
       email,
       password,
-      redirect: false
+      totpCode: step === 'totp' ? totpCode : '',
+      redirect: false,
     });
 
-    if (result?.error) {
-      setError('登入失敗，請確認帳號密碼是否正確');
-      setLoading(false);
-    } else {
+    setLoading(false);
+
+    if (!result?.error) {
       router.push('/');
       router.refresh();
+      return;
     }
+
+    if (result.error === 'TOTP_REQUIRED') {
+      setStep('totp');
+      setTotpCode('');
+      setTimeout(() => totpRef.current?.focus(), 100);
+      return;
+    }
+
+    setError(step === 'totp' ? '驗證碼錯誤，請重新輸入' : '登入失敗，請確認帳號密碼是否正確');
+  }
+
+  function handleBackToPassword() {
+    setStep('password');
+    setTotpCode('');
+    setError('');
   }
 
   return (
@@ -36,7 +55,9 @@ export default function LoginPage() {
       <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">進銷存系統</h1>
-          <p className="text-gray-500">請輸入帳號密碼登入</p>
+          <p className="text-gray-500">
+            {step === 'totp' ? '請輸入驗證器上的 6 位數驗證碼' : '請輸入帳號密碼登入'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -46,46 +67,80 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              電子郵件
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              placeholder="請輸入電子郵件"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              密碼
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              placeholder="請輸入密碼"
-            />
-          </div>
+          {step === 'password' ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  placeholder="請輸入電子郵件"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">密碼</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  placeholder="請輸入密碼"
+                />
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">驗證碼</label>
+              <input
+                ref={totpRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9A-Z\s]{6,10}"
+                maxLength={10}
+                value={totpCode}
+                onChange={e => setTotpCode(e.target.value)}
+                required
+                autoComplete="one-time-code"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-center text-2xl tracking-widest font-mono"
+                placeholder="000000"
+              />
+              <p className="text-xs text-gray-400 mt-1.5">
+                請開啟 Google Authenticator 或其他驗證器 App，輸入 6 位數字驗證碼。
+                或輸入備用碼（含大寫英文字母）。
+              </p>
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
           >
-            {loading ? '登入中...' : '登入'}
+            {loading ? '驗證中...' : step === 'totp' ? '確認驗證碼' : '登入'}
           </button>
+
+          {step === 'totp' && (
+            <button
+              type="button"
+              onClick={handleBackToPassword}
+              className="w-full text-sm text-gray-500 hover:text-gray-700 py-1"
+            >
+              ← 返回重新輸入帳號密碼
+            </button>
+          )}
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>預設管理員帳號: admin@hotel.com</p>
-        </div>
+        {step === 'password' && (
+          <div className="mt-6 text-center text-sm text-gray-500">
+            <p>預設管理員帳號: admin@hotel.com</p>
+          </div>
+        )}
       </div>
     </div>
   );

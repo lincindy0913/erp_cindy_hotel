@@ -1,6 +1,8 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
+import { authenticator } from 'otplib';
+import { decryptField } from '@/lib/field-encryption';
 
 // Demo users module for development without database
 const demoUsers = require('@/lib/demo-users');
@@ -26,8 +28,9 @@ export const authOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        email:     { label: "Email",     type: "email"    },
+        password:  { label: "Password",  type: "password" },
+        totpCode:  { label: "驗證碼",    type: "text"     },
       },
       async authorize(credentials) {
         _validateSecret(); // Throws in production if secret is weak
@@ -75,6 +78,34 @@ export const authOptions = {
             return null;
           }
 
+          // ── TOTP 雙因素驗證 ──
+          if (user.totpEnabled && user.totpSecret) {
+            const code = (credentials.totpCode || '').replace(/\s/g, '');
+            if (!code) {
+              // 密碼正確但未提供 TOTP → 通知前端顯示 TOTP 輸入框
+              throw new Error('TOTP_REQUIRED');
+            }
+            authenticator.options = { window: 1 };
+            const totpSecret = decryptField(user.totpSecret);
+            const totpValid = authenticator.verify({ token: code, secret: totpSecret });
+            if (!totpValid) {
+              // 嘗試備用碼
+              const backupCodes = JSON.parse(user.totpBackupCodes || '[]');
+              const codeUpper   = code.toUpperCase();
+              const idx         = backupCodes.indexOf(codeUpper);
+              if (idx === -1) {
+                const attempts = (user.failedLoginAttempts || 0) + 1;
+                const lockData = { failedLoginAttempts: attempts };
+                if (attempts >= 5) lockData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+                await prisma.user.update({ where: { id: user.id }, data: lockData });
+                return null;
+              }
+              // 已使用的備用碼移除
+              backupCodes.splice(idx, 1);
+              await prisma.user.update({ where: { id: user.id }, data: { totpBackupCodes: JSON.stringify(backupCodes) } });
+            }
+          }
+
           // Successful login — reset failed attempts and lock
           if (user.failedLoginAttempts > 0 || user.lockedUntil) {
             await prisma.user.update({
@@ -106,6 +137,7 @@ export const authOptions = {
             permissions: isAdmin ? ['*'] : Array.from(permSet),
             warehouseRestriction: user.warehouseRestriction || null,
             passwordChangedAt: user.passwordChangedAt ? user.passwordChangedAt.getTime() : null,
+            tokenVersion: user.tokenVersion ?? 0,
           };
         } catch (error) {
           // Only fall back to demo mode for DB connection errors
@@ -162,6 +194,7 @@ export const authOptions = {
         token.permissions = user.permissions;
         token.warehouseRestriction = user.warehouseRestriction || null;
         token.passwordChangedAt = user.passwordChangedAt || null;
+        token.tokenVersion = user.tokenVersion ?? 0;
         token.issuedAt = Date.now();
         token.lastActivity = Date.now();
         token.refreshedAt = Date.now();
@@ -190,6 +223,10 @@ export const authOptions = {
           if (!freshUser || !freshUser.isActive) {
             return { expired: true };
           }
+          // Invalidate if tokenVersion was bumped (e.g. logout from another device)
+          if ((freshUser.tokenVersion ?? 0) !== (token.tokenVersion ?? 0)) {
+            return { expired: true };
+          }
           // Refresh token data from DB
           const roleCodes = freshUser.userRoles.map(ur => ur.role.code);
           const permSet = new Set();
@@ -203,6 +240,7 @@ export const authOptions = {
           token.permissions = isAdmin ? ['*'] : Array.from(permSet);
           token.warehouseRestriction = freshUser.warehouseRestriction || null;
           token.passwordChangedAt = freshUser.passwordChangedAt ? freshUser.passwordChangedAt.getTime() : null;
+          token.tokenVersion = freshUser.tokenVersion ?? 0;
           token.refreshedAt = Date.now();
         } catch {
           // DB unavailable — keep existing token data, retry next time
@@ -232,7 +270,18 @@ export const authOptions = {
   session: {
     strategy: 'jwt',
     maxAge: 24 * 60 * 60 // 24 hours absolute maximum
-  }
+  },
+  cookies: {
+    sessionToken: {
+      name: 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        sameSite: 'strict',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
 };
 
 const handler = NextAuth(authOptions);
