@@ -27,11 +27,17 @@ function validateCsrf(req) {
       : { ok: false, reason: 'Missing Origin on state-changing request' };
   }
 
-  const expectedHost = new URL(req.url).host;
+  // Use Host header directly — req.url may resolve to an internal address (e.g. 0.0.0.0:3000)
+  // in Docker, which would mismatch against the browser's Referer/Origin (localhost:3000).
+  const expectedHost = req.headers.get('host') || req.nextUrl.host;
   const checkHost = origin || referer;
+
+  // Reject literal "null" origin (sandboxed iframes / opaque origins)
+  if (checkHost === 'null') return { ok: false, reason: 'Null origin rejected' };
+
   try {
     if (new URL(checkHost).host === expectedHost) return { ok: true };
-    return { ok: false, reason: `Origin/Referer host mismatch` };
+    return { ok: false, reason: `Origin/Referer host mismatch: got ${new URL(checkHost).host}, expected ${expectedHost}` };
   } catch {
     return { ok: false, reason: 'Invalid Origin/Referer header' };
   }
