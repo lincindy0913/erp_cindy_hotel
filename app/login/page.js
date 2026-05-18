@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef, useEffect } from 'react';
+import { signIn, useSession } from 'next-auth/react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
   const [email,     setEmail]     = useState('');
@@ -11,8 +11,31 @@ export default function LoginPage() {
   const [step,      setStep]      = useState('password'); // 'password' | 'totp'
   const [error,     setError]     = useState('');
   const [loading,   setLoading]   = useState(false);
-  const totpRef = useRef(null);
-  const router  = useRouter();
+  const totpRef    = useRef(null);
+  const router     = useRouter();
+  const searchParams = useSearchParams();
+  const { status } = useSession();
+
+  // Resolve the safe same-origin callbackUrl, fall back to '/'
+  const callbackUrl = (() => {
+    const raw = searchParams.get('callbackUrl') || '/';
+    try {
+      const url = new URL(raw);
+      // Only honour same-origin callbacks
+      if (url.origin === window.location.origin) return url.pathname + url.search;
+    } catch {
+      // raw is a relative path (e.g. '/purchasing')
+      if (raw.startsWith('/')) return raw;
+    }
+    return '/';
+  })();
+
+  // Already authenticated → skip the form and go straight to the destination
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.replace(callbackUrl);
+    }
+  }, [status, callbackUrl, router]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -29,7 +52,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (!result?.error) {
-      router.push('/');
+      router.push(callbackUrl);
       router.refresh();
       return;
     }
@@ -48,6 +71,15 @@ export default function LoginPage() {
     setStep('password');
     setTotpCode('');
     setError('');
+  }
+
+  // Don't flash the form while the session check is in flight
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-gray-400 text-sm">載入中...</div>
+      </div>
+    );
   }
 
   return (
