@@ -1883,7 +1883,7 @@ function RentalsPage() {
                   );
                 })()}
 
-                {/* Inline payment form */}
+                {/* Payment modal */}
                 {payingIncomeId && (() => {
                   const currentIncome = incomes.find(i => i.id === payingIncomeId);
                   const expectedAmt = Number(currentIncome?.expectedAmount || 0);
@@ -1895,178 +1895,200 @@ function RentalsPage() {
                   const utilityActualAmt = Number(incomeUtilityForm.actualAmount || 0);
                   const totalExpectedAmt = expectedAmt + utilityExpectedAmt;
                   return (
-                  <div className="mt-4 bg-teal-50 border border-teal-200 rounded-lg p-4">
-                    <h4 className="font-medium text-teal-800 mb-3">{incomeFormMode === 'edit' ? '編輯收款' : '新增收款'}</h4>
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <div className="absolute inset-0 bg-black/50" onClick={() => setPayingIncomeId(null)} />
+                    {/* Modal panel */}
+                    <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                      {/* Sticky header */}
+                      <div className="flex items-start justify-between px-5 py-4 border-b border-teal-200 bg-teal-50 rounded-t-xl shrink-0">
+                        <div>
+                          <h4 className="font-semibold text-teal-800 text-base">{incomeFormMode === 'edit' ? '編輯收款' : '新增收款'}</h4>
+                          {(currentIncome?.propertyName || currentIncome?.tenantName) && (
+                            <p className="text-sm text-teal-600 mt-0.5">
+                              {currentIncome?.propertyName}{currentIncome?.tenantName ? ` — ${currentIncome.tenantName}` : ''}
+                            </p>
+                          )}
+                        </div>
+                        <button onClick={() => setPayingIncomeId(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors ml-4 shrink-0">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
 
-                    {/* 收款狀態摘要 */}
-                    <div className="bg-white rounded-lg px-3 py-2 mb-3 flex gap-4 text-sm flex-wrap">
-                      <span>租金應收：<b className="text-gray-800">${fmt(expectedAmt)}</b></span>
-                      {showUtilitySection && <span>電費應收：<b className="text-blue-700">${fmt(utilityExpectedAmt)}</b></span>}
-                      {showUtilitySection && <span>合計應收：<b className="text-gray-900">${fmt(totalExpectedAmt)}</b></span>}
-                      <span>已收：<b className="text-green-700">${fmt(receivedAmt)}</b></span>
-                      <span>尚欠：<b className={remainingAmt > 0 ? 'text-red-600' : 'text-green-600'}>${fmt(remainingAmt)}</b></span>
-                    </div>
+                      {/* Scrollable content */}
+                      <div className="overflow-y-auto p-5">
+                        {/* 收款狀態摘要 */}
+                        <div className="bg-teal-50 border border-teal-100 rounded-lg px-3 py-2 mb-4 flex gap-4 text-sm flex-wrap">
+                          <span>租金應收：<b className="text-gray-800">${fmt(expectedAmt)}</b></span>
+                          {showUtilitySection && <span>電費應收：<b className="text-blue-700">${fmt(utilityExpectedAmt)}</b></span>}
+                          {showUtilitySection && <span>合計應收：<b className="text-gray-900">${fmt(totalExpectedAmt)}</b></span>}
+                          <span>已收：<b className="text-green-700">${fmt(receivedAmt)}</b></span>
+                          <span>尚欠：<b className={remainingAmt > 0 ? 'text-red-600' : 'text-green-600'}>${fmt(remainingAmt)}</b></span>
+                        </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-600">實收金額</label>
-                        <input type="number" value={incomePayForm.actualAmount} onChange={e => setIncomePayForm(f => ({ ...f, actualAmount: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600">收款日期</label>
-                        <input type="date" value={incomePayForm.actualDate} onChange={e => setIncomePayForm(f => ({ ...f, actualDate: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600">收款帳戶</label>
-                        <select value={incomePayForm.accountId} onChange={e => setIncomePayForm(f => ({ ...f, accountId: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm">
-                          <option value="">選擇帳戶</option>
-                          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600">付款方式</label>
-                        <select value={incomePayForm.paymentMethod} onChange={e => setIncomePayForm(f => ({ ...f, paymentMethod: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm">
-                          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
-                        </select>
-                      </div>
-                      {incomePayForm.paymentMethod === 'transfer' && (
-                        <>
-                          <div>
-                            <label className="text-xs text-gray-600">轉帳參考號</label>
-                            <input type="text" value={incomePayForm.matchTransferRef} onChange={e => setIncomePayForm(f => ({ ...f, matchTransferRef: e.target.value }))}
-                              className="w-full border rounded px-2 py-1 text-sm" />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">匯款人戶名</label>
-                            <input type="text" value={incomePayForm.matchBankAccountName} onChange={e => setIncomePayForm(f => ({ ...f, matchBankAccountName: e.target.value }))}
-                              className="w-full border rounded px-2 py-1 text-sm" />
-                          </div>
-                        </>
-                      )}
-                      <div>
-                        <label className="text-xs text-gray-600">備註</label>
-                        <input type="text" value={incomePayForm.matchNote} onChange={e => setIncomePayForm(f => ({ ...f, matchNote: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm" placeholder="收款備註" />
-                      </div>
-                    </div>
-
-                    {/* 電費區塊（僅限 confirm 模式且物業有 collectUtilityFee） */}
-                    {showUtilitySection && (
-                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <h5 className="text-sm font-medium text-blue-800 mb-2">電費收入（與租金一併入帳）</h5>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="text-xs text-blue-700">電費應收金額</label>
-                            <input type="number" min="0" step="0.01"
-                              value={incomeUtilityForm.expectedAmount}
-                              onChange={e => setIncomeUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))}
-                              className="w-full border border-blue-200 rounded px-2 py-1 text-sm bg-white"
-                              placeholder="本月電費帳單金額" />
+                            <label className="text-xs text-gray-600">實收金額</label>
+                            <input type="number" value={incomePayForm.actualAmount} onChange={e => setIncomePayForm(f => ({ ...f, actualAmount: e.target.value }))}
+                              className="w-full border rounded px-2 py-1.5 text-sm" />
                           </div>
                           <div>
-                            <label className="text-xs text-blue-700">電費實收金額</label>
-                            <input type="number" min="0" step="0.01"
-                              value={incomeUtilityForm.actualAmount}
-                              onChange={e => setIncomeUtilityForm(f => ({ ...f, actualAmount: e.target.value }))}
-                              className="w-full border border-blue-200 rounded px-2 py-1 text-sm bg-white"
-                              placeholder="留空表示尚未收到電費" />
+                            <label className="text-xs text-gray-600">收款日期</label>
+                            <input type="date" value={incomePayForm.actualDate} onChange={e => setIncomePayForm(f => ({ ...f, actualDate: e.target.value }))}
+                              className="w-full border rounded px-2 py-1.5 text-sm" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600">收款帳戶</label>
+                            <select value={incomePayForm.accountId} onChange={e => setIncomePayForm(f => ({ ...f, accountId: e.target.value }))}
+                              className="w-full border rounded px-2 py-1.5 text-sm">
+                              <option value="">選擇帳戶</option>
+                              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600">付款方式</label>
+                            <select value={incomePayForm.paymentMethod} onChange={e => setIncomePayForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                              className="w-full border rounded px-2 py-1.5 text-sm">
+                              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                            </select>
+                          </div>
+                          {incomePayForm.paymentMethod === 'transfer' && (
+                            <>
+                              <div>
+                                <label className="text-xs text-gray-600">轉帳參考號</label>
+                                <input type="text" value={incomePayForm.matchTransferRef} onChange={e => setIncomePayForm(f => ({ ...f, matchTransferRef: e.target.value }))}
+                                  className="w-full border rounded px-2 py-1.5 text-sm" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-600">匯款人戶名</label>
+                                <input type="text" value={incomePayForm.matchBankAccountName} onChange={e => setIncomePayForm(f => ({ ...f, matchBankAccountName: e.target.value }))}
+                                  className="w-full border rounded px-2 py-1.5 text-sm" />
+                              </div>
+                            </>
+                          )}
+                          <div className="col-span-2">
+                            <label className="text-xs text-gray-600">備註</label>
+                            <input type="text" value={incomePayForm.matchNote} onChange={e => setIncomePayForm(f => ({ ...f, matchNote: e.target.value }))}
+                              className="w-full border rounded px-2 py-1.5 text-sm" placeholder="收款備註" />
                           </div>
                         </div>
-                        <p className="text-xs text-blue-500 mt-1">※ 電費將使用相同日期與帳戶自動建立金流</p>
-                      </div>
-                    )}
 
-                    <div className="mt-3 flex gap-2">
-                      <button onClick={confirmIncomePayment} disabled={incomePaymentSaving} className="bg-teal-600 text-white px-4 py-1.5 rounded text-sm hover:bg-teal-700 disabled:opacity-50">{incomePaymentSaving ? '處理中…' : (incomeFormMode === 'edit' ? '儲存' : '確認收款')}</button>
-                      <button onClick={() => setPayingIncomeId(null)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
-                    </div>
+                        {/* 電費區塊（僅限 confirm 模式且物業有 collectUtilityFee） */}
+                        {showUtilitySection && (
+                          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <h5 className="text-sm font-medium text-blue-800 mb-2">電費收入（與租金一併入帳）</h5>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs text-blue-700">電費應收金額</label>
+                                <input type="number" min="0" step="0.01"
+                                  value={incomeUtilityForm.expectedAmount}
+                                  onChange={e => setIncomeUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))}
+                                  className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm bg-white"
+                                  placeholder="本月電費帳單金額" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-blue-700">電費實收金額</label>
+                                <input type="number" min="0" step="0.01"
+                                  value={incomeUtilityForm.actualAmount}
+                                  onChange={e => setIncomeUtilityForm(f => ({ ...f, actualAmount: e.target.value }))}
+                                  className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm bg-white"
+                                  placeholder="留空表示尚未收到電費" />
+                              </div>
+                            </div>
+                            <p className="text-xs text-blue-500 mt-1">※ 電費將使用相同日期與帳戶自動建立金流</p>
+                          </div>
+                        )}
 
-                    {/* 歷次收款紀錄 */}
-                    {payHistory.length > 0 && (
-                      <div className="mt-4 border-t border-teal-200 pt-3">
-                        <h5 className="text-sm font-medium text-teal-700 mb-2">歷次收款紀錄（可個別編輯）</h5>
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="text-gray-500 border-b">
-                              <th className="text-left py-1">次數</th>
-                              <th className="text-left py-1">收款日期</th>
-                              <th className="text-right py-1">金額</th>
-                              <th className="text-left py-1">收款帳戶</th>
-                              <th className="text-left py-1">付款方式</th>
-                              <th className="text-left py-1">備註</th>
-                              <th className="text-center py-1">操作</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {payHistory.map((p, i) => (
-                              <React.Fragment key={p.id || i}>
-                                <tr className="border-b border-gray-100">
-                                  <td className="py-1 font-medium">第{p.sequenceNo || (i + 1)}次</td>
-                                  <td className="py-1">{p.paymentDate || '-'}</td>
-                                  <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
-                                  <td className="py-1">{p.account?.name || accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
-                                  <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
-                                  <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
-                                  <td className="py-1 text-center">
-                                    {p.id && (editingPaymentId === p.id ? (
-                                      <button onClick={() => setEditingPaymentId(null)} className="text-gray-400 text-xs">取消</button>
-                                    ) : (
-                                      <button onClick={() => openPaymentEdit(p)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">編輯</button>
-                                    ))}
-                                  </td>
+                        {/* 歷次收款紀錄 */}
+                        {payHistory.length > 0 && (
+                          <div className="mt-4 border-t border-gray-200 pt-4">
+                            <h5 className="text-sm font-medium text-teal-700 mb-2">歷次收款紀錄（可個別編輯）</h5>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-gray-500 border-b">
+                                  <th className="text-left py-1">次數</th>
+                                  <th className="text-left py-1">收款日期</th>
+                                  <th className="text-right py-1">金額</th>
+                                  <th className="text-left py-1">收款帳戶</th>
+                                  <th className="text-left py-1">付款方式</th>
+                                  <th className="text-left py-1">備註</th>
+                                  <th className="text-center py-1">操作</th>
                                 </tr>
-                                {p.id && editingPaymentId === p.id && (
-                                  <tr className="bg-blue-50/70">
-                                    <td colSpan={7} className="py-2 px-2">
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
-                                        <div>
-                                          <label className="text-xs text-gray-500">金額</label>
-                                          <input type="number" value={editingPaymentForm.amount} onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
-                                        </div>
-                                        <div>
-                                          <label className="text-xs text-gray-500">日期</label>
-                                          <input type="date" value={editingPaymentForm.paymentDate} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
-                                        </div>
-                                        <div>
-                                          <label className="text-xs text-gray-500">收款帳戶</label>
-                                          <select value={editingPaymentForm.accountId} onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
-                                            <option value="">選擇</option>
-                                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                          </select>
-                                        </div>
-                                        <div>
-                                          <label className="text-xs text-gray-500">付款方式</label>
-                                          <select value={editingPaymentForm.paymentMethod} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
-                                            {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
-                                          </select>
-                                        </div>
-                                        <div className="col-span-2">
-                                          <label className="text-xs text-gray-500">備註</label>
-                                          <input type="text" value={editingPaymentForm.matchNote} onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
-                                        </div>
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <button onClick={savePaymentEdit} disabled={editingPaymentSaving} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">{editingPaymentSaving ? '儲存中…' : '儲存'}</button>
-                                        <button onClick={() => setEditingPaymentId(null)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs hover:bg-gray-300">取消</button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            ))}
-                            <tr className="font-medium bg-teal-100/50">
-                              <td className="py-1" colSpan={2}>合計已收</td>
-                              <td className="py-1 text-right text-green-700">${fmt(receivedAmt)}</td>
-                              <td className="py-1" colSpan={4}>{remainingAmt > 0 ? <span className="text-red-600">尚欠 ${fmt(remainingAmt)}</span> : <span className="text-green-600">已收齊</span>}</td>
-                            </tr>
-                          </tbody>
-                        </table>
+                              </thead>
+                              <tbody>
+                                {payHistory.map((p, i) => (
+                                  <React.Fragment key={p.id || i}>
+                                    <tr className="border-b border-gray-100">
+                                      <td className="py-1 font-medium">第{p.sequenceNo || (i + 1)}次</td>
+                                      <td className="py-1">{p.paymentDate || '-'}</td>
+                                      <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
+                                      <td className="py-1">{p.account?.name || accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
+                                      <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
+                                      <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
+                                      <td className="py-1 text-center">
+                                        {p.id && (editingPaymentId === p.id ? (
+                                          <button onClick={() => setEditingPaymentId(null)} className="text-gray-400 text-xs">取消</button>
+                                        ) : (
+                                          <button onClick={() => openPaymentEdit(p)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">編輯</button>
+                                        ))}
+                                      </td>
+                                    </tr>
+                                    {p.id && editingPaymentId === p.id && (
+                                      <tr className="bg-blue-50/70">
+                                        <td colSpan={7} className="py-2 px-2">
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                                            <div>
+                                              <label className="text-xs text-gray-500">金額</label>
+                                              <input type="number" value={editingPaymentForm.amount} onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                            </div>
+                                            <div>
+                                              <label className="text-xs text-gray-500">日期</label>
+                                              <input type="date" value={editingPaymentForm.paymentDate} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                            </div>
+                                            <div>
+                                              <label className="text-xs text-gray-500">收款帳戶</label>
+                                              <select value={editingPaymentForm.accountId} onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
+                                                <option value="">選擇</option>
+                                                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                              </select>
+                                            </div>
+                                            <div>
+                                              <label className="text-xs text-gray-500">付款方式</label>
+                                              <select value={editingPaymentForm.paymentMethod} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
+                                                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                                              </select>
+                                            </div>
+                                            <div className="col-span-2">
+                                              <label className="text-xs text-gray-500">備註</label>
+                                              <input type="text" value={editingPaymentForm.matchNote} onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <button onClick={savePaymentEdit} disabled={editingPaymentSaving} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">{editingPaymentSaving ? '儲存中…' : '儲存'}</button>
+                                            <button onClick={() => setEditingPaymentId(null)} className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs hover:bg-gray-300">取消</button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </React.Fragment>
+                                ))}
+                                <tr className="font-medium bg-teal-100/50">
+                                  <td className="py-1" colSpan={2}>合計已收</td>
+                                  <td className="py-1 text-right text-green-700">${fmt(receivedAmt)}</td>
+                                  <td className="py-1" colSpan={4}>{remainingAmt > 0 ? <span className="text-red-600">尚欠 ${fmt(remainingAmt)}</span> : <span className="text-green-600">已收齊</span>}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
-                    )}
+
+                      {/* Sticky footer buttons */}
+                      <div className="shrink-0 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex gap-2">
+                        <button onClick={confirmIncomePayment} disabled={incomePaymentSaving} className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">{incomePaymentSaving ? '處理中…' : (incomeFormMode === 'edit' ? '儲存' : '確認收款')}</button>
+                        <button onClick={() => setPayingIncomeId(null)} className="bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">取消</button>
+                      </div>
+                    </div>
                   </div>
                   );
                 })()}
