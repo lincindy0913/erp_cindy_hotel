@@ -281,7 +281,10 @@ export const authOptions = {
         httpOnly: true,
         sameSite: 'strict',
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        // Use NEXTAUTH_URL to decide Secure flag — not NODE_ENV.
+        // On HTTP (localhost), secure=false so cookie is sent correctly.
+        // On HTTPS (Railway), secure=true.
+        secure: process.env.NEXTAUTH_URL?.startsWith('https'),
       },
     },
   },
