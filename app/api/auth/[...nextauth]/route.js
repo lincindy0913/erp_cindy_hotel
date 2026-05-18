@@ -271,23 +271,6 @@ export const authOptions = {
     strategy: 'jwt',
     maxAge: 24 * 60 * 60 // 24 hours absolute maximum
   },
-  cookies: {
-    sessionToken: {
-      // Do NOT set name explicitly — let next-auth use its secure default:
-      // '__Secure-next-auth.session-token' on HTTPS (production) so withAuth
-      // middleware can find the cookie. Overriding to a non-prefixed name breaks
-      // withAuth which always looks for the __Secure- prefixed name on HTTPS.
-      options: {
-        httpOnly: true,
-        sameSite: 'strict',
-        path: '/',
-        // Use NEXTAUTH_URL to decide Secure flag — not NODE_ENV.
-        // On HTTP (localhost), secure=false so cookie is sent correctly.
-        // On HTTPS (Railway), secure=true.
-        secure: process.env.NEXTAUTH_URL?.startsWith('https'),
-      },
-    },
-  },
 };
 
 const handler = NextAuth(authOptions);
