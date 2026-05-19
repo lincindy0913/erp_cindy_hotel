@@ -4,8 +4,9 @@
  * 從 BnbBookingRecord 自動彙整月收入，並與進貨/費用資料合併為收支總表
  *
  * Query:
- *   year      — 年份（YYYY）
+ *   year      — 年份（YYYY），mode=monthly 時必填
  *   warehouse — 館別（預設不限）
+ *   mode      — 'monthly'（預設，按月）| 'annual'（按年，顯示近 4 年）
  */
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
@@ -23,6 +24,13 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const year      = searchParams.get('year') || new Date().getFullYear().toString();
     const warehouse = searchParams.get('warehouse') || '';
+    const mode      = searchParams.get('mode') || 'monthly'; // 'monthly' | 'annual'
+
+    if (mode === 'annual') {
+      return await handleAnnual(warehouse);
+    }
+
+    // ─── 月報模式 ─────────────────────────────────────────────
 
     // ── 1. 訂房記錄月彙整 ──────────────────────────────────────
     const bookingWhere = {
@@ -165,4 +173,113 @@ export async function GET(request) {
   } catch (error) {
     return handleApiError(error);
   }
+}
+
+// ─── 年報模式：彙整近 5 年資料 ──────────────────────────────────────
+async function handleAnnual(warehouse) {
+  const currentYear = new Date().getFullYear();
+  const startYear   = currentYear - 3;
+  const years       = Array.from({ length: 5 }, (_, i) => (startYear + i).toString());
+
+  const yearlyMap = {};
+  const ensureYear = (y) => {
+    if (!yearlyMap[y]) yearlyMap[y] = {
+      year: y,
+      rooms: 0, totalRevenue: 0, otherCharge: 0,
+      payCard: 0, payCash: 0, payDeposit: 0, payTransfer: 0, payVoucher: 0, cardFee: 0,
+      purchaseExpense: 0, fixedExpense: 0, otherIncome: 0,
+    };
+  };
+  years.forEach(ensureYear);
+
+  // 訂房記錄
+  const bookingWhere = {
+    importMonth: { gte: `${startYear}-01`, lte: `${currentYear}-12` },
+    status: { notIn: ['已刪除'] },
+  };
+  if (warehouse) bookingWhere.warehouse = warehouse;
+
+  const bookings = await prisma.bnbBookingRecord.findMany({
+    where: bookingWhere,
+    select: {
+      importMonth: true,
+      roomCharge: true, otherCharge: true,
+      payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true,
+      cardFee: true,
+    },
+  });
+
+  for (const b of bookings) {
+    const y = b.importMonth.slice(0, 4);
+    if (!yearlyMap[y]) continue;
+    const m = yearlyMap[y];
+    m.rooms++;
+    m.totalRevenue  += Number(b.roomCharge);
+    m.otherCharge   += Number(b.otherCharge);
+    m.payDeposit    += Number(b.payDeposit);
+    m.payTransfer   += Number(b.payTransfer);
+    m.payCard       += Number(b.payCard);
+    m.payCash       += Number(b.payCash);
+    m.payVoucher    += Number(b.payVoucher);
+    m.cardFee       += Number(b.cardFee);
+  }
+
+  // 進貨
+  const purchaseWhere = {
+    purchaseDate: { gte: `${startYear}-01-01`, lte: `${currentYear}-12-31` },
+    status: { in: ['已入庫', '已完成'] },
+  };
+  if (warehouse) purchaseWhere.warehouse = warehouse;
+  const purchases = await prisma.purchaseMaster.findMany({
+    where: purchaseWhere,
+    select: { purchaseDate: true, totalAmount: true },
+  });
+  for (const p of purchases) {
+    const y = p.purchaseDate.slice(0, 4);
+    if (!yearlyMap[y]) continue;
+    yearlyMap[y].purchaseExpense += Number(p.totalAmount);
+  }
+
+  // 固定費用
+  const expWhere = {
+    expenseMonth: { gte: `${startYear}-01`, lte: `${currentYear}-12` },
+    status: '已確認',
+  };
+  if (warehouse) expWhere.warehouse = warehouse;
+  const expenses = await prisma.commonExpenseRecord.findMany({
+    where: expWhere,
+    select: { expenseMonth: true, totalDebit: true },
+  });
+  for (const e of expenses) {
+    const y = e.expenseMonth.slice(0, 4);
+    if (!yearlyMap[y]) continue;
+    yearlyMap[y].fixedExpense += Number(e.totalDebit);
+  }
+
+  // 月報 otherIncome
+  const reportWhere = {
+    reportMonth: { gte: `${startYear}-01`, lte: `${currentYear}-12` },
+  };
+  if (warehouse) reportWhere.warehouse = warehouse;
+  const reports = await prisma.bnbMonthlyReport.findMany({
+    where: reportWhere,
+    select: { reportMonth: true, otherIncome: true },
+  });
+  for (const r of reports) {
+    const y = r.reportMonth.slice(0, 4);
+    if (!yearlyMap[y]) continue;
+    yearlyMap[y].otherIncome += Number(r.otherIncome || 0);
+  }
+
+  const rows = years.map(y => {
+    const m = yearlyMap[y];
+    return {
+      ...m,
+      netRevenue:   m.totalRevenue + m.otherCharge - m.cardFee,
+      totalExpense: m.purchaseExpense + m.fixedExpense,
+      netProfit:    m.totalRevenue + m.otherCharge + m.otherIncome - m.cardFee - m.purchaseExpense - m.fixedExpense,
+    };
+  });
+
+  return NextResponse.json({ mode: 'annual', rows, fixedExpenseHelp: null });
 }

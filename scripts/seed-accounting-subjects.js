@@ -87,6 +87,7 @@ const DATA = [
   { category: '營業費用', subcategory: '營業費用', code: '6092', name: '消耗品' },
   { category: '營業費用', subcategory: '營業費用', code: '6100', name: '保險費' },
   { category: '營業費用', subcategory: '營業費用', code: '6110', name: '交際費' },
+  { category: '營業費用', subcategory: '營業費用', code: '6116', name: '信用卡手續費' },
   { category: '營業費用', subcategory: '營業費用', code: '6120', name: '捐贈' },
   { category: '營業費用', subcategory: '營業費用', code: '6139', name: '稅捐' },
   { category: '營業費用', subcategory: '營業費用', code: '6140', name: '呆帳損失' },

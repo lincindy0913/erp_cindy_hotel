@@ -611,9 +611,11 @@ export default function BnbPage() {
   const [drExpandDay,  setDrExpandDay]  = useState(null);
 
   // ── 月彙整 state ─────────────────────────────────────────────
-  const [summaryYear,    setSummaryYear]    = useState(() => new Date().getFullYear().toString());
-  const [summaryRows,    setSummaryRows]    = useState([]);
-  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryYear,      setSummaryYear]      = useState(() => new Date().getFullYear().toString());
+  const [summaryWarehouse, setSummaryWarehouse] = useState('');
+  const [summaryMode,      setSummaryMode]      = useState('monthly'); // 'monthly' | 'annual'
+  const [summaryRows,      setSummaryRows]      = useState([]);
+  const [summaryLoading,   setSummaryLoading]   = useState(false);
   /** /api/bnb/monthly-summary 回傳之 fixedExpenseHelp */
   const [summaryFixedHelp, setSummaryFixedHelp] = useState(null);
 
@@ -843,7 +845,9 @@ export default function BnbPage() {
   const fetchSummary = useCallback(async () => {
     setSummaryLoading(true);
     try {
-      const res = await fetch(`/api/bnb/monthly-summary?year=${summaryYear}`);
+      const p = new URLSearchParams({ year: summaryYear, mode: summaryMode });
+      if (summaryWarehouse) p.set('warehouse', summaryWarehouse);
+      const res = await fetch(`/api/bnb/monthly-summary?${p}`);
       if (!res.ok) {
         showToast('載入月彙整失敗', 'error');
         setSummaryFixedHelp(null);
@@ -854,7 +858,7 @@ export default function BnbPage() {
       setSummaryFixedHelp(data.fixedExpenseHelp ?? null);
     } catch { showToast('載入月彙整失敗', 'error'); setSummaryFixedHelp(null); }
     finally { setSummaryLoading(false); }
-  }, [summaryYear]);
+  }, [summaryYear, summaryWarehouse, summaryMode]);
 
   // ── 入住率統計 fetch ──────────────────────────────────────────
   const fetchOccupancy = useCallback(async () => {
@@ -1164,7 +1168,7 @@ export default function BnbPage() {
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
   useEffect(() => {
     if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();
-  }, [summaryYear, activeTab, analyticsSub]);
+  }, [summaryYear, summaryWarehouse, summaryMode, activeTab, analyticsSub]);
   useEffect(() => {
     if (activeTab === 'analytics' && analyticsSub === 'declList') fetchDeclList();
   }, [dlYear, dlWarehouse, activeTab, analyticsSub]);
@@ -2609,6 +2613,11 @@ export default function BnbPage() {
               <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
+              <label className="text-sm text-gray-600">館別</label>
+              <select value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
+                <option value="">全部</option>
+                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
               <div className="ml-auto flex gap-2">
                 <ExportButtons
@@ -2709,43 +2718,70 @@ export default function BnbPage() {
           </div>
         )}
 
-        {/* ══ Tab: 月收支總表 ══ */}
+        {/* ══ Tab: 損益表（月報 / 年報）══ */}
         {activeTab === 'analytics' && analyticsSub === 'pnl' && (
           <div>
-            {(() => {
-              const pnlData = summaryRows.map(r => ({
-                ...r,
-                incomeTotal:  r.netRevenue + (r.otherIncome || 0),
-                pnlNetProfit: r.netProfit,
-              }));
-              return (
+            {/* 控制列 */}
             <div className="flex flex-wrap items-center gap-3 mb-4">
-              <label className="text-sm text-gray-600">年份</label>
-              <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+              {/* 月報/年報 切換 */}
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-sm">
+                {[['monthly','月報'],['annual','年報']].map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => setSummaryMode(v)}
+                    className={`px-4 py-1.5 ${summaryMode === v ? 'bg-indigo-600 text-white font-medium' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  >{label}</button>
+                ))}
+              </div>
+              {summaryMode === 'monthly' && (
+                <>
+                  <label className="text-sm text-gray-600">年份</label>
+                  <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
+                    {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </>
+              )}
+              <label className="text-sm text-gray-600">館別</label>
+              <select value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
+                <option value="">全部</option>
+                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
               <div className="ml-auto flex gap-2">
-                <ExportButtons
-                  data={pnlData}
-                  columns={PNL_EXPORT_COLS}
-                  filename={`月收支總表_${summaryYear}`}
-                  title={`月收支總表 ${summaryYear}`}
-                />
-                <button
-                  onClick={() => openPrintWindow(
-                    `月收支總表 ${summaryYear}`,
-                    PNL_EXPORT_COLS.map(c => c.header),
-                    pnlData.map(r => PNL_EXPORT_COLS.map(c => r[c.key] ?? ''))
-                  )}
-                  className={`${btnCls} text-gray-600`}
-                >列印</button>
+                {(() => {
+                  const pnlData = summaryRows.map(r => ({
+                    ...r,
+                    month: summaryMode === 'annual' ? r.year : r.month,
+                    incomeTotal:  r.netRevenue + (r.otherIncome || 0),
+                    pnlNetProfit: r.netProfit,
+                  }));
+                  const title = summaryMode === 'annual'
+                    ? `損益年報_${summaryWarehouse || '全館'}`
+                    : `損益月報_${summaryYear}${summaryWarehouse ? '_' + summaryWarehouse : ''}`;
+                  return (
+                    <>
+                      <ExportButtons
+                        data={pnlData}
+                        columns={PNL_EXPORT_COLS}
+                        filename={title}
+                        title={title}
+                      />
+                      <button
+                        onClick={() => openPrintWindow(
+                          title,
+                          PNL_EXPORT_COLS.map(c => c.header),
+                          pnlData.map(r => PNL_EXPORT_COLS.map(c => r[c.key] ?? ''))
+                        )}
+                        className={`${btnCls} text-gray-600`}
+                      >列印</button>
+                    </>
+                  );
+                })()}
               </div>
             </div>
-              );
-            })()}
 
-            {!summaryLoading && summaryFixedHelp && (
+            {/* 月報：固定費用提示 */}
+            {summaryMode === 'monthly' && !summaryLoading && summaryFixedHelp && (
               <div className="space-y-2 mb-4 text-sm">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-600">
                   <span>此表固定費用來自費用管理之共通費用（僅計入<strong>已確認</strong>）。</span>
@@ -2776,7 +2812,7 @@ export default function BnbPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
-                      {['月份','住宿淨收入','其他收入','收入合計','採購支出','固定費用','支出合計','淨利'].map(h => (
+                      {[summaryMode === 'annual' ? '年份' : '月份','住宿淨收入','其他收入','收入合計','採購支出','固定費用','支出合計','淨利'].map(h => (
                         <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -2786,15 +2822,16 @@ export default function BnbPage() {
                       <tr><td colSpan={8} className="text-center py-10 text-gray-400">無資料</td></tr>
                     )}
                     {summaryRows.map(r => {
-                      const incomeTotal = r.netRevenue + r.otherIncome;
+                      const key = summaryMode === 'annual' ? r.year : r.month;
+                      const incomeTotal = r.netRevenue + (r.otherIncome || 0);
                       const zeroFixedHint =
-                        summaryFixedHelp?.monthsWithZeroFixed?.includes(r.month) ?? false;
+                        summaryMode === 'monthly' && (summaryFixedHelp?.monthsWithZeroFixed?.includes(r.month) ?? false);
                       return (
                         <tr
-                          key={r.month}
+                          key={key}
                           className={`hover:bg-gray-50 ${zeroFixedHint ? 'bg-amber-50/60' : ''}`}
                         >
-                          <td className="px-3 py-2 font-medium">{r.month}</td>
+                          <td className="px-3 py-2 font-medium">{key}</td>
                           <td className="px-3 py-2 text-right text-indigo-700">{Number(r.netRevenue).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherIncome || 0).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right font-semibold">{Number(incomeTotal).toLocaleString()}</td>
@@ -2812,6 +2849,32 @@ export default function BnbPage() {
                         </tr>
                       );
                     })}
+                    {/* 合計列（月報模式才顯示，年報各年已是年度合計） */}
+                    {summaryMode === 'monthly' && summaryRows.length > 0 && (() => {
+                      const tot = summaryRows.reduce((a, r) => ({
+                        netRevenue:      (a.netRevenue      || 0) + r.netRevenue,
+                        otherIncome:     (a.otherIncome     || 0) + (r.otherIncome || 0),
+                        purchaseExpense: (a.purchaseExpense || 0) + r.purchaseExpense,
+                        fixedExpense:    (a.fixedExpense    || 0) + r.fixedExpense,
+                        totalExpense:    (a.totalExpense    || 0) + r.totalExpense,
+                        netProfit:       (a.netProfit       || 0) + r.netProfit,
+                      }), {});
+                      const incomeTotal = tot.netRevenue + tot.otherIncome;
+                      return (
+                        <tr className="bg-indigo-50 font-bold text-indigo-800 text-xs border-t-2 border-indigo-200">
+                          <td className="px-3 py-2">全年合計</td>
+                          <td className="px-3 py-2 text-right">{Number(tot.netRevenue).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Number(tot.otherIncome).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Number(incomeTotal).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right text-red-600">({Number(tot.purchaseExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-500">({Number(tot.fixedExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-700">({Number(tot.totalExpense).toLocaleString()})</td>
+                          <td className={`px-3 py-2 text-right ${tot.netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                            {Number(tot.netProfit).toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
