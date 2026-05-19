@@ -109,12 +109,12 @@ function RentalsPage() {
   const [contracts, setContracts] = useState([]);
   const [incomes, setIncomes] = useState([]);
   const [incomesHasMore, setIncomesHasMore] = useState(false);
-  const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('propertySortOrder', 'asc');
+  const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
   const sortedIncomes = useMemo(
     () =>
       sortRows(incomes, rentIncKey, rentIncDir, {
-        propertySortOrder: (i) => i.propertySortOrder ?? 9999,
-        propertyCategory: (i) => i.propertyCategory || '',
+        contractSortOrder: (i) => i.contractSortOrder ?? 9999,
+        contractCategory: (i) => i.contractCategory || '',
         propertyName: (i) => i.propertyName || '',
         tenantName: (i) => i.tenantName || '',
         expectedAmount: (i) => Number(i.expectedAmount || 0),
@@ -127,24 +127,26 @@ function RentalsPage() {
     [incomes, rentIncKey, rentIncDir]
   );
 
-  // ── 物業欄位 inline edit (類別/序號) ──────────────────────────
-  const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
+  // ── 合約欄位 inline edit (分類/序號) ──────────────────────────
+  const [propInlineEdit, setPropInlineEdit] = useState(null); // { contractId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
-  const PROPERTY_CATEGORIES = ['住宅', '商業', '套房', '停車場', '其他'];
+  const CONTRACT_INCOME_CATEGORIES = ['公司', '湯三姐'];
 
-  async function savePropField(propertyId, field, value) {
+  async function savePropField(contractId, field, value) {
     setPropInlineSaving(true);
     try {
-      const res = await fetch(`/api/rentals/properties/${propertyId}`, {
-        method: 'PATCH',
+      const body = {};
+      if (field === 'sortOrder') body.sortOrder = value !== '' && value !== null ? parseInt(value) : null;
+      else body.category = value || null;
+      const res = await fetch(`/api/rentals/contracts/${contractId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) { showToast('儲存失敗', 'error'); return; }
-      // update local incomes state
-      const apiField = field === 'category' ? 'propertyCategory' : 'propertySortOrder';
+      const apiField = field === 'category' ? 'contractCategory' : 'contractSortOrder';
       const parsed = field === 'sortOrder' ? (value !== '' && value !== null ? parseInt(value) : null) : (value || null);
-      setIncomes(prev => prev.map(i => i.propertyId === propertyId ? { ...i, [apiField]: parsed } : i));
+      setIncomes(prev => prev.map(i => i.contractId === contractId ? { ...i, [apiField]: parsed } : i));
     } catch { showToast('儲存失敗', 'error'); }
     finally { setPropInlineSaving(false); setPropInlineEdit(null); }
   }
@@ -1761,7 +1763,7 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
-                        <SortableTh label="序號" colKey="propertySortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
+                        <SortableTh label="序號" colKey="contractSortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
                         <th className="px-3 py-2 text-center w-8">
                           <input type="checkbox"
                             checked={selectedIncomeIds.size > 0 && incomes.filter(i => i.status === 'pending' || i.status === 'partial').every(i => selectedIncomeIds.has(i.id))}
@@ -1771,7 +1773,7 @@ function RentalsPage() {
                             }}
                           />
                         </th>
-                        <SortableTh label="類別" colKey="propertyCategory" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 whitespace-nowrap" />
+                        <SortableTh label="分類" colKey="contractCategory" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 whitespace-nowrap" />
                         <SortableTh label="物業" colKey="propertyName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租客" colKey="tenantName" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" />
                         <SortableTh label="租金應收" colKey="expectedAmount" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2" align="right" />
@@ -1803,22 +1805,22 @@ function RentalsPage() {
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
                             {/* 序號 */}
                             <td className="px-3 py-2 text-center text-xs text-gray-500">
-                              {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'sortOrder' ? (
+                              {propInlineEdit?.contractId === income.contractId && propInlineEdit.field === 'sortOrder' ? (
                                 <input autoFocus type="number" min="1" step="1"
                                   value={propInlineEdit.value}
                                   onChange={e => setPropInlineEdit(p => ({ ...p, value: e.target.value }))}
-                                  onBlur={() => savePropField(income.propertyId, 'sortOrder', propInlineEdit.value)}
+                                  onBlur={() => savePropField(income.contractId, 'sortOrder', propInlineEdit.value)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') savePropField(income.propertyId, 'sortOrder', propInlineEdit.value);
+                                    if (e.key === 'Enter') savePropField(income.contractId, 'sortOrder', propInlineEdit.value);
                                     if (e.key === 'Escape') setPropInlineEdit(null);
                                   }}
                                   className="w-14 border border-indigo-400 rounded px-1 py-0.5 text-xs text-center outline-none ring-1 ring-indigo-400"
                                 />
                               ) : (
-                                <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'sortOrder', value: income.propertySortOrder ?? '' })}
+                                <span onClick={() => setPropInlineEdit({ contractId: income.contractId, field: 'sortOrder', value: income.contractSortOrder ?? '' })}
                                   className="cursor-pointer hover:text-indigo-600 hover:underline"
                                   title="點擊編輯序號">
-                                  {income.propertySortOrder ?? '—'}
+                                  {income.contractSortOrder ?? '—'}
                                 </span>
                               )}
                             </td>
@@ -1834,23 +1836,23 @@ function RentalsPage() {
                                 />
                               )}
                             </td>
-                            {/* 類別 */}
+                            {/* 分類 */}
                             <td className="px-3 py-2 text-xs">
-                              {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'category' ? (
+                              {propInlineEdit?.contractId === income.contractId && propInlineEdit.field === 'category' ? (
                                 <select autoFocus
                                   value={propInlineEdit.value || ''}
-                                  onChange={e => savePropField(income.propertyId, 'category', e.target.value)}
+                                  onChange={e => savePropField(income.contractId, 'category', e.target.value)}
                                   onBlur={() => setPropInlineEdit(null)}
                                   onKeyDown={e => { if (e.key === 'Escape') setPropInlineEdit(null); }}
                                   className="border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400">
                                   <option value="">—</option>
-                                  {PROPERTY_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                  {CONTRACT_INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                               ) : (
-                                <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'category', value: income.propertyCategory || '' })}
-                                  className={`cursor-pointer hover:text-indigo-600 hover:underline px-1.5 py-0.5 rounded ${income.propertyCategory ? 'bg-blue-50 text-blue-700' : 'text-gray-300'}`}
-                                  title="點擊編輯類別">
-                                  {income.propertyCategory || '—'}
+                                <span onClick={() => setPropInlineEdit({ contractId: income.contractId, field: 'category', value: income.contractCategory || '' })}
+                                  className={`cursor-pointer hover:text-indigo-600 hover:underline px-1.5 py-0.5 rounded ${income.contractCategory ? 'bg-blue-50 text-blue-700' : 'text-gray-300'}`}
+                                  title="點擊編輯分類">
+                                  {income.contractCategory || '—'}
                                 </span>
                               )}
                             </td>

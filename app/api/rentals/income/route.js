@@ -35,7 +35,7 @@ export async function GET(request) {
         status: true, cashTransactionId: true,
         property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true, sortOrder: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true, email: true } },
-        contract: { select: { id: true, contractNo: true, monthlyRent: true, rentAccountId: true } },
+        contract: { select: { id: true, contractNo: true, monthlyRent: true, rentAccountId: true, category: true, sortOrder: true } },
         payments: {
           orderBy: { sequenceNo: 'asc' },
           select: {
@@ -60,6 +60,8 @@ export async function GET(request) {
       rentCollectAccountId: i.property.rentCollectAccountId,
       propertyCategory: null,
       propertySortOrder: i.property.sortOrder ?? null,
+      contractCategory: i.contract?.category ?? null,
+      contractSortOrder: i.contract?.sortOrder ?? null,
       tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName
     }));
 
