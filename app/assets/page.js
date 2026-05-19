@@ -86,8 +86,8 @@ function AssetsPageInner() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Confirmation modal (replaces browser confirm() which gets blocked in production)
-  const [confirmState, setConfirmState] = useState(null); // { message, onConfirm }
-  const showConfirm = (message, onConfirm) => setConfirmState({ message, onConfirm });
+  const [confirmState, setConfirmState] = useState(null); // { message, onConfirm, confirmLabel }
+  const showConfirm = (message, onConfirm, confirmLabel = '確定刪除') => setConfirmState({ message, onConfirm, confirmLabel });
 
   // Property inline edit (序號/分類)
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
@@ -400,7 +400,31 @@ function AssetsPageInner() {
     showConfirm(`確定刪除物業「${p.name}」？此操作無法復原。`, async () => {
       const res = await fetch(`/api/rentals/properties/${p.id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
+      if (!res.ok) {
+        if (data?.code === 'ACCOUNT_HAS_DEPENDENCIES' && data?.counts) {
+          const { contractCount, incomeCount, taxCount, maintenanceCount } = data.counts;
+          const lines = [];
+          if (contractCount > 0) lines.push(`合約 ${contractCount} 筆`);
+          if (incomeCount > 0) lines.push(`收款紀錄 ${incomeCount} 筆`);
+          if (taxCount > 0) lines.push(`稅務紀錄 ${taxCount} 筆`);
+          if (maintenanceCount > 0) lines.push(`維修紀錄 ${maintenanceCount} 筆`);
+          showConfirm(
+            `「${p.name}」尚有關聯資料：${lines.join('、')}。\n確定要連同所有資料一起刪除？此操作無法復原。`,
+            async () => {
+              const res2 = await fetch(`/api/rentals/properties/${p.id}?force=true`, { method: 'DELETE' });
+              const data2 = await res2.json().catch(() => ({}));
+              if (!res2.ok) { showToast(data2?.error || '刪除失敗', 'error'); return; }
+              showToast('已刪除', 'success');
+              if (selected?.id === p.id) setSelected(null);
+              await loadProperties();
+            },
+            '強制刪除'
+          );
+          return;
+        }
+        showToast(data?.error || '刪除失敗', 'error');
+        return;
+      }
       showToast('已刪除', 'success');
       if (selected?.id === p.id) setSelected(null);
       await loadProperties();
@@ -985,12 +1009,12 @@ function AssetsPageInner() {
       {confirmState && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
-            <p className="text-gray-800 text-sm mb-5">{confirmState.message}</p>
+            <p className="text-gray-800 text-sm mb-5 whitespace-pre-line">{confirmState.message}</p>
             <div className="flex justify-end gap-2">
               <button className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
                 onClick={() => setConfirmState(null)}>取消</button>
               <button className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                onClick={() => { const fn = confirmState.onConfirm; setConfirmState(null); fn(); }}>確定刪除</button>
+                onClick={() => { const fn = confirmState.onConfirm; setConfirmState(null); fn(); }}>{confirmState.confirmLabel}</button>
             </div>
           </div>
         </div>

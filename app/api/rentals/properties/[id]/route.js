@@ -112,10 +112,16 @@ export async function PATCH(request, { params }) {
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const { id } = await params;
     const propertyId = parseInt(id);
+    const force = new URL(request.url).searchParams.get('force') === 'true';
+
+    const existing = await prisma.rentalProperty.findUnique({ where: { id: propertyId } });
+    if (!existing) {
+      return createErrorResponse('NOT_FOUND', '找不到物業', 404);
+    }
 
     const [contractCount, incomeCount, taxCount, maintenanceCount] = await Promise.all([
       prisma.rentalContract.count({ where: { propertyId } }),
@@ -124,20 +130,35 @@ export async function DELETE(request, { params }) {
       prisma.rentalMaintenance.count({ where: { propertyId } }),
     ]);
 
-    if (contractCount > 0) {
-      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', '此物業尚有合約，無法刪除', 400);
-    }
-    if (incomeCount > 0) {
-      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此物業尚有 ${incomeCount} 筆收款紀錄，無法刪除`, 400);
-    }
-    if (taxCount > 0) {
-      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此物業尚有 ${taxCount} 筆稅務紀錄，無法刪除`, 400);
-    }
-    if (maintenanceCount > 0) {
-      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此物業尚有 ${maintenanceCount} 筆維修紀錄，無法刪除`, 400);
+    const total = contractCount + incomeCount + taxCount + maintenanceCount;
+
+    if (total > 0 && !force) {
+      return NextResponse.json({
+        error: '此物業有關聯資料，無法直接刪除',
+        code: 'ACCOUNT_HAS_DEPENDENCIES',
+        counts: { contractCount, incomeCount, taxCount, maintenanceCount },
+      }, { status: 400 });
     }
 
-    await prisma.rentalProperty.delete({ where: { id: propertyId } });
+    await prisma.$transaction(async (tx) => {
+      if (total > 0) {
+        // 1. Delete income payments first (FK → RentalIncome)
+        const incomeIds = (await tx.rentalIncome.findMany({ where: { propertyId }, select: { id: true } })).map(r => r.id);
+        if (incomeIds.length > 0) {
+          await tx.rentalIncomePayment.deleteMany({ where: { rentalIncomeId: { in: incomeIds } } });
+        }
+        // 2. Income, tax, maintenance, utility
+        await tx.rentalIncome.deleteMany({ where: { propertyId } });
+        await tx.propertyTax.deleteMany({ where: { propertyId } });
+        await tx.rentalMaintenance.deleteMany({ where: { propertyId } });
+        await tx.rentalUtilityIncome.deleteMany({ where: { propertyId } });
+        await tx.rentalMonthlyCache.deleteMany({ where: { propertyId } });
+        // 3. Contracts (after income cleared)
+        await tx.rentalContract.deleteMany({ where: { propertyId } });
+      }
+      await tx.rentalProperty.delete({ where: { id: propertyId } });
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/rentals/properties/[id] error:', error.message || error);
