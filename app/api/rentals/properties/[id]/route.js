@@ -142,20 +142,26 @@ export async function DELETE(request, { params }) {
 
     await prisma.$transaction(async (tx) => {
       if (total > 0) {
-        // 1. Delete income payments first (FK → RentalIncome)
+        // 1. Break contract self-reference (previousContractId FK) before deletion
+        await tx.rentalContract.updateMany({
+          where: { propertyId },
+          data: { previousContractId: null },
+        });
+        // 2. Delete income payments (FK → RentalIncome, onDelete: Cascade in schema but be explicit)
         const incomeIds = (await tx.rentalIncome.findMany({ where: { propertyId }, select: { id: true } })).map(r => r.id);
         if (incomeIds.length > 0) {
           await tx.rentalIncomePayment.deleteMany({ where: { rentalIncomeId: { in: incomeIds } } });
         }
-        // 2. Income, tax, maintenance, utility
+        // 3. Clear income, taxes, maintenance, utility, cache
         await tx.rentalIncome.deleteMany({ where: { propertyId } });
         await tx.propertyTax.deleteMany({ where: { propertyId } });
         await tx.rentalMaintenance.deleteMany({ where: { propertyId } });
         await tx.rentalUtilityIncome.deleteMany({ where: { propertyId } });
         await tx.rentalMonthlyCache.deleteMany({ where: { propertyId } });
-        // 3. Contracts (after income cleared)
+        // 4. Contracts (after income and self-reference cleared)
         await tx.rentalContract.deleteMany({ where: { propertyId } });
       }
+      // RentalAnnualRentFiling has onDelete:Cascade on property → auto-deleted
       await tx.rentalProperty.delete({ where: { id: propertyId } });
     });
 
