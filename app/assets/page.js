@@ -954,11 +954,22 @@ function AssetsPageInner() {
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <button type="button" disabled={saving} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300" onClick={() => setShowModal(false)}>取消</button>
-              <button type="button" disabled={saving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50" onClick={saveModal}>
-                {saving ? '儲存中…' : '儲存'}
-              </button>
+            <div className="flex justify-between items-center gap-2 mt-6">
+              <div>
+                {editing && (
+                  <button type="button" disabled={saving}
+                    className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50 disabled:opacity-50"
+                    onClick={() => { if (confirm(`確定刪除資產「${editing.name}」？`)) { setShowModal(false); deleteAsset(editing); } }}>
+                    刪除資產
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" disabled={saving} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300" onClick={() => setShowModal(false)}>取消</button>
+                <button type="button" disabled={saving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50" onClick={saveModal}>
+                  {saving ? '儲存中…' : '儲存'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
