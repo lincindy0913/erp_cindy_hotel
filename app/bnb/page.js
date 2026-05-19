@@ -824,12 +824,18 @@ export default function BnbPage() {
       if (filterStatus)    p.set('status', filterStatus);
       if (filterWarehouse) p.set('warehouse', filterWarehouse);
       const res = await fetch(`/api/bnb?${p}`);
-      if (!res.ok) { showToast('載入訂房記錄失敗', 'error'); return; }
+      if (!res.ok) {
+        if (res.status === 401) { window.location.href = '/login'; return; }
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error || `載入訂房記錄失敗（${res.status}）`;
+        showToast(msg, 'error');
+        return;
+      }
       const json = await res.json();
       setRecords(json.data ?? json);
       setRecTotal(json.total ?? (json.data ?? json).length);
       setRecPage(page);
-    } catch { showToast('載入訂房記錄失敗', 'error'); }
+    } catch (e) { showToast(`載入訂房記錄失敗：${e.message}`, 'error'); }
     finally { setRecLoading(false); }
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
 
