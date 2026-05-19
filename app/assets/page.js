@@ -482,9 +482,12 @@ function AssetsPageInner() {
                           <AssetFlagBadges asset={p.asset} />
                         </td>
                         {canEdit && (
-                          <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                          <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             {p.asset ? (
-                              <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>編輯</button>
+                              <div className="flex items-center justify-center gap-2">
+                                <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>編輯</button>
+                                <button className="text-red-500 hover:underline text-xs" onClick={() => deleteAsset(p.asset)}>刪除</button>
+                              </div>
                             ) : (
                               <button className="text-teal-600 hover:underline text-xs" onClick={() => {
                                 setEditing(null);
