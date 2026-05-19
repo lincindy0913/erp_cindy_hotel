@@ -565,14 +565,15 @@ function AssetsPageInner() {
                         {canEdit && (
                           <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-2">
+                              <Link href={`/rentals?editProperty=${p.id}`} className="text-indigo-600 hover:underline text-xs">編輯</Link>
                               {p.asset ? (
-                                <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>編輯資產</button>
+                                <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>資產</button>
                               ) : (
                                 <button className="text-teal-600 hover:underline text-xs" onClick={() => {
                                   setEditing(null);
                                   setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
                                   setShowModal(true);
-                                }}>新增資產</button>
+                                }}>+資產</button>
                               )}
                               <button className="text-red-500 hover:underline text-xs" onClick={() => deleteProperty(p)}>刪除</button>
                             </div>
