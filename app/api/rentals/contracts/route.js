@@ -47,7 +47,7 @@ export async function GET(request) {
         property: { select: { id: true, name: true, buildingName: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
       take: 500,
     });
 
@@ -120,6 +120,7 @@ export async function POST(request) {
         specialTerms: body.specialTerms || null,
         note: body.note || null,
         previousContractId: body.previousContractId ? parseInt(body.previousContractId) : null,
+        category: body.category || null,
       },
       include: {
         property: { select: { id: true, name: true } },
@@ -144,6 +145,27 @@ export async function POST(request) {
     return NextResponse.json(contract, { status: 201 });
   } catch (error) {
     console.error('POST /api/rentals/contracts error:', error.message || error);
+    return handleApiError(error);
+  }
+}
+
+export async function PATCH(request) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = await request.json();
+    if (body.action !== 'reorder' || !Array.isArray(body.orderedIds)) {
+      return createErrorResponse('VALIDATION_FAILED', '未知操作', 400);
+    }
+    // Assign sortOrder 1,2,3,... in the given order within a transaction
+    await prisma.$transaction(
+      body.orderedIds.map((id, index) =>
+        prisma.rentalContract.update({ where: { id }, data: { sortOrder: index + 1 } })
+      )
+    );
+    return NextResponse.json({ ok: true });
+  } catch (error) {
     return handleApiError(error);
   }
 }

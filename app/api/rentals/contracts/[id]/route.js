@@ -165,6 +165,8 @@ export async function PUT(request, { params }) {
     if (body.renewNotifyDays !== undefined) updateData.renewNotifyDays = parseInt(body.renewNotifyDays);
     if (body.specialTerms !== undefined) updateData.specialTerms = body.specialTerms;
     if (body.note !== undefined) updateData.note = body.note;
+    if (body.category !== undefined) updateData.category = body.category || null;
+    if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder != null ? parseInt(body.sortOrder) : null;
 
     const contract = await prisma.rentalContract.update({
       where: { id: contractId },

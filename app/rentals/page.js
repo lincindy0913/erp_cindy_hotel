@@ -215,7 +215,7 @@ function RentalsPage() {
     propertyId: '', tenantId: '', startDate: '', endDate: '',
     monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
     rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false,
-    specialTerms: '', note: '', previousContractId: ''
+    specialTerms: '', note: '', previousContractId: '', category: ''
   });
 
   const [showTaxModal, setShowTaxModal] = useState(false);
@@ -1071,7 +1071,7 @@ function RentalsPage() {
         rentAccountId: contract.rentAccountId || '', accountingSubjectId: contract.accountingSubjectId ? String(contract.accountingSubjectId) : '',
         status: contract.status || 'pending',
         autoRenew: contract.autoRenew || false, specialTerms: contract.specialTerms || '', note: contract.note || '',
-        previousContractId: ''
+        previousContractId: '', category: contract.category || ''
       });
     } else {
       setEditingContract(null);
@@ -1079,7 +1079,7 @@ function RentalsPage() {
         propertyId: '', tenantId: '', startDate: '', endDate: '',
         monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
         rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false,
-        specialTerms: '', note: '', previousContractId: ''
+        specialTerms: '', note: '', previousContractId: '', category: ''
       });
     }
     setShowContractModal(true);
@@ -1129,6 +1129,29 @@ function RentalsPage() {
       fetchProperties();
     } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
     finally { setContractSaving(false); }
+  }
+
+  async function moveContract(contractId, direction) {
+    const sorted = [...contracts].sort((a, b) => {
+      const ao = a.sortOrder ?? 999999;
+      const bo = b.sortOrder ?? 999999;
+      return ao !== bo ? ao - bo : a.id - b.id;
+    });
+    const idx = sorted.findIndex(c => c.id === contractId);
+    if (idx === -1) return;
+    if (direction === 'up'   && idx === 0)               return;
+    if (direction === 'down' && idx === sorted.length - 1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    const next = [...sorted];
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    // Optimistic UI update
+    setContracts(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+    const res = await fetch('/api/rentals/contracts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reorder', orderedIds: next.map(c => c.id) })
+    });
+    if (!res.ok) { showToast('排序更新失敗', 'error'); fetchContracts(); }
   }
 
   function deleteContract(id) {
@@ -2249,6 +2272,8 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
+                        <th className="text-center px-2 py-2 w-16">序號</th>
+                        <th className="text-center px-2 py-2 w-20">分類</th>
                         <th className="text-left px-3 py-2">合約編號</th>
                         <th className="text-left px-3 py-2">物業</th>
                         <th className="text-left px-3 py-2">租客</th>
@@ -2262,14 +2287,43 @@ function RentalsPage() {
                     </thead>
                     <tbody>
                       {contracts.length === 0 ? (
-                        <tr><td colSpan={9} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-                      ) : contracts.map(c => {
+                        <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                      ) : (() => {
+                        const sortedContracts = [...contracts].sort((a, b) => {
+                          const ao = a.sortOrder ?? 999999;
+                          const bo = b.sortOrder ?? 999999;
+                          return ao !== bo ? ao - bo : a.id - b.id;
+                        });
+                        return sortedContracts.map((c, rowIdx) => {
                         const today = new Date().toISOString().split('T')[0];
                         const daysToExpire = Math.ceil((new Date(c.endDate) - new Date()) / (1000 * 60 * 60 * 24));
                         const isExpiring = c.status === 'active' && daysToExpire <= 60 && daysToExpire > 0;
+                        const CATEGORY_COLORS = { '公司': 'bg-blue-100 text-blue-800', '湯三姐': 'bg-purple-100 text-purple-800' };
 
                         return (
                           <tr key={c.id} className={`border-t hover:bg-gray-50 ${isExpiring ? 'bg-yellow-50' : ''}`}>
+                            <td className="px-2 py-2 text-center">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-xs text-gray-500 font-mono">{rowIdx + 1}</span>
+                                <div className="flex gap-0.5">
+                                  <button
+                                    onClick={() => moveContract(c.id, 'up')}
+                                    disabled={rowIdx === 0}
+                                    className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none"
+                                    title="上移">▲</button>
+                                  <button
+                                    onClick={() => moveContract(c.id, 'down')}
+                                    disabled={rowIdx === sortedContracts.length - 1}
+                                    className="text-gray-400 hover:text-gray-700 disabled:opacity-20 leading-none"
+                                    title="下移">▼</button>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-center">
+                              {c.category
+                                ? <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[c.category] || 'bg-gray-100 text-gray-700'}`}>{c.category}</span>
+                                : <span className="text-gray-300 text-xs">—</span>}
+                            </td>
                             <td className="px-3 py-2 font-mono text-xs">
                               {c.contractNo}
                               {c.previousContractId && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-teal-100 text-teal-700 font-normal">續</span>}
@@ -2313,7 +2367,8 @@ function RentalsPage() {
                             </td>
                           </tr>
                         );
-                      })}
+                      });
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -3961,6 +4016,15 @@ function RentalsPage() {
                   <select value={contractForm.status} onChange={e => setContractForm(f => ({ ...f, status: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     {CONTRACT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">分類</label>
+                  <select value={contractForm.category} onChange={e => setContractForm(f => ({ ...f, category: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="">無</option>
+                    <option value="公司">公司</option>
+                    <option value="湯三姐">湯三姐</option>
                   </select>
                 </div>
                 <div className="col-span-2">
