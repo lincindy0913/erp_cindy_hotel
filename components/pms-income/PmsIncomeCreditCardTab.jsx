@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
 const fmtPct = (a, b) => (b ? ((a / b) * 100).toFixed(2) + '%' : '—');
@@ -35,6 +35,15 @@ export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
   const [form, setForm]             = useState(EMPTY_FORM);
   const [saving, setSaving]         = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+
+  // ── Excel 匯入 state ──────────────────────────────────────────
+  const [showExcel,     setShowExcel]     = useState(false);
+  const [excelFile,     setExcelFile]     = useState(null);
+  const [excelPreview,  setExcelPreview]  = useState(null); // parsed 預覽資料
+  const [excelLoading,  setExcelLoading]  = useState(false);
+  const [excelImporting,setExcelImporting]= useState(false);
+  const [excelMsg,      setExcelMsg]      = useState('');   // success/error message
+  const fileInputRef = useRef(null);
 
   // 載入對帳單列表
   const load = useCallback(async () => {
@@ -157,6 +166,64 @@ export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
     else { const d = await res.json(); setError(d.error?.message || '刪除失敗'); }
   }
 
+  // ── Excel 匯入邏輯 ────────────────────────────────────────────
+  async function handleExcelFileChange(file) {
+    setExcelFile(file);
+    setExcelPreview(null);
+    setExcelMsg('');
+    if (!file) return;
+    setExcelLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('warehouse', warehouse);
+      fd.append('preview', 'true');
+      const res = await fetch('/api/reconciliation/credit-card-statements/import-excel', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok && data.preview) {
+        setExcelPreview(data.parsed);
+      } else if (res.status === 422) {
+        setExcelPreview(data.parsed);
+        setExcelMsg(`⚠️ ${data.warning}`);
+      } else {
+        setExcelMsg(`解析失敗：${data.error?.message || data.message || '格式無法識別'}`);
+      }
+    } catch { setExcelMsg('解析失敗，請確認檔案格式'); }
+    setExcelLoading(false);
+  }
+
+  async function doExcelImport() {
+    if (!excelFile) return;
+    setExcelImporting(true); setExcelMsg('');
+    try {
+      const fd = new FormData();
+      fd.append('file', excelFile);
+      fd.append('warehouse', warehouse);
+      const res = await fetch('/api/reconciliation/credit-card-statements/import-excel', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setExcelMsg(`✅ 匯入成功，對帳單 ID: ${data.id}`);
+        setExcelFile(null);
+        setExcelPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        load();
+      } else if (res.status === 409) {
+        setExcelMsg(`⚠️ ${data.message}`);
+      } else {
+        setExcelMsg(`匯入失敗：${data.error?.message || data.message || '未知錯誤'}`);
+      }
+    } catch { setExcelMsg('匯入失敗'); }
+    setExcelImporting(false);
+  }
+
+  function closeExcel() {
+    setShowExcel(false);
+    setExcelFile(null);
+    setExcelPreview(null);
+    setExcelMsg('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   // 統計
   const totalBilled = statements.reduce((s, r) => s + (r.billedAmount || 0), 0);
   const totalFee    = statements.reduce((s, r) => s + (r.feeAmount || 0) + (r.serviceFee || 0) + (r.otherFee || 0), 0);
@@ -178,7 +245,10 @@ export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
           <input type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
         </div>
         <button onClick={load} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700">載入</button>
-        <button onClick={openNew} className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-green-700 ml-auto">＋ 新增對帳單</button>
+        <div className="ml-auto flex gap-2">
+          <button onClick={() => { setShowExcel(true); setExcelMsg(''); }} className="bg-purple-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-purple-700">Excel 匯入</button>
+          <button onClick={openNew} className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-green-700">＋ 新增對帳單</button>
+        </div>
       </div>
 
       {error   && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
@@ -310,6 +380,87 @@ export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
         <p><b>撥款淨額(6) = 請款金額(1) − 手續費(3) ± 調整(2) − 服務費(4) − 費用(5)</b>（系統自動驗算）</p>
         <p><b>建帳後：</b>銀行帳戶新增「收入＋撥款淨額」及「支出＋手續費」各一筆，自動影響存簿餘額與損益表。</p>
       </div>
+
+      {/* Excel 匯入 Modal */}
+      {showExcel && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b flex justify-between items-center">
+              <h2 className="text-base font-bold">匯入聯合刷卡中心 Excel 對帳單</h2>
+              <button onClick={closeExcel} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+                支援 .xls / .xlsx 格式。系統會自動識別請款日、撥款日、卡別、金額、手續費等欄位。<br />
+                目前館別：<strong>{warehouse}</strong>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">選擇 Excel 檔案</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xls,.xlsx"
+                  onChange={e => handleExcelFileChange(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 border rounded-lg px-2 py-1.5"
+                />
+              </div>
+
+              {excelLoading && (
+                <div className="text-center py-4 text-gray-400 text-sm">解析中…</div>
+              )}
+
+              {excelMsg && (
+                <div className={`rounded-lg px-3 py-2 text-sm ${excelMsg.startsWith('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                  {excelMsg}
+                </div>
+              )}
+
+              {excelPreview && !excelLoading && (
+                <div className="border rounded-xl overflow-hidden text-xs">
+                  <div className="bg-gray-50 px-4 py-2 font-medium text-gray-700 flex gap-4 flex-wrap">
+                    <span>請款日：<strong>{excelPreview.billingDate || '—'}</strong></span>
+                    <span>撥款日：<strong>{excelPreview.paymentDate || '—'}</strong></span>
+                    <span>銀行：<strong>{excelPreview.bankName || '—'}</strong></span>
+                    <span>特店代號：<strong>{excelPreview.merchantId || '—'}</strong></span>
+                  </div>
+                  <div className="grid grid-cols-2 divide-x">
+                    <div className="p-3 space-y-1">
+                      <p className="font-medium text-gray-600 mb-1">金額摘要</p>
+                      <p>請款金額：<span className="font-mono">{Number(excelPreview.totalAmount).toLocaleString()}</span></p>
+                      <p>調整：<span className="font-mono">{Number(excelPreview.adjustment).toLocaleString()}</span></p>
+                      <p>手續費：<span className="font-mono text-amber-700">{Number(excelPreview.totalFee).toLocaleString()}</span></p>
+                      <p>撥款淨額：<span className="font-mono font-bold text-blue-700">{Number(excelPreview.netAmount).toLocaleString()}</span></p>
+                      <p>筆數：{excelPreview.totalCount}</p>
+                    </div>
+                    <div className="p-3 space-y-1">
+                      <p className="font-medium text-gray-600 mb-1">
+                        批次明細 ({excelPreview.batchLines?.length || 0} 筆)
+                        {excelPreview.feeDetails?.length > 0 && `・費率明細 (${excelPreview.feeDetails.length} 筆)`}
+                      </p>
+                      {excelPreview.batchLines?.slice(0, 5).map((l, i) => (
+                        <p key={i}>{l.cardType} {l.batchNo ? `批#${l.batchNo}` : ''} {Number(l.amount).toLocaleString()}</p>
+                      ))}
+                      {(excelPreview.batchLines?.length || 0) > 5 && <p className="text-gray-400">…</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t flex gap-3 justify-end">
+              <button onClick={closeExcel} className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+              <button
+                onClick={doExcelImport}
+                disabled={!excelFile || excelLoading || excelImporting || !excelPreview?.billingDate}
+                className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {excelImporting ? '匯入中…' : '確認匯入'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 新增/編輯 Modal */}
       {showForm && (

@@ -449,6 +449,16 @@ async function main() {
     console.log('自在海-土地銀行帳戶已建立.');
   }
 
+  // ========================
+  // 會計科目 6116 信用卡手續費
+  // ========================
+  await prisma.accountingSubject.upsert({
+    where: { code: '6116' },
+    update: { category: '營業費用', subcategory: '營業費用', name: '信用卡手續費' },
+    create: { category: '營業費用', subcategory: '營業費用', code: '6116', name: '信用卡手續費' },
+  });
+  console.log('AccountingSubject 6116 信用卡手續費 seeded.');
+
   console.log('Seed completed successfully!');
 }
 
