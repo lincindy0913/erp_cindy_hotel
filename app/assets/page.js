@@ -85,6 +85,10 @@ function AssetsPageInner() {
   const [detailIncomes, setDetailIncomes] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Confirmation modal (replaces browser confirm() which gets blocked in production)
+  const [confirmState, setConfirmState] = useState(null); // { message, onConfirm }
+  const showConfirm = (message, onConfirm) => setConfirmState({ message, onConfirm });
+
   // Property inline edit (序號/分類)
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
@@ -393,24 +397,26 @@ function AssetsPageInner() {
 
   async function deleteProperty(p) {
     if (!canEdit) return;
-    if (!confirm(`確定刪除物業「${p.name}」？此操作無法復原。`)) return;
-    const res = await fetch(`/api/rentals/properties/${p.id}`, { method: 'DELETE' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
-    showToast('已刪除', 'success');
-    if (selected?.id === p.id) setSelected(null);
-    await loadProperties();
+    showConfirm(`確定刪除物業「${p.name}」？此操作無法復原。`, async () => {
+      const res = await fetch(`/api/rentals/properties/${p.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
+      showToast('已刪除', 'success');
+      if (selected?.id === p.id) setSelected(null);
+      await loadProperties();
+    });
   }
 
   async function deleteAsset(a) {
     if (!canEdit) return;
-    if (!confirm(`確定刪除資產「${a.name}」？`)) return;
-    const res = await fetch(`/api/assets/${a.id}`, { method: 'DELETE' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
-    showToast('已刪除', 'success');
-    if (selected?.asset?.id === a.id) setSelected(prev => prev ? { ...prev, asset: null } : null);
-    await loadProperties();
+    showConfirm(`確定刪除資產「${a.name}」？`, async () => {
+      const res = await fetch(`/api/assets/${a.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
+      showToast('已刪除', 'success');
+      if (selected?.asset?.id === a.id) setSelected(prev => prev ? { ...prev, asset: null } : null);
+      await loadProperties();
+    });
   }
 
   if (!canView) {
@@ -959,7 +965,7 @@ function AssetsPageInner() {
                 {editing && (
                   <button type="button" disabled={saving}
                     className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50 disabled:opacity-50"
-                    onClick={() => { if (confirm(`確定刪除資產「${editing.name}」？`)) { setShowModal(false); deleteAsset(editing); } }}>
+                    onClick={() => { setShowModal(false); deleteAsset(editing); }}>
                     刪除資產
                   </button>
                 )}
@@ -970,6 +976,21 @@ function AssetsPageInner() {
                   {saving ? '儲存中…' : '儲存'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmState && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+            <p className="text-gray-800 text-sm mb-5">{confirmState.message}</p>
+            <div className="flex justify-end gap-2">
+              <button className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300"
+                onClick={() => setConfirmState(null)}>取消</button>
+              <button className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                onClick={() => { const fn = confirmState.onConfirm; setConfirmState(null); fn(); }}>確定刪除</button>
             </div>
           </div>
         </div>
