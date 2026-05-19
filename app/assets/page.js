@@ -85,6 +85,10 @@ function AssetsPageInner() {
   const [detailIncomes, setDetailIncomes] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Property inline edit (序號/分類)
+  const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
+  const [propInlineSaving, setPropInlineSaving] = useState(false);
+
   // Asset modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -293,6 +297,37 @@ function AssetsPageInner() {
     }
   }
 
+  async function savePropField(propertyId, field, value) {
+    setPropInlineSaving(true);
+    try {
+      const body = {};
+      if (field === 'sortOrder') body.sortOrder = value !== '' && value !== null ? parseInt(value) : null;
+      else body.category = value || null;
+      const res = await fetch(`/api/rentals/properties/${propertyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { showToast('儲存失敗', 'error'); return; }
+      const parsed = field === 'sortOrder'
+        ? (value !== '' && value !== null ? parseInt(value) : null)
+        : (value || null);
+      setProperties(prev => prev.map(p => p.id === propertyId ? { ...p, [field]: parsed } : p));
+    } catch { showToast('儲存失敗', 'error'); }
+    finally { setPropInlineSaving(false); setPropInlineEdit(null); }
+  }
+
+  async function deleteProperty(p) {
+    if (!canEdit) return;
+    if (!confirm(`確定刪除物業「${p.name}」？此操作無法復原。`)) return;
+    const res = await fetch(`/api/rentals/properties/${p.id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
+    showToast('已刪除', 'success');
+    if (selected?.id === p.id) setSelected(null);
+    await loadProperties();
+  }
+
   async function deleteAsset(a) {
     if (!canEdit) return;
     if (!confirm(`確定刪除資產「${a.name}」？`)) return;
@@ -402,6 +437,8 @@ function AssetsPageInner() {
                 <tr>
                   <th className="text-left px-3 py-2">物業</th>
                   <th className="text-left px-3 py-2">棟別</th>
+                  <th className="text-center px-3 py-2">序號</th>
+                  <th className="text-left px-3 py-2">分類</th>
                   <th className="text-left px-3 py-2">狀態</th>
                   <th className="text-left px-3 py-2">租客</th>
                   <th className="text-right px-3 py-2">月租金</th>
@@ -417,7 +454,7 @@ function AssetsPageInner() {
               </thead>
               <tbody>
                 {mergedRows.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 13 : 12} className="text-center py-10 text-gray-400">尚無物業資料</td></tr>
+                  <tr><td colSpan={canEdit ? 15 : 14} className="text-center py-10 text-gray-400">尚無物業資料</td></tr>
                 ) : (
                   mergedRows.map(p => {
                     const isSelected = selected?.id === p.id;
@@ -437,6 +474,50 @@ function AssetsPageInner() {
                           {p.name}{p.unitNo ? <span className="text-gray-400 text-xs ml-1">({p.unitNo})</span> : ''}
                         </td>
                         <td className="px-3 py-2 text-gray-500 text-xs">{p.buildingName || '—'}</td>
+                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                          {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'sortOrder' ? (
+                            <input
+                              autoFocus
+                              type="number"
+                              className="w-14 border rounded px-1 py-0.5 text-xs text-center"
+                              value={propInlineEdit.value}
+                              disabled={propInlineSaving}
+                              onChange={e => setPropInlineEdit(prev => ({ ...prev, value: e.target.value }))}
+                              onBlur={() => savePropField(p.id, 'sortOrder', propInlineEdit.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setPropInlineEdit(null); }}
+                            />
+                          ) : (
+                            <span
+                              className={`text-xs text-gray-600 ${canEdit ? 'cursor-pointer hover:bg-gray-100 rounded px-1' : ''}`}
+                              onClick={() => canEdit && setPropInlineEdit({ propertyId: p.id, field: 'sortOrder', value: p.sortOrder ?? '' })}
+                            >
+                              {p.sortOrder ?? <span className="text-gray-300">—</span>}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs" onClick={e => e.stopPropagation()}>
+                          {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'category' ? (
+                            <select
+                              autoFocus
+                              className="border rounded px-1 py-0.5 text-xs"
+                              value={propInlineEdit.value}
+                              disabled={propInlineSaving}
+                              onChange={e => setPropInlineEdit(prev => ({ ...prev, value: e.target.value }))}
+                              onBlur={() => savePropField(p.id, 'category', propInlineEdit.value)}
+                            >
+                              <option value="">—</option>
+                              <option value="公司">公司</option>
+                              <option value="湯三姐">湯三姐</option>
+                            </select>
+                          ) : (
+                            <span
+                              className={`${canEdit ? 'cursor-pointer hover:bg-gray-100 rounded px-1' : ''}`}
+                              onClick={() => canEdit && setPropInlineEdit({ propertyId: p.id, field: 'category', value: p.category ?? '' })}
+                            >
+                              {p.category || <span className="text-gray-300">—</span>}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap
                             ${p.status === 'rented' ? 'bg-green-100 text-green-700'
@@ -483,18 +564,18 @@ function AssetsPageInner() {
                         </td>
                         {canEdit && (
                           <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            {p.asset ? (
-                              <div className="flex items-center justify-center gap-2">
-                                <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>編輯</button>
-                                <button className="text-red-500 hover:underline text-xs" onClick={() => deleteAsset(p.asset)}>刪除</button>
-                              </div>
-                            ) : (
-                              <button className="text-teal-600 hover:underline text-xs" onClick={() => {
-                                setEditing(null);
-                                setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
-                                setShowModal(true);
-                              }}>新增資產</button>
-                            )}
+                            <div className="flex items-center justify-center gap-2">
+                              {p.asset ? (
+                                <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>編輯資產</button>
+                              ) : (
+                                <button className="text-teal-600 hover:underline text-xs" onClick={() => {
+                                  setEditing(null);
+                                  setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                                  setShowModal(true);
+                                }}>新增資產</button>
+                              )}
+                              <button className="text-red-500 hover:underline text-xs" onClick={() => deleteProperty(p)}>刪除</button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -506,7 +587,7 @@ function AssetsPageInner() {
               {mergedRows.length > 0 && (
                 <tfoot className="bg-teal-50 border-t-2 border-teal-200 text-xs font-semibold">
                   <tr>
-                    <td colSpan={5} className="px-3 py-2 text-gray-700">合計</td>
+                    <td colSpan={7} className="px-3 py-2 text-gray-700">合計</td>
                     <td className="px-3 py-2 text-right text-teal-700">{fmtMoney(summary.totalRent)}</td>
                     <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(summary.totalHouse)}</td>
                     <td className="px-3 py-2 text-right text-orange-700">{fmtMoney(summary.totalLand)}</td>
