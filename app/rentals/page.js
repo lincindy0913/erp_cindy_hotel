@@ -1208,6 +1208,7 @@ function RentalsPage() {
     const propertyData = properties.find(p => p.id === income.propertyId);
     const defaultAccountId = String(
       income.accountId ||
+      income.contract?.rentAccountId ||
       income.rentCollectAccountId ||
       propertyData?.rentCollectAccountId ||
       propertyData?.rentCollectAccount?.id ||
