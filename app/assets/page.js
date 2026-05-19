@@ -89,6 +89,18 @@ function AssetsPageInner() {
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
 
+  // Property edit modal
+  const [showPropModal, setShowPropModal] = useState(false);
+  const [editingProp, setEditingProp] = useState(null);
+  const [propSaving, setPropSaving] = useState(false);
+  const [propForm, setPropForm] = useState({
+    name: '', buildingName: '', unitNo: '', address: '', ownerName: '',
+    houseTaxRegistrationNo: '', status: 'available', category: '',
+    sortOrder: '', rentCollectAccountId: '', depositAccountId: '', note: '',
+    collectUtilityFee: false,
+  });
+  const [accounts, setAccounts] = useState([]);
+
   // Asset modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -129,8 +141,15 @@ function AssetsPageInner() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([loadProperties(), loadYearData(year)]);
-      if (!cancelled) setLoading(false);
+      const [, , acctRes] = await Promise.all([
+        loadProperties(),
+        loadYearData(year),
+        fetch('/api/cashflow/accounts').then(r => r.ok ? r.json() : []),
+      ]);
+      if (!cancelled) {
+        setLoading(false);
+        if (Array.isArray(acctRes)) setAccounts(acctRes);
+      }
     })();
     return () => { cancelled = true; };
   }, [loadProperties, loadYearData, year]);
@@ -315,6 +334,61 @@ function AssetsPageInner() {
       setProperties(prev => prev.map(p => p.id === propertyId ? { ...p, [field]: parsed } : p));
     } catch { showToast('儲存失敗', 'error'); }
     finally { setPropInlineSaving(false); setPropInlineEdit(null); }
+  }
+
+  function openPropertyEdit(p) {
+    setEditingProp(p);
+    setPropForm({
+      name: p.name || '',
+      buildingName: p.buildingName || '',
+      unitNo: p.unitNo || '',
+      address: p.address || '',
+      ownerName: p.ownerName || '',
+      houseTaxRegistrationNo: p.houseTaxRegistrationNo || '',
+      status: p.status || 'available',
+      category: p.category || '',
+      sortOrder: p.sortOrder != null ? String(p.sortOrder) : '',
+      rentCollectAccountId: p.rentCollectAccountId != null ? String(p.rentCollectAccountId) : '',
+      depositAccountId: p.depositAccountId != null ? String(p.depositAccountId) : '',
+      note: p.note || '',
+      collectUtilityFee: p.collectUtilityFee || false,
+    });
+    setShowPropModal(true);
+  }
+
+  async function savePropertyEdit() {
+    if (!editingProp) return;
+    setPropSaving(true);
+    try {
+      const body = {
+        buildingName: propForm.buildingName,
+        unitNo: propForm.unitNo,
+        ownerName: propForm.ownerName || null,
+        houseTaxRegistrationNo: propForm.houseTaxRegistrationNo || null,
+        status: propForm.status,
+        category: propForm.category || null,
+        sortOrder: propForm.sortOrder !== '' ? parseInt(propForm.sortOrder) : null,
+        rentCollectAccountId: propForm.rentCollectAccountId ? parseInt(propForm.rentCollectAccountId) : null,
+        depositAccountId: propForm.depositAccountId ? parseInt(propForm.depositAccountId) : null,
+        note: propForm.note || null,
+        collectUtilityFee: propForm.collectUtilityFee,
+      };
+      if (!editingProp.asset) {
+        body.name = propForm.name;
+        body.address = propForm.address;
+      }
+      const res = await fetch(`/api/rentals/properties/${editingProp.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data?.error?.message || data?.error || '儲存失敗', 'error'); return; }
+      showToast('已儲存', 'success');
+      setShowPropModal(false);
+      await loadProperties();
+    } catch { showToast('儲存失敗', 'error'); }
+    finally { setPropSaving(false); }
   }
 
   async function deleteProperty(p) {
@@ -565,7 +639,7 @@ function AssetsPageInner() {
                         {canEdit && (
                           <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-2">
-                              <Link href={`/rentals?editProperty=${p.id}`} className="text-indigo-600 hover:underline text-xs">編輯</Link>
+                              <button className="text-indigo-600 hover:underline text-xs" onClick={() => openPropertyEdit(p)}>編輯</button>
                               {p.asset ? (
                                 <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>資產</button>
                               ) : (
@@ -885,6 +959,119 @@ function AssetsPageInner() {
               <button type="button" disabled={saving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50" onClick={saveModal}>
                 {saving ? '儲存中…' : '儲存'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Property Edit Modal */}
+      {showPropModal && editingProp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !propSaving && setShowPropModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4">編輯物業：{editingProp.name}</h3>
+              {editingProp.asset && (
+                <div className="text-xs bg-teal-50 border border-teal-100 rounded px-3 py-2 mb-3 text-teal-800">
+                  已連結資產主檔，名稱與地址由資產端管理。
+                </div>
+              )}
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">名稱 *</label>
+                    <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                      value={propForm.name} disabled={!!editingProp.asset}
+                      onChange={e => setPropForm(f => ({ ...f, name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-gray-600">狀態</label>
+                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.status}
+                      onChange={e => setPropForm(f => ({ ...f, status: e.target.value }))}>
+                      {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-600">地址</label>
+                  <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                    value={propForm.address} disabled={!!editingProp.asset}
+                    onChange={e => setPropForm(f => ({ ...f, address: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">大樓名稱</label>
+                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.buildingName}
+                      onChange={e => setPropForm(f => ({ ...f, buildingName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-gray-600">戶別</label>
+                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.unitNo}
+                      onChange={e => setPropForm(f => ({ ...f, unitNo: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">分類</label>
+                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.category}
+                      onChange={e => setPropForm(f => ({ ...f, category: e.target.value }))}>
+                      <option value="">—</option>
+                      <option value="公司">公司</option>
+                      <option value="湯三姐">湯三姐</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-600">序號</label>
+                    <input type="number" className="w-full border rounded px-3 py-2 mt-1" value={propForm.sortOrder}
+                      onChange={e => setPropForm(f => ({ ...f, sortOrder: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">所有權人</label>
+                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.ownerName}
+                      onChange={e => setPropForm(f => ({ ...f, ownerName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-gray-600">房屋稅稅籍編號</label>
+                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.houseTaxRegistrationNo}
+                      onChange={e => setPropForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-gray-600">收租帳戶</label>
+                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.rentCollectAccountId}
+                      onChange={e => setPropForm(f => ({ ...f, rentCollectAccountId: e.target.value }))}>
+                      <option value="">無</option>
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-600">押金帳戶</label>
+                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.depositAccountId}
+                      onChange={e => setPropForm(f => ({ ...f, depositAccountId: e.target.value }))}>
+                      <option value="">無</option>
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-gray-600">備註</label>
+                  <textarea className="w-full border rounded px-3 py-2 mt-1" rows={2} value={propForm.note}
+                    onChange={e => setPropForm(f => ({ ...f, note: e.target.value }))} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="propCollectUtilityFee" checked={propForm.collectUtilityFee}
+                    onChange={e => setPropForm(f => ({ ...f, collectUtilityFee: e.target.checked }))} className="rounded" />
+                  <label htmlFor="propCollectUtilityFee" className="text-sm text-gray-700">需向租客收取水電費</label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" disabled={propSaving} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300" onClick={() => setShowPropModal(false)}>取消</button>
+                <button type="button" disabled={propSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50" onClick={savePropertyEdit}>
+                  {propSaving ? '儲存中…' : '儲存'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
