@@ -686,7 +686,7 @@ export default function BnbPage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.list) {
-          const list = data.list.filter(w => w.type === 'building').map(w => w.name);
+          const list = data.list.filter(w => w.type === 'building' && !w.parentId).map(w => w.name);
           if (list.length === 0) return;
           setWarehouseList(list);
           const first = list[0];

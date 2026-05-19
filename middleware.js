@@ -111,6 +111,7 @@ const ROUTE_PERMISSIONS = {
   '/reconciliation': 'reconciliation.view',
   '/rentals': 'rental.view',
   '/assets': 'rental.view',
+  '/bnb': 'bnb.view',
   '/month-end': 'monthend.view',
   '/expenses': 'expense.view',
   '/engineering': 'engineering.view',
@@ -311,5 +312,7 @@ export const config = {
     '/expenses/:path*',
     '/settings/:path*',
     '/warehouse-departments/:path*',
+    '/bnb/:path*',
+    '/bnb',
   ]
 };
