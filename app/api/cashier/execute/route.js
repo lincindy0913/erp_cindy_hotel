@@ -265,6 +265,14 @@ export async function POST(request) {
         });
       }
 
+      // 7e. If this PaymentOrder is linked to BnbOtaCommission, update status to '已付款'
+      if (order.sourceType === 'bnb_ota_commission' && order.sourceRecordId) {
+        await tx.bnbOtaCommission.update({
+          where: { id: order.sourceRecordId },
+          data: { status: '已付款' },
+        });
+      }
+
       // 8. If cashier marked this as employee advance (from cashier form), create EmployeeAdvance
       if (isEmployeeAdvance && advancedBy) {
         const advNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${dateStr}-`);

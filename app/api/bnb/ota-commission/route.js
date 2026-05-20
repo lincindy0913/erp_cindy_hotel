@@ -1,10 +1,14 @@
 /**
- * GET  /api/bnb/ota-commission?month=YYYY-MM&source=Booking&warehouse=民宿
+ * GET    /api/bnb/ota-commission?month=YYYY-MM&source=Booking&warehouse=民宿
  *   → 回傳該月/來源/館別是否已有傭金記錄（含 PaymentOrder 狀態）
  *
- * POST /api/bnb/ota-commission
+ * POST   /api/bnb/ota-commission
  *   body: { commissionMonth, otaSource, warehouse, commissionAmount, paymentMethod, note }
  *   → 建立 BnbOtaCommission + PaymentOrder，送出出納待付款
+ *
+ * PATCH  /api/bnb/ota-commission?id=123
+ *   body: { commissionAmount, paymentMethod, note }
+ *   → 更新傭金金額/備註（僅限 status=待出納）
  *
  * DELETE /api/bnb/ota-commission?id=123
  *   → 取消傭金（status='已取消'），需有 BNB_EDIT
@@ -217,6 +221,57 @@ export async function POST(request) {
       orderNo:      result.orderNo,
       orderId:      result.orderId,
     });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// ── PATCH (編輯傭金金額/備註) ──────────────────────────────────────
+export async function PATCH(request) {
+  const auth = await requireAnyPermission([PERMISSIONS.BNB_EDIT]);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = parseInt(searchParams.get('id'));
+    if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id', 400);
+
+    const body = await request.json();
+    const { commissionAmount, paymentMethod, note } = body;
+
+    const record = await prisma.bnbOtaCommission.findUnique({ where: { id } });
+    if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆傭金記錄', 404);
+    if (record.status === '已付款') {
+      return createErrorResponse('FORBIDDEN', '已付款的傭金無法修改', 400);
+    }
+    if (record.status === '已取消') {
+      return createErrorResponse('FORBIDDEN', '已取消的傭金無法修改', 400);
+    }
+
+    const amt = commissionAmount !== undefined ? Number(commissionAmount) : undefined;
+    if (amt !== undefined && (isNaN(amt) || amt <= 0)) {
+      return createErrorResponse('INVALID_PARAMETER', '傭金金額無效', 400);
+    }
+
+    const updateData = {};
+    if (amt !== undefined) updateData.commissionAmount = amt;
+    if (paymentMethod !== undefined) updateData.paymentMethod = paymentMethod;
+    if (note !== undefined) updateData.note = note || null;
+
+    // 同步更新 PaymentOrder 金額
+    if (amt !== undefined && record.paymentOrderId) {
+      await prisma.paymentOrder.update({
+        where: { id: record.paymentOrderId },
+        data: { amount: amt, netAmount: amt },
+      });
+    }
+
+    const updated = await prisma.bnbOtaCommission.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return NextResponse.json({ ok: true, record: { ...updated, commissionAmount: Number(updated.commissionAmount) } });
   } catch (error) {
     return handleApiError(error);
   }

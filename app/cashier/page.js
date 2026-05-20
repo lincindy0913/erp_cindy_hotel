@@ -504,7 +504,7 @@ export default function CashierPage() {
   );
   const isPendingTab = activeTab === 'pending';
 
-  // 來源選項（五大類別，對應多個 PaymentOrder.sourceType）
+  // 來源選項（六大類別，對應多個 PaymentOrder.sourceType）
   const SOURCE_OPTIONS = [
     { value: '', label: '全部來源' },
     { value: '進銷存', label: '進銷存' },
@@ -512,6 +512,7 @@ export default function CashierPage() {
     { value: '租屋', label: '租屋' },
     { value: '貸款', label: '貸款' },
     { value: '工程', label: '工程' },
+    { value: '民宿/OTA', label: '民宿/OTA' },
   ];
 
   // 根據 sourceType + 付款單號前綴 + 摘要 判斷所屬類別
@@ -523,6 +524,7 @@ export default function CashierPage() {
       if (['rental_deposit_out', 'rental_deposit_in', 'rental'].includes(sourceType)) return '租屋';
       if (['loan_predeposit', 'loan_payment'].includes(sourceType)) return '貸款';
       if (sourceType === 'engineering') return '工程';
+      if (sourceType === 'bnb_ota_commission') return '民宿/OTA';
     }
     // 2. Fallback：用付款單號前綴判斷
     if (order) {
