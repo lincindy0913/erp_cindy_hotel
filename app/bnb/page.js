@@ -360,7 +360,7 @@ function PaymentModal({ record, onClose, onSaved }) {
 // ── 訂房新增 / 編輯 Modal ────────────────────────────────────────
 function BookingFormModal({ record, onClose, onSaved, warehouseList }) {
   const { showToast } = useToast();
-  const isEdit = !!record;
+  const isEdit = !!(record?.id);
   const todayStr = new Date().toISOString().split('T')[0];
 
   const [form, setForm] = useState({
@@ -670,6 +670,8 @@ export default function BnbPage() {
   const [commNote,       setCommNote]       = useState('');
   const [commSubmitting, setCommSubmitting] = useState(false);
   const [commExisting,   setCommExisting]   = useState(null);  // { exists, record, orderStatus }
+  const [reconcileConfirmed, setReconcileConfirmed] = useState(false); // 是否已確認存檔
+  const [reconcileConfirming, setReconcileConfirming] = useState(false);
   // OTA 傭金歷史列表
   const [commHistRows,   setCommHistRows]   = useState([]);
   const [commHistLoading,setCommHistLoading]= useState(false);
@@ -947,6 +949,7 @@ export default function BnbPage() {
     if (!otaFile) { showToast('請先上傳 OTA 對帳單', 'error'); return; }
     setOtaLoading(true);
     setOtaResult(null);
+    setReconcileConfirmed(false);
     try {
       const fd = new FormData();
       fd.append('file', otaFile);
@@ -1020,6 +1023,81 @@ export default function BnbPage() {
       if (chk.ok) setCommExisting(await chk.json());
     } catch { showToast('取消失敗', 'error'); }
   }, [otaSource, otaDateFrom, otaWarehouse]);
+
+  // OTA 比對：確認並存檔比對結果
+  const confirmReconcile = useCallback(async () => {
+    if (!otaResult) return;
+    setReconcileConfirming(true);
+    try {
+      const s = otaResult.summary;
+      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      const res = await fetch('/api/bnb/ota-reconcile-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reconcileMonth: month,
+          otaSource,
+          warehouse: otaWarehouse || DEFAULT_WAREHOUSE,
+          dateFrom: otaDateFrom || null,
+          dateTo: otaDateTo || null,
+          otaRowCount:     otaResult.otaRowCount,
+          bnbRowCount:     otaResult.bnbRowCount,
+          matchedCount:    s.matchedCount,
+          unmatchedOtaCnt: s.unmatchedOtaCnt,
+          unmatchedBnbCnt: s.unmatchedBnbCnt,
+          issueCount:      s.issueCount,
+          cancelledCount:  s.cancelledCount,
+          otaTotal:        s.otaTotal,
+          bnbTotal:        s.bnbTotal,
+          diff:            s.diff,
+          otaCommission:   s.otaCommission,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.message || '存檔失敗', 'error'); return; }
+      setReconcileConfirmed(true);
+      showToast('比對結果已確認存檔', 'success');
+    } catch { showToast('存檔失敗', 'error'); }
+    finally { setReconcileConfirming(false); }
+  }, [otaResult, otaSource, otaWarehouse, otaDateFrom, otaDateTo]);
+
+  // OTA比對：開啟編輯（以 bnbId 撈取完整記錄後開 BookingFormModal）
+  const openOtaEdit = useCallback(async (bnbId) => {
+    try {
+      const res = await fetch(`/api/bnb/${bnbId}`);
+      if (!res.ok) { showToast('載入訂房記錄失敗', 'error'); return; }
+      const record = await res.json();
+      if (!record) { showToast('找不到此訂房記錄', 'error'); return; }
+      setEditBooking(record);
+    } catch { showToast('載入訂房記錄失敗', 'error'); }
+  }, []);
+
+  // OTA比對：刪除系統記錄
+  const deleteOtaBnb = useCallback(async (bnbId) => {
+    if (!confirm('確定要刪除此筆系統訂房記錄嗎？')) return;
+    try {
+      const res = await fetch(`/api/bnb/${bnbId}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.message || '刪除失敗', 'error'); return; }
+      showToast('已刪除', 'success');
+      runOtaReconcile();
+    } catch { showToast('刪除失敗', 'error'); }
+  }, [runOtaReconcile]);
+
+  // OTA比對：新增 OTA 資料到系統（預填欄位後開 BookingFormModal）
+  const openOtaAdd = useCallback((otaRow) => {
+    setEditBooking({
+      id: null,
+      guestName:   otaRow.guestName || '',
+      checkInDate:  otaRow.arrival  || '',
+      checkOutDate: otaRow.departure || '',
+      roomCharge:   otaRow.finalAmount || 0,
+      source: otaRow.source || otaSource,
+      reservationNo: otaRow.reservationNo || '',
+      warehouse: otaWarehouse || '',
+      status: '已確認',
+    });
+  }, [otaSource, otaWarehouse]);
 
   // ── 老闆收取記錄 fetch ─────────────────────────────────────────
   const fetchBossWithdraw = useCallback(async () => {
@@ -3635,6 +3713,26 @@ export default function BnbPage() {
                     ))}
                   </div>
 
+                  {/* 確認比對完成 / 存檔 */}
+                  <div className="bg-white rounded-xl shadow p-4 mb-4 flex items-center gap-4">
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-700 text-sm mb-0.5">確認比對結果</div>
+                      <div className="text-xs text-gray-400">審查完畢後點擊「確認存檔」，將本次比對摘要儲存至系統記錄</div>
+                    </div>
+                    {reconcileConfirmed ? (
+                      <span className="flex items-center gap-1.5 px-4 py-2 bg-green-100 text-green-700 rounded-xl text-sm font-semibold">
+                        ✓ 已確認存檔
+                      </span>
+                    ) : (
+                      <button
+                        onClick={confirmReconcile}
+                        disabled={reconcileConfirming}
+                        className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap">
+                        {reconcileConfirming ? '存檔中…' : '確認存檔'}
+                      </button>
+                    )}
+                  </div>
+
                   {/* 傭金確認送出 */}
                   <div className="bg-white rounded-xl shadow p-4 mb-4">
                     <div className="flex items-center gap-2 mb-3">
@@ -3731,11 +3829,12 @@ export default function BnbPage() {
                             <th className="px-3 py-2 text-right">佣金</th>
                             <th className="px-3 py-2 text-center">訂單號</th>
                             <th className="px-3 py-2 text-center">狀態</th>
+                            <th className="px-3 py-2 text-center">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {otaResult.matched.length === 0 && (
-                            <tr><td colSpan={12} className="text-center py-8 text-gray-400">無配對資料</td></tr>
+                            <tr><td colSpan={13} className="text-center py-8 text-gray-400">無配對資料</td></tr>
                           )}
                           {otaResult.matched.map((m, i) => (
                             <tr key={i} className={`hover:bg-gray-50 ${m.hasAmtIssue || m.hasNameIssue ? 'bg-amber-50' : ''}`}>
@@ -3758,6 +3857,10 @@ export default function BnbPage() {
                                 {m.hasAmtIssue || m.hasNameIssue
                                   ? <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs">有差異</span>
                                   : <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs">吻合</span>}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <button onClick={() => openOtaEdit(m.bnb.id)}
+                                  className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100">編輯</button>
                               </td>
                             </tr>
                           ))}
@@ -3782,11 +3885,12 @@ export default function BnbPage() {
                             <th className="px-3 py-2 text-right">金額</th>
                             <th className="px-3 py-2 text-right">佣金</th>
                             <th className="px-3 py-2 text-center">OTA狀態</th>
+                            <th className="px-3 py-2 text-center">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {otaResult.unmatchedOta.length === 0 && (
-                            <tr><td colSpan={9} className="text-center py-8 text-green-600">全部 OTA 筆數都有配對</td></tr>
+                            <tr><td colSpan={10} className="text-center py-8 text-green-600">全部 OTA 筆數都有配對</td></tr>
                           )}
                           {otaResult.unmatchedOta.map((r, i) => (
                             <tr key={i} className="hover:bg-red-50">
@@ -3799,6 +3903,10 @@ export default function BnbPage() {
                               <td className="px-3 py-2 text-right font-semibold">{r.finalAmount.toLocaleString()}</td>
                               <td className="px-3 py-2 text-right text-gray-500">{r.commissionAmt.toLocaleString()}</td>
                               <td className="px-3 py-2 text-center text-xs">{r.status}</td>
+                              <td className="px-3 py-2 text-center">
+                                <button onClick={() => openOtaAdd(r)}
+                                  className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 whitespace-nowrap">新增到系統</button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -3820,11 +3928,12 @@ export default function BnbPage() {
                             <th className="px-3 py-2 text-left">房號</th>
                             <th className="px-3 py-2 text-right">房費</th>
                             <th className="px-3 py-2 text-center">狀態</th>
+                            <th className="px-3 py-2 text-center">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {otaResult.unmatchedBnb.length === 0 && (
-                            <tr><td colSpan={7} className="text-center py-8 text-green-600">全部系統紀錄都有配對</td></tr>
+                            <tr><td colSpan={8} className="text-center py-8 text-green-600">全部系統紀錄都有配對</td></tr>
                           )}
                           {otaResult.unmatchedBnb.map((r, i) => (
                             <tr key={i} className="hover:bg-amber-50">
@@ -3835,6 +3944,14 @@ export default function BnbPage() {
                               <td className="px-3 py-2 text-gray-500">{r.roomNo || '—'}</td>
                               <td className="px-3 py-2 text-right font-semibold">{r.roomCharge.toLocaleString()}</td>
                               <td className="px-3 py-2 text-center text-xs">{r.status}</td>
+                              <td className="px-3 py-2 text-center">
+                                <div className="flex gap-1 justify-center">
+                                  <button onClick={() => openOtaEdit(r.id)}
+                                    className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100">編輯</button>
+                                  <button onClick={() => deleteOtaBnb(r.id)}
+                                    className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">刪除</button>
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -4742,13 +4859,17 @@ export default function BnbPage() {
         />
       )}
 
-      {/* 編輯訂房 Modal */}
+      {/* 編輯訂房 Modal（含 OTA 比對新增/編輯） */}
       {editBooking && (
         <BookingFormModal
           record={editBooking}
           warehouseList={warehouseList}
           onClose={() => setEditBooking(null)}
-          onSaved={() => { setEditBooking(null); fetchRecords(); }}
+          onSaved={() => {
+            setEditBooking(null);
+            fetchRecords();
+            if (activeTab === 'otaReconcile' && otaResult) runOtaReconcile();
+          }}
         />
       )}
 
