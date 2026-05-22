@@ -981,7 +981,7 @@ export default function BnbPage() {
     finally { setOtaLoading(false); }
   }, [otaFile, otaSource, otaDateFrom, otaDateTo, otaWarehouse]);
 
-  // OTA 傭金：送出應付款
+  // OTA 傭金：建立草稿（不立即建立 PaymentOrder）
   const submitCommission = useCallback(async () => {
     if (!otaResult) return;
     const amt = Number(commAmt);
@@ -1002,15 +1002,31 @@ export default function BnbPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.error || '送出失敗', 'error'); return; }
-      showToast(`傭金已送出出納（${data.orderNo}）`, 'success');
+      if (!res.ok) { showToast(data.error || '建立失敗', 'error'); return; }
+      showToast('傭金草稿已建立，請到「OTA傭金」分頁確認金額後送出出納', 'success');
       // 重新查狀態
       const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
       const chk = await fetch(`/api/bnb/ota-commission?${p}`);
       if (chk.ok) setCommExisting(await chk.json());
-    } catch { showToast('送出失敗', 'error'); }
+    } catch { showToast('建立失敗', 'error'); }
     finally { setCommSubmitting(false); }
   }, [otaResult, commAmt, commMethod, commNote, otaSource, otaDateFrom, otaWarehouse]);
+
+  // OTA 傭金：確認送出出納（草稿 → 待出納，建立 PaymentOrder）
+  const confirmCommission = useCallback(async (id) => {
+    if (!confirm('確認後將建立付款單並送出出納，確定嗎？')) return;
+    try {
+      const res = await fetch(`/api/bnb/ota-commission?id=${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || '確認失敗', 'error'); return; }
+      showToast(`傭金已送出出納（${data.orderNo}）`, 'success');
+      fetchCommHistory();
+    } catch { showToast('確認失敗', 'error'); }
+  }, [fetchCommHistory]);
 
   // OTA 傭金：取消
   const cancelCommission = useCallback(async (id) => {
@@ -3781,14 +3797,16 @@ export default function BnbPage() {
                   {/* 傭金確認送出 */}
                   <div className="bg-white rounded-xl shadow p-4 mb-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="font-semibold text-gray-700 text-sm">確認傭金 → 送出出納待付款</span>
+                      <span className="font-semibold text-gray-700 text-sm">傭金登記</span>
                       {commExisting?.exists && commExisting.record?.status !== '已取消' && (
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          (commExisting.orderStatus?.status === '已付款' || commExisting.orderStatus?.status === '已執行') ? 'bg-green-100 text-green-700'
-                          : commExisting.orderStatus?.status === '已取消' ? 'bg-gray-100 text-gray-500'
+                          (commExisting.record?.status === '已付款' || commExisting.orderStatus?.status === '已執行') ? 'bg-green-100 text-green-700'
+                          : commExisting.record?.status === '草稿' ? 'bg-blue-100 text-blue-700'
                           : 'bg-amber-100 text-amber-700'
                         }`}>
-                          {(commExisting.orderStatus?.status === '已付款' || commExisting.orderStatus?.status === '已執行') ? '已付款' : '待出納中'} — {commExisting.orderStatus?.orderNo}
+                          {(commExisting.record?.status === '已付款' || commExisting.orderStatus?.status === '已執行') ? '已付款'
+                            : commExisting.record?.status === '草稿' ? '草稿（未送出）'
+                            : `待出納 — ${commExisting.orderStatus?.orderNo || ''}`}
                         </span>
                       )}
                     </div>
@@ -3798,7 +3816,12 @@ export default function BnbPage() {
                         <span>付款方式：{commExisting.record.paymentMethod}</span>
                         <span>廠商：{commExisting.record.supplierName}</span>
                         {commExisting.record.note && <span>備註：{commExisting.record.note}</span>}
-                        {commExisting.record.status === '待出納' && (
+                        {commExisting.record.status === '草稿' && (
+                          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                            請到「OTA傭金」分頁確認金額後點「確認送出」
+                          </span>
+                        )}
+                        {(commExisting.record.status === '草稿' || commExisting.record.status === '待出納') && (
                           <button onClick={() => cancelCommission(commExisting.record.id)}
                             className="px-3 py-1 text-xs rounded-lg bg-red-50 text-red-600 hover:bg-red-100">
                             取消傭金
@@ -3834,9 +3857,10 @@ export default function BnbPage() {
                         </div>
                         <button onClick={submitCommission}
                           disabled={commSubmitting || !commAmt}
-                          className="px-5 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
-                          {commSubmitting ? '送出中…' : '送出出納待付款'}
+                          className="px-5 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+                          {commSubmitting ? '建立中…' : '建立草稿'}
                         </button>
+                        <span className="text-xs text-gray-400">建立後可在「OTA傭金」分頁編輯金額再確認送出</span>
                       </div>
                     )}
                   </div>
@@ -4050,26 +4074,35 @@ export default function BnbPage() {
           <div>
             {/* KPI 摘要 */}
             {commHistRows.length > 0 && (() => {
-              const active = commHistRows.filter(r => r.status !== '已取消');
+              const active     = commHistRows.filter(r => r.status !== '已取消');
               const totalAmt   = active.reduce((s, r) => s + Number(r.commissionAmount), 0);
+              const draftAmt   = active.filter(r => r.status === '草稿').reduce((s, r) => s + Number(r.commissionAmount), 0);
               const paidAmt    = active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').reduce((s, r) => s + Number(r.commissionAmount), 0);
               const pendingAmt = active.filter(r => r.status === '待出納').reduce((s, r) => s + Number(r.commissionAmount), 0);
+              const draftCnt   = active.filter(r => r.status === '草稿').length;
+              const pendingCnt = active.filter(r => r.status === '待出納').length;
+              const paidCnt    = active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').length;
               return (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="text-xs text-gray-400 mb-1">傭金總額（有效）</div>
                     <div className="text-xl font-bold text-gray-800">NT$ {totalAmt.toLocaleString()}</div>
                     <div className="text-xs text-gray-400 mt-1">{active.length} 筆</div>
                   </div>
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="text-xs text-gray-400 mb-1">已付款</div>
-                    <div className="text-xl font-bold text-green-600">NT$ {paidAmt.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">{active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').length} 筆</div>
+                  <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-4">
+                    <div className="text-xs text-blue-400 mb-1">草稿（待確認）</div>
+                    <div className="text-xl font-bold text-blue-600">NT$ {draftAmt.toLocaleString()}</div>
+                    <div className="text-xs text-blue-400 mt-1">{draftCnt} 筆</div>
                   </div>
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="text-xs text-gray-400 mb-1">待出納</div>
                     <div className="text-xl font-bold text-amber-600">NT$ {pendingAmt.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">{active.filter(r => r.status === '待出納').length} 筆</div>
+                    <div className="text-xs text-gray-400 mt-1">{pendingCnt} 筆</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <div className="text-xs text-gray-400 mb-1">已付款</div>
+                    <div className="text-xl font-bold text-green-600">NT$ {paidAmt.toLocaleString()}</div>
+                    <div className="text-xs text-gray-400 mt-1">{paidCnt} 筆</div>
                   </div>
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="text-xs text-gray-400 mb-1">已付款率</div>
@@ -4149,21 +4182,23 @@ export default function BnbPage() {
                     <tr><td colSpan={12} className="text-center py-8 text-gray-400">尚無傭金記錄</td></tr>
                   )}
                   {commHistRows.map(r => {
-                    // 出納執行後 PaymentOrder 變 '已執行'，BnbOtaCommission 也會更新為 '已付款'
-                    const isPaid = r.status === '已付款' || r.paymentOrder?.status === '已執行';
+                    const isPaid      = r.status === '已付款' || r.paymentOrder?.status === '已執行';
                     const isCancelled = r.status === '已取消';
-                    const isPending = r.status === '待出納' && !isPaid;
-                    const isEditing = commEditId === r.id;
+                    const isDraft     = r.status === '草稿';
+                    const isPending   = r.status === '待出納' && !isPaid;
+                    const isEditing   = commEditId === r.id;
                     const statusColor = isCancelled ? 'bg-gray-100 text-gray-400'
-                      : isPaid ? 'bg-green-100 text-green-700'
+                      : isPaid    ? 'bg-green-100 text-green-700'
+                      : isDraft   ? 'bg-blue-100 text-blue-700'
                       : 'bg-amber-100 text-amber-700';
                     const statusLabel = isCancelled ? '已取消' : isPaid ? '已付款' : r.status;
                     const poColor = !r.paymentOrder ? ''
                       : (r.paymentOrder.status === '已執行' || r.paymentOrder.status === '已付款') ? 'text-green-600 font-semibold'
                       : r.paymentOrder.status === '已取消' ? 'text-gray-400 line-through'
                       : 'text-amber-600';
+                    const canEdit = (isDraft || isPending) && !isPaid && !isCancelled;
                     return (
-                      <tr key={r.id} className={`hover:bg-gray-50 ${isCancelled ? 'opacity-50' : ''} ${isEditing ? 'bg-indigo-50' : ''}`}>
+                      <tr key={r.id} className={`hover:bg-gray-50 ${isCancelled ? 'opacity-50' : ''} ${isDraft ? 'bg-blue-50/40' : ''} ${isEditing ? 'bg-indigo-50' : ''}`}>
                         <td className="px-3 py-2.5 whitespace-nowrap font-mono">{r.commissionMonth}</td>
                         <td className="px-3 py-2.5">{r.otaSource}</td>
                         <td className="px-3 py-2.5 text-gray-500">{r.warehouse}</td>
@@ -4180,7 +4215,7 @@ export default function BnbPage() {
                             <select className="border rounded px-2 py-0.5 text-sm"
                               value={commEditData.paymentMethod}
                               onChange={e => setCommEditData(p => ({ ...p, paymentMethod: e.target.value }))}>
-                              <option>轉帳</option><option>匯款</option><option>現金</option><option>支票</option>
+                              <option>轉帳</option><option>匯款</option><option>現金</option><option>支票</option><option>信用卡</option><option>月結</option>
                             </select>
                           ) : r.paymentMethod}
                         </td>
@@ -4191,10 +4226,10 @@ export default function BnbPage() {
                           </span>
                         </td>
                         <td className={`px-3 py-2.5 text-center text-sm ${poColor}`}>
-                          {r.paymentOrder?.status || '—'}
+                          {r.paymentOrder?.status || (isDraft ? '未建立' : '—')}
                         </td>
                         <td className="px-3 py-2.5 text-xs font-mono text-gray-400">
-                          {r.paymentOrder?.orderNo || '—'}
+                          {r.paymentOrder?.orderNo || (isDraft ? '—' : '—')}
                         </td>
                         <td className="px-3 py-2.5 text-gray-500 text-xs">{r.confirmedBy || '—'}</td>
                         <td className="px-3 py-2.5 text-gray-400 text-xs max-w-[140px] truncate">
@@ -4206,7 +4241,7 @@ export default function BnbPage() {
                           ) : <span title={r.note}>{r.note || '—'}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-center">
-                          <div className="flex gap-1 justify-center">
+                          <div className="flex gap-1 justify-center flex-wrap">
                             {isEditing ? (
                               <>
                                 <button onClick={saveEditComm} disabled={commEditSaving}
@@ -4215,25 +4250,31 @@ export default function BnbPage() {
                                 </button>
                                 <button onClick={() => setCommEditId(null)}
                                   className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200">
-                                  取消
+                                  取消編輯
                                 </button>
                               </>
                             ) : (
                               <>
-                                {isPending && !isPaid && (
+                                {canEdit && (
                                   <button onClick={() => startEditComm(r)}
                                     className="px-2 py-0.5 text-xs rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
                                     編輯
                                   </button>
                                 )}
-                                {isPending && !isPaid && (
+                                {isDraft && (
+                                  <button onClick={() => confirmCommission(r.id)}
+                                    className="px-2 py-0.5 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 font-medium">
+                                    確認送出
+                                  </button>
+                                )}
+                                {canEdit && (
                                   <button onClick={() => cancelCommission(r.id)}
                                     className="px-2 py-0.5 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100">
                                     取消
                                   </button>
                                 )}
                                 {isPaid && (
-                                  <span className="text-xs text-green-600 font-semibold">已付款 🔒</span>
+                                  <span className="text-xs text-green-600 font-semibold">已付款</span>
                                 )}
                               </>
                             )}

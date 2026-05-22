@@ -2,13 +2,16 @@
  * GET    /api/bnb/ota-commission?month=YYYY-MM&source=Booking&warehouse=民宿
  *   → 回傳該月/來源/館別是否已有傭金記錄（含 PaymentOrder 狀態）
  *
+ * GET    /api/bnb/ota-commission           (無 month)
+ *   → 回傳全部列表（給歷史頁）
+ *
  * POST   /api/bnb/ota-commission
  *   body: { commissionMonth, otaSource, warehouse, commissionAmount, paymentMethod, note }
- *   → 建立 BnbOtaCommission + PaymentOrder，送出出納待付款
+ *   → 建立 BnbOtaCommission，狀態 = 草稿（不建立 PaymentOrder）
  *
  * PATCH  /api/bnb/ota-commission?id=123
- *   body: { commissionAmount, paymentMethod, note }
- *   → 更新傭金金額/備註（僅限 status=待出納）
+ *   body: { commissionAmount, paymentMethod, note }          → 更新金額/備註（草稿或待出納）
+ *   body: { action: 'confirm' }                              → 確認送出：建立 PaymentOrder，狀態改為待出納
  *
  * DELETE /api/bnb/ota-commission?id=123
  *   → 取消傭金（status='已取消'），需有 BNB_EDIT
@@ -36,6 +39,21 @@ async function generatePaymentOrderNo(tx) {
     if (seq > maxSeq) maxSeq = seq;
   }
   return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
+/** 查找或建立 OTA 廠商 */
+async function findOrCreateSupplier(otaSource) {
+  let supplier = await prisma.supplier.findFirst({
+    where: { name: { contains: otaSource }, isActive: true },
+    select: { id: true, name: true },
+  });
+  if (!supplier) {
+    supplier = await prisma.supplier.create({
+      data: { name: otaSource, isActive: true },
+      select: { id: true, name: true },
+    });
+  }
+  return supplier;
 }
 
 // ── GET ─────────────────────────────────────────────────────────
@@ -102,7 +120,7 @@ export async function GET(request) {
   }
 }
 
-// ── POST ────────────────────────────────────────────────────────
+// ── POST ── 建立草稿（不建立 PaymentOrder）─────────────────────
 export async function POST(request) {
   const auth = await requireAnyPermission([PERMISSIONS.BNB_CREATE, PERMISSIONS.BNB_EDIT]);
   if (!auth.ok) return auth.response;
@@ -120,7 +138,7 @@ export async function POST(request) {
 
     await assertBnbMonthOpen(commissionMonth, warehouse || '民宿');
 
-    // 防止重複送出
+    // 防止重複建立（非已取消的記錄）
     const existing = await prisma.bnbOtaCommission.findUnique({
       where: {
         commissionMonth_otaSource_warehouse: {
@@ -131,102 +149,60 @@ export async function POST(request) {
       },
     });
     if (existing && existing.status !== '已取消') {
-      return createErrorResponse('DUPLICATE', '該月份/來源/館別傭金已確認，請先取消後再重新送出', 409);
+      return createErrorResponse('DUPLICATE', '該月份/來源/館別傭金已存在，請到 OTA傭金 分頁編輯或確認', 409);
     }
 
-    const userName  = auth.session?.user?.name || auth.session?.user?.email || 'system';
-    const wh        = warehouse || '民宿';
-    const pm        = paymentMethod || '轉帳';
-    const amt       = Number(commissionAmount);
+    const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
+    const wh       = warehouse || '民宿';
+    const pm       = paymentMethod || '轉帳';
+    const amt      = Number(commissionAmount);
 
-    // 查找對應廠商（名稱含 OTA 來源名，如 "Booking"）；找不到時自動建立基本廠商
-    let supplier = await prisma.supplier.findFirst({
-      where: { name: { contains: otaSource }, isActive: true },
-      select: { id: true, name: true },
-    });
-    if (!supplier) {
-      supplier = await prisma.supplier.create({
-        data: { name: otaSource, isActive: true },
-        select: { id: true, name: true },
-      });
-    }
+    const supplier = await findOrCreateSupplier(otaSource);
 
-    const result = await prisma.$transaction(async (tx) => {
-      const orderNo = await generatePaymentOrderNo(tx);
-      const po = await tx.paymentOrder.create({
-        data: {
-          orderNo,
-          invoiceIds: [],
-          supplierId:    supplier?.id   || null,
-          supplierName:  supplier?.name || otaSource,
-          warehouse:     wh,
-          paymentMethod: pm,
-          amount:        amt,
-          discount:      0,
-          netAmount:     amt,
-          summary:       `${otaSource} 傭金 — ${wh} ${commissionMonth}`,
-          note:          note || null,
-          status:        '待出納',
-          createdBy:     userName,
-          sourceType:    'bnb_ota_commission',
-          sourceRecordId: null,   // 先建再回填
-        },
-      });
-
-      // 建立或更新 BnbOtaCommission
-      const commission = existing
-        ? await tx.bnbOtaCommission.update({
-            where: { id: existing.id },
-            data: {
-              commissionAmount: amt,
-              paymentMethod:    pm,
-              note:             note || null,
-              supplierId:       supplier?.id   || null,
-              supplierName:     supplier?.name || otaSource,
-              paymentOrderId:   po.id,
-              status:           '待出納',
-              confirmedBy:      userName,
-              confirmedAt:      new Date(),
-            },
-          })
-        : await tx.bnbOtaCommission.create({
-            data: {
-              commissionMonth,
-              otaSource,
-              warehouse: wh,
-              commissionAmount: amt,
-              paymentMethod:    pm,
-              note:             note || null,
-              supplierId:       supplier?.id   || null,
-              supplierName:     supplier?.name || otaSource,
-              paymentOrderId:   po.id,
-              status:           '待出納',
-              confirmedBy:      userName,
-              confirmedAt:      new Date(),
-            },
-          });
-
-      // 回填 sourceRecordId
-      await tx.paymentOrder.update({
-        where: { id: po.id },
-        data:  { sourceRecordId: commission.id },
-      });
-
-      return { commission, orderNo: po.orderNo, orderId: po.id };
-    });
+    // 建立或更新（已取消者）為草稿，不建立 PaymentOrder
+    const commission = existing
+      ? await prisma.bnbOtaCommission.update({
+          where: { id: existing.id },
+          data: {
+            commissionAmount: amt,
+            paymentMethod:    pm,
+            note:             note || null,
+            supplierId:       supplier?.id   || null,
+            supplierName:     supplier?.name || otaSource,
+            paymentOrderId:   null,
+            status:           '草稿',
+            confirmedBy:      userName,
+            confirmedAt:      new Date(),
+          },
+        })
+      : await prisma.bnbOtaCommission.create({
+          data: {
+            commissionMonth,
+            otaSource,
+            warehouse: wh,
+            commissionAmount: amt,
+            paymentMethod:    pm,
+            note:             note || null,
+            supplierId:       supplier?.id   || null,
+            supplierName:     supplier?.name || otaSource,
+            paymentOrderId:   null,
+            status:           '草稿',
+            confirmedBy:      userName,
+            confirmedAt:      new Date(),
+          },
+        });
 
     return NextResponse.json({
       ok: true,
-      commissionId: result.commission.id,
-      orderNo:      result.orderNo,
-      orderId:      result.orderId,
+      commissionId: commission.id,
+      status: '草稿',
     });
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-// ── PATCH (編輯傭金金額/備註) ──────────────────────────────────────
+// ── PATCH ── 編輯金額/備註 或 確認送出出納 ───────────────────────
 export async function PATCH(request) {
   const auth = await requireAnyPermission([PERMISSIONS.BNB_EDIT]);
   if (!auth.ok) return auth.response;
@@ -237,7 +213,6 @@ export async function PATCH(request) {
     if (!id) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id', 400);
 
     const body = await request.json();
-    const { commissionAmount, paymentMethod, note } = body;
 
     const record = await prisma.bnbOtaCommission.findUnique({ where: { id } });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆傭金記錄', 404);
@@ -248,6 +223,65 @@ export async function PATCH(request) {
       return createErrorResponse('FORBIDDEN', '已取消的傭金無法修改', 400);
     }
 
+    // ── 確認送出出納 ─────────────────────────────────────────
+    if (body.action === 'confirm') {
+      if (record.status !== '草稿') {
+        return createErrorResponse('VALIDATION_FAILED', '只有草稿狀態的傭金可以確認送出', 400);
+      }
+
+      await assertBnbMonthOpen(record.commissionMonth, record.warehouse);
+
+      const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
+      const supplier = await findOrCreateSupplier(record.otaSource);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const orderNo = await generatePaymentOrderNo(tx);
+        const po = await tx.paymentOrder.create({
+          data: {
+            orderNo,
+            invoiceIds:    [],
+            supplierId:    supplier?.id   || null,
+            supplierName:  supplier?.name || record.otaSource,
+            warehouse:     record.warehouse,
+            paymentMethod: record.paymentMethod,
+            amount:        Number(record.commissionAmount),
+            discount:      0,
+            netAmount:     Number(record.commissionAmount),
+            summary:       `${record.otaSource} 傭金 — ${record.warehouse} ${record.commissionMonth}`,
+            note:          record.note || null,
+            status:        '待出納',
+            createdBy:     userName,
+            sourceType:    'bnb_ota_commission',
+            sourceRecordId: null,  // 先建後回填
+          },
+        });
+
+        const updated = await tx.bnbOtaCommission.update({
+          where: { id },
+          data: {
+            status:        '待出納',
+            paymentOrderId: po.id,
+            supplierId:    supplier?.id   || null,
+            supplierName:  supplier?.name || record.otaSource,
+            confirmedBy:   userName,
+            confirmedAt:   new Date(),
+          },
+        });
+
+        // 回填 sourceRecordId
+        await tx.paymentOrder.update({
+          where: { id: po.id },
+          data:  { sourceRecordId: updated.id },
+        });
+
+        return { orderNo: po.orderNo, orderId: po.id };
+      });
+
+      return NextResponse.json({ ok: true, orderNo: result.orderNo, orderId: result.orderId });
+    }
+
+    // ── 編輯金額/備註 ────────────────────────────────────────
+    const { commissionAmount, paymentMethod, note } = body;
     const amt = commissionAmount !== undefined ? Number(commissionAmount) : undefined;
     if (amt !== undefined && (isNaN(amt) || amt <= 0)) {
       return createErrorResponse('INVALID_PARAMETER', '傭金金額無效', 400);
@@ -258,7 +292,7 @@ export async function PATCH(request) {
     if (paymentMethod !== undefined) updateData.paymentMethod = paymentMethod;
     if (note !== undefined) updateData.note = note || null;
 
-    // 同步更新 PaymentOrder 金額
+    // 若有關聯 PaymentOrder（待出納狀態），同步更新金額
     if (amt !== undefined && record.paymentOrderId) {
       await prisma.paymentOrder.update({
         where: { id: record.paymentOrderId },
