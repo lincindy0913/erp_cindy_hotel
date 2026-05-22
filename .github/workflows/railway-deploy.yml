@@ -34,9 +34,9 @@ jobs:
           RESPONSE=$(curl -s -X POST https://backboard.railway.app/graphql/v2 \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"query\":\"mutation{serviceInstanceDeployV2(serviceId:\\\"5134c3f7-7fe8-493b-962c-5235de64cb07\\\",environmentId:\\\"6a68b277-9bce-4a53-9539-48ef6efb276d\\\",commitSha:\\\"$COMMIT_SHA\\\"){id}}\"}")
+            -d "{\"query\":\"mutation{serviceInstanceDeployV2(serviceId:\\\"5134c3f7-7fe8-493b-962c-5235de64cb07\\\",environmentId:\\\"6a68b277-9bce-4a53-9539-48ef6efb276d\\\",commitSha:\\\"$COMMIT_SHA\\\")}\"}")
           echo "Response: $RESPONSE"
-          if echo "$RESPONSE" | grep -q '"id"'; then
+          if echo "$RESPONSE" | grep -q '"data"'; then
             echo "✅ Deployment triggered successfully"
           else
             echo "❌ Deployment failed — check RAILWAY_TOKEN or service/environment IDs"
