@@ -3,20 +3,39 @@ name: Deploy to Railway
 on:
   push:
     branches: [main]
+  workflow_dispatch:   # 允許手動從 GitHub Actions 頁面觸發
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify RAILWAY_TOKEN is set
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "❌ RAILWAY_TOKEN is not set in GitHub Secrets!"
+            echo "Please go to: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
+            echo "Name: RAILWAY_TOKEN"
+            echo "Value: Get from https://railway.app/account/tokens"
+            exit 1
+          fi
+          echo "✅ RAILWAY_TOKEN is set"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy
+      - name: Verify Railway auth
+        run: railway whoami
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy to Railway
         run: railway up --detach --service erp_cindy_hotel
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
