@@ -1012,6 +1012,21 @@ export default function BnbPage() {
     finally { setCommSubmitting(false); }
   }, [otaResult, commAmt, commMethod, commNote, otaSource, otaDateFrom, otaWarehouse]);
 
+  // OTA 傭金歷史列表
+  const fetchCommHistory = useCallback(async () => {
+    setCommHistLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (otaWarehouse) p.set('warehouse', otaWarehouse);
+      const res = await fetch(`/api/bnb/ota-commission?${p}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCommHistRows(data.rows || []);
+      }
+    } catch {}
+    finally { setCommHistLoading(false); }
+  }, [otaWarehouse]);
+
   // OTA 傭金：確認送出出納（草稿 → 待出納，建立 PaymentOrder）
   const confirmCommission = useCallback(async (id) => {
     if (!confirm('確認後將建立付款單並送出出納，確定嗎？')) return;
@@ -1162,21 +1177,6 @@ export default function BnbPage() {
     } catch {}
     finally { setBwLoading(false); }
   }, [bwMonth, bwWarehouse]);
-
-  // OTA 傭金歷史列表
-  const fetchCommHistory = useCallback(async () => {
-    setCommHistLoading(true);
-    try {
-      const p = new URLSearchParams();
-      if (otaWarehouse) p.set('warehouse', otaWarehouse);
-      const res = await fetch(`/api/bnb/ota-commission?${p}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCommHistRows(data.rows || []);
-      }
-    } catch {}
-    finally { setCommHistLoading(false); }
-  }, [otaWarehouse]);
 
   // OTA 比對歷史記錄
   const fetchReconLogs = useCallback(async () => {
