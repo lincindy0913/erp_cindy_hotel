@@ -1002,7 +1002,7 @@ export default function BnbPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.message || '送出失敗', 'error'); return; }
+      if (!res.ok) { showToast(data.error || '送出失敗', 'error'); return; }
       showToast(`傭金已送出出納（${data.orderNo}）`, 'success');
       // 重新查狀態
       const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
@@ -1018,7 +1018,7 @@ export default function BnbPage() {
     try {
       const res = await fetch(`/api/bnb/ota-commission?id=${id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.message || '取消失敗', 'error'); return; }
+      if (!res.ok) { showToast(data.error || '取消失敗', 'error'); return; }
       showToast('已取消傭金應付款', 'success');
       const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
       const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
@@ -1052,7 +1052,7 @@ export default function BnbPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.message || '儲存失敗', 'error'); return; }
+      if (!res.ok) { showToast(data.error || '儲存失敗', 'error'); return; }
       showToast('傭金已更新', 'success');
       setCommEditId(null);
       fetchCommHistory();
@@ -1090,7 +1090,7 @@ export default function BnbPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.message || '存檔失敗', 'error'); return; }
+      if (!res.ok) { showToast(data.error || '存檔失敗', 'error'); return; }
       setReconcileConfirmed(true);
       showToast('比對結果已確認存檔', 'success');
     } catch { showToast('存檔失敗', 'error'); }
@@ -1114,7 +1114,7 @@ export default function BnbPage() {
     try {
       const res = await fetch(`/api/bnb/${bnbId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.message || '刪除失敗', 'error'); return; }
+      if (!res.ok) { showToast(data.error || '刪除失敗', 'error'); return; }
       showToast('已刪除', 'success');
       runOtaReconcile();
     } catch { showToast('刪除失敗', 'error'); }
@@ -2699,15 +2699,15 @@ export default function BnbPage() {
                         <tr className="bg-indigo-50 font-bold text-indigo-800">
                           <td className="px-3 py-2.5">合計</td>
                           <td className="px-3 py-2.5 text-right">{t.count}</td>
-                          <td className="px-3 py-2.5 text-right">{t.roomCharge.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{t.otherCharge.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{(t.roomCharge + t.otherCharge).toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{t.payDeposit.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{t.payTransfer.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{t.payCard.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{t.payCash.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">{t.payVoucher.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">({t.cardFee.toLocaleString()})</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.roomCharge).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.otherCharge).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.roomCharge + t.otherCharge).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.payDeposit).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.payTransfer).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.payCard).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.payCash).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">{Math.round(t.payVoucher).toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right">({Math.round(t.cardFee).toLocaleString()})</td>
                           <td className="px-3 py-2.5"></td>
                         </tr>
                       );
@@ -4043,7 +4043,7 @@ export default function BnbPage() {
             {commHistRows.length > 0 && (() => {
               const active = commHistRows.filter(r => r.status !== '已取消');
               const totalAmt   = active.reduce((s, r) => s + Number(r.commissionAmount), 0);
-              const paidAmt    = active.filter(r => r.paymentOrder?.status === '已付款').reduce((s, r) => s + Number(r.commissionAmount), 0);
+              const paidAmt    = active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').reduce((s, r) => s + Number(r.commissionAmount), 0);
               const pendingAmt = active.filter(r => r.status === '待出納').reduce((s, r) => s + Number(r.commissionAmount), 0);
               return (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -4055,7 +4055,7 @@ export default function BnbPage() {
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="text-xs text-gray-400 mb-1">已付款</div>
                     <div className="text-xl font-bold text-green-600">NT$ {paidAmt.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">{active.filter(r => r.paymentOrder?.status === '已付款').length} 筆</div>
+                    <div className="text-xs text-gray-400 mt-1">{active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').length} 筆</div>
                   </div>
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                     <div className="text-xs text-gray-400 mb-1">待出納</div>
