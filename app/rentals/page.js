@@ -114,7 +114,25 @@ function RentalsPage() {
   // ── 合約欄位 inline edit (分類/序號) ──────────────────────────
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { contractId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
+  const [propSyncing, setPropSyncing] = useState(false);
   const CONTRACT_INCOME_CATEGORIES = ['公司', '湯三姐'];
+
+  async function syncContractsFromProperty() {
+    if (!confirm('將把資產管理頁面的序號/分類同步到所有合約（覆蓋現有值），確定嗎？')) return;
+    setPropSyncing(true);
+    try {
+      const res = await fetch('/api/rentals/contracts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync-from-property' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || '同步失敗', 'error'); return; }
+      showToast(`已同步 ${data.updated} 筆合約的序號/分類`, 'success');
+      fetchContracts();
+    } catch { showToast('同步失敗', 'error'); }
+    finally { setPropSyncing(false); }
+  }
 
   async function savePropField(contractId, field, value) {
     setPropInlineSaving(true);
@@ -2251,6 +2269,11 @@ function RentalsPage() {
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                   <button onClick={fetchContracts} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
+                  <button onClick={syncContractsFromProperty} disabled={propSyncing}
+                    className="bg-amber-500 text-white px-3 py-1.5 rounded text-sm hover:bg-amber-600 disabled:opacity-50"
+                    title="將資產管理頁面的序號/分類同步到所有合約">
+                    {propSyncing ? '同步中…' : '從資產同步序號/分類'}
+                  </button>
                   <button onClick={() => openContractModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增合約
                   </button>

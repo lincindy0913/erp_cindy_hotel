@@ -155,10 +155,39 @@ export async function PATCH(request) {
 
   try {
     const body = await request.json();
+
+    // ── 從資產（RentalProperty）同步序號/分類到所有合約 ─────────────
+    if (body.action === 'sync-from-property') {
+      const contracts = await prisma.rentalContract.findMany({
+        where: { status: { not: 'cancelled' } },
+        select: { id: true, propertyId: true },
+      });
+      const propIds = [...new Set(contracts.map(c => c.propertyId).filter(Boolean))];
+      const props = await prisma.rentalProperty.findMany({
+        where: { id: { in: propIds } },
+        select: { id: true, sortOrder: true, category: true },
+      });
+      const propMap = Object.fromEntries(props.map(p => [p.id, p]));
+      const updates = contracts
+        .filter(c => propMap[c.propertyId])
+        .map(c => {
+          const p = propMap[c.propertyId];
+          return prisma.rentalContract.update({
+            where: { id: c.id },
+            data: {
+              sortOrder: p.sortOrder ?? null,
+              category:  p.category  ?? null,
+            },
+          });
+        });
+      await prisma.$transaction(updates);
+      return NextResponse.json({ ok: true, updated: updates.length });
+    }
+
+    // ── 手動排序 ──────────────────────────────────────────────────
     if (body.action !== 'reorder' || !Array.isArray(body.orderedIds)) {
       return createErrorResponse('VALIDATION_FAILED', '未知操作', 400);
     }
-    // Assign sortOrder 1,2,3,... in the given order within a transaction
     await prisma.$transaction(
       body.orderedIds.map((id, index) =>
         prisma.rentalContract.update({ where: { id }, data: { sortOrder: index + 1 } })
