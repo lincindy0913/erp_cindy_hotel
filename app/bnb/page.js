@@ -2957,7 +2957,7 @@ export default function BnbPage() {
                       const zeroFixedHint =
                         summaryMode === 'monthly' && (summaryFixedHelp?.monthsWithZeroFixed?.includes(r.month) ?? false);
                       const fixedExpenseLink = summaryMode === 'monthly'
-                        ? `/expenses?month=${r.month}&subTab=records`
+                        ? `/expenses?month=${r.month}&subTab=records${summaryWarehouse ? `&warehouse=${encodeURIComponent(summaryWarehouse)}` : ''}`
                         : null;
                       return (
                         <tr

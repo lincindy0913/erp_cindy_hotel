@@ -82,7 +82,7 @@ function ExpensesPageInner() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordFilter, setRecordFilter] = useState({
     month: searchParams.get('month') || new Date().toISOString().slice(0, 7),
-    warehouse: '',
+    warehouse: searchParams.get('warehouse') || '',
     status: ''
   });
   const [expandedRecord, setExpandedRecord] = useState(null);
