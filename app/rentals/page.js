@@ -110,24 +110,6 @@ function RentalsPage() {
   const [incomes, setIncomes] = useState([]);
   const [incomesHasMore, setIncomesHasMore] = useState(false);
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
-  const sortedIncomes = useMemo(() => {
-    const kw = (incomeFilter.propertySearch || '').trim();
-    const filtered = kw
-      ? incomes.filter(i => (i.propertyName || '').includes(kw) || (i.buildingName || '').includes(kw))
-      : incomes;
-    return sortRows(filtered, rentIncKey, rentIncDir, {
-      contractSortOrder: (i) => i.contractSortOrder ?? 9999,
-      contractCategory: (i) => i.contractCategory || '',
-      propertyName: (i) => i.propertyName || '',
-      tenantName: (i) => i.tenantName || '',
-      expectedAmount: (i) => Number(i.expectedAmount || 0),
-      actualAmount: (i) => Number(i.actualAmount || 0),
-      remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
-      dueDate: (i) => i.dueDate || '',
-      status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
-      payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
-    });
-  }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch]);
 
   // ── 合約欄位 inline edit (分類/序號) ──────────────────────────
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { contractId, field, value }
@@ -200,6 +182,25 @@ function RentalsPage() {
     status: '',
     propertySearch: '',
   });
+  const sortedIncomes = useMemo(() => {
+    const kw = (incomeFilter.propertySearch || '').trim();
+    const filtered = kw
+      ? incomes.filter(i => (i.propertyName || '').includes(kw) || (i.buildingName || '').includes(kw))
+      : incomes;
+    return sortRows(filtered, rentIncKey, rentIncDir, {
+      contractSortOrder: (i) => i.contractSortOrder ?? 9999,
+      contractCategory: (i) => i.contractCategory || '',
+      propertyName: (i) => i.propertyName || '',
+      tenantName: (i) => i.tenantName || '',
+      expectedAmount: (i) => Number(i.expectedAmount || 0),
+      actualAmount: (i) => Number(i.actualAmount || 0),
+      remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
+      dueDate: (i) => i.dueDate || '',
+      status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
+      payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
+    });
+  }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch]);
+
   const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '' });
   const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
   const [maintenanceFilter, setMaintenanceFilter] = useState({ category: '', status: '' });
