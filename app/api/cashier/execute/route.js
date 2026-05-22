@@ -77,6 +77,13 @@ export async function POST(request) {
         }
       }
 
+      // Verify supplierId still exists (supplier may have been deleted after order was created)
+      let validSupplierId = order.supplierId || null;
+      if (validSupplierId) {
+        const supplierExists = await tx.supplier.findUnique({ where: { id: validSupplierId }, select: { id: true } });
+        if (!supplierExists) validSupplierId = null;
+      }
+
       const cashTx = await tx.cashTransaction.create({
         data: {
           transactionNo: txNo,
@@ -84,7 +91,7 @@ export async function POST(request) {
           type: '支出',
           warehouse: order.warehouse,
           accountId: parsedAccountId,
-          supplierId: order.supplierId || null,
+          supplierId: validSupplierId,
           categoryId,
           amount: actualAmount,
           accountingSubject: accountingSubjectForTx,
