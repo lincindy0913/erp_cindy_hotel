@@ -357,6 +357,18 @@ function PaymentModal({ record, onClose, onSaved }) {
   );
 }
 
+// 民宿快速館別按鈕（點同館別再次點擊可取消選取回到全部）
+const BNB_QUICK_WH = ['自在海', '花語'];
+function WhQuickBtns({ value, onChange }) {
+  return BNB_QUICK_WH.map(wh => (
+    <button key={wh} type="button"
+      onClick={() => onChange(value === wh ? '' : wh)}
+      className={`text-xs px-2 py-1 rounded border transition-colors whitespace-nowrap ${value === wh ? 'bg-indigo-600 border-indigo-600 text-white font-medium' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700'}`}>
+      {wh}
+    </button>
+  ));
+}
+
 // ── 訂房新增 / 編輯 Modal ────────────────────────────────────────
 function BookingFormModal({ record, onClose, onSaved, warehouseList }) {
   const { showToast } = useToast();
@@ -1813,6 +1825,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={filterWarehouse} onChange={setFilterWarehouse} />
               </div>
               <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <button onClick={() => setAddBookingOpen(true)}
@@ -2565,6 +2578,7 @@ export default function BnbPage() {
                 <select value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
                   {(warehouseList.length ? warehouseList : [drWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={drWarehouse} onChange={setDrWarehouse} />
               </div>
               <button onClick={fetchDailyRevenue} disabled={drLoading}
                 className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
@@ -2749,6 +2763,7 @@ export default function BnbPage() {
                 <option value="">全部</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+              <WhQuickBtns value={summaryWarehouse} onChange={setSummaryWarehouse} />
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
               <div className="ml-auto flex gap-2">
                 <ExportButtons
@@ -2877,6 +2892,7 @@ export default function BnbPage() {
                 <option value="">全部</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+              <WhQuickBtns value={summaryWarehouse} onChange={setSummaryWarehouse} />
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
               <div className="ml-auto flex gap-2">
                 {(() => {
@@ -3051,6 +3067,7 @@ export default function BnbPage() {
                 <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
                   {(warehouseList.length ? warehouseList : [declWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={declWarehouse} onChange={setDeclWarehouse} />
               </div>
               <button onClick={fetchDecl} disabled={declLoading}
                 className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
@@ -3222,6 +3239,7 @@ export default function BnbPage() {
               <select value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
                 {(warehouseList.length ? warehouseList : [dlWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+              <WhQuickBtns value={dlWarehouse} onChange={setDlWarehouse} />
               <button onClick={fetchDeclList} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <ExportButtons
                 data={dlRows}
@@ -3405,6 +3423,7 @@ export default function BnbPage() {
                     <option value="">全部</option>
                     {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
+                  <WhQuickBtns value={dmWarehouse} onChange={setDmWarehouse} />
                 </div>
                 {dmPayType !== 'all' && (
                   <div>
@@ -3720,6 +3739,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={otaWarehouse} onChange={setOtaWarehouse} />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">上傳對帳單</label>
@@ -4162,6 +4182,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={otaWarehouse} onChange={setOtaWarehouse} />
               </div>
               <button onClick={fetchCommHistory} disabled={commHistLoading}
                 className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
@@ -4408,6 +4429,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={bwWarehouse} onChange={setBwWarehouse} />
               </div>
               <button onClick={fetchBossWithdraw}
                 className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
@@ -4498,6 +4520,7 @@ export default function BnbPage() {
                   <option value="">全館</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={calWarehouse} onChange={setCalWarehouse} />
                 {calLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
               </div>
               {/* calendar grid */}
@@ -4548,6 +4571,7 @@ export default function BnbPage() {
                 <option value="">全館</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+              <WhQuickBtns value={occWarehouse} onChange={setOccWarehouse} />
               <button onClick={fetchOccupancy} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
               {occLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
             </div>
@@ -4637,6 +4661,7 @@ export default function BnbPage() {
                   <option value="">全館</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
+                <WhQuickBtns value={auditWarehouse} onChange={setAuditWarehouse} />
                 <button onClick={fetchAudit} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
                 {auditLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
               </div>
@@ -4724,6 +4749,7 @@ export default function BnbPage() {
                 <option value="">全館</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+              <WhQuickBtns value={saWarehouse} onChange={setSaWarehouse} />
               <button onClick={fetchSourceAnalysis} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
               {saLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
             </div>
@@ -4814,6 +4840,7 @@ export default function BnbPage() {
                 <option value="">全館</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
+              <WhQuickBtns value={oaWarehouse} onChange={setOaWarehouse} />
               <button onClick={fetchOtaAnalytics} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
               {oaLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
             </div>
