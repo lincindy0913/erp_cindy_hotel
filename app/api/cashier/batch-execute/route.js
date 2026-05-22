@@ -151,6 +151,23 @@ export async function POST(request) {
       }
     }
 
+    // Pre-validate supplier IDs — orders may reference deleted suppliers, causing FK violation on cashTransaction
+    const rawSupplierIds = [...new Set(orders.map(o => o.supplierId).filter(Boolean))];
+    const validSupplierIds = new Set();
+    if (rawSupplierIds.length > 0) {
+      const existingSuppliers = await prisma.supplier.findMany({
+        where: { id: { in: rawSupplierIds } },
+        select: { id: true },
+      });
+      existingSuppliers.forEach(s => validSupplierIds.add(s.id));
+    }
+    // Patch allocations: set supplierId to null if supplier was deleted
+    for (const alloc of allocations) {
+      if (alloc.supplierId && !validSupplierIds.has(alloc.supplierId)) {
+        alloc.supplierId = null;
+      }
+    }
+
     // Pre-fetch accountingSubjects for fixed_expense orders (outside transaction for efficiency)
     const orderSubjectMap = {};
     const fixedExpenseOrders = orders.filter(o => o.sourceType === 'fixed_expense');
