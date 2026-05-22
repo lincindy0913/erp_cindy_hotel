@@ -103,3 +103,68 @@ export async function PATCH(request, { params }) {
     return handleApiError(error);
   }
 }
+
+// DELETE: 刪除單筆分期收款，同步更新 RentalIncome 狀態與現金帳本
+export async function DELETE(request, { params }) {
+  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { id } = await params;
+    const paymentId = parseInt(id);
+
+    const payment = await prisma.rentalIncomePayment.findUnique({
+      where: { id: paymentId },
+      select: {
+        id: true, amount: true, cashTransactionId: true, accountId: true,
+        rentalIncome: {
+          select: {
+            id: true, expectedAmount: true,
+            property: { select: { name: true } },
+            payments: {
+              where: { id: { not: paymentId } },
+              select: { id: true, amount: true }
+            }
+          }
+        }
+      }
+    });
+    if (!payment) return createErrorResponse('NOT_FOUND', '找不到付款紀錄', 404);
+
+    const income = payment.rentalIncome;
+    const newTotal = income.payments.reduce((s, p) => s + Number(p.amount), 0);
+    const newStatus = newTotal <= 0 ? 'pending' : newTotal >= Number(income.expectedAmount) ? 'completed' : 'partial';
+
+    await prisma.$transaction(async (tx) => {
+      if (payment.cashTransactionId) {
+        await tx.cashTransaction.delete({ where: { id: payment.cashTransactionId } });
+      }
+      await tx.rentalIncomePayment.delete({ where: { id: paymentId } });
+      await tx.rentalIncome.update({
+        where: { id: income.id },
+        data: {
+          actualAmount: newTotal,
+          status: newStatus,
+          ...(newTotal <= 0 ? { actualDate: null } : {}),
+        },
+        select: { id: true },
+      });
+    });
+
+    await recalcBalance(prisma, payment.accountId);
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_INCOME_UPDATE,
+      targetModule: 'rentals',
+      targetRecordId: income.id,
+      beforeState: { paymentId, amount: Number(payment.amount) },
+      afterState: { deleted: true },
+      note: `刪除分期收款 #${paymentId} ${income.property?.name || ''}`,
+    });
+
+    return NextResponse.json({ success: true, newTotal, status: newStatus });
+  } catch (error) {
+    console.error('DELETE /api/rentals/payments/[id] error:', error.message || error);
+    return handleApiError(error);
+  }
+}

@@ -101,6 +101,7 @@ export async function PATCH(request, { params }) {
     const data = {};
     if (body.category  !== undefined) data.category  = body.category  || null;
     if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null;
+    if (body.status    !== undefined) data.status    = body.status;
     if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
     await prisma.rentalProperty.update({ where: { id: parseInt(id) }, data, select: { id: true } });
     return NextResponse.json({ ok: true });

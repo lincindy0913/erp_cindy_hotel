@@ -89,9 +89,10 @@ function AssetsPageInner() {
   const [confirmState, setConfirmState] = useState(null); // { message, onConfirm, confirmLabel }
   const showConfirm = (message, onConfirm, confirmLabel = '確定刪除') => setConfirmState({ message, onConfirm, confirmLabel });
 
-  // Property inline edit (序號/分類)
+  // Property inline edit (序號/分類/狀態)
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   // Property edit modal
   const [showPropModal, setShowPropModal] = useState(false);
@@ -101,7 +102,7 @@ function AssetsPageInner() {
     name: '', buildingName: '', unitNo: '', address: '', ownerName: '',
     houseTaxRegistrationNo: '', status: 'available', category: '',
     sortOrder: '', rentCollectAccountId: '', depositAccountId: '', note: '',
-    collectUtilityFee: false,
+    collectUtilityFee: false, publicInterestLandlord: false,
   });
   const [accounts, setAccounts] = useState([]);
 
@@ -320,11 +321,47 @@ function AssetsPageInner() {
     }
   }
 
+  async function syncPropertyStatus(p) {
+    const correctStatus = p.currentContractId ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
+    if (p.status === correctStatus) { showToast('狀態已是最新，無需同步', 'info'); return; }
+    const res = await fetch(`/api/rentals/properties/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: correctStatus }),
+    });
+    if (!res.ok) { showToast('同步失敗', 'error'); return; }
+    showToast(`已同步：${p.name} → ${STATUS_LABELS[correctStatus] || correctStatus}`, 'success');
+    setProperties(prev => prev.map(x => x.id === p.id ? { ...x, status: correctStatus } : x));
+    if (selected?.id === p.id) setSelected(s => s ? { ...s, status: correctStatus } : s);
+  }
+
+  async function syncAllStatus() {
+    setSyncingAll(true);
+    let updated = 0;
+    try {
+      for (const p of properties) {
+        const correctStatus = p.currentContractId ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
+        if (p.status !== correctStatus) {
+          await fetch(`/api/rentals/properties/${p.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: correctStatus }),
+          });
+          updated++;
+        }
+      }
+      showToast(updated > 0 ? `已同步 ${updated} 筆物業狀態` : '所有物業狀態均已是最新', 'success');
+      await loadProperties();
+    } catch { showToast('批次同步失敗', 'error'); }
+    finally { setSyncingAll(false); }
+  }
+
   async function savePropField(propertyId, field, value) {
     setPropInlineSaving(true);
     try {
       const body = {};
       if (field === 'sortOrder') body.sortOrder = value !== '' && value !== null ? parseInt(value) : null;
+      else if (field === 'status') body.status = value;
       else body.category = value || null;
       const res = await fetch(`/api/rentals/properties/${propertyId}`, {
         method: 'PATCH',
@@ -334,8 +371,9 @@ function AssetsPageInner() {
       if (!res.ok) { showToast('儲存失敗', 'error'); return; }
       const parsed = field === 'sortOrder'
         ? (value !== '' && value !== null ? parseInt(value) : null)
-        : (value || null);
+        : value || null;
       setProperties(prev => prev.map(p => p.id === propertyId ? { ...p, [field]: parsed } : p));
+      if (selected?.id === propertyId) setSelected(s => s ? { ...s, [field]: parsed } : s);
     } catch { showToast('儲存失敗', 'error'); }
     finally { setPropInlineSaving(false); setPropInlineEdit(null); }
   }
@@ -356,6 +394,7 @@ function AssetsPageInner() {
       depositAccountId: p.depositAccountId != null ? String(p.depositAccountId) : '',
       note: p.note || '',
       collectUtilityFee: p.collectUtilityFee || false,
+      publicInterestLandlord: p.publicInterestLandlord || false,
     });
     setShowPropModal(true);
   }
@@ -376,6 +415,7 @@ function AssetsPageInner() {
         depositAccountId: propForm.depositAccountId ? parseInt(propForm.depositAccountId) : null,
         note: propForm.note || null,
         collectUtilityFee: propForm.collectUtilityFee,
+        publicInterestLandlord: propForm.publicInterestLandlord,
       };
       if (!editingProp.asset) {
         body.name = propForm.name;
@@ -465,7 +505,7 @@ function AssetsPageInner() {
             <h2 className="text-xl font-bold text-gray-800">資產管理總覽</h2>
             <p className="text-sm text-gray-500 mt-0.5">各物業出租狀況、收租金額、稅費及維護費年度彙整</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <label className="text-sm text-gray-600">年度：</label>
             <select
               value={year}
@@ -477,6 +517,13 @@ function AssetsPageInner() {
                 return <option key={y} value={y}>{y} 年</option>;
               })}
             </select>
+            {canEdit && (
+              <button type="button" onClick={syncAllStatus} disabled={syncingAll || loading}
+                className="px-3 py-1.5 bg-amber-50 border border-amber-300 text-amber-700 text-sm rounded-lg hover:bg-amber-100 disabled:opacity-50"
+                title="依合約自動更新所有物業出租狀態">
+                {syncingAll ? '同步中…' : '↺ 同步狀態'}
+              </button>
+            )}
             {canEdit && (
               <button type="button" onClick={openCreate}
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
@@ -622,13 +669,33 @@ function AssetsPageInner() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap
-                            ${p.status === 'rented' ? 'bg-green-100 text-green-700'
-                            : p.status === 'available' ? 'bg-gray-100 text-gray-500'
-                            : 'bg-yellow-100 text-yellow-700'}`}>
-                            {STATUS_LABELS[p.status] || p.status || '—'}
-                          </span>
+                        <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'status' ? (
+                            <select autoFocus
+                              value={propInlineEdit.value}
+                              onChange={e => setPropInlineEdit(v => ({ ...v, value: e.target.value }))}
+                              onBlur={() => savePropField(p.id, 'status', propInlineEdit.value)}
+                              onKeyDown={e => { if (e.key === 'Escape') setPropInlineEdit(null); }}
+                              className="border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400">
+                              {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                          ) : (
+                            <span
+                              onClick={() => canEdit && setPropInlineEdit({ propertyId: p.id, field: 'status', value: p.status || 'available' })}
+                              title={canEdit ? '點擊編輯狀態' : ''}
+                              className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${canEdit ? 'cursor-pointer' : ''}
+                                ${p.status === 'rented' ? 'bg-green-100 text-green-700'
+                                : p.status === 'available' ? 'bg-gray-100 text-gray-500'
+                                : 'bg-yellow-100 text-yellow-700'}`}>
+                              {STATUS_LABELS[p.status] || p.status || '—'}
+                              {canEdit && p.currentContractId && p.status !== 'rented' && (
+                                <span className="ml-1 text-amber-500" title="有活躍合約但狀態非已出租，建議同步">⚠</span>
+                              )}
+                              {canEdit && !p.currentContractId && p.status === 'rented' && (
+                                <span className="ml-1 text-amber-500" title="無活躍合約但狀態為已出租，建議同步">⚠</span>
+                              )}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-gray-600 max-w-[120px] truncate text-xs" title={p.currentTenantName || ''}>
                           {p.currentTenantName || <span className="text-gray-300">—</span>}
@@ -664,7 +731,12 @@ function AssetsPageInner() {
                           ) : <span className="text-gray-300">未建立</span>}
                         </td>
                         <td className="px-3 py-2">
-                          <AssetFlagBadges asset={p.asset} />
+                          <div className="flex flex-wrap gap-1">
+                            {p.publicInterestLandlord && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">公益出租人</span>
+                            )}
+                            <AssetFlagBadges asset={p.asset} />
+                          </div>
                         </td>
                         {canEdit && (
                           <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
@@ -712,26 +784,60 @@ function AssetsPageInner() {
         {selected && (
           <div className="mt-5 border border-gray-200 rounded-lg bg-white overflow-hidden">
             {/* Panel Header */}
-            <div className="bg-teal-50 border-b border-teal-100 px-4 py-3 flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-bold text-gray-800">
-                  {selected.buildingName ? `${selected.buildingName} · ` : ''}{selected.name}
-                  {selected.unitNo && <span className="text-sm text-gray-500 ml-2">({selected.unitNo})</span>}
-                </h3>
-                <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
-                  {selected.address && <span>📍 {selected.address}</span>}
-                  <span>狀態：<strong className={selected.status === 'rented' ? 'text-green-700' : 'text-gray-600'}>
+            <div className="bg-teal-50 border-b border-teal-100 px-4 py-3 flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base font-bold text-gray-800">
+                    {selected.buildingName ? `${selected.buildingName} · ` : ''}{selected.name}
+                    {selected.unitNo && <span className="text-sm text-gray-500 ml-1">({selected.unitNo})</span>}
+                  </h3>
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${selected.status === 'rented' ? 'bg-green-100 text-green-700' : selected.status === 'available' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-100 text-yellow-700'}`}>
                     {STATUS_LABELS[selected.status] || selected.status}
-                  </strong></span>
-                  {selected.currentTenantName && <span>租客：<strong className="text-gray-700">{selected.currentTenantName}</strong></span>}
-                  {selected.currentMonthlyRent && <span>月租：<strong className="text-teal-700">NT$ {fmtMoney(selected.currentMonthlyRent)}</strong></span>}
-                  {selected.currentContractEnd && <span>合約到期：{selected.currentContractEnd}</span>}
+                  </span>
+                  {selected.publicInterestLandlord && (
+                    <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">公益出租人</span>
+                  )}
+                  {selected.currentContractId && selected.status !== 'rented' && (
+                    <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⚠ 狀態與合約不符</span>
+                  )}
+                  {!selected.currentContractId && selected.status === 'rented' && (
+                    <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⚠ 無活躍合約</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
+                  {selected.address && <span className="text-gray-400">📍 {selected.address}</span>}
+                  {selected.currentTenantName ? (
+                    <span>🧑 租客：<strong className="text-gray-800">{selected.currentTenantName}</strong>
+                      {selected.currentTenantPhone && <span className="text-gray-400 ml-1">{selected.currentTenantPhone}</span>}
+                    </span>
+                  ) : <span className="text-gray-400">無活躍租約</span>}
+                  {selected.currentMonthlyRent && (
+                    <span>💰 月租：<strong className="text-teal-700">NT$ {fmtMoney(selected.currentMonthlyRent)}</strong></span>
+                  )}
+                  {selected.currentContractNo && (
+                    <span>📄 合約：<strong className="text-gray-700">{selected.currentContractNo}</strong></span>
+                  )}
+                  {selected.currentContractStart && (
+                    <span>開始：{selected.currentContractStart}</span>
+                  )}
+                  {selected.currentContractEnd && (
+                    <span>到期：<strong className={new Date(selected.currentContractEnd) < new Date() ? 'text-red-600' : 'text-gray-700'}>{selected.currentContractEnd}</strong></span>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Link href={`/rentals?editProperty=${selected.id}`}
+              <div className="flex items-center gap-2 shrink-0">
+                {canEdit && (
+                  <button onClick={() => syncPropertyStatus(selected)}
+                    className="text-xs text-amber-700 hover:underline border border-amber-300 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded"
+                    title="依合約自動更新此物業狀態">↺ 同步狀態</button>
+                )}
+                {canEdit && (
+                  <button onClick={() => openPropertyEdit(selected)}
+                    className="text-xs text-indigo-700 hover:underline border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded">編輯物業</button>
+                )}
+                <Link href={`/rentals?propertyId=${selected.id}&tab=contracts`}
                   className="text-xs text-teal-700 hover:underline border border-teal-300 px-2 py-1 rounded">
-                  租屋設定
+                  租屋管理 →
                 </Link>
                 <button onClick={() => setSelected(null)}
                   className="text-gray-400 hover:text-gray-600 text-lg leading-none px-1">✕</button>
@@ -1120,6 +1226,11 @@ function AssetsPageInner() {
                   <input type="checkbox" id="propCollectUtilityFee" checked={propForm.collectUtilityFee}
                     onChange={e => setPropForm(f => ({ ...f, collectUtilityFee: e.target.checked }))} className="rounded" />
                   <label htmlFor="propCollectUtilityFee" className="text-sm text-gray-700">需向租客收取水電費</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="propPublicInterestLandlord" checked={propForm.publicInterestLandlord}
+                    onChange={e => setPropForm(f => ({ ...f, publicInterestLandlord: e.target.checked }))} className="rounded" />
+                  <label htmlFor="propPublicInterestLandlord" className="text-sm text-gray-700">是否為公益出租人</label>
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">

@@ -110,22 +110,24 @@ function RentalsPage() {
   const [incomes, setIncomes] = useState([]);
   const [incomesHasMore, setIncomesHasMore] = useState(false);
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
-  const sortedIncomes = useMemo(
-    () =>
-      sortRows(incomes, rentIncKey, rentIncDir, {
-        contractSortOrder: (i) => i.contractSortOrder ?? 9999,
-        contractCategory: (i) => i.contractCategory || '',
-        propertyName: (i) => i.propertyName || '',
-        tenantName: (i) => i.tenantName || '',
-        expectedAmount: (i) => Number(i.expectedAmount || 0),
-        actualAmount: (i) => Number(i.actualAmount || 0),
-        remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
-        dueDate: (i) => i.dueDate || '',
-        status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
-        payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
-      }),
-    [incomes, rentIncKey, rentIncDir]
-  );
+  const sortedIncomes = useMemo(() => {
+    const kw = (incomeFilter.propertySearch || '').trim();
+    const filtered = kw
+      ? incomes.filter(i => (i.propertyName || '').includes(kw) || (i.buildingName || '').includes(kw))
+      : incomes;
+    return sortRows(filtered, rentIncKey, rentIncDir, {
+      contractSortOrder: (i) => i.contractSortOrder ?? 9999,
+      contractCategory: (i) => i.contractCategory || '',
+      propertyName: (i) => i.propertyName || '',
+      tenantName: (i) => i.tenantName || '',
+      expectedAmount: (i) => Number(i.expectedAmount || 0),
+      actualAmount: (i) => Number(i.actualAmount || 0),
+      remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
+      dueDate: (i) => i.dueDate || '',
+      status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
+      payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
+    });
+  }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch]);
 
   // ── 合約欄位 inline edit (分類/序號) ──────────────────────────
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { contractId, field, value }
@@ -195,7 +197,8 @@ function RentalsPage() {
   const [incomeFilter, setIncomeFilter] = useState({
     year: new Date().getFullYear(),
     month: '',
-    status: ''
+    status: '',
+    propertySearch: '',
   });
   const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '' });
   const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
@@ -667,15 +670,16 @@ function RentalsPage() {
     } catch { setContracts([]); }
   }
 
-  async function fetchIncomes() {
+  async function fetchIncomes(filterOverride) {
     try {
+      const f = filterOverride || incomeFilter;
       const params = new URLSearchParams();
-      if (incomeFilter.year) params.set('year', incomeFilter.year);
-      if (incomeFilter.month) params.set('month', incomeFilter.month);
-      if (incomeFilter.status) params.set('status', incomeFilter.status);
+      if (f.year) params.set('year', f.year);
+      if (f.month) params.set('month', f.month);
+      if (f.status) params.set('status', f.status);
       const uParams = new URLSearchParams();
-      if (incomeFilter.year) uParams.set('year', incomeFilter.year);
-      if (incomeFilter.month) uParams.set('month', incomeFilter.month);
+      if (f.year) uParams.set('year', f.year);
+      if (f.month) uParams.set('month', f.month);
       const [incRes, utiRes] = await Promise.all([
         fetch(`/api/rentals/income?${params}`),
         fetch(`/api/rentals/utility-income?${uParams}`)
@@ -798,6 +802,18 @@ function RentalsPage() {
       if (activeTab === 'paymentRecords') fetchPaymentRecords(paymentRecordsPagination.page);
     } catch (e) { showToast('更新失敗: ' + e.message, 'error'); }
     finally { setEditingPaymentSaving(false); }
+  }
+
+  async function deletePaymentRecord(paymentId) {
+    try {
+      const res = await fetch(`/api/rentals/payments/${paymentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+      showToast('付款記錄已刪除', 'success');
+      fetchIncomes();
+      fetchSummary();
+      fetchPaymentRecords(paymentRecordsPagination.page);
+    } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
   }
 
   async function fetchOverdueReport() {
@@ -1669,50 +1685,87 @@ function RentalsPage() {
                   <div className="grid grid-cols-4 gap-3 mb-4">
                     <div className="bg-white rounded-lg shadow-sm p-3 border-l-4 border-teal-500">
                       <p className="text-xs text-gray-500">總應收</p>
-                      <p className="text-lg font-bold">${fmt(incomes.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</p>
+                      <p className="text-lg font-bold">${fmt(sortedIncomes.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</p>
                     </div>
                     <div className="bg-white rounded-lg shadow-sm p-3 border-l-4 border-green-500">
                       <p className="text-xs text-gray-500">已收</p>
-                      <p className="text-lg font-bold text-green-700">${fmt(incomes.filter(i => i.status === 'completed').reduce((s, i) => s + Number(i.actualAmount || 0), 0))}</p>
+                      <p className="text-lg font-bold text-green-700">${fmt(sortedIncomes.filter(i => i.status === 'completed').reduce((s, i) => s + Number(i.actualAmount || 0), 0))}</p>
                     </div>
                     <div className="bg-white rounded-lg shadow-sm p-3 border-l-4 border-yellow-500">
                       <p className="text-xs text-gray-500">待收</p>
-                      <p className="text-lg font-bold text-yellow-700">{incomes.filter(i => i.status === 'pending').length} 筆</p>
+                      <p className="text-lg font-bold text-yellow-700">{sortedIncomes.filter(i => i.status === 'pending').length} 筆</p>
                     </div>
                     <div className="bg-white rounded-lg shadow-sm p-3 border-l-4 border-red-500">
                       <p className="text-xs text-gray-500">逾期</p>
-                      <p className="text-lg font-bold text-red-600">{incomes.filter(i => i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0]).length} 筆</p>
+                      <p className="text-lg font-bold text-red-600">{sortedIncomes.filter(i => i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0]).length} 筆</p>
                     </div>
                   </div>
                 )}
 
-                <div className="flex flex-wrap items-center gap-3 mb-4">
-                  <label className="text-sm text-gray-600">年份:</label>
-                  <input type="number" value={incomeFilter.year} onChange={e => setIncomeFilter(f => ({ ...f, year: e.target.value }))}
-                    className="border rounded px-2 py-1 w-24 text-sm" />
-                  <label className="text-sm text-gray-600">月份:</label>
-                  <select value={incomeFilter.month} onChange={e => setIncomeFilter(f => ({ ...f, month: e.target.value }))}
-                    className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部月份</option>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={i + 1}>{i + 1} 月</option>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  {/* 時間區域 */}
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="text-xs font-semibold text-gray-500 w-16">時間區域</span>
+                    <label className="text-sm text-gray-600">年份:</label>
+                    <input type="number" value={incomeFilter.year} onChange={e => setIncomeFilter(f => ({ ...f, year: e.target.value }))}
+                      className="border rounded px-2 py-1 w-24 text-sm" />
+                    <label className="text-sm text-gray-600">月份:</label>
+                    <select value={incomeFilter.month} onChange={e => setIncomeFilter(f => ({ ...f, month: e.target.value }))}
+                      className="border rounded px-2 py-1 text-sm">
+                      <option value="">全部月份</option>
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{i + 1} 月</option>
+                      ))}
+                    </select>
+                    {/* 快速時間區段 */}
+                    {[
+                      { label: '本月', getF: () => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() + 1 }; } },
+                      { label: '上月', getF: () => { const n = new Date(); n.setMonth(n.getMonth() - 1); return { year: n.getFullYear(), month: n.getMonth() + 1 }; } },
+                      { label: '全年', getF: () => ({ year: new Date().getFullYear(), month: '' }) },
+                    ].map(btn => (
+                      <button key={btn.label} type="button" onClick={() => {
+                        const patch = btn.getF();
+                        const newF = { ...incomeFilter, ...patch };
+                        setIncomeFilter(newF);
+                        fetchIncomes(newF);
+                      }}
+                        className="px-2 py-1 text-xs rounded border border-teal-300 text-teal-700 hover:bg-teal-50 bg-white">
+                        {btn.label}
+                      </button>
                     ))}
-                  </select>
-                  <select value={incomeFilter.status} onChange={e => setIncomeFilter(f => ({ ...f, status: e.target.value }))}
-                    className="border rounded px-2 py-1 text-sm">
-                    <option value="">全部狀態</option>
-                    {INCOME_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                  <button onClick={fetchIncomes} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
-                    產生本月租金
-                  </button>
-                  {selectedIncomeIds.size > 0 && (
-                    <button onClick={() => setShowBatchPay(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 ml-auto">
+                  </div>
+                  {/* 物業搜尋 */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-500 w-16">物業搜尋</span>
+                    <input
+                      type="text"
+                      value={incomeFilter.propertySearch}
+                      onChange={e => setIncomeFilter(f => ({ ...f, propertySearch: e.target.value }))}
+                      placeholder="輸入物業名稱關鍵字…"
+                      className="border rounded px-2 py-1 text-sm w-48"
+                    />
+                    {incomeFilter.propertySearch && (
+                      <button type="button" onClick={() => setIncomeFilter(f => ({ ...f, propertySearch: '' }))}
+                        className="text-xs text-gray-400 hover:text-gray-600">✕ 清除</button>
+                    )}
+                    <select value={incomeFilter.status} onChange={e => setIncomeFilter(f => ({ ...f, status: e.target.value }))}
+                      className="border rounded px-2 py-1 text-sm ml-4">
+                      <option value="">全部狀態</option>
+                      {INCOME_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <button onClick={fetchIncomes} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
+                    <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
+                      產生本月租金
+                    </button>
+                  </div>
+                </div>
+                {selectedIncomeIds.size > 0 && (
+                  <div className="flex justify-end mb-2">
+                    <button onClick={() => setShowBatchPay(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
                       批次確認 ({selectedIncomeIds.size} 筆)
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* 批次確認收款 panel */}
                 {showBatchPay && (
@@ -3473,6 +3526,7 @@ function RentalsPage() {
 
             {/* ==================== TAB: 付款紀錄 ==================== */}
             {activeTab === 'paymentRecords' && (
+              <>
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-4">
                   <label className="text-sm text-gray-600">年份：</label>
@@ -3530,13 +3584,14 @@ function RentalsPage() {
                         <th className="text-left px-3 py-2 font-medium text-gray-700">付款方式</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-700">收款帳戶</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-700">匯款人/備註</th>
+                        <th className="text-center px-3 py-2 font-medium text-gray-700">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {paymentLoading ? (
-                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">載入中…</td></tr>
+                        <tr><td colSpan={11} className="text-center py-8 text-gray-400">載入中…</td></tr>
                       ) : paymentRecords.length === 0 ? (
-                        <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
+                        <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
                       ) : paymentRecords.map((p, idx) => (
                         <tr key={p.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                           <td className="px-3 py-2 font-mono text-sm">{p.paymentDate}</td>
@@ -3558,6 +3613,15 @@ function RentalsPage() {
                           <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={[p.matchBankAccountName, p.matchTransferRef, p.matchNote].filter(Boolean).join(' / ')}>
                             {[p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / ') || '—'}
                           </td>
+                          <td className="px-3 py-2 text-center whitespace-nowrap">
+                            <button onClick={() => openPaymentEdit(p)}
+                              className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 mr-1">編輯</button>
+                            <button onClick={() => askConfirm(
+                              `確定刪除此收款紀錄？\n${p.propertyName} ${p.incomeYear}/${String(p.incomeMonth).padStart(2,'0')} 第${p.sequenceNo}次 $${fmt(p.amount)}`,
+                              () => deletePaymentRecord(p.id), '刪除收款記錄', true
+                            )}
+                              className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100">刪除</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3575,6 +3639,65 @@ function RentalsPage() {
                   </div>
                 )}
               </div>
+
+              {/* 付款記錄編輯 Modal */}
+              {editingPaymentId !== null && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]"
+                  onClick={() => setEditingPaymentId(null)}>
+                  <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-gray-800">編輯收款記錄</h3>
+                      <button onClick={() => setEditingPaymentId(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-600">實收金額 *</label>
+                        <input type="number" value={editingPaymentForm.amount}
+                          onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))}
+                          className="w-full border rounded px-3 py-1.5 text-sm mt-0.5" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">收款日期 *</label>
+                        <input type="date" value={editingPaymentForm.paymentDate}
+                          onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))}
+                          className="w-full border rounded px-3 py-1.5 text-sm mt-0.5" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">收款帳戶 *</label>
+                        <select value={editingPaymentForm.accountId}
+                          onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))}
+                          className="w-full border rounded px-3 py-1.5 text-sm mt-0.5">
+                          <option value="">選擇帳戶</option>
+                          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">付款方式</label>
+                        <select value={editingPaymentForm.paymentMethod}
+                          onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                          className="w-full border rounded px-3 py-1.5 text-sm mt-0.5">
+                          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600">備註</label>
+                        <input type="text" value={editingPaymentForm.matchNote}
+                          onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))}
+                          className="w-full border rounded px-3 py-1.5 text-sm mt-0.5" placeholder="匯款備註…" />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-5">
+                      <button onClick={() => setEditingPaymentId(null)}
+                        className="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200">取消</button>
+                      <button onClick={savePaymentEdit} disabled={editingPaymentSaving}
+                        className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50">
+                        {editingPaymentSaving ? '儲存中…' : '儲存'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              </>
             )}
 
           </>

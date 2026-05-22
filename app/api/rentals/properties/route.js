@@ -26,18 +26,20 @@ export async function GET(request) {
           where: { status: 'active' },
           select: {
             id: true,
+            contractNo: true,
             monthlyRent: true,
             startDate: true,
             endDate: true,
-            tenant: { select: { fullName: true, companyName: true, tenantType: true } }
+            status: true,
+            tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
           },
           take: 1
         },
         rentCollectAccount: { select: { id: true, name: true } },
         depositAccount: { select: { id: true, name: true } },
-        asset: { select: { id: true, name: true, assetType: true, address: true, areaSqm: true, acquisitionDate: true, notes: true, rentalPropertyId: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true } },
+        asset: { select: { id: true, name: true, assetType: true, address: true, areaSqm: true, acquisitionDate: true, notes: true, rentalPropertyId: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true, serialNo: true, category: true } },
       },
-      orderBy: [{ buildingName: 'asc' }, { name: 'asc' }]
+      orderBy: [{ sortOrder: 'asc' }, { buildingName: 'asc' }, { name: 'asc' }]
     });
 
     const result = properties.map(p => {
@@ -50,8 +52,11 @@ export async function GET(request) {
       return {
         ...p,
         currentTenantName: tenantName,
+        currentTenantPhone: activeContract?.tenant?.phone || null,
         currentContractId: activeContract?.id || null,
+        currentContractNo: activeContract?.contractNo || null,
         currentMonthlyRent: activeContract?.monthlyRent != null ? Number(activeContract.monthlyRent) : null,
+        currentContractStart: activeContract?.startDate || null,
         currentContractEnd: activeContract?.endDate || null,
       };
     });
