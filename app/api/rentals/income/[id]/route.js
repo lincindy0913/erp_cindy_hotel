@@ -33,6 +33,7 @@ export async function PUT(request, { params }) {
         incomeYear: true, incomeMonth: true,
         expectedAmount: true, actualAmount: true, accountId: true,
         paymentMethod: true, status: true, cashTransactionId: true,
+        isLocked: true,
         contract: { select: { contractNo: true } },
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } },
@@ -45,6 +46,9 @@ export async function PUT(request, { params }) {
 
     if (!income) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
+    }
+    if (income.isLocked) {
+      return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法新增收款', 423);
     }
 
     if (paymentMethod === 'transfer' && matchTransferRef) {
@@ -169,13 +173,16 @@ export async function PATCH(request, { params }) {
       select: {
         id: true, actualAmount: true, actualDate: true, accountId: true,
         paymentMethod: true, matchTransferRef: true, matchBankAccountName: true,
-        expectedAmount: true, cashTransactionId: true,
+        expectedAmount: true, cashTransactionId: true, isLocked: true,
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } }
       }
     });
     if (!income) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
+    }
+    if (income.isLocked) {
+      return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法編輯', 423);
     }
     if (!income.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '僅可編輯已收款的紀錄', 400);
@@ -258,6 +265,7 @@ export async function DELETE(request, { params }) {
       where: { id: incomeId },
       select: {
         id: true, status: true, actualAmount: true, cashTransactionId: true,
+        isLocked: true,
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } },
         payments: {
@@ -268,6 +276,9 @@ export async function DELETE(request, { params }) {
     });
     if (!income) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
+    }
+    if (income.isLocked) {
+      return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法作廢', 423);
     }
     // 冪等：若已經是 pending 狀態，視為已作廢完成
     if (income.status === 'pending') {

@@ -49,6 +49,7 @@ export async function GET(request) {
           rentalIncome: {
             select: {
               id: true, incomeYear: true, incomeMonth: true, expectedAmount: true, dueDate: true,
+              isLocked: true, lockedBy: true,
               property: { select: { id: true, name: true, buildingName: true, asset: { select: { serialNo: true, category: true } } } },
               tenant: { select: { fullName: true, companyName: true, tenantType: true } },
               contract: { select: { contractNo: true } }
@@ -90,7 +91,9 @@ export async function GET(request) {
         ? p.rentalIncome.tenant.companyName
         : p.rentalIncome.tenant.fullName,
       contractNo: p.rentalIncome.contract?.contractNo || null,
-      rentalIncomeId: p.rentalIncomeId
+      rentalIncomeId: p.rentalIncomeId,
+      incomeIsLocked: p.rentalIncome.isLocked,
+      incomeLockedBy: p.rentalIncome.lockedBy || null,
     }));
 
     return NextResponse.json({

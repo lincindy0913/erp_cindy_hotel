@@ -26,7 +26,7 @@ export async function PATCH(request, { params }) {
         matchNote: true, cashTransactionId: true,
         rentalIncome: {
           select: {
-            id: true, expectedAmount: true, cashTransactionId: true,
+            id: true, expectedAmount: true, cashTransactionId: true, isLocked: true,
             property: { select: { name: true } },
             payments: {
               orderBy: { sequenceNo: 'asc' },
@@ -37,6 +37,9 @@ export async function PATCH(request, { params }) {
       }
     });
     if (!payment) return createErrorResponse('NOT_FOUND', '找不到付款紀錄', 404);
+    if (payment.rentalIncome.isLocked) {
+      return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法編輯收款', 423);
+    }
 
     const amount = body.amount != null ? parseFloat(body.amount) : Number(payment.amount);
     const paymentDate = body.paymentDate || payment.paymentDate;
@@ -119,7 +122,7 @@ export async function DELETE(request, { params }) {
         id: true, amount: true, cashTransactionId: true, accountId: true,
         rentalIncome: {
           select: {
-            id: true, expectedAmount: true,
+            id: true, expectedAmount: true, isLocked: true,
             property: { select: { name: true } },
             payments: {
               where: { id: { not: paymentId } },
@@ -130,6 +133,9 @@ export async function DELETE(request, { params }) {
       }
     });
     if (!payment) return createErrorResponse('NOT_FOUND', '找不到付款紀錄', 404);
+    if (payment.rentalIncome.isLocked) {
+      return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法刪除收款', 423);
+    }
 
     const income = payment.rentalIncome;
     const newTotal = income.payments.reduce((s, p) => s + Number(p.amount), 0);

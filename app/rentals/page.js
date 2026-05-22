@@ -835,6 +835,17 @@ function RentalsPage() {
     } catch (e) { showToast('刪除失敗: ' + e.message, 'error'); }
   }
 
+  async function toggleIncomeLock(incomeId, currentLocked) {
+    try {
+      const res = await fetch(`/api/rentals/income/${incomeId}/lock`, { method: 'PATCH' });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || '操作失敗', 'error');
+      showToast(data.isLocked ? '已鎖帳' : '已解鎖', 'success');
+      fetchIncomes();
+      if (activeTab === 'paymentRecords') fetchPaymentRecords(paymentRecordsPagination.page);
+    } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
+  }
+
   async function fetchOverdueReport() {
     setOverdueReportLoading(true);
     try {
@@ -1959,16 +1970,38 @@ function RentalsPage() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-center">
-                              {(income.status === 'pending' || income.status === 'partial') && (
-                                <button onClick={() => openIncomePayment(income)}
-                                  className="text-teal-600 hover:text-teal-800 text-xs font-medium mr-1">
-                                  {paymentList.length > 0 ? `第${paymentList.length + 1}次收款` : '確認收款'}
+                            <td className="px-3 py-2 text-center whitespace-nowrap">
+                              {income.isLocked ? (
+                                <button
+                                  onClick={() => askConfirm(
+                                    `確定要解鎖此紀錄？\n${income.propertyName} ${income.incomeYear}/${String(income.incomeMonth).padStart(2,'0')}`,
+                                    () => toggleIncomeLock(income.id, true), '解鎖確認', false
+                                  )}
+                                  className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 font-medium"
+                                  title={income.lockedBy ? `由 ${income.lockedBy} 鎖帳` : '已鎖帳'}>
+                                  🔒 解鎖
                                 </button>
-                              )}
-                              {(income.status === 'completed' || income.status === 'partial') && (
+                              ) : (
                                 <>
-                                  <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium">作廢</button>
+                                  {(income.status === 'pending' || income.status === 'partial') && (
+                                    <button onClick={() => openIncomePayment(income)}
+                                      className="text-teal-600 hover:text-teal-800 text-xs font-medium mr-1">
+                                      {paymentList.length > 0 ? `第${paymentList.length + 1}次收款` : '確認收款'}
+                                    </button>
+                                  )}
+                                  {(income.status === 'completed' || income.status === 'partial') && (
+                                    <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium mr-1">作廢</button>
+                                  )}
+                                  {(income.status === 'completed' || income.status === 'partial') && (
+                                    <button
+                                      onClick={() => askConfirm(
+                                        `確定鎖帳此紀錄？鎖帳後無法編輯或刪除收款。\n${income.propertyName} ${income.incomeYear}/${String(income.incomeMonth).padStart(2,'0')}`,
+                                        () => toggleIncomeLock(income.id, false), '鎖帳確認', false
+                                      )}
+                                      className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium">
+                                      🔓 鎖帳
+                                    </button>
+                                  )}
                                 </>
                               )}
                             </td>
@@ -3619,7 +3652,7 @@ function RentalsPage() {
                       ) : paymentRecords.length === 0 ? (
                         <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
                       ) : paymentRecords.map((p, idx) => (
-                        <tr key={p.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                        <tr key={p.id} className={`border-t hover:bg-gray-50 ${p.incomeIsLocked ? 'bg-amber-50/40' : idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
                           <td className="px-3 py-2 text-center text-xs text-gray-500">{p.serialNo || '—'}</td>
                           <td className="px-3 py-2">
                             {p.category ? (
@@ -3648,13 +3681,22 @@ function RentalsPage() {
                             {[p.matchBankAccountName, p.matchNote].filter(Boolean).join(' / ') || '—'}
                           </td>
                           <td className="px-3 py-2 text-center whitespace-nowrap">
-                            <button onClick={() => openPaymentEdit(p)}
-                              className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 mr-1">編輯</button>
-                            <button onClick={() => askConfirm(
-                              `確定刪除此收款紀錄？\n${p.propertyName} ${p.incomeYear}/${String(p.incomeMonth).padStart(2,'0')} 第${p.sequenceNo}次 $${fmt(p.amount)}`,
-                              () => deletePaymentRecord(p.id), '刪除收款記錄', true
+                            {p.incomeIsLocked ? (
+                              <span title={`已鎖帳${p.incomeLockedBy ? `（${p.incomeLockedBy}）` : ''}`}
+                                className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+                                🔒 已鎖帳
+                              </span>
+                            ) : (
+                              <>
+                                <button onClick={() => openPaymentEdit(p)}
+                                  className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 mr-1">編輯</button>
+                                <button onClick={() => askConfirm(
+                                  `確定刪除此收款紀錄？\n${p.propertyName} ${p.incomeYear}/${String(p.incomeMonth).padStart(2,'0')} 第${p.sequenceNo}次 $${fmt(p.amount)}`,
+                                  () => deletePaymentRecord(p.id), '刪除收款記錄', true
+                                )}
+                                  className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100">刪除</button>
+                              </>
                             )}
-                              className="text-xs px-2 py-1 rounded bg-red-50 text-red-700 hover:bg-red-100">刪除</button>
                           </td>
                         </tr>
                       ))}

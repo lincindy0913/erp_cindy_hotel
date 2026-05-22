@@ -1694,6 +1694,9 @@ model RentalIncome {
   note                  String?   @db.Text
   confirmedBy           String?   @map("confirmed_by") @db.VarChar(255)
   confirmedAt           DateTime? @map("confirmed_at")
+  isLocked              Boolean   @default(false) @map("is_locked")
+  lockedAt              DateTime? @map("locked_at")
+  lockedBy              String?   @map("locked_by") @db.VarChar(255)
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 

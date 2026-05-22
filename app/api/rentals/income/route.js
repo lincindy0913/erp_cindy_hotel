@@ -33,6 +33,7 @@ export async function GET(request) {
         accountId: true, paymentMethod: true,
         matchTransferRef: true, matchBankAccountName: true, matchNote: true,
         status: true, cashTransactionId: true,
+        isLocked: true, lockedAt: true, lockedBy: true,
         property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true, sortOrder: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true, email: true } },
         contract: { select: { id: true, contractNo: true, monthlyRent: true, rentAccountId: true, category: true, sortOrder: true } },
