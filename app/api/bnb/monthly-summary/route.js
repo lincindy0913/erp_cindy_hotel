@@ -67,10 +67,11 @@ export async function GET(request) {
       select: { purchaseDate: true, totalAmount: true },
     });
 
-    // ── 4. 固定費用記錄（已確認）──────────────────────────────
+    // ── 4. 固定費用記錄（已確認，僅計 executionType=fixed，排除進貨單連結記錄）──
     const expWhere = {
       expenseMonth: { gte: `${year}-01`, lte: `${year}-12` },
       status: '已確認',
+      executionType: 'fixed',
     };
     if (warehouse) expWhere.warehouse = warehouse;
     const expenses = await prisma.commonExpenseRecord.findMany({
@@ -151,6 +152,7 @@ export async function GET(request) {
     const pendingWhere = {
       expenseMonth: { gte: `${year}-01`, lte: `${year}-12` },
       status: { notIn: ['已確認', '已作廢'] },
+      executionType: 'fixed',
     };
     if (warehouse) pendingWhere.warehouse = warehouse;
     const pendingFixedCount = await prisma.commonExpenseRecord.count({ where: pendingWhere });
@@ -240,10 +242,11 @@ async function handleAnnual(warehouse) {
     yearlyMap[y].purchaseExpense += Number(p.totalAmount);
   }
 
-  // 固定費用
+  // 固定費用（僅計 executionType=fixed）
   const expWhere = {
     expenseMonth: { gte: `${startYear}-01`, lte: `${currentYear}-12` },
     status: '已確認',
+    executionType: 'fixed',
   };
   if (warehouse) expWhere.warehouse = warehouse;
   const expenses = await prisma.commonExpenseRecord.findMany({

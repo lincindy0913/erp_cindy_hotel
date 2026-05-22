@@ -2920,6 +2920,10 @@ export default function BnbPage() {
                     前往費用管理
                   </Link>
                 </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 space-y-0.5">
+                  <div><span className="font-medium text-gray-700">採購支出</span>：依進貨單的<strong>進貨日期</strong>歸月，僅計入狀態為「已入庫」或「已完成」的進貨單。</div>
+                  <div><span className="font-medium text-gray-700">固定費用</span>：依共通費用記錄的<strong>費用月份</strong>歸月，僅計入狀態為「已確認」、類型為固定費用（非進貨單連結）的記錄。</div>
+                </div>
                 {(summaryFixedHelp.pendingFixedCount ?? 0) > 0 && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
                     {summaryYear} 年度尚有 <strong>{summaryFixedHelp.pendingFixedCount}</strong> 筆共通費用紀錄未確認，不會計入上表固定費用；請至費用管理處理。
@@ -2974,18 +2978,18 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-right font-semibold">{Math.round(incomeTotal).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-red-500">
                             {purchaseLink ? (
-                              <Link href={purchaseLink} className="hover:underline hover:text-red-600">
+                              <a href={purchaseLink} target="_blank" rel="noopener" className="hover:underline hover:text-red-600">
                                 ({Math.round(r.purchaseExpense).toLocaleString()})
-                              </Link>
+                              </a>
                             ) : (
                               <span>({Math.round(r.purchaseExpense).toLocaleString()})</span>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right text-red-400">
                             {fixedExpenseLink ? (
-                              <Link href={fixedExpenseLink} className="hover:underline hover:text-red-600">
+                              <a href={fixedExpenseLink} target="_blank" rel="noopener" className="hover:underline hover:text-red-600">
                                 ({Math.round(r.fixedExpense).toLocaleString()})
-                              </Link>
+                              </a>
                             ) : (
                               <span>({Math.round(r.fixedExpense).toLocaleString()})</span>
                             )}
@@ -3350,12 +3354,16 @@ export default function BnbPage() {
           const allSummary = dmData?.summary;  // for paymentType=all view
 
           const PAY_TYPE_TABS = [
+            { key: 'payment', label: '收款明細' },
+            { key: 'all',     label: '整體進度' },
+          ];
+          const PAY_SUB_TYPES = [
             { key: 'deposit',  label: '訂金匯款' },
             { key: 'transfer', label: '當天匯款' },
             { key: 'card',     label: '刷卡' },
             { key: 'cash',     label: '現金存款' },
-            { key: 'all',      label: '整體進度' },
           ];
+          const activeOuterTab = dmPayType === 'all' ? 'all' : 'payment';
 
           return (
             <div>
@@ -3363,9 +3371,12 @@ export default function BnbPage() {
               <div className="flex gap-1 mb-4 overflow-x-auto">
                 {PAY_TYPE_TABS.map(t => (
                   <button key={t.key}
-                    onClick={() => { setDmPayType(t.key); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }}
+                    onClick={() => {
+                      if (t.key === 'all') { setDmPayType('all'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
+                      else if (dmPayType === 'all') { setDmPayType('deposit'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
+                    }}
                     className={`px-4 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
-                      dmPayType === t.key
+                      activeOuterTab === t.key
                         ? 'bg-indigo-600 text-white shadow-sm'
                         : 'bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50'
                     }`}>
@@ -3380,6 +3391,14 @@ export default function BnbPage() {
                   <label className="block text-xs text-gray-500 mb-1">月份</label>
                   <input type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)} className={inputCls} />
                 </div>
+                {dmPayType !== 'all' && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">分類</label>
+                    <select value={dmPayType} onChange={e => { setDmPayType(e.target.value); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }} className={inputCls}>
+                      {PAY_SUB_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">館別</label>
                   <select value={dmWarehouse} onChange={e => setDmWarehouse(e.target.value)} className={inputCls}>
@@ -3428,7 +3447,7 @@ export default function BnbPage() {
                         { header: '配對者',  key: 'matchedBy' },
                       ]}
                       filename={`核對_${dmPayType}_${dmMonth}`}
-                      title={`${PAY_TYPE_TABS.find(t => t.key === dmPayType)?.label || ''} 核對 ${dmMonth}`}
+                      title={`${PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''} 核對 ${dmMonth}`}
                     />
                   </>
                 )}
@@ -3471,7 +3490,7 @@ export default function BnbPage() {
               {summary && dmPayType !== 'all' && (
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                   {[
-                    { label: `BNB ${PAY_TYPE_TABS.find(t => t.key === dmPayType)?.label || ''}合計`,
+                    { label: `BNB ${PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''}合計`,
                       val: `NT$ ${summary.totalBnbAmount.toLocaleString()}`, color: 'text-indigo-700' },
                     { label: '存簿入帳合計',   val: `NT$ ${summary.totalBankCredit.toLocaleString()}`,  color: 'text-blue-700' },
                     { label: '差異',          val: `NT$ ${Math.abs(summary.diff).toLocaleString()}`,    color: summary.diff !== 0 ? 'text-red-600 font-bold' : 'text-green-600' },
@@ -3516,7 +3535,7 @@ export default function BnbPage() {
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
                       <span className="text-sm font-semibold text-indigo-800">
-                        {PAY_TYPE_TABS.find(t => t.key === dmPayType)?.label || ''}（BNB）
+                        {PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''}（BNB）
                       </span>
                       <span className="text-xs text-indigo-500">{bnbRecords.length} 筆　點選後再點右側存簿行配對</span>
                     </div>
@@ -3528,6 +3547,7 @@ export default function BnbPage() {
                             <th className="px-3 py-2 text-left">姓名</th>
                             <th className="px-3 py-2 text-left">入住</th>
                             <th className="px-3 py-2 text-left">付款日</th>
+                            <th className="px-3 py-2 text-left">分類</th>
                             {(dmPayType === 'deposit' || dmPayType === 'transfer') && (
                               <th className="px-3 py-2 text-left">後五碼</th>
                             )}
@@ -3537,7 +3557,7 @@ export default function BnbPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {bnbRecords.length === 0 && (
-                            <tr><td colSpan={7} className="text-center py-8 text-gray-400">本月無此類型收款記錄</td></tr>
+                            <tr><td colSpan={(dmPayType === 'deposit' || dmPayType === 'transfer') ? 8 : 7} className="text-center py-8 text-gray-400">本月無此類型收款記錄</td></tr>
                           )}
                           {bnbRecords.map(r => {
                             const isMatched   = !!r.bankLineId;
@@ -3562,6 +3582,11 @@ export default function BnbPage() {
                                 <td className="px-3 py-2.5 max-w-[100px] truncate font-medium">{r.guestName}</td>
                                 <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{r.checkInDate}</td>
                                 <td className="px-3 py-2.5 text-blue-500 whitespace-nowrap text-xs">{r.payDate || '—'}</td>
+                                <td className="px-3 py-2.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 whitespace-nowrap">
+                                    {PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || dmPayType}
+                                  </span>
+                                </td>
                                 {(dmPayType === 'deposit' || dmPayType === 'transfer') && (
                                   <td className="px-3 py-2.5 text-blue-600 font-mono text-xs tracking-wider">{r.last5 || '—'}</td>
                                 )}

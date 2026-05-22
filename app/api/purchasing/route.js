@@ -24,10 +24,12 @@ export async function GET(request) {
     const status = searchParams.get('status');
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
+    const warehouse = searchParams.get('warehouse');
 
     const where = {};
     if (supplierId) where.supplierId = parseInt(supplierId);
     if (status) where.status = status;
+    if (warehouse) where.warehouse = warehouse;
     if (dateFrom || dateTo) {
       where.purchaseDate = {};
       if (dateFrom) where.purchaseDate.gte = dateFrom;

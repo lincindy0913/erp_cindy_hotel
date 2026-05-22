@@ -28,6 +28,7 @@ function PurchasingPageInner() {
     supplierId: '',
     startDate: searchParams.get('startDate') || '',
     endDate:   searchParams.get('endDate')   || '',
+    warehouse: '',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -732,6 +733,7 @@ function PurchasingPageInner() {
       if (filters.supplierId) params.set('supplierId', filters.supplierId);
       if (filters.startDate) params.set('dateFrom', filters.startDate);
       if (filters.endDate) params.set('dateTo', filters.endDate);
+      if (filters.warehouse) params.set('warehouse', filters.warehouse);
       const response = await fetch(`/api/purchasing?${params}`);
       if (!response.ok) {
         showToast('載入進貨單失敗，請稍後再試', 'error');
@@ -766,7 +768,7 @@ function PurchasingPageInner() {
   }
 
   function handleResetFilter() {
-    const emptyFilter = { supplierId: '', startDate: '', endDate: '' };
+    const emptyFilter = { supplierId: '', startDate: '', endDate: '', warehouse: '' };
     setFilterData(emptyFilter);
     fetchPurchases(1, itemsPerPage, emptyFilter);
   }
@@ -1620,6 +1622,16 @@ function PurchasingPageInner() {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
+            <select
+              value={filterData.warehouse}
+              onChange={(e) => setFilterData({ ...filterData, warehouse: e.target.value })}
+              className="px-3 py-2 border rounded"
+            >
+              <option value="">全部館別</option>
+              {warehousesList.map(w => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
             <input
               type="date"
               value={filterData.startDate}
@@ -1645,7 +1657,7 @@ function PurchasingPageInner() {
             >
               查詢
             </button>
-            {(filterData.supplierId || filterData.startDate || filterData.endDate) && (
+            {(filterData.supplierId || filterData.startDate || filterData.endDate || filterData.warehouse) && (
               <button
                 onClick={handleResetFilter}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"

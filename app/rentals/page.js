@@ -3598,6 +3598,8 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50">
                       <tr>
+                        <th className="text-center px-3 py-2 font-medium text-gray-700">序號</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-700">分類</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-700">收款日期</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-700">物業</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-700">租客</th>
@@ -3613,11 +3615,19 @@ function RentalsPage() {
                     </thead>
                     <tbody>
                       {paymentLoading ? (
-                        <tr><td colSpan={11} className="text-center py-8 text-gray-400">載入中…</td></tr>
+                        <tr><td colSpan={13} className="text-center py-8 text-gray-400">載入中…</td></tr>
                       ) : paymentRecords.length === 0 ? (
-                        <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
+                        <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
                       ) : paymentRecords.map((p, idx) => (
                         <tr key={p.id} className={`border-t hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                          <td className="px-3 py-2 text-center text-xs text-gray-500">{p.serialNo || '—'}</td>
+                          <td className="px-3 py-2">
+                            {p.category ? (
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${p.category === '公司' ? 'bg-blue-50 text-blue-700' : p.category === '湯三姐' ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
+                                {p.category}
+                              </span>
+                            ) : '—'}
+                          </td>
                           <td className="px-3 py-2 font-mono text-sm">{p.paymentDate}</td>
                           <td className="px-3 py-2">{p.propertyName}</td>
                           <td className="px-3 py-2">{p.tenantName}</td>
