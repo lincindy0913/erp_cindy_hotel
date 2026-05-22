@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import { authenticator } from 'otplib';
+const { authenticator } = require('otplib');
 import { decryptField } from '@/lib/field-encryption';
 
 // Demo users module for development without database

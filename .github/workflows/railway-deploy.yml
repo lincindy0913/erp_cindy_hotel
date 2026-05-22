@@ -3,7 +3,7 @@ name: Deploy to Railway
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # 允許手動從 GitHub Actions 頁面觸發
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -20,22 +20,27 @@ jobs:
             echo "❌ RAILWAY_TOKEN is not set in GitHub Secrets!"
             echo "Please go to: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
             echo "Name: RAILWAY_TOKEN"
-            echo "Value: Get from https://railway.app/account/tokens"
+            echo "Value: (your Railway account token from https://railway.app/account/tokens)"
             exit 1
           fi
           echo "✅ RAILWAY_TOKEN is set"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Verify Railway auth
-        run: railway whoami
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Deploy to Railway
-        run: railway up --detach --service erp_cindy_hotel
+      - name: Deploy to Railway via GraphQL API
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "Deploying commit: $COMMIT_SHA"
+          RESPONSE=$(curl -s -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\":\"mutation{serviceInstanceDeployV2(serviceId:\\\"5134c3f7-7fe8-493b-962c-5235de64cb07\\\",environmentId:\\\"6a68b277-9bce-4a53-9539-48ef6efb276d\\\",commitSha:\\\"$COMMIT_SHA\\\"){id}}\"}")
+          echo "Response: $RESPONSE"
+          if echo "$RESPONSE" | grep -q '"id"'; then
+            echo "✅ Deployment triggered successfully"
+          else
+            echo "❌ Deployment failed — check RAILWAY_TOKEN or service/environment IDs"
+            exit 1
+          fi
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

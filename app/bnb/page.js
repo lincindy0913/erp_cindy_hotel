@@ -1051,12 +1051,13 @@ export default function BnbPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { showToast(data.error || '取消失敗', 'error'); return; }
       showToast('已取消傭金應付款', 'success');
+      fetchCommHistory();
       const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
       const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
       const chk = await fetch(`/api/bnb/ota-commission?${p}`);
       if (chk.ok) setCommExisting(await chk.json());
     } catch { showToast('取消失敗', 'error'); }
-  }, [otaSource, otaDateFrom, otaWarehouse]);
+  }, [fetchCommHistory, otaSource, otaDateFrom, otaWarehouse]);
 
   // OTA 傭金：開始編輯
   const startEditComm = useCallback((row) => {
@@ -2218,7 +2219,7 @@ export default function BnbPage() {
                             }}
                             className={`${!isLocked && !editMode ? 'cursor-pointer hover:underline hover:text-indigo-600' : 'cursor-not-allowed'} ${colorCls} ${val > 0 ? '' : 'text-gray-300'}`}
                             title={isLocked ? (monthLocked ? `${filterMonth} 已鎖帳` : '此筆已鎖帳') : editMode ? '' : '點擊編輯'}>
-                            {val > 0 ? val.toLocaleString() : '—'}
+                            {val > 0 ? Math.round(val).toLocaleString() : '—'}
                           </span>
                         );
                       };
@@ -2306,14 +2307,14 @@ export default function BnbPage() {
                           </td>
                           <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">{r.checkOutDate}</td>
                           <td className={`px-3 py-2 text-right ${paymentMismatch ? 'text-red-600' : ''}`}>
-                            {Number(r.roomCharge).toLocaleString()}
+                            {Math.round(Number(r.roomCharge)).toLocaleString()}
                             {paymentMismatch && (
-                              <div className="text-[10px] text-red-500 whitespace-nowrap" title={`收款合計 ${payTotal.toLocaleString()} ≠ 房費+消費 ${chargeTotal.toLocaleString()}`}>
-                                差 {(payTotal - chargeTotal) > 0 ? '+' : ''}{(payTotal - chargeTotal).toLocaleString()}
+                              <div className="text-[10px] text-red-500 whitespace-nowrap" title={`收款合計 ${Math.round(payTotal).toLocaleString()} ≠ 房費+消費 ${Math.round(chargeTotal).toLocaleString()}`}>
+                                差 {(payTotal - chargeTotal) > 0 ? '+' : ''}{Math.round(payTotal - chargeTotal).toLocaleString()}
                               </div>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Number(r.otherCharge).toLocaleString() : '—'}</td>
+                          <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge) > 0 ? Math.round(Number(r.otherCharge)).toLocaleString() : '—'}</td>
 
                           {/* 訂金 + 後五碼（點擊開啟付款 Modal 以填寫日期+後五碼） */}
                           <td className="px-3 py-1.5 text-right">
@@ -2331,7 +2332,7 @@ export default function BnbPage() {
                                 {excelTextInput('depositLast5')}
                               </div>
                             ) : (() => {
-                              const depVal = Number(r.payDeposit);
+                              const depVal = Math.round(Number(r.payDeposit));
                               return (
                                 <div>
                                   <span
@@ -2374,7 +2375,7 @@ export default function BnbPage() {
                                 />
                               </div>
                             ) : (() => {
-                              const trnVal = Number(r.payTransfer);
+                              const trnVal = Math.round(Number(r.payTransfer));
                               return (
                                 <div>
                                   <span
@@ -2400,7 +2401,7 @@ export default function BnbPage() {
 
                           {/* 手續費（唯讀） */}
                           <td className="px-3 py-2 text-right text-red-400 text-xs">
-                            {Number(r.cardFee) > 0 ? Number(r.cardFee).toLocaleString() : '—'}
+                            {Number(r.cardFee) > 0 ? Math.round(Number(r.cardFee)).toLocaleString() : '—'}
                           </td>
 
                           {/* 現金 */}
@@ -2478,7 +2479,7 @@ export default function BnbPage() {
                               <span className="ml-1 text-[10px] text-amber-500">未填</span>
                             )}
                             {paymentMismatch && (
-                              <span className="ml-1 text-[10px] text-red-500" title={`收款 ${payTotal.toLocaleString()} ≠ 費用 ${chargeTotal.toLocaleString()}`}>金額不符</span>
+                              <span className="ml-1 text-[10px] text-red-500" title={`收款 ${Math.round(payTotal).toLocaleString()} ≠ 費用 ${Math.round(chargeTotal).toLocaleString()}`}>金額不符</span>
                             )}
                           </td>
 

@@ -7,7 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authenticator } from 'otplib';
+const { authenticator } = require('otplib');
 import QRCode from 'qrcode';
 import bcrypt from 'bcryptjs';
 import prisma from '@/lib/prisma';
