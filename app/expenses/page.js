@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
@@ -42,12 +43,13 @@ const EMPTY_PURCHASE_ITEM = {
   note: ''
 };
 
-export default function ExpensesPage() {
+function ExpensesPageInner() {
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
   const isLoggedIn = !!session;
   const [mainTab, setMainTab] = useState('fixed');
-  const [subTab, setSubTab] = useState('templates');
+  const [subTab, setSubTab] = useState(() => searchParams.get('subTab') || 'templates');
 
   // Shared data
   const [templates, setTemplates] = useState([]);
@@ -79,7 +81,7 @@ export default function ExpensesPage() {
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordFilter, setRecordFilter] = useState({
-    month: new Date().toISOString().slice(0, 7),
+    month: searchParams.get('month') || new Date().toISOString().slice(0, 7),
     warehouse: '',
     status: ''
   });
@@ -2350,6 +2352,14 @@ export default function ExpensesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ExpensesPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-gray-400">載入中…</div>}>
+      <ExpensesPageInner />
+    </Suspense>
   );
 }
 

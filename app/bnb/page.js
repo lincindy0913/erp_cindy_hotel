@@ -2940,25 +2940,34 @@ export default function BnbPage() {
                       const incomeTotal = r.netRevenue + (r.otherIncome || 0);
                       const zeroFixedHint =
                         summaryMode === 'monthly' && (summaryFixedHelp?.monthsWithZeroFixed?.includes(r.month) ?? false);
+                      const fixedExpenseLink = summaryMode === 'monthly'
+                        ? `/expenses?month=${r.month}&subTab=records`
+                        : null;
                       return (
                         <tr
                           key={key}
                           className={`hover:bg-gray-50 ${zeroFixedHint ? 'bg-amber-50/60' : ''}`}
                         >
                           <td className="px-3 py-2 font-medium">{key}</td>
-                          <td className="px-3 py-2 text-right text-indigo-700">{Number(r.netRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherIncome || 0).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right font-semibold">{Number(incomeTotal).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-red-500">({Number(r.purchaseExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-indigo-700">{Math.round(r.netRevenue).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right text-gray-500">{Math.round(r.otherIncome || 0).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{Math.round(incomeTotal).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right text-red-500">({Math.round(r.purchaseExpense).toLocaleString()})</td>
                           <td className="px-3 py-2 text-right text-red-400">
-                            <span>({Number(r.fixedExpense).toLocaleString()})</span>
+                            {fixedExpenseLink ? (
+                              <Link href={fixedExpenseLink} className="hover:underline hover:text-red-600">
+                                ({Math.round(r.fixedExpense).toLocaleString()})
+                              </Link>
+                            ) : (
+                              <span>({Math.round(r.fixedExpense).toLocaleString()})</span>
+                            )}
                             {zeroFixedHint && (
                               <span className="block text-[10px] leading-tight text-amber-800 font-normal mt-0.5">可能未登記或未確認</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right text-red-600">({Number(r.totalExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-600">({Math.round(r.totalExpense).toLocaleString()})</td>
                           <td className={`px-3 py-2 text-right font-bold ${r.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {Number(r.netProfit).toLocaleString()}
+                            {Math.round(r.netProfit).toLocaleString()}
                           </td>
                         </tr>
                       );
@@ -2977,14 +2986,14 @@ export default function BnbPage() {
                       return (
                         <tr className="bg-indigo-50 font-bold text-indigo-800 text-xs border-t-2 border-indigo-200">
                           <td className="px-3 py-2">全年合計</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.netRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.otherIncome).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(incomeTotal).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-red-600">({Number(tot.purchaseExpense).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right text-red-500">({Number(tot.fixedExpense).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right text-red-700">({Number(tot.totalExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.netRevenue).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.otherIncome).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(incomeTotal).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right text-red-600">({Math.round(tot.purchaseExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-500">({Math.round(tot.fixedExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-700">({Math.round(tot.totalExpense).toLocaleString()})</td>
                           <td className={`px-3 py-2 text-right ${tot.netProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {Number(tot.netProfit).toLocaleString()}
+                            {Math.round(tot.netProfit).toLocaleString()}
                           </td>
                         </tr>
                       );
