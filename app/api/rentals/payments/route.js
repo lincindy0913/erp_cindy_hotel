@@ -50,7 +50,7 @@ export async function GET(request) {
             select: {
               id: true, incomeYear: true, incomeMonth: true, expectedAmount: true, dueDate: true,
               isLocked: true, lockedBy: true,
-              property: { select: { id: true, name: true, buildingName: true, asset: { select: { serialNo: true, category: true } } } },
+              property: { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
               tenant: { select: { fullName: true, companyName: true, tenantType: true } },
               contract: { select: { contractNo: true } }
             }
@@ -85,8 +85,8 @@ export async function GET(request) {
       propertyId: p.rentalIncome.property.id,
       propertyName: p.rentalIncome.property.name,
       buildingName: p.rentalIncome.property.buildingName,
-      serialNo: p.rentalIncome.property.asset?.serialNo || null,
-      category: p.rentalIncome.property.asset?.category || null,
+      serialNo: p.rentalIncome.property.sortOrder ?? null,
+      category: p.rentalIncome.property.category || null,
       tenantName: p.rentalIncome.tenant.tenantType === 'company'
         ? p.rentalIncome.tenant.companyName
         : p.rentalIncome.tenant.fullName,
