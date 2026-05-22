@@ -1042,8 +1042,8 @@ export default function CashierPage() {
                                               ? 'border-emerald-400 bg-emerald-50'
                                               : executeData.accountId
                                                 ? 'border-amber-400 bg-amber-50'
-                                                : 'border-gray-300'
-                                          }`} required>
+                                                : 'border-red-300 bg-red-50'
+                                          }`}>
                                           <option value="">-- 選擇帳戶 --</option>
                                           {accounts.filter(a => a.isActive).map(a => (
                                             <option key={a.id} value={String(a.id)}>
@@ -1369,7 +1369,15 @@ export default function CashierPage() {
                             <select value={ba.accountId}
                               onChange={e => {
                                 const newAccounts = [...batchAccounts];
-                                newAccounts[idx] = { ...newAccounts[idx], accountId: e.target.value };
+                                const otherTotal = newAccounts
+                                  .filter((_, i) => i !== idx)
+                                  .reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+                                const remaining = Math.round((selectedTotal - otherTotal) * 100) / 100;
+                                newAccounts[idx] = {
+                                  ...newAccounts[idx],
+                                  accountId: e.target.value,
+                                  amount: e.target.value && remaining > 0 ? String(remaining) : newAccounts[idx].amount,
+                                };
                                 setBatchAccounts(newAccounts);
                               }}
                               className="w-full border rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
