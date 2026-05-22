@@ -28,7 +28,7 @@ function PurchasingPageInner() {
     supplierId: '',
     startDate: searchParams.get('startDate') || '',
     endDate:   searchParams.get('endDate')   || '',
-    warehouse: '',
+    warehouse: searchParams.get('warehouse') || '',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -147,6 +147,7 @@ function PurchasingPageInner() {
       supplierId: '',
       startDate: searchParams.get('startDate') || '',
       endDate:   searchParams.get('endDate')   || '',
+      warehouse: searchParams.get('warehouse') || '',
     };
     fetchPurchases(1, 50, initFilter);
     fetchWarehouseDepartments();

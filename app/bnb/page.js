@@ -2981,7 +2981,7 @@ export default function BnbPage() {
                         ? `/expenses?month=${r.month}&subTab=records${summaryWarehouse ? `&warehouse=${encodeURIComponent(summaryWarehouse)}` : ''}`
                         : null;
                       const purchaseLink = summaryMode === 'monthly'
-                        ? `/purchasing?startDate=${r.month}-01&endDate=${r.month}-31`
+                        ? `/purchasing?startDate=${r.month}-01&endDate=${r.month}-31${summaryWarehouse ? `&warehouse=${encodeURIComponent(summaryWarehouse)}` : ''}`
                         : null;
                       return (
                         <tr
