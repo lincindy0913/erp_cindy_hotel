@@ -2959,6 +2959,9 @@ export default function BnbPage() {
                       const fixedExpenseLink = summaryMode === 'monthly'
                         ? `/expenses?month=${r.month}&subTab=records${summaryWarehouse ? `&warehouse=${encodeURIComponent(summaryWarehouse)}` : ''}`
                         : null;
+                      const purchaseLink = summaryMode === 'monthly'
+                        ? `/purchasing?startDate=${r.month}-01&endDate=${r.month}-31`
+                        : null;
                       return (
                         <tr
                           key={key}
@@ -2968,7 +2971,15 @@ export default function BnbPage() {
                           <td className="px-3 py-2 text-right text-indigo-700">{Math.round(r.netRevenue).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-gray-500">{Math.round(r.otherIncome || 0).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right font-semibold">{Math.round(incomeTotal).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-red-500">({Math.round(r.purchaseExpense).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right text-red-500">
+                            {purchaseLink ? (
+                              <Link href={purchaseLink} className="hover:underline hover:text-red-600">
+                                ({Math.round(r.purchaseExpense).toLocaleString()})
+                              </Link>
+                            ) : (
+                              <span>({Math.round(r.purchaseExpense).toLocaleString()})</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right text-red-400">
                             {fixedExpenseLink ? (
                               <Link href={fixedExpenseLink} className="hover:underline hover:text-red-600">

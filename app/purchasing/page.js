@@ -1,15 +1,17 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
-export default function PurchasingPage() {
+function PurchasingPageInner() {
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
   const isLoggedIn = !!session;
@@ -24,8 +26,8 @@ export default function PurchasingPage() {
   const [expandedPurchaseId, setExpandedPurchaseId] = useState(null); // 展開的進貨單 ID
   const [filterData, setFilterData] = useState({
     supplierId: '',
-    startDate: '',
-    endDate: ''
+    startDate: searchParams.get('startDate') || '',
+    endDate:   searchParams.get('endDate')   || '',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -140,7 +142,12 @@ export default function PurchasingPage() {
   useEffect(() => {
     fetchSuppliers();
     fetchProducts();
-    fetchPurchases(1, 50, { supplierId: '', startDate: '', endDate: '' });
+    const initFilter = {
+      supplierId: '',
+      startDate: searchParams.get('startDate') || '',
+      endDate:   searchParams.get('endDate')   || '',
+    };
+    fetchPurchases(1, 50, initFilter);
     fetchWarehouseDepartments();
     fetchInvoices();
     fetchInvoiceTitles();
@@ -2631,5 +2638,13 @@ export default function PurchasingPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function PurchasingPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-gray-400">載入中…</div>}>
+      <PurchasingPageInner />
+    </Suspense>
   );
 }
