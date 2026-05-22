@@ -2795,15 +2795,15 @@ export default function BnbPage() {
                       <tr key={r.month} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-medium">{r.month}</td>
                         <td className="px-3 py-2 text-right">{r.rooms}</td>
-                        <td className="px-3 py-2 text-right">{Number(r.totalRevenue).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{Number(r.otherCharge).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-blue-600">{Number(r.payDeposit).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-teal-600">{Number(r.payTransfer).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-purple-600">{Number(r.payCard).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-green-600">{Number(r.payCash).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-amber-600">{Number(r.payVoucher).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-red-400">({Number(r.cardFee).toLocaleString()})</td>
-                        <td className="px-3 py-2 text-right font-semibold text-indigo-700">{Number(r.netRevenue).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{Math.round(r.totalRevenue).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-gray-500">{Math.round(r.otherCharge).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-blue-600">{Math.round(r.payDeposit).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-teal-600">{Math.round(r.payTransfer).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-purple-600">{Math.round(r.payCard).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-green-600">{Math.round(r.payCash).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-amber-600">{Math.round(r.payVoucher).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-red-400">({Math.round(r.cardFee).toLocaleString()})</td>
+                        <td className="px-3 py-2 text-right font-semibold text-indigo-700">{Math.round(r.netRevenue).toLocaleString()}</td>
                         <td className={`px-3 py-2 text-right text-xs ${lockColor}`} title={`${r.lockedCount || 0}/${r.rooms} 筆已鎖帳`}>
                           {r.lockedCount || 0}/{r.rooms}
                         </td>
@@ -2826,15 +2826,15 @@ export default function BnbPage() {
                         <tr className="bg-indigo-50 font-bold text-indigo-800">
                           <td className="px-3 py-2">總計</td>
                           <td className="px-3 py-2 text-right">{tot.rooms}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.totalRevenue).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.otherCharge).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.payDeposit).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.payTransfer).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.payCard).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.payCash).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.payVoucher).toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">({Number(tot.cardFee).toLocaleString()})</td>
-                          <td className="px-3 py-2 text-right">{Number(tot.netRevenue).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.totalRevenue).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.otherCharge).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.payDeposit).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.payTransfer).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.payCard).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.payCash).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.payVoucher).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right">({Math.round(tot.cardFee).toLocaleString()})</td>
+                          <td className="px-3 py-2 text-right">{Math.round(tot.netRevenue).toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-xs">
                             {summaryRows.reduce((s, r) => s + (r.lockedCount || 0), 0)}/{tot.rooms}
                           </td>
