@@ -3187,6 +3187,7 @@ function RentalsPage() {
                     <table className="w-full text-sm border-collapse">
                       <thead className="bg-teal-50">
                         <tr>
+                          <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2 border border-gray-200">房號</th>
                           {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                             <th key={m} className="text-right px-2 py-2 border border-gray-200 whitespace-nowrap">{incomeReportData.year || reportYear}/{m}</th>
@@ -3196,10 +3197,11 @@ function RentalsPage() {
                       </thead>
                       <tbody>
                         {incomeReportData.rows.length === 0 ? (
-                          <tr><td colSpan={14} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                          <tr><td colSpan={15} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                         ) : (
-                          incomeReportData.rows.map(r => (
+                          incomeReportData.rows.map((r, idx) => (
                             <tr key={r.propertyId} className="hover:bg-gray-50">
+                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                               <td className="px-3 py-2 border border-gray-200">{r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}</td>
                               {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
                                 const st = r.monthStatus?.[m] || 'empty';
@@ -3281,6 +3283,7 @@ function RentalsPage() {
                     <table className="w-full text-sm border-collapse">
                       <thead className="bg-teal-50">
                         <tr>
+                          <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                           <th className="text-right px-3 py-2 border border-gray-200">收租金額</th>
                           <th className="text-right px-3 py-2 border border-gray-200">維修金額</th>
@@ -3292,10 +3295,11 @@ function RentalsPage() {
                       </thead>
                       <tbody>
                         {operatingReportData.rows.length === 0 ? (
-                          <tr><td colSpan={7} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
+                          <tr><td colSpan={8} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                         ) : (
-                          operatingReportData.rows.map(r => (
+                          operatingReportData.rows.map((r, idx) => (
                             <tr key={r.propertyId} className="hover:bg-gray-50">
+                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                               <td className="px-3 py-2 border border-gray-200">{r.propertyLabel}</td>
                               <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentIncome)}</td>
                               <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.maintenanceAmount)}</td>
@@ -3346,6 +3350,7 @@ function RentalsPage() {
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-red-50">
                           <tr>
+                            <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                             <th className="text-left px-3 py-2 border border-gray-200">租客</th>
                             <th className="text-left px-3 py-2 border border-gray-200">聯絡電話</th>
@@ -3364,6 +3369,7 @@ function RentalsPage() {
                             const tenantName = i.tenantName || (i.tenant?.tenantType === 'company' ? i.tenant?.companyName : i.tenant?.fullName) || '—';
                             return (
                               <tr key={i.id} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-red-50/30'}`}>
+                                <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                                 <td className="px-3 py-2 border border-gray-200">{i.propertyName}</td>
                                 <td className="px-3 py-2 border border-gray-200 font-medium">{tenantName}</td>
                                 <td className="px-3 py-2 border border-gray-200 text-gray-600">{tenantPhone}</td>
@@ -3385,7 +3391,7 @@ function RentalsPage() {
                             );
                           })}
                           <tr className="bg-red-100 font-semibold">
-                            <td className="px-3 py-2 border border-gray-200" colSpan={4}>合計</td>
+                            <td className="px-3 py-2 border border-gray-200" colSpan={5}>合計</td>
                             <td className="px-3 py-2 border border-gray-200 text-right text-red-700">${fmt(overdueReportData.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</td>
                             <td className="px-3 py-2 border border-gray-200" colSpan={3}></td>
                           </tr>
@@ -3438,6 +3444,7 @@ function RentalsPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-teal-50">
                         <tr>
+                          <th className="text-center px-2 py-2 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2">合約號</th>
                           <th className="text-left px-3 py-2">物業</th>
                           <th className="text-left px-3 py-2">租客</th>
@@ -3452,9 +3459,10 @@ function RentalsPage() {
                       </thead>
                       <tbody>
                         {filtered.length === 0 ? (
-                          <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-                        ) : filtered.map(c => (
+                          <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                        ) : filtered.map((c, idx) => (
                           <tr key={c.id} className={`border-t hover:bg-gray-50 ${!c.depositReceived ? 'bg-blue-50/30' : c.depositRefunded ? 'bg-gray-50' : ''}`}>
+                            <td className="text-center px-2 py-2 text-xs text-gray-400">{idx + 1}</td>
                             <td className="px-3 py-2 font-mono text-xs">{c.contractNo}</td>
                             <td className="px-3 py-2">{c.propertyName}</td>
                             <td className="px-3 py-2">{c.tenantName}</td>
@@ -3487,7 +3495,7 @@ function RentalsPage() {
                       {filtered.length > 0 && (
                         <tfoot>
                           <tr className="bg-teal-50 font-semibold">
-                            <td colSpan={5} className="px-3 py-2 text-sm">合計</td>
+                            <td colSpan={6} className="px-3 py-2 text-sm">合計</td>
                             <td className="px-3 py-2 text-right text-teal-700">${fmt(filtered.reduce((s, c) => s + Number(c.depositAmount || 0), 0))}</td>
                             <td colSpan={4} />
                           </tr>
@@ -3536,6 +3544,7 @@ function RentalsPage() {
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-teal-50">
                           <tr>
+                            <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                             {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                               <th key={m} className="text-center px-2 py-2 border border-gray-200 text-xs w-10">{m}月</th>
@@ -3547,9 +3556,10 @@ function RentalsPage() {
                         </thead>
                         <tbody>
                           {vacancyData.rows.length === 0 ? (
-                            <tr><td colSpan={16} className="text-center py-8 text-gray-400">暫無資料，請點擊查詢</td></tr>
-                          ) : vacancyData.rows.map(r => (
+                            <tr><td colSpan={17} className="text-center py-8 text-gray-400">暫無資料，請點擊查詢</td></tr>
+                          ) : vacancyData.rows.map((r, idx) => (
                             <tr key={r.propertyId} className="hover:bg-gray-50">
+                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                               <td className="px-3 py-2 border border-gray-200 font-medium">{r.propertyLabel}</td>
                               {r.monthRented.map((rented, idx) => (
                                 <td key={idx} className={`border border-gray-200 text-center text-xs ${rented ? 'bg-green-100 text-green-800' : 'bg-red-50 text-red-400'}`}>
