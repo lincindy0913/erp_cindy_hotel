@@ -3465,3 +3465,51 @@ model PmsOtaPayment {
   @@index([yearMonth])
   @@map("pms_ota_payments")
 }
+
+// ── Backup System ────────────────────────────────────────────────────────────
+
+model BackupRecord {
+  id             Int       @id @default(autoincrement())
+  tier           String    @db.VarChar(30)   // tier1_full | tier2_snapshot | tier3_full | tier3_yearend
+  triggerType    String    @map("trigger_type") @db.VarChar(30)  // manual | scheduled | year_end
+  businessPeriod String?   @map("business_period") @db.VarChar(20)
+  status         String    @default("in_progress") @db.VarChar(20) // in_progress | completed | failed
+  filePath       String?   @map("file_path")
+  fileSize       BigInt?   @map("file_size")
+  sha256         String?   @db.VarChar(64)
+  encrypted      Boolean   @default(false)
+  tableCount     Int?      @map("table_count")
+  totalRecords   Int?      @map("total_records")
+  completedAt    DateTime? @map("completed_at")
+  errorMessage   String?   @map("error_message")
+  note           String?
+  createdBy      String?   @map("created_by") @db.VarChar(100)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([tier])
+  @@index([createdAt])
+  @@map("backup_records")
+}
+
+model BackupConfig {
+  id                Int      @id @default(autoincrement())
+  encryptionEnabled Boolean  @default(false) @map("encryption_enabled")
+  notifyOnFailure   Boolean  @default(true)  @map("notify_on_failure")
+  retentionDays     Int      @default(90)    @map("retention_days")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt      @map("updated_at")
+
+  @@map("backup_config")
+}
+
+model BackupVerification {
+  id         Int      @id @default(autoincrement())
+  backupId   Int      @map("backup_id")
+  verifiedAt DateTime @default(now()) @map("verified_at")
+  ok         Boolean
+  details    String?
+
+  @@index([backupId])
+  @@map("backup_verifications")
+}

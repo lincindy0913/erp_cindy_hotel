@@ -31,8 +31,8 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Install OpenSSL for Prisma engine
-RUN apk add --no-cache openssl
+# Install OpenSSL for Prisma engine + pg_dump for Tier 1 backup
+RUN apk add --no-cache openssl postgresql16-client
 
 ARG BUILD_DATE
 ARG GIT_COMMIT
@@ -72,6 +72,9 @@ COPY --from=builder /app/node_modules/xlsx ./node_modules/xlsx
 
 # Copy font files if they exist
 COPY --from=builder /app/lib/fonts ./lib/fonts
+
+# Copy backup worker script (not included in standalone build output)
+COPY --from=builder /app/scripts ./scripts
 
 # Package version for /api/health (standalone does not set npm_package_version)
 COPY --from=builder /app/package.json ./package.json
