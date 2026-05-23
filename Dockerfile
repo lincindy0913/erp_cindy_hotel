@@ -31,8 +31,8 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Install OpenSSL for Prisma engine + pg_dump for Tier 1 backup
-RUN apk add --no-cache openssl postgresql17-client
+# Install OpenSSL for Prisma engine + pg_dump for Tier 1 backup + su-exec for permission fix
+RUN apk add --no-cache openssl postgresql17-client su-exec
 
 ARG BUILD_DATE
 ARG GIT_COMMIT
@@ -76,15 +76,15 @@ COPY --from=builder /app/lib/fonts ./lib/fonts
 # Copy backup worker script (not included in standalone build output)
 COPY --from=builder /app/scripts ./scripts
 
-# Pre-create backup directory with correct ownership for non-root nextjs user
-RUN mkdir -p /app/backup-data && chown -R nextjs:nodejs /app/backup-data
+# Pre-create backup directory (ownership fixed at startup via su-exec)
+RUN mkdir -p /app/backup-data
 
 # Package version for /api/health (standalone does not set npm_package_version)
 COPY --from=builder /app/package.json ./package.json
 
-USER nextjs
-
+# NOTE: Do not set USER here — CMD runs as root to fix volume permissions,
+# then su-exec drops to nextjs for the actual app process.
 EXPOSE 3000
 
-# Sync DB schema, then start (seed is one-time setup only — run manually if needed)
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss || echo 'WARNING: db push failed - some schema columns may be missing'; exec node server.js"]
+# Fix backup-data ownership (Railway volume mounts as root), then start as nextjs
+CMD ["sh", "-c", "chown -R nextjs:nodejs /app/backup-data 2>/dev/null || true; exec su-exec nextjs sh -c 'node node_modules/prisma/build/index.js db push --skip-generate --accept-data-loss || echo WARNING: db push failed; exec node server.js'"]
