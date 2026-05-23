@@ -12,6 +12,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== 'admin') {
+      return NextResponse.json({ error: '權限不足', code: 'FORBIDDEN' }, { status: 403 });
+    }
+
     const sessions = await prisma.importSession.findMany({
       include: {
         batches: {
@@ -33,8 +38,11 @@ export async function GET() {
  */
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions).catch(() => null);
-    const userName = session?.user?.name || session?.user?.email || 'system';
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== 'admin') {
+      return NextResponse.json({ error: '權限不足', code: 'FORBIDDEN' }, { status: 403 });
+    }
+    const userName = session.user.name || session.user.email || 'system';
 
     const body = await request.json();
     const { openingDate, note } = body;

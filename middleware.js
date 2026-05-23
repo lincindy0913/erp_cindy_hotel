@@ -153,7 +153,10 @@ export default withAuth(
 
     // ── Rate limiting (before auth check) ──
     if (isApiRoute) {
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      // Use the LAST x-forwarded-for value (appended by the trusted Railway/Docker proxy).
+      // The first value is client-supplied and trivially spoofable.
+      const xffRaw = req.headers.get('x-forwarded-for');
+      const ip = (xffRaw ? xffRaw.split(',').at(-1).trim() : null)
         || req.headers.get('x-real-ip') || 'unknown';
       const rl = checkRateLimit(pathname, ip);
       if (!rl.allowed) {

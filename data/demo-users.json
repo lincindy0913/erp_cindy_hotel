@@ -2,7 +2,7 @@
   {
     "id": 1,
     "email": "admin@hotel.com",
-    "password": "admin123",
+    "password": "$2a$12$yeYMLEiE3ggzTSXYDGEX.u4/JpcitXcYT.38eh.2JTUvOpAG36USS",
     "name": "系統管理員",
     "role": "admin",
     "permissions": [

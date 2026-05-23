@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
 // GET - 列出所有角色
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
+
     const roles = await prisma.role.findMany({
       include: {
         _count: { select: { userRoles: true } },
