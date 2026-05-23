@@ -76,6 +76,9 @@ COPY --from=builder /app/lib/fonts ./lib/fonts
 # Copy backup worker script (not included in standalone build output)
 COPY --from=builder /app/scripts ./scripts
 
+# Pre-create backup directory with correct ownership for non-root nextjs user
+RUN mkdir -p /app/backup-data && chown -R nextjs:nodejs /app/backup-data
+
 # Package version for /api/health (standalone does not set npm_package_version)
 COPY --from=builder /app/package.json ./package.json
 
