@@ -60,7 +60,7 @@ export default function BackupPage() {
   useEffect(() => {
     const hasRunning = records.some(r => r.status === 'in_progress');
     if (!hasRunning) return;
-    const timer = setInterval(fetchRecords, 5000);
+    const timer = setInterval(fetchRecords, 8000);
     return () => clearInterval(timer);
   }, [records, fetchRecords]);
 

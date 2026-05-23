@@ -47,7 +47,7 @@ function validateCsrf(req) {
 const rateLimitStore = new Map();
 const RATE_LIMITS = {
   '/api/auth':           { windowMs: 15 * 60_000, max: 10 },   // login: 10 per 15 min
-  '/api/backup':         { windowMs: 60_000, max: 10 },         // backup ops: 10 per min
+  '/api/backup':         { windowMs: 60_000, max: 30 },         // backup ops: 30 per min (GET polling + POST triggers)
   '/api/users':          { windowMs: 60_000, max: 20 },         // user management: 20 per min
   '/api/roles':          { windowMs: 60_000, max: 20 },         // role management: 20 per min
   '/api/payment-orders': { windowMs: 60_000, max: 30 },         // payment orders: 30 per min
