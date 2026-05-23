@@ -92,8 +92,9 @@ function openPrintWindow(title, headers, rows) {
   setTimeout(() => { w.print(); }, 400);
 }
 const TABS = [
-  { key: 'records',    label: '訂房明細' },
-  { key: 'analytics',  label: '分析' },
+  { key: 'records',      label: '訂房明細' },
+  { key: 'otherIncome',  label: '其他收入' },
+  { key: 'analytics',    label: '分析' },
   { key: 'declaration',label: '旅宿網申報' },
   { key: 'deposit',    label: '訂金核對' },
   { key: 'otaRecon',   label: 'OTA比對' },
@@ -644,7 +645,26 @@ export default function BnbPage() {
   const [dmSelBnb,      setDmSelBnb]      = useState(null);  // selected BNB id
   const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
   const [dmMatching,    setDmMatching]    = useState(false);
-  const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all
+  const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all | ledger
+
+  // ── 收款流水帳 state ─────────────────────────────────────────
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const [ledgerMonthFrom, setLedgerMonthFrom] = useState(thisMonth);
+  const [ledgerMonthTo,   setLedgerMonthTo]   = useState(thisMonth);
+  const [ledgerWarehouse, setLedgerWarehouse] = useState('');
+  const [ledgerRows,      setLedgerRows]      = useState([]);
+  const [ledgerLoading,   setLedgerLoading]   = useState(false);
+
+  // ── 其他收入 state ──────────────────────────────────────────
+  const [oiMonth,       setOiMonth]       = useState(thisMonth);
+  const [oiWarehouse,   setOiWarehouse]   = useState('');
+  const [oiRows,        setOiRows]        = useState([]);
+  const [oiLoading,     setOiLoading]     = useState(false);
+  const [oiModalOpen,   setOiModalOpen]   = useState(false);
+  const [oiEditRow,     setOiEditRow]     = useState(null); // null=新增, obj=編輯
+  const [oiSaving,      setOiSaving]      = useState(false);
+  const OI_CATEGORIES = ['停車費', '清潔費', '設備租借', '其他'];
+  const [oiForm, setOiForm] = useState({ importMonth: thisMonth, warehouse: DEFAULT_WAREHOUSE, incomeDate: '', category: '', description: '', amount: '', note: '' });
 
   // ── 旅宿網申報 state ─────────────────────────────────────────
   const [declMonth,     setDeclMonth]     = useState(() => new Date().toISOString().slice(0, 7));
@@ -785,6 +805,71 @@ export default function BnbPage() {
     } catch { showToast('載入核對資料失敗', 'error'); }
     finally { setDmLoading(false); }
   }, [dmMonth, dmAccountId, dmWarehouse, dmPayType]);
+
+  // ── 收款流水帳 fetch ───────────────────────────────────────────
+  async function fetchLedger() {
+    setLedgerLoading(true);
+    try {
+      const p = new URLSearchParams({ monthFrom: ledgerMonthFrom, monthTo: ledgerMonthTo, pageSize: '2000' });
+      if (ledgerWarehouse) p.set('warehouse', ledgerWarehouse);
+      const res = await fetch(`/api/bnb?${p}`);
+      if (!res.ok) { showToast('載入失敗', 'error'); return; }
+      const data = await res.json();
+      setLedgerRows(data.data || []);
+    } catch { showToast('載入失敗', 'error'); }
+    finally { setLedgerLoading(false); }
+  }
+
+  // ── 其他收入 fetch / CRUD ────────────────────────────────────
+  async function fetchOtherIncome() {
+    setOiLoading(true);
+    try {
+      const p = new URLSearchParams({ month: oiMonth });
+      if (oiWarehouse) p.set('warehouse', oiWarehouse);
+      const res = await fetch(`/api/bnb/other-income?${p}`);
+      if (!res.ok) { showToast('載入失敗', 'error'); return; }
+      const data = await res.json();
+      setOiRows(data.data || []);
+    } catch { showToast('載入失敗', 'error'); }
+    finally { setOiLoading(false); }
+  }
+
+  function openOiModal(row = null) {
+    if (row) {
+      setOiForm({ importMonth: row.importMonth, warehouse: row.warehouse, incomeDate: row.incomeDate, category: row.category || '', description: row.description, amount: String(row.amount), note: row.note || '' });
+      setOiEditRow(row);
+    } else {
+      setOiForm({ importMonth: oiMonth, warehouse: oiWarehouse || DEFAULT_WAREHOUSE, incomeDate: new Date().toISOString().split('T')[0], category: '', description: '', amount: '', note: '' });
+      setOiEditRow(null);
+    }
+    setOiModalOpen(true);
+  }
+
+  async function saveOtherIncome() {
+    if (!oiForm.incomeDate || !oiForm.description || !oiForm.amount) {
+      showToast('請填寫日期、說明、金額', 'error'); return;
+    }
+    setOiSaving(true);
+    try {
+      const url  = oiEditRow ? `/api/bnb/other-income/${oiEditRow.id}` : '/api/bnb/other-income';
+      const method = oiEditRow ? 'PUT' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oiForm) });
+      if (!res.ok) { const d = await res.json(); showToast(d.message || '儲存失敗', 'error'); return; }
+      showToast(oiEditRow ? '已更新' : '已新增', 'success');
+      setOiModalOpen(false);
+      fetchOtherIncome();
+    } catch { showToast('儲存失敗', 'error'); }
+    finally { setOiSaving(false); }
+  }
+
+  async function deleteOtherIncome(id) {
+    try {
+      const res = await fetch(`/api/bnb/other-income/${id}`, { method: 'DELETE' });
+      if (!res.ok) { showToast('刪除失敗', 'error'); return; }
+      showToast('已刪除', 'success');
+      fetchOtherIncome();
+    } catch { showToast('刪除失敗', 'error'); }
+  }
 
   // ── 訂金手動配對 ──────────────────────────────────────────────
   async function handleMatch() {
@@ -1287,6 +1372,7 @@ export default function BnbPage() {
 
   useEffect(() => {
     if (activeTab === 'records')     fetchRecords();
+    if (activeTab === 'otherIncome') fetchOtherIncome();
     if (activeTab === 'analytics' && analyticsSub === 'dailyRev') fetchDailyRevenue();
     if (activeTab === 'analytics' && (analyticsSub === 'monthly' || analyticsSub === 'pnl')) fetchSummary();
     if (activeTab === 'declaration') { setDeclSearched(false); setDeclActual(null); }
@@ -3373,6 +3459,7 @@ export default function BnbPage() {
 
           const PAY_TYPE_TABS = [
             { key: 'payment', label: '收款明細' },
+            { key: 'ledger',  label: '流水帳' },
             { key: 'all',     label: '整體進度' },
           ];
           const PAY_SUB_TYPES = [
@@ -3381,7 +3468,7 @@ export default function BnbPage() {
             { key: 'card',     label: '刷卡' },
             { key: 'cash',     label: '現金存款' },
           ];
-          const activeOuterTab = dmPayType === 'all' ? 'all' : 'payment';
+          const activeOuterTab = dmPayType === 'all' ? 'all' : dmPayType === 'ledger' ? 'ledger' : 'payment';
 
           return (
             <div>
@@ -3391,7 +3478,8 @@ export default function BnbPage() {
                   <button key={t.key}
                     onClick={() => {
                       if (t.key === 'all') { setDmPayType('all'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
-                      else if (dmPayType === 'all') { setDmPayType('deposit'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
+                      else if (t.key === 'ledger') { setDmPayType('ledger'); }
+                      else if (dmPayType === 'all' || dmPayType === 'ledger') { setDmPayType('deposit'); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }
                     }}
                     className={`px-4 py-1.5 text-sm rounded-lg whitespace-nowrap transition-colors ${
                       activeOuterTab === t.key
@@ -3404,7 +3492,7 @@ export default function BnbPage() {
               </div>
 
               {/* 篩選列 */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
+              {activeOuterTab !== 'ledger' && <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">月份</label>
                   <input type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)} className={inputCls} />
@@ -3470,7 +3558,179 @@ export default function BnbPage() {
                     />
                   </>
                 )}
-              </div>
+              </div>}
+
+              {/* 流水帳 */}
+              {activeOuterTab === 'ledger' && (
+                <div>
+                  {/* 流水帳篩選列 */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">月份起</label>
+                      <input type="month" value={ledgerMonthFrom} onChange={e => setLedgerMonthFrom(e.target.value)} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">月份迄</label>
+                      <input type="month" value={ledgerMonthTo} onChange={e => setLedgerMonthTo(e.target.value)} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">館別</label>
+                      <select value={ledgerWarehouse} onChange={e => setLedgerWarehouse(e.target.value)} className={inputCls}>
+                        <option value="">全部</option>
+                        {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                      <WhQuickBtns value={ledgerWarehouse} onChange={setLedgerWarehouse} />
+                    </div>
+                    <button onClick={fetchLedger} disabled={ledgerLoading}
+                      className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
+                      {ledgerLoading ? '載入中…' : '查詢'}
+                    </button>
+                    {ledgerRows.length > 0 && (() => {
+                      const sumRoom    = ledgerRows.reduce((s, r) => s + Number(r.roomCharge  || 0), 0);
+                      const sumOther   = ledgerRows.reduce((s, r) => s + Number(r.otherCharge || 0), 0);
+                      const sumDeposit = ledgerRows.reduce((s, r) => s + Number(r.payDeposit  || 0), 0);
+                      const sumXfer    = ledgerRows.reduce((s, r) => s + Number(r.payTransfer || 0), 0);
+                      const sumCard    = ledgerRows.reduce((s, r) => s + Number(r.payCard     || 0), 0);
+                      const sumCash    = ledgerRows.reduce((s, r) => s + Number(r.payCash     || 0), 0);
+                      const sumVoucher = ledgerRows.reduce((s, r) => s + Number(r.payVoucher  || 0), 0);
+                      const sumFee     = ledgerRows.reduce((s, r) => s + Number(r.cardFee     || 0), 0);
+                      const net = sumDeposit + sumXfer + sumCard + sumCash + sumVoucher - sumFee;
+                      return (
+                        <div className="flex flex-wrap gap-2 items-center ml-2 text-xs">
+                          <span className="text-gray-400">{ledgerRows.length} 筆</span>
+                          <span className="text-gray-500">房費 <b className="text-indigo-700">{NT(sumRoom)}</b></span>
+                          <span className="text-gray-500">訂金 <b>{NT(sumDeposit)}</b></span>
+                          <span className="text-gray-500">匯款 <b>{NT(sumXfer)}</b></span>
+                          <span className="text-gray-500">刷卡 <b>{NT(sumCard)}</b></span>
+                          <span className="text-gray-500">現金 <b>{NT(sumCash)}</b></span>
+                          <span className="text-gray-500">住宿券 <b>{NT(sumVoucher)}</b></span>
+                          <span className="text-gray-500">手續費 <b className="text-red-500">-{NT(sumFee)}</b></span>
+                          <span className="text-gray-700 font-semibold">淨收入 <b className="text-green-700">{NT(net)}</b></span>
+                        </div>
+                      );
+                    })()}
+                    {ledgerRows.length > 0 && (
+                      <ExportButtons
+                        data={ledgerRows.map(r => ({
+                          importMonth:  r.importMonth,
+                          warehouse:    r.warehouse,
+                          source:       r.source,
+                          guestName:    r.guestName,
+                          roomNo:       r.roomNo || '',
+                          checkInDate:  r.checkInDate,
+                          checkOutDate: r.checkOutDate,
+                          roomCharge:   Number(r.roomCharge  || 0),
+                          otherCharge:  Number(r.otherCharge || 0),
+                          payDeposit:   Number(r.payDeposit  || 0),
+                          depositDate:  r.depositDate  || '',
+                          depositLast5: r.depositLast5 || '',
+                          payTransfer:  Number(r.payTransfer || 0),
+                          transferDate: r.transferDate  || '',
+                          transferLast5:r.transferLast5 || '',
+                          payCard:      Number(r.payCard     || 0),
+                          cardFeeRate:  Number(r.cardFeeRate || 0),
+                          cardFee:      Number(r.cardFee     || 0),
+                          payCash:      Number(r.payCash     || 0),
+                          payVoucher:   Number(r.payVoucher  || 0),
+                          net: Number(r.payDeposit||0)+Number(r.payTransfer||0)+Number(r.payCard||0)+Number(r.payCash||0)+Number(r.payVoucher||0)-Number(r.cardFee||0),
+                          status:       r.status,
+                          note:         r.note || '',
+                        }))}
+                        columns={[
+                          { header: '月份',     key: 'importMonth' },
+                          { header: '館別',     key: 'warehouse' },
+                          { header: '來源',     key: 'source' },
+                          { header: '姓名',     key: 'guestName' },
+                          { header: '房號',     key: 'roomNo' },
+                          { header: '入住',     key: 'checkInDate' },
+                          { header: '退房',     key: 'checkOutDate' },
+                          { header: '房費',     key: 'roomCharge',   format: 'number' },
+                          { header: '其他費用', key: 'otherCharge',  format: 'number' },
+                          { header: '訂金',     key: 'payDeposit',   format: 'number' },
+                          { header: '訂金日期', key: 'depositDate' },
+                          { header: '訂金後五碼',key:'depositLast5' },
+                          { header: '當天匯款', key: 'payTransfer',  format: 'number' },
+                          { header: '匯款日期', key: 'transferDate' },
+                          { header: '匯款後五碼',key:'transferLast5'},
+                          { header: '刷卡',     key: 'payCard',      format: 'number' },
+                          { header: '手續費率', key: 'cardFeeRate',  format: 'number' },
+                          { header: '手續費',   key: 'cardFee',      format: 'number' },
+                          { header: '現金',     key: 'payCash',      format: 'number' },
+                          { header: '住宿券',   key: 'payVoucher',   format: 'number' },
+                          { header: '淨收入',   key: 'net',          format: 'number' },
+                          { header: '狀態',     key: 'status' },
+                          { header: '備註',     key: 'note' },
+                        ]}
+                        filename={`流水帳_${ledgerMonthFrom}_${ledgerMonthTo}${ledgerWarehouse ? '_' + ledgerWarehouse : ''}`}
+                        title={`收款流水帳 ${ledgerMonthFrom} ~ ${ledgerMonthTo}${ledgerWarehouse ? '　' + ledgerWarehouse : ''}`}
+                      />
+                    )}
+                  </div>
+
+                  {/* 流水帳表格 */}
+                  {ledgerLoading && <div className="text-center py-20 text-gray-400">載入中…</div>}
+                  {!ledgerLoading && ledgerRows.length === 0 && (
+                    <div className="text-center py-20 text-gray-400">請設定月份區間後按「查詢」</div>
+                  )}
+                  {!ledgerLoading && ledgerRows.length > 0 && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+                      <table className="w-full text-xs whitespace-nowrap">
+                        <thead className="sticky top-0 bg-indigo-50 text-indigo-800">
+                          <tr>
+                            <th className="px-3 py-2 text-left">月份</th>
+                            <th className="px-3 py-2 text-left">館別</th>
+                            <th className="px-3 py-2 text-left">姓名</th>
+                            <th className="px-3 py-2 text-left">入住</th>
+                            <th className="px-3 py-2 text-left">退房</th>
+                            <th className="px-3 py-2 text-right">房費</th>
+                            <th className="px-3 py-2 text-right">其他</th>
+                            <th className="px-3 py-2 text-right">訂金</th>
+                            <th className="px-3 py-2 text-left">訂金日</th>
+                            <th className="px-3 py-2 text-left">後五碼</th>
+                            <th className="px-3 py-2 text-right">匯款</th>
+                            <th className="px-3 py-2 text-left">匯款日</th>
+                            <th className="px-3 py-2 text-left">後五碼</th>
+                            <th className="px-3 py-2 text-right">刷卡</th>
+                            <th className="px-3 py-2 text-right">手續費</th>
+                            <th className="px-3 py-2 text-right">現金</th>
+                            <th className="px-3 py-2 text-right">住宿券</th>
+                            <th className="px-3 py-2 text-right font-semibold">淨收入</th>
+                            <th className="px-3 py-2 text-left">狀態</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {ledgerRows.map(r => {
+                            const net = Number(r.payDeposit||0)+Number(r.payTransfer||0)+Number(r.payCard||0)+Number(r.payCash||0)+Number(r.payVoucher||0)-Number(r.cardFee||0);
+                            return (
+                              <tr key={r.id} className="hover:bg-gray-50">
+                                <td className="px-3 py-2">{r.importMonth}</td>
+                                <td className="px-3 py-2">{r.warehouse}</td>
+                                <td className="px-3 py-2">{r.guestName}</td>
+                                <td className="px-3 py-2">{r.checkInDate}</td>
+                                <td className="px-3 py-2">{r.checkOutDate}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.roomCharge||0) > 0 ? NT(r.roomCharge) : ''}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.otherCharge||0) > 0 ? NT(r.otherCharge) : ''}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.payDeposit||0) > 0 ? NT(r.payDeposit) : ''}</td>
+                                <td className="px-3 py-2 text-gray-500">{r.depositDate || ''}</td>
+                                <td className="px-3 py-2 font-mono text-gray-500">{r.depositLast5 || ''}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.payTransfer||0) > 0 ? NT(r.payTransfer) : ''}</td>
+                                <td className="px-3 py-2 text-gray-500">{r.transferDate || ''}</td>
+                                <td className="px-3 py-2 font-mono text-gray-500">{r.transferLast5 || ''}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.payCard||0) > 0 ? NT(r.payCard) : ''}</td>
+                                <td className="px-3 py-2 text-right text-red-500">{Number(r.cardFee||0) > 0 ? `-${NT(r.cardFee)}` : ''}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.payCash||0) > 0 ? NT(r.payCash) : ''}</td>
+                                <td className="px-3 py-2 text-right">{Number(r.payVoucher||0) > 0 ? NT(r.payVoucher) : ''}</td>
+                                <td className="px-3 py-2 text-right font-semibold text-green-700">{net > 0 ? NT(net) : ''}</td>
+                                <td className="px-3 py-2 text-gray-500">{r.status}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 整體進度視圖 */}
               {dmPayType === 'all' && dmData && !dmLoading && (
@@ -3506,7 +3766,7 @@ export default function BnbPage() {
               )}
 
               {/* 摘要卡 */}
-              {summary && dmPayType !== 'all' && (
+              {summary && dmPayType !== 'all' && dmPayType !== 'ledger' && (
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                   {[
                     { label: `BNB ${PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''}合計`,
@@ -3537,12 +3797,12 @@ export default function BnbPage() {
                 </div>
               )}
 
-              {!dmData && !dmLoading && (
+              {!dmData && !dmLoading && activeOuterTab !== 'ledger' && (
                 <div className="text-center py-20 text-gray-400">
                   {dmPayType === 'all' ? '請選擇月份後按「查詢」' : '請選擇存簿帳戶後按「查詢」'}
                 </div>
               )}
-              {dmLoading && (
+              {dmLoading && activeOuterTab !== 'ledger' && (
                 <div className="text-center py-20 text-gray-400">載入中…</div>
               )}
 
@@ -4481,6 +4741,160 @@ export default function BnbPage() {
                 </table>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ══ Tab: 其他收入 ══ */}
+        {activeTab === 'otherIncome' && (
+          <div>
+            {/* 篩選列 */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">月份</label>
+                <input type="month" value={oiMonth} onChange={e => setOiMonth(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">館別</label>
+                <select value={oiWarehouse} onChange={e => setOiWarehouse(e.target.value)} className={inputCls}>
+                  <option value="">全部</option>
+                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                </select>
+                <WhQuickBtns value={oiWarehouse} onChange={setOiWarehouse} />
+              </div>
+              <button onClick={fetchOtherIncome} disabled={oiLoading}
+                className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
+                {oiLoading ? '載入中…' : '查詢'}
+              </button>
+              <button onClick={() => openOiModal(null)}
+                className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-700`}>
+                + 新增其他收入
+              </button>
+              {oiRows.length > 0 && (
+                <ExportButtons
+                  data={oiRows.map(r => ({ importMonth: r.importMonth, warehouse: r.warehouse, incomeDate: r.incomeDate, category: r.category || '', description: r.description, amount: r.amount, note: r.note || '' }))}
+                  columns={[
+                    { header: '月份',   key: 'importMonth' },
+                    { header: '館別',   key: 'warehouse' },
+                    { header: '日期',   key: 'incomeDate' },
+                    { header: '類別',   key: 'category' },
+                    { header: '說明',   key: 'description' },
+                    { header: '金額',   key: 'amount', format: 'number' },
+                    { header: '備註',   key: 'note' },
+                  ]}
+                  filename={`其他收入_${oiMonth}${oiWarehouse ? '_' + oiWarehouse : ''}`}
+                  title={`其他收入 ${oiMonth}${oiWarehouse ? '　' + oiWarehouse : ''}`}
+                />
+              )}
+              {oiRows.length > 0 && (
+                <span className="text-sm text-gray-500 ml-2">
+                  合計 <b className="text-indigo-700">{NT(oiRows.reduce((s, r) => s + Number(r.amount), 0))}</b>（{oiRows.length} 筆）
+                </span>
+              )}
+            </div>
+
+            {/* 資料表格 */}
+            {oiLoading && <div className="text-center py-20 text-gray-400">載入中…</div>}
+            {!oiLoading && oiRows.length === 0 && (
+              <div className="text-center py-20 text-gray-400">請選擇月份後按「查詢」，或按「+ 新增其他收入」</div>
+            )}
+            {!oiLoading && oiRows.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-indigo-50 text-indigo-800 text-xs">
+                      <th className="px-3 py-2 text-left">月份</th>
+                      <th className="px-3 py-2 text-left">館別</th>
+                      <th className="px-3 py-2 text-left">日期</th>
+                      <th className="px-3 py-2 text-left">類別</th>
+                      <th className="px-3 py-2 text-left">說明</th>
+                      <th className="px-3 py-2 text-right">金額</th>
+                      <th className="px-3 py-2 text-left">備註</th>
+                      <th className="px-3 py-2 text-center">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {oiRows.map(r => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-xs text-gray-500">{r.importMonth}</td>
+                        <td className="px-3 py-2 text-xs">{r.warehouse}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{r.incomeDate}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {r.category ? <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs">{r.category}</span> : '—'}
+                        </td>
+                        <td className="px-3 py-2">{r.description}</td>
+                        <td className="px-3 py-2 text-right font-medium text-indigo-700">{NT(r.amount)}</td>
+                        <td className="px-3 py-2 text-xs text-gray-400">{r.note || '—'}</td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          <button onClick={() => openOiModal(r)}
+                            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1">編輯</button>
+                          <button onClick={() => { if (confirm(`確定刪除「${r.description}」？`)) deleteOtherIncome(r.id); }}
+                            className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">刪除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 新增/編輯 Modal */}
+            {oiModalOpen && (
+              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold mb-4">{oiEditRow ? '編輯其他收入' : '新增其他收入'}</h3>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">月份 *</label>
+                        <input type="month" value={oiForm.importMonth} onChange={e => setOiForm(f => ({ ...f, importMonth: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">日期 *</label>
+                        <input type="date" value={oiForm.incomeDate} onChange={e => setOiForm(f => ({ ...f, incomeDate: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">館別 *</label>
+                        <select value={oiForm.warehouse} onChange={e => setOiForm(f => ({ ...f, warehouse: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                          {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">類別</label>
+                        <select value={oiForm.category} onChange={e => setOiForm(f => ({ ...f, category: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                          <option value="">請選擇</option>
+                          {OI_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">說明 *</label>
+                      <input type="text" value={oiForm.description} onChange={e => setOiForm(f => ({ ...f, description: e.target.value }))}
+                        placeholder="例：5月停車費" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">金額 *</label>
+                      <input type="number" value={oiForm.amount} onChange={e => setOiForm(f => ({ ...f, amount: e.target.value }))}
+                        placeholder="0" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">備註</label>
+                      <input type="text" value={oiForm.note} onChange={e => setOiForm(f => ({ ...f, note: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-5">
+                    <button onClick={saveOtherIncome} disabled={oiSaving}
+                      className="flex-1 bg-indigo-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+                      {oiSaving ? '儲存中…' : '儲存'}
+                    </button>
+                    <button onClick={() => setOiModalOpen(false)}
+                      className="flex-1 border rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">取消</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

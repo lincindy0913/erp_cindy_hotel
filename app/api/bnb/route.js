@@ -36,18 +36,25 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const month      = searchParams.get('month');     // 2026-03
+    const monthFrom  = searchParams.get('monthFrom'); // 2026-01（月份區間起）
+    const monthTo    = searchParams.get('monthTo');   // 2026-05（月份區間迄）
     const warehouse  = searchParams.get('warehouse');
     const source     = searchParams.get('source');
     const status     = searchParams.get('status');
     const guestName  = searchParams.get('guestName');
     const page       = Math.max(1, parseInt(searchParams.get('page')     || '1'));
-    const pageSize   = Math.min(500, Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
+    const pageSize   = Math.min(2000, Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
 
-    const where = {};
+    const where = { status: { notIn: ['已刪除'] } };
     if (month)     where.importMonth = month;
+    if (monthFrom || monthTo) {
+      where.importMonth = {};
+      if (monthFrom) where.importMonth.gte = monthFrom;
+      if (monthTo)   where.importMonth.lte = monthTo;
+    }
     if (warehouse) where.warehouse   = warehouse;
     if (source)    where.source      = source;
-    if (status)    where.status      = status;
+    if (status)    where.status      = status;  // explicit status overrides default
     if (guestName) where.guestName   = { contains: guestName };
 
     const [total, records] = await prisma.$transaction([
