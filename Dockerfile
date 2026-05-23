@@ -32,7 +32,7 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 # Install OpenSSL for Prisma engine + pg_dump for Tier 1 backup
-RUN apk add --no-cache openssl postgresql16-client
+RUN apk add --no-cache openssl postgresql17-client
 
 ARG BUILD_DATE
 ARG GIT_COMMIT
