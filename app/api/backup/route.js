@@ -25,7 +25,10 @@ export async function GET() {
       prisma.backupConfig.findFirst({ orderBy: { id: 'asc' } }),
     ]);
 
-    return NextResponse.json({ records, config });
+    return NextResponse.json({
+      records: records.map(r => ({ ...r, fileSize: r.fileSize?.toString() ?? null })),
+      config,
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -80,7 +83,10 @@ export async function POST(request) {
       note: `手動觸發 ${tier} 備份`,
     }).catch(() => {});
 
-    return NextResponse.json(backupRecord, { status: 201 });
+    return NextResponse.json(
+      { ...backupRecord, fileSize: backupRecord.fileSize?.toString() ?? null },
+      { status: 201 }
+    );
   } catch (error) {
     return handleApiError(error);
   }
