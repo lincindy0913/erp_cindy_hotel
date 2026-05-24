@@ -327,6 +327,7 @@ function RentalsPage() {
   const [showBatchPay, setShowBatchPay] = useState(false);
   const [batchPayForm, setBatchPayForm] = useState({ actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '匯款' });
   const [batchSaving, setBatchSaving] = useState(false);
+  const [batchLockSaving, setBatchLockSaving] = useState(false);
 
   // Bulk utility input
   const [showBulkUtility, setShowBulkUtility] = useState(false);
@@ -910,6 +911,26 @@ function RentalsPage() {
       fetchIncomes(); fetchSummary();
     } catch (e) { showToast('批次操作失敗: ' + e.message, 'error'); }
     finally { setBatchSaving(false); }
+  }
+
+  async function batchLockIncomes() {
+    const ids = Array.from(selectedIncomeIds).filter(id => {
+      const inc = incomes.find(i => i.id === id);
+      return inc && !inc.isLocked;
+    });
+    if (ids.length === 0) return showToast('沒有可鎖帳的紀錄', 'error');
+    setBatchLockSaving(true);
+    let success = 0; let failed = 0;
+    try {
+      for (const id of ids) {
+        const res = await fetch(`/api/rentals/income/${id}/lock`, { method: 'PATCH' });
+        if (res.ok) success++; else failed++;
+      }
+      showToast(`批次鎖帳完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, 'success');
+      setSelectedIncomeIds(new Set());
+      fetchIncomes();
+    } catch (e) { showToast('批次鎖帳失敗: ' + e.message, 'error'); }
+    finally { setBatchLockSaving(false); }
   }
 
   async function openBulkUtility() {
@@ -1791,9 +1812,20 @@ function RentalsPage() {
                   </div>
                 </div>
                 {selectedIncomeIds.size > 0 && (
-                  <div className="flex justify-end mb-2">
-                    <button onClick={() => setShowBatchPay(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-                      批次確認 ({selectedIncomeIds.size} 筆)
+                  <div className="flex justify-end gap-2 mb-2">
+                    {Array.from(selectedIncomeIds).some(id => { const i = incomes.find(x => x.id === id); return i && (i.status === 'pending' || i.status === 'partial'); }) && (
+                      <button onClick={() => setShowBatchPay(true)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
+                        批次確認 ({selectedIncomeIds.size} 筆)
+                      </button>
+                    )}
+                    <button
+                      onClick={() => askConfirm(`確定批次鎖帳 ${selectedIncomeIds.size} 筆收租紀錄？鎖帳後無法編輯或刪除收款。`, batchLockIncomes, '批次鎖帳確認', false)}
+                      disabled={batchLockSaving}
+                      className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700 disabled:opacity-50">
+                      {batchLockSaving ? '鎖帳中…' : `🔒 批次鎖帳 (${selectedIncomeIds.size} 筆)`}
+                    </button>
+                    <button onClick={() => setSelectedIncomeIds(new Set())} className="text-xs text-gray-500 hover:text-gray-700 px-2">
+                      取消選取
                     </button>
                   </div>
                 )}
@@ -1850,10 +1882,11 @@ function RentalsPage() {
                         <SortableTh label="序號" colKey="contractSortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
                         <th className="px-3 py-2 text-center w-8">
                           <input type="checkbox"
-                            checked={selectedIncomeIds.size > 0 && incomes.filter(i => i.status === 'pending' || i.status === 'partial').every(i => selectedIncomeIds.has(i.id))}
+                            title="全選未鎖帳"
+                            checked={selectedIncomeIds.size > 0 && incomes.filter(i => !i.isLocked).every(i => selectedIncomeIds.has(i.id))}
                             onChange={e => {
-                              const pending = incomes.filter(i => i.status === 'pending' || i.status === 'partial');
-                              setSelectedIncomeIds(e.target.checked ? new Set(pending.map(i => i.id)) : new Set());
+                              const unlocked = incomes.filter(i => !i.isLocked);
+                              setSelectedIncomeIds(e.target.checked ? new Set(unlocked.map(i => i.id)) : new Set());
                             }}
                           />
                         </th>
@@ -1909,7 +1942,7 @@ function RentalsPage() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              {(income.status === 'pending' || income.status === 'partial') && (
+                              {!income.isLocked && (
                                 <input type="checkbox"
                                   checked={selectedIncomeIds.has(income.id)}
                                   onChange={e => setSelectedIncomeIds(prev => {
