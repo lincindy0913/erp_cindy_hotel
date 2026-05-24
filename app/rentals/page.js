@@ -65,6 +65,7 @@ const CONTRACT_STATUSES = [
 const INCOME_STATUSES = [
   { value: 'pending', label: '待收', color: 'bg-yellow-100 text-yellow-800' },
   { value: 'completed', label: '已收', color: 'bg-green-100 text-green-800' },
+  { value: 'paid', label: '已收', color: 'bg-green-100 text-green-800' },
   { value: 'partial', label: '部分收', color: 'bg-orange-100 text-orange-800' },
   { value: 'overdue', label: '逾期', color: 'bg-red-100 text-red-800' }
 ];
