@@ -1992,16 +1992,14 @@ function RentalsPage() {
                                   {(income.status === 'completed' || income.status === 'partial') && (
                                     <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium mr-1">作廢</button>
                                   )}
-                                  {(income.status === 'completed' || income.status === 'partial') && (
-                                    <button
-                                      onClick={() => askConfirm(
-                                        `確定鎖帳此紀錄？鎖帳後無法編輯或刪除收款。\n${income.propertyName} ${income.incomeYear}/${String(income.incomeMonth).padStart(2,'0')}`,
-                                        () => toggleIncomeLock(income.id, false), '鎖帳確認', false
-                                      )}
-                                      className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium">
-                                      🔓 鎖帳
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => askConfirm(
+                                      `確定鎖帳此紀錄？鎖帳後無法編輯或刪除收款。\n${income.propertyName} ${income.incomeYear}/${String(income.incomeMonth).padStart(2,'0')}`,
+                                      () => toggleIncomeLock(income.id, false), '鎖帳確認', false
+                                    )}
+                                    className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium">
+                                    🔓 鎖帳
+                                  </button>
                                 </>
                               )}
                             </td>
