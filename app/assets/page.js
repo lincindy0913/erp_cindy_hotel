@@ -106,6 +106,11 @@ function AssetsPageInner() {
   });
   const [accounts, setAccounts] = useState([]);
 
+  // Filter state
+  const [searchText, setSearchText] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+
   // Asset modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -237,6 +242,51 @@ function AssetsPageInner() {
       summary: { rentedCount, availableCount, totalRent, totalHouse, totalLand, totalMaint, totalNet },
     };
   }, [properties, reportData, taxesData]);
+
+  // Filtered rows (search + status + category)
+  const filteredRows = useMemo(() => {
+    return mergedRows.filter(p => {
+      if (searchText) {
+        const q = searchText.toLowerCase();
+        const match = (p.name || '').toLowerCase().includes(q)
+          || (p.buildingName || '').toLowerCase().includes(q)
+          || (p.currentTenantName || '').toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      if (filterStatus && p.status !== filterStatus) return false;
+      if (filterCategory && p.category !== filterCategory) return false;
+      return true;
+    });
+  }, [mergedRows, searchText, filterStatus, filterCategory]);
+
+  function exportCSV() {
+    const headers = ['物業', '棟別', '序號', '分類', '狀態', '租客', '月租金',
+      `${year}年租金實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`];
+    const rows = filteredRows.map(p => [
+      p.name + (p.unitNo ? `(${p.unitNo})` : ''),
+      p.buildingName || '',
+      p.sortOrder ?? '',
+      p.category || '',
+      STATUS_LABELS[p.status] || p.status || '',
+      p.currentTenantName || '',
+      p.currentMonthlyRent || '',
+      p.rentIncome || 0,
+      p.houseTax || 0,
+      p.landTax || 0,
+      p.maintenanceAmount || 0,
+      p.netProfit || 0,
+    ]);
+    const csv = [headers, ...rows]
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `資產管理_${year}年_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // Taxes for the selected property (detail panel)
   const selectedTaxes = useMemo(() => {
@@ -378,6 +428,17 @@ function AssetsPageInner() {
     finally { setPropInlineSaving(false); setPropInlineEdit(null); }
   }
 
+  function openNewProperty() {
+    setEditingProp(null);
+    setPropForm({
+      name: '', buildingName: '', unitNo: '', address: '', ownerName: '',
+      houseTaxRegistrationNo: '', status: 'available', category: '',
+      sortOrder: '', rentCollectAccountId: '', depositAccountId: '', note: '',
+      collectUtilityFee: false, publicInterestLandlord: false,
+    });
+    setShowPropModal(true);
+  }
+
   function openPropertyEdit(p) {
     setEditingProp(p);
     setPropForm({
@@ -400,12 +461,14 @@ function AssetsPageInner() {
   }
 
   async function savePropertyEdit() {
-    if (!editingProp) return;
+    if (!propForm.name.trim() && !editingProp) { showToast('請填寫物業名稱', 'error'); return; }
     setPropSaving(true);
     try {
       const body = {
+        name: propForm.name.trim(),
         buildingName: propForm.buildingName,
         unitNo: propForm.unitNo,
+        address: propForm.address,
         ownerName: propForm.ownerName || null,
         houseTaxRegistrationNo: propForm.houseTaxRegistrationNo || null,
         status: propForm.status,
@@ -417,12 +480,14 @@ function AssetsPageInner() {
         collectUtilityFee: propForm.collectUtilityFee,
         publicInterestLandlord: propForm.publicInterestLandlord,
       };
-      if (!editingProp.asset) {
-        body.name = propForm.name;
-        body.address = propForm.address;
+      if (editingProp?.asset) {
+        delete body.name;
+        delete body.address;
       }
-      const res = await fetch(`/api/rentals/properties/${editingProp.id}`, {
-        method: 'PUT',
+      const url = editingProp ? `/api/rentals/properties/${editingProp.id}` : '/api/rentals/properties';
+      const method = editingProp ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -524,6 +589,16 @@ function AssetsPageInner() {
                 {syncingAll ? '同步中…' : '↺ 同步狀態'}
               </button>
             )}
+            <button type="button" onClick={exportCSV}
+              className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-200">
+              ↓ 匯出 CSV
+            </button>
+            {canEdit && (
+              <button type="button" onClick={openNewProperty}
+                className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700">
+                新增物業
+              </button>
+            )}
             {canEdit && (
               <button type="button" onClick={openCreate}
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
@@ -578,6 +653,37 @@ function AssetsPageInner() {
           </div>
         )}
 
+        {/* Filter Bar */}
+        {!loading && (
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <input
+              type="text"
+              placeholder="搜尋物業名稱、棟別、租客…"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm w-56"
+            />
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              className="border rounded px-2 py-1.5 text-sm">
+              <option value="">全部狀態</option>
+              {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="border rounded px-2 py-1.5 text-sm">
+              <option value="">全部分類</option>
+              <option value="公司">公司</option>
+              <option value="湯三姐">湯三姐</option>
+            </select>
+            {(searchText || filterStatus || filterCategory) && (
+              <button onClick={() => { setSearchText(''); setFilterStatus(''); setFilterCategory(''); }}
+                className="text-xs text-gray-500 hover:text-red-500 px-2 py-1 border rounded">
+                ✕ 清除篩選
+              </button>
+            )}
+            <span className="text-xs text-gray-400 ml-1">共 {filteredRows.length} 筆</span>
+          </div>
+        )}
+
         {/* Main Table */}
         {loading ? (
           <p className="text-gray-500 py-8">載入中…</p>
@@ -604,15 +710,19 @@ function AssetsPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {mergedRows.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 15 : 14} className="text-center py-10 text-gray-400">尚無物業資料</td></tr>
+                {filteredRows.length === 0 ? (
+                  <tr><td colSpan={canEdit ? 15 : 14} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
                 ) : (
-                  mergedRows.map(p => {
+                  filteredRows.map(p => {
                     const isSelected = selected?.id === p.id;
                     const highlight = highlightPropertyId && p.id === parseInt(highlightPropertyId, 10);
                     const hasIncome = p.rentIncome > 0;
                     const hasTax = p.houseTax > 0 || p.landTax > 0;
                     const hasMaint = p.maintenanceAmount > 0;
+                    const expiryDays = p.currentContractEnd
+                      ? Math.ceil((new Date(p.currentContractEnd) - new Date()) / 86400000)
+                      : null;
+                    const hasUnpaidTax = taxesData.some(t => t.propertyId === p.id && t.status !== 'paid');
                     return (
                       <tr
                         key={p.id}
@@ -697,8 +807,17 @@ function AssetsPageInner() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-gray-600 max-w-[120px] truncate text-xs" title={p.currentTenantName || ''}>
-                          {p.currentTenantName || <span className="text-gray-300">—</span>}
+                        <td className="px-3 py-2 text-gray-600 text-xs">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="truncate max-w-[110px]" title={p.currentTenantName || ''}>
+                              {p.currentTenantName || <span className="text-gray-300">—</span>}
+                            </span>
+                            {expiryDays !== null && expiryDays <= 60 && (
+                              <span className={`text-xs px-1 py-0.5 rounded w-fit ${expiryDays <= 0 ? 'bg-red-100 text-red-700' : expiryDays <= 30 ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                                {expiryDays <= 0 ? `已到期 ${Math.abs(expiryDays)} 天` : `${expiryDays} 天到期`}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right text-gray-700">
                           {p.currentMonthlyRent ? fmtMoney(p.currentMonthlyRent) : <span className="text-gray-300">—</span>}
@@ -734,6 +853,9 @@ function AssetsPageInner() {
                           <div className="flex flex-wrap gap-1">
                             {p.publicInterestLandlord && (
                               <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">公益出租人</span>
+                            )}
+                            {hasUnpaidTax && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700" title="有未繳稅款">稅款待繳</span>
                             )}
                             <AssetFlagBadges asset={p.asset} />
                           </div>
@@ -1127,12 +1249,14 @@ function AssetsPageInner() {
       )}
 
       {/* Property Edit Modal */}
-      {showPropModal && editingProp && (
+      {showPropModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !propSaving && setShowPropModal(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">編輯物業：{editingProp.name}</h3>
-              {editingProp.asset && (
+              <h3 className="text-lg font-bold text-gray-800 mb-4">
+                {editingProp ? `編輯物業：${editingProp.name}` : '新增物業'}
+              </h3>
+              {editingProp?.asset && (
                 <div className="text-xs bg-teal-50 border border-teal-100 rounded px-3 py-2 mb-3 text-teal-800">
                   已連結資產主檔，名稱與地址由資產端管理。
                 </div>
@@ -1141,8 +1265,8 @@ function AssetsPageInner() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-gray-600">名稱 *</label>
-                    <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-                      value={propForm.name} disabled={!!editingProp.asset}
+                    <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp?.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                      value={propForm.name} disabled={!!editingProp?.asset}
                       onChange={e => setPropForm(f => ({ ...f, name: e.target.value }))} />
                   </div>
                   <div>
@@ -1155,8 +1279,8 @@ function AssetsPageInner() {
                 </div>
                 <div>
                   <label className="text-gray-600">地址</label>
-                  <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-                    value={propForm.address} disabled={!!editingProp.asset}
+                  <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp?.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                    value={propForm.address} disabled={!!editingProp?.asset}
                     onChange={e => setPropForm(f => ({ ...f, address: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
