@@ -1809,6 +1809,17 @@ function RentalsPage() {
                     <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
                       產生本月租金
                     </button>
+                    <button
+                      onClick={() => {
+                        const unlocked = incomes.filter(i => !i.isLocked);
+                        if (unlocked.length === 0) return showToast('沒有可鎖帳的紀錄', 'error');
+                        setSelectedIncomeIds(new Set(unlocked.map(i => i.id)));
+                        askConfirm(`確定批次鎖帳 ${unlocked.length} 筆未鎖帳收租紀錄？鎖帳後無法編輯或刪除收款。`, batchLockIncomes, '批次鎖帳確認', false);
+                      }}
+                      disabled={batchLockSaving}
+                      className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700 disabled:opacity-50">
+                      {batchLockSaving ? '鎖帳中…' : '🔒 批次鎖帳'}
+                    </button>
                   </div>
                 </div>
                 {selectedIncomeIds.size > 0 && (
