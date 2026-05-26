@@ -17,7 +17,7 @@ RUN npm ci
 # App source and build
 COPY . .
 RUN mkdir -p public
-ARG BUILD_TS=20260526_01
+ARG BUILD_TS=20260526_02
 RUN npm run build
 
 # ============================================
