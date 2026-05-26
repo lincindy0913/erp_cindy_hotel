@@ -195,7 +195,7 @@ function RentalsPage() {
     year: new Date().getFullYear(),
     month: '',
     status: '',
-    propertySearch: '',
+    propertySearch: searchParams.get('propertySearch') || '',
     category: '',
   });
   const sortedIncomes = useMemo(() => {

@@ -79,6 +79,7 @@ function AssetsPageInner() {
   const [reportData, setReportData] = useState([]);   // operating report rows
   const [taxesData, setTaxesData] = useState([]);     // all taxes for year
   const [loading, setLoading] = useState(true);
+  const [currentMonthIncomeMap, setCurrentMonthIncomeMap] = useState(new Map()); // propertyId → income
 
   // Selected property for detail panel
   const [selected, setSelected] = useState(null);
@@ -149,16 +150,31 @@ function AssetsPageInner() {
   // Initial load
   useEffect(() => {
     let cancelled = false;
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
     (async () => {
       setLoading(true);
-      const [, , acctRes] = await Promise.all([
+      const [, , acctRes, incomeRes] = await Promise.all([
         loadProperties(),
         loadYearData(year),
         fetch('/api/cashflow/accounts').then(r => r.ok ? r.json() : []),
+        fetch(`/api/rentals/income?year=${curYear}&month=${curMonth}`).then(r => r.ok ? r.json() : []),
       ]);
       if (!cancelled) {
         setLoading(false);
         if (Array.isArray(acctRes)) setAccounts(acctRes);
+        if (Array.isArray(incomeRes)) {
+          const today = new Date().toISOString().split('T')[0];
+          const map = new Map();
+          incomeRes.forEach(i => {
+            const existing = map.get(i.propertyId);
+            if (!existing || i.status === 'completed' || (i.status === 'partial' && existing.status === 'pending')) {
+              map.set(i.propertyId, { ...i, isOverdue: i.status === 'pending' && i.dueDate < today });
+            }
+          });
+          setCurrentMonthIncomeMap(map);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -699,6 +715,7 @@ function AssetsPageInner() {
                   <th className="text-left px-3 py-2">狀態</th>
                   <th className="text-left px-3 py-2">租客</th>
                   <th className="text-right px-3 py-2">月租金</th>
+                  <th className="text-center px-3 py-2">本月<br/>收款</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>租金實收</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>房屋稅</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>地價稅</th>
@@ -711,7 +728,7 @@ function AssetsPageInner() {
               </thead>
               <tbody>
                 {filteredRows.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 15 : 14} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
+                  <tr><td colSpan={canEdit ? 16 : 15} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
                 ) : (
                   filteredRows.map(p => {
                     const isSelected = selected?.id === p.id;
@@ -822,6 +839,16 @@ function AssetsPageInner() {
                         <td className="px-3 py-2 text-right text-gray-700">
                           {p.currentMonthlyRent ? fmtMoney(p.currentMonthlyRent) : <span className="text-gray-300">—</span>}
                         </td>
+                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                          {(() => {
+                            const inc = currentMonthIncomeMap.get(p.id);
+                            if (!inc) return <span className="text-gray-300 text-xs">—</span>;
+                            if (inc.status === 'completed') return <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">已收</span>;
+                            if (inc.status === 'partial') return <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">部分收</span>;
+                            if (inc.isOverdue) return <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">逾期</span>;
+                            return <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-medium">待收</span>;
+                          })()}
+                        </td>
                         <td className={`px-3 py-2 text-right font-medium ${hasIncome ? 'text-teal-700' : 'text-gray-300'}`}>
                           {hasIncome ? fmtMoney(p.rentIncome) : '—'}
                         </td>
@@ -863,6 +890,12 @@ function AssetsPageInner() {
                         {canEdit && (
                           <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-2">
+                              <a
+                                href={`/rentals?tab=cashier&propertySearch=${encodeURIComponent(p.name)}`}
+                                className="text-teal-600 hover:underline text-xs font-medium"
+                                onClick={e => e.stopPropagation()}>
+                                收款
+                              </a>
                               <button className="text-indigo-600 hover:underline text-xs" onClick={() => openPropertyEdit(p)}>編輯</button>
                               {p.asset ? (
                                 <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>資產</button>
@@ -887,6 +920,7 @@ function AssetsPageInner() {
                 <tfoot className="bg-teal-50 border-t-2 border-teal-200 text-xs font-semibold">
                   <tr>
                     <td colSpan={7} className="px-3 py-2 text-gray-700">合計</td>
+                    <td className="px-3 py-2" />
                     <td className="px-3 py-2 text-right text-teal-700">{fmtMoney(summary.totalRent)}</td>
                     <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(summary.totalHouse)}</td>
                     <td className="px-3 py-2 text-right text-orange-700">{fmtMoney(summary.totalLand)}</td>
