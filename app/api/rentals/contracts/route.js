@@ -100,6 +100,16 @@ export async function POST(request) {
 
     const newStatus = body.status || 'pending';
 
+    // 若未指定分類，自動從物業繼承
+    let resolvedCategory = body.category || null;
+    if (!resolvedCategory) {
+      const prop = await prisma.rentalProperty.findUnique({
+        where: { id: parseInt(propertyId) },
+        select: { category: true },
+      });
+      resolvedCategory = prop?.category || null;
+    }
+
     const contract = await prisma.rentalContract.create({
       data: {
         contractNo,
@@ -120,7 +130,7 @@ export async function POST(request) {
         specialTerms: body.specialTerms || null,
         note: body.note || null,
         previousContractId: body.previousContractId ? parseInt(body.previousContractId) : null,
-        category: body.category || null,
+        category: resolvedCategory,
       },
       include: {
         property: { select: { id: true, name: true } },

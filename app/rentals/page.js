@@ -697,7 +697,19 @@ function RentalsPage() {
       if (contractFilter.propertyId) params.set('propertyId', contractFilter.propertyId);
       const res = await fetch(`/api/rentals/contracts?${params}`);
       const data = await res.json();
-      setContracts(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setContracts(list);
+      // 若有合約缺分類，自動從物業同步一次
+      const needsSync = list.some(c => !c.category && c.status !== 'cancelled');
+      if (needsSync) {
+        fetch('/api/rentals/contracts', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'sync-from-property' }),
+        }).then(r => r.ok && fetch(`/api/rentals/contracts?${params}`).then(r2 => r2.json()).then(d2 => {
+          setContracts(Array.isArray(d2) ? d2 : []);
+        }));
+      }
     } catch { setContracts([]); }
   }
 
@@ -1187,6 +1199,7 @@ function RentalsPage() {
       specialTerms: contract.specialTerms || '',
       note: '',
       previousContractId: contract.id,
+      category: contract.category || '',
     });
     setShowContractModal(true);
   }
@@ -4268,7 +4281,11 @@ function RentalsPage() {
                 )}
                 <div>
                   <label className="text-sm text-gray-600">物業 *</label>
-                  <select value={contractForm.propertyId} onChange={e => setContractForm(f => ({ ...f, propertyId: e.target.value }))}
+                  <select value={contractForm.propertyId} onChange={e => {
+                    const pid = e.target.value;
+                    const prop = properties.find(p => String(p.id) === pid);
+                    setContractForm(f => ({ ...f, propertyId: pid, category: f.category || (prop?.category || '') }));
+                  }}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">選擇物業</option>
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

@@ -23,7 +23,7 @@ export async function GET(request) {
       where,
       include: {
         contracts: {
-          where: { status: 'active' },
+          where: { status: { in: ['active', 'expired', 'pending'] } },
           select: {
             id: true,
             contractNo: true,
@@ -33,7 +33,8 @@ export async function GET(request) {
             status: true,
             tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
           },
-          take: 1
+          orderBy: [{ status: 'asc' }, { endDate: 'desc' }],
+          take: 3
         },
         rentCollectAccount: { select: { id: true, name: true } },
         depositAccount: { select: { id: true, name: true } },
@@ -43,8 +44,8 @@ export async function GET(request) {
     });
 
     const result = properties.map(p => {
-      const activeContract = p.contracts[0] || null;
-      const tenantName = activeContract
+      const activeContract = p.contracts.find(c => c.status === 'active') || p.contracts[0] || null;
+      const tenantName = activeContract?.tenant
         ? (activeContract.tenant.tenantType === 'company'
           ? activeContract.tenant.companyName
           : activeContract.tenant.fullName)
@@ -58,6 +59,7 @@ export async function GET(request) {
         currentMonthlyRent: activeContract?.monthlyRent != null ? Number(activeContract.monthlyRent) : null,
         currentContractStart: activeContract?.startDate || null,
         currentContractEnd: activeContract?.endDate || null,
+        currentContractStatus: activeContract?.status || null,
       };
     });
 
