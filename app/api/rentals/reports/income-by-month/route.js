@@ -56,19 +56,11 @@ export async function GET(request) {
 
     let propertyIdsInCategory = null;
     if (categoryParam) {
-      if (categoryParam === '__RENTAL_CAT_EMPTY__') {
-        const rows = await prisma.rentalProperty.findMany({
-          where: { OR: [{ unitNo: null }, { unitNo: '' }] },
-          select: { id: true }
-        });
-        propertyIdsInCategory = rows.map((r) => r.id);
-      } else {
-        const rows = await prisma.rentalProperty.findMany({
-          where: { unitNo: categoryParam.trim() },
-          select: { id: true }
-        });
-        propertyIdsInCategory = rows.map((r) => r.id);
-      }
+      const rows = await prisma.rentalProperty.findMany({
+        where: { category: categoryParam.trim() },
+        select: { id: true }
+      });
+      propertyIdsInCategory = rows.map((r) => r.id);
       if (propertyIdsInCategory.length === 0) {
         return NextResponse.json({ year: displayYear, rows: [] });
       }

@@ -154,20 +154,16 @@ function RentalsPage() {
     finally { setPropInlineSaving(false); setPropInlineEdit(null); }
   }
   const reportCategoryOptions = useMemo(() => {
-    const map = new Map();
-    properties.forEach((p) => {
-      const raw = p.unitNo;
-      const isEmpty = raw == null || String(raw).trim() === '';
-      const value = isEmpty ? REPORT_CAT_EMPTY : String(raw).trim();
-      if (!map.has(value)) map.set(value, isEmpty ? '未填類別' : String(raw).trim());
+    const seen = new Set();
+    const result = [];
+    properties.forEach(p => {
+      if (p.category && !seen.has(p.category)) {
+        seen.add(p.category);
+        result.push({ value: p.category, label: p.category });
+      }
     });
-    return Array.from(map.entries())
-      .sort((a, b) => {
-        if (a[0] === REPORT_CAT_EMPTY) return 1;
-        if (b[0] === REPORT_CAT_EMPTY) return -1;
-        return (a[1] || '').localeCompare(b[1] || '', 'zh-Hant');
-      })
-      .map(([value, label]) => ({ value, label }));
+    result.sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
+    return result;
   }, [properties]);
   const [taxes, setTaxes] = useState([]);
   const [maintenances, setMaintenances] = useState([]);
@@ -3420,7 +3416,7 @@ function RentalsPage() {
                         ) : (
                           operatingReportData.rows.map((r, idx) => (
                             <tr key={r.propertyId} className="hover:bg-gray-50">
-                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
+                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
                               <td className="px-3 py-2 border border-gray-200">{r.propertyLabel}</td>
                               <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.rentIncome)}</td>
                               <td className="text-right px-3 py-2 border border-gray-200">{fmt(r.maintenanceAmount)}</td>

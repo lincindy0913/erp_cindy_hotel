@@ -53,19 +53,11 @@ export async function GET(request) {
 
     let propertyIdsInCategory = null;
     if (categoryParam) {
-      if (categoryParam === '__RENTAL_CAT_EMPTY__') {
-        const rows = await prisma.rentalProperty.findMany({
-          where: { OR: [{ unitNo: null }, { unitNo: '' }] },
-          select: { id: true }
-        });
-        propertyIdsInCategory = rows.map((r) => r.id);
-      } else {
-        const rows = await prisma.rentalProperty.findMany({
-          where: { unitNo: categoryParam.trim() },
-          select: { id: true }
-        });
-        propertyIdsInCategory = rows.map((r) => r.id);
-      }
+      const rows = await prisma.rentalProperty.findMany({
+        where: { category: categoryParam.trim() },
+        select: { id: true }
+      });
+      propertyIdsInCategory = rows.map((r) => r.id);
       if (propertyIdsInCategory.length === 0) {
         return NextResponse.json({ year: displayYear, rows: [] });
       }
@@ -104,7 +96,7 @@ export async function GET(request) {
       }),
       prisma.rentalProperty.findMany({
         where: propertiesWhere,
-        select: { id: true, name: true, buildingName: true, unitNo: true, address: true }
+        select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true }
       }),
       prisma.asset.findMany({
         where: { rentalPropertyId: { not: null }, areaSqm: { not: null } },
@@ -123,7 +115,7 @@ export async function GET(request) {
       ? properties
       : await prisma.rentalProperty.findMany({
           where: { id: { in: Array.from(propertyIds) } },
-          select: { id: true, name: true, buildingName: true, unitNo: true, address: true }
+          select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true }
         });
 
     const propMap = new Map(allProperties.map(p => [p.id, p]));
@@ -165,6 +157,8 @@ export async function GET(request) {
       return {
         propertyId: pid,
         propertyLabel: label,
+        sortOrder: prop?.sortOrder ?? null,
+        category: prop?.category ?? null,
         rentIncome: rent,
         maintenanceAmount: maintenance,
         taxAmount: tax,
@@ -176,7 +170,12 @@ export async function GET(request) {
       };
     });
 
-    rows.sort((a, b) => (a.propertyLabel || '').localeCompare(b.propertyLabel || ''));
+    rows.sort((a, b) => {
+      const aOrder = a.sortOrder ?? 9999;
+      const bOrder = b.sortOrder ?? 9999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return (a.propertyLabel || '').localeCompare(b.propertyLabel || '');
+    });
 
     return NextResponse.json({ year: displayYear, rows });
   } catch (error) {
