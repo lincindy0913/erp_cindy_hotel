@@ -18,6 +18,7 @@ const ASSET_TYPE_OPTIONS = [
 const STATUS_LABELS = {
   rented: '已出租',
   available: '空置',
+  maintenance: '維護中',
   renovation: '裝修中',
   pending: '洽談中',
   inactive: '停用',
@@ -493,8 +494,9 @@ function AssetsPageInner() {
           if (incomeCount > 0) lines.push(`收款紀錄 ${incomeCount} 筆`);
           if (taxCount > 0) lines.push(`稅務紀錄 ${taxCount} 筆`);
           if (maintenanceCount > 0) lines.push(`維修紀錄 ${maintenanceCount} 筆`);
+          const lockedWarning = incomeCount > 0 ? '\n\n⚠ 收款紀錄中可能含已鎖帳資料，刪除後帳務記錄將無法還原。' : '';
           showConfirm(
-            `「${p.name}」尚有關聯資料：${lines.join('、')}。\n確定要連同所有資料一起刪除？此操作無法復原。`,
+            `「${p.name}」尚有關聯資料：${lines.join('、')}。\n確定要連同所有資料一起刪除？此操作無法復原。${lockedWarning}`,
             async () => {
               const res2 = await fetch(`/api/rentals/properties/${p.id}?force=true`, { method: 'DELETE' });
               const data2 = await res2.json().catch(() => ({}));
@@ -772,11 +774,13 @@ function AssetsPageInner() {
                                 : p.status === 'available' ? 'bg-gray-100 text-gray-500'
                                 : 'bg-yellow-100 text-yellow-700'}`}>
                               {STATUS_LABELS[p.status] || p.status || '—'}
-                              {canEdit && p.currentContractStatus === 'active' && p.status !== 'rented' && (
-                                <span className="ml-1 text-amber-500" title="有活躍合約但狀態非已出租，建議同步">⚠</span>
+                              {p.currentContractStatus === 'active' && p.status !== 'rented' && (
+                                <Link href={`/rentals?propertyId=${p.id}&tab=contracts`} onClick={e => e.stopPropagation()}
+                                  className="ml-1 text-amber-500 hover:text-amber-700" title="有活躍合約但狀態非已出租，點擊前往合約管理">⚠</Link>
                               )}
-                              {canEdit && p.currentContractStatus !== 'active' && p.status === 'rented' && (
-                                <span className="ml-1 text-amber-500" title="無活躍合約但狀態為已出租，建議同步">⚠</span>
+                              {p.currentContractStatus !== 'active' && p.status === 'rented' && (
+                                <Link href={`/rentals?propertyId=${p.id}&tab=contracts`} onClick={e => e.stopPropagation()}
+                                  className="ml-1 text-amber-500 hover:text-amber-700" title="無活躍合約但狀態為已出租，點擊前往合約管理">⚠</Link>
                               )}
                             </span>
                           )}
@@ -859,7 +863,7 @@ function AssetsPageInner() {
                               ) : (
                                 <button className="text-teal-600 hover:underline text-xs" onClick={() => {
                                   setEditing(null);
-                                  setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(p.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                                  setForm(f => ({ ...f, name: p.name || '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: p.category || '', rentalPropertyId: String(p.id), isAvailableForRental: true, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
                                   setShowModal(true);
                                 }}>+資產</button>
                               )}
@@ -911,10 +915,12 @@ function AssetsPageInner() {
                     <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">公益出租人</span>
                   )}
                   {selected.currentContractStatus === 'active' && selected.status !== 'rented' && (
-                    <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⚠ 狀態與合約不符</span>
+                    <Link href={`/rentals?propertyId=${selected.id}&tab=contracts`}
+                      className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100">⚠ 狀態與合約不符</Link>
                   )}
                   {selected.currentContractStatus !== 'active' && selected.status === 'rented' && (
-                    <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⚠ 無活躍合約</span>
+                    <Link href={`/rentals?propertyId=${selected.id}&tab=contracts`}
+                      className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100">⚠ 無活躍合約</Link>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
@@ -936,7 +942,28 @@ function AssetsPageInner() {
                   {selected.currentContractEnd && (
                     <span>到期：<strong className={new Date(selected.currentContractEnd) < new Date() ? 'text-red-600' : 'text-gray-700'}>{selected.currentContractEnd}</strong></span>
                   )}
+                  {selected.currentDepositAmount > 0 && (
+                    <span>押金：<strong className="text-indigo-700">NT$ {fmtMoney(selected.currentDepositAmount)}</strong>
+                      {selected.currentDepositReceived
+                        ? <span className="ml-1 text-xs text-green-600">（已收）</span>
+                        : <span className="ml-1 text-xs text-amber-600">（未收）</span>}
+                      {selected.currentDepositRefunded && <span className="ml-1 text-xs text-gray-400">（已退）</span>}
+                    </span>
+                  )}
+                  {selected.renewalCount > 0 && (
+                    <span className="text-purple-600">🔄 第 {selected.renewalCount + 1} 次合約</span>
+                  )}
                 </div>
+                {selected.publicInterestLandlord && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-purple-700 bg-purple-50 rounded px-2 py-1">
+                    <span>公益出租人</span>
+                    {selected.publicInterestApplicant && <span>申請人：{selected.publicInterestApplicant}</span>}
+                    {selected.publicInterestStartDate && <span>起：{selected.publicInterestStartDate}</span>}
+                    {selected.publicInterestEndDate && <span>迄：{selected.publicInterestEndDate}</span>}
+                    {selected.publicInterestRent > 0 && <span>公益租金：NT$ {fmtMoney(selected.publicInterestRent)}</span>}
+                    {selected.publicInterestNote && <span>備註：{selected.publicInterestNote}</span>}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {canEdit && (
@@ -1099,7 +1126,7 @@ function AssetsPageInner() {
                     className="mt-3 text-xs px-3 py-1.5 bg-teal-600 text-white rounded hover:bg-teal-700"
                     onClick={() => {
                       setEditing(null);
-                      setForm(f => ({ ...f, name: '', assetType: 'BUILDING', address: selected.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: '', rentalPropertyId: String(selected.id), isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+                      setForm(f => ({ ...f, name: selected.name || '', assetType: 'BUILDING', address: selected.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: selected.category || '', rentalPropertyId: String(selected.id), isAvailableForRental: true, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
                       setShowModal(true);
                     }}
                   >
@@ -1185,6 +1212,13 @@ function AssetsPageInner() {
                 <label className="text-gray-600">地址</label>
                 <input className="w-full border rounded px-3 py-2 mt-1" value={form.address}
                   onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+                {editing && form.rentalPropertyId && (() => {
+                  const linkedProp = properties.find(p => String(p.id) === String(form.rentalPropertyId));
+                  if (linkedProp?.address && linkedProp.address !== form.address) {
+                    return <p className="text-xs text-amber-600 mt-1">⚠ 與綁定物業地址不同（物業：{linkedProp.address}）</p>;
+                  }
+                  return null;
+                })()}
               </div>
               <div>
                 <label className="text-gray-600">面積（㎡）</label>

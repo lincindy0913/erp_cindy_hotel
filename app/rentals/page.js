@@ -52,7 +52,10 @@ function resolveRentalsAnalyticsSub(tabParam, sp) {
 const PROPERTY_STATUSES = [
   { value: 'available', label: '空置', color: 'bg-green-100 text-green-800' },
   { value: 'rented', label: '已出租', color: 'bg-blue-100 text-blue-800' },
-  { value: 'maintenance', label: '維護中', color: 'bg-yellow-100 text-yellow-800' }
+  { value: 'maintenance', label: '維護中', color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'renovation', label: '裝修中', color: 'bg-orange-100 text-orange-800' },
+  { value: 'pending', label: '洽談中', color: 'bg-purple-100 text-purple-800' },
+  { value: 'inactive', label: '停用', color: 'bg-gray-100 text-gray-500' },
 ];
 
 const CONTRACT_STATUSES = [
@@ -2970,7 +2973,7 @@ function RentalsPage() {
                   <select value={maintenanceFilter.propertyId} onChange={e => setMaintenanceFilter(f => ({ ...f, propertyId: e.target.value }))}
                     className="border rounded px-2 py-1.5 text-sm">
                     <option value="">全部物業</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}{p.asset?.hasMaintenanceFee ? ' [維護費]' : ''}</option>)}
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}{p.asset?.hasMaintenanceFee ? ' [維護費]' : p.asset ? ' ⚠' : ''}</option>)}
                   </select>
                   <select value={maintenanceFilter.category} onChange={e => setMaintenanceFilter(f => ({ ...f, category: e.target.value }))}
                     className="border rounded px-2 py-1.5 text-sm">
@@ -3178,8 +3181,11 @@ function RentalsPage() {
                             <select value={utilityForm.propertyId} onChange={e => setUtilityForm(f => ({ ...f, propertyId: e.target.value }))}
                               className="w-full border rounded px-3 py-2 text-sm">
                               <option value="">選擇物業</option>
-                              {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                              {properties.map(p => <option key={p.id} value={p.id}>{p.name}{p.collectUtilityFee ? '' : ' ⚠'}</option>)}
                             </select>
+                            {utilityForm.propertyId && !properties.find(p => String(p.id) === String(utilityForm.propertyId))?.collectUtilityFee && (
+                              <p className="text-xs text-amber-600 mt-1">⚠ 此物業未啟用「代收水電費」，請確認是否要登記</p>
+                            )}
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
@@ -4458,6 +4464,13 @@ function RentalsPage() {
                       return <option key={p.id} value={p.id}>{p.name}{suffix}</option>;
                     })}
                   </select>
+                  {maintenanceForm.propertyId && !editingMaintenance && (() => {
+                    const p = properties.find(x => String(x.id) === String(maintenanceForm.propertyId));
+                    if (p?.asset && !p.asset.hasMaintenanceFee) {
+                      return <p className="text-xs text-amber-600 mt-1">⚠ 此物業資產主檔未標記「有維修費」，請確認</p>;
+                    }
+                    return null;
+                  })()}
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">日期 *</label>

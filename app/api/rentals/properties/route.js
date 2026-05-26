@@ -31,6 +31,10 @@ export async function GET(request) {
             startDate: true,
             endDate: true,
             status: true,
+            depositAmount: true,
+            depositReceived: true,
+            depositRefunded: true,
+            previousContractId: true,
             tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
           },
           orderBy: [{ status: 'asc' }, { endDate: 'desc' }],
@@ -60,6 +64,11 @@ export async function GET(request) {
         currentContractStart: activeContract?.startDate || null,
         currentContractEnd: activeContract?.endDate || null,
         currentContractStatus: activeContract?.status || null,
+        currentDepositAmount: activeContract?.depositAmount != null ? Number(activeContract.depositAmount) : null,
+        currentDepositReceived: activeContract?.depositReceived ?? null,
+        currentDepositRefunded: activeContract?.depositRefunded ?? null,
+        currentContractHasPrev: !!activeContract?.previousContractId,
+        renewalCount: p.contracts.filter(c => c.previousContractId != null).length,
       };
     });
 
