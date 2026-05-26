@@ -696,7 +696,7 @@ function RentalsPage() {
       const list = Array.isArray(data) ? data : [];
       setContracts(list);
       // 若有合約缺分類，自動從物業同步一次
-      const needsSync = list.some(c => !c.category && c.status !== 'cancelled');
+      const needsSync = list.some(c => !c.category && c.status !== 'terminated');
       if (needsSync) {
         fetch('/api/rentals/contracts', {
           method: 'PATCH',
@@ -4353,12 +4353,14 @@ function RentalsPage() {
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">分類</label>
-                  <select value={contractForm.category} onChange={e => setContractForm(f => ({ ...f, category: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">無</option>
-                    <option value="公司">公司</option>
-                    <option value="湯三姐">湯三姐</option>
-                  </select>
+                  <div className="w-full border rounded px-3 py-2 text-sm bg-gray-50 text-gray-600 flex items-center gap-1">
+                    {(() => {
+                      const prop = properties.find(p => String(p.id) === String(contractForm.propertyId));
+                      return prop?.category
+                        ? <><span className="text-xs text-gray-400">繼承自物業：</span><span className="font-medium text-gray-800">{prop.category}</span></>
+                        : <span className="text-gray-400">（選擇物業後自動帶入）</span>;
+                    })()}
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <label className="flex items-center gap-2 text-sm">

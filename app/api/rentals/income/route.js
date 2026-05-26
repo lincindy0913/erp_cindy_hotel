@@ -34,9 +34,9 @@ export async function GET(request) {
         matchTransferRef: true, matchBankAccountName: true, matchNote: true,
         status: true, cashTransactionId: true,
         isLocked: true, lockedAt: true, lockedBy: true,
-        property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true, sortOrder: true } },
+        property: { select: { id: true, name: true, buildingName: true, collectUtilityFee: true, rentCollectAccountId: true, sortOrder: true, category: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true, email: true } },
-        contract: { select: { id: true, contractNo: true, monthlyRent: true, rentAccountId: true, category: true, sortOrder: true } },
+        contract: { select: { id: true, contractNo: true, monthlyRent: true, rentAccountId: true } },
         payments: {
           orderBy: { sequenceNo: 'asc' },
           select: {
@@ -59,10 +59,10 @@ export async function GET(request) {
       buildingName: i.property.buildingName,
       collectUtilityFee: i.property.collectUtilityFee,
       rentCollectAccountId: i.property.rentCollectAccountId,
-      propertyCategory: null,
+      propertyCategory: i.property?.category ?? null,
       propertySortOrder: i.property.sortOrder ?? null,
-      contractCategory: i.contract?.category ?? null,
-      contractSortOrder: i.contract?.sortOrder ?? null,
+      contractCategory: i.property?.category ?? null,
+      contractSortOrder: i.property.sortOrder ?? null,
       tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName
     }));
 

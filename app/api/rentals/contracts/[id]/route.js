@@ -193,8 +193,8 @@ export async function PUT(request, { params }) {
           });
         }
       }
-    } else if (body.status === 'terminated' || body.status === 'expired') {
-      // Check if there are other active contracts for this property
+    } else if (['terminated', 'expired', 'cancelled'].includes(body.status)) {
+      // 若無其他有效合約，物業改回空置
       const otherActive = await prisma.rentalContract.count({
         where: { propertyId: contract.propertyId, status: 'active', id: { not: contractId } }
       });
@@ -203,6 +203,19 @@ export async function PUT(request, { params }) {
           where: { id: contract.propertyId },
           data: { status: 'available' }
         });
+      }
+    } else if (body.status === 'pending') {
+      // 合約退回待審核（尚未生效），若物業本來因此合約才 rented，改回 available
+      if (existing.status === 'active') {
+        const otherActive = await prisma.rentalContract.count({
+          where: { propertyId: contract.propertyId, status: 'active', id: { not: contractId } }
+        });
+        if (otherActive === 0) {
+          await prisma.rentalProperty.update({
+            where: { id: contract.propertyId },
+            data: { status: 'available' }
+          });
+        }
       }
     }
 
