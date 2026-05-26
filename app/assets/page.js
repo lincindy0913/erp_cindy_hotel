@@ -93,7 +93,6 @@ function AssetsPageInner() {
   // Property inline edit (序號/分類/狀態)
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
-  const [syncingAll, setSyncingAll] = useState(false);
 
   // Property edit modal
   const [showPropModal, setShowPropModal] = useState(false);
@@ -387,41 +386,6 @@ function AssetsPageInner() {
     }
   }
 
-  async function syncPropertyStatus(p) {
-    const correctStatus = p.currentContractStatus === 'active' ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
-    if (p.status === correctStatus) { showToast('狀態已是最新，無需同步', 'info'); return; }
-    const res = await fetch(`/api/rentals/properties/${p.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: correctStatus }),
-    });
-    if (!res.ok) { showToast('同步失敗', 'error'); return; }
-    showToast(`已同步：${p.name} → ${STATUS_LABELS[correctStatus] || correctStatus}`, 'success');
-    setProperties(prev => prev.map(x => x.id === p.id ? { ...x, status: correctStatus } : x));
-    if (selected?.id === p.id) setSelected(s => s ? { ...s, status: correctStatus } : s);
-  }
-
-  async function syncAllStatus() {
-    setSyncingAll(true);
-    let updated = 0;
-    try {
-      for (const p of properties) {
-        const correctStatus = p.currentContractStatus === 'active' ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
-        if (p.status !== correctStatus) {
-          await fetch(`/api/rentals/properties/${p.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: correctStatus }),
-          });
-          updated++;
-        }
-      }
-      showToast(updated > 0 ? `已同步 ${updated} 筆物業狀態` : '所有物業狀態均已是最新', 'success');
-      await loadProperties();
-    } catch { showToast('批次同步失敗', 'error'); }
-    finally { setSyncingAll(false); }
-  }
-
   async function savePropField(propertyId, field, value) {
     setPropInlineSaving(true);
     try {
@@ -598,13 +562,6 @@ function AssetsPageInner() {
                 return <option key={y} value={y}>{y} 年</option>;
               })}
             </select>
-            {canEdit && (
-              <button type="button" onClick={syncAllStatus} disabled={syncingAll || loading}
-                className="px-3 py-1.5 bg-amber-50 border border-amber-300 text-amber-700 text-sm rounded-lg hover:bg-amber-100 disabled:opacity-50"
-                title="依合約自動更新所有物業出租狀態">
-                {syncingAll ? '同步中…' : '↺ 同步狀態'}
-              </button>
-            )}
             <button type="button" onClick={exportCSV}
               className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-200">
               ↓ 匯出 CSV
@@ -982,11 +939,6 @@ function AssetsPageInner() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {canEdit && (
-                  <button onClick={() => syncPropertyStatus(selected)}
-                    className="text-xs text-amber-700 hover:underline border border-amber-300 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded"
-                    title="依合約自動更新此物業狀態">↺ 同步狀態</button>
-                )}
                 {canEdit && (
                   <button onClick={() => openPropertyEdit(selected)}
                     className="text-xs text-indigo-700 hover:underline border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded">編輯物業</button>
