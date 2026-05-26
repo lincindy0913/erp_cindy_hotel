@@ -84,14 +84,6 @@ export async function PUT(request, { params }) {
       data,
     });
 
-    // 分類變更時同步到所有合約
-    if (body.category !== undefined) {
-      await prisma.rentalContract.updateMany({
-        where: { propertyId, status: { not: 'cancelled' } },
-        data: { category: body.category || null },
-      });
-    }
-
     return NextResponse.json(property);
   } catch (error) {
     console.error('PUT /api/rentals/properties/[id] error:', error.message || error);
@@ -112,13 +104,6 @@ export async function PATCH(request, { params }) {
     if (body.status    !== undefined) data.status    = body.status;
     if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
     await prisma.rentalProperty.update({ where: { id: parseInt(id) }, data, select: { id: true } });
-    // 分類變更時同步到所有合約
-    if (body.category !== undefined) {
-      await prisma.rentalContract.updateMany({
-        where: { propertyId: parseInt(id), status: { not: 'cancelled' } },
-        data: { category: body.category || null },
-      });
-    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

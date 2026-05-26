@@ -112,44 +112,26 @@ function RentalsPage() {
   const [incomesHasMore, setIncomesHasMore] = useState(false);
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
 
-  // ── 合約欄位 inline edit (分類/序號) ──────────────────────────
-  const [propInlineEdit, setPropInlineEdit] = useState(null); // { contractId, field, value }
+  // ── 物業欄位 inline edit (分類/序號) ─────────────────────────
+  const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
   const [propInlineSaving, setPropInlineSaving] = useState(false);
-  const [propSyncing, setPropSyncing] = useState(false);
   const CONTRACT_INCOME_CATEGORIES = ['公司', '湯三姐'];
 
-  async function syncContractsFromProperty() {
-    if (!confirm('將把資產管理頁面的序號/分類同步到所有合約（覆蓋現有值），確定嗎？')) return;
-    setPropSyncing(true);
-    try {
-      const res = await fetch('/api/rentals/contracts', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync-from-property' }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.error || '同步失敗', 'error'); return; }
-      showToast(`已同步 ${data.updated} 筆合約的序號/分類`, 'success');
-      fetchContracts();
-    } catch { showToast('同步失敗', 'error'); }
-    finally { setPropSyncing(false); }
-  }
-
-  async function savePropField(contractId, field, value) {
+  async function savePropField(propertyId, field, value) {
     setPropInlineSaving(true);
     try {
       const body = {};
       if (field === 'sortOrder') body.sortOrder = value !== '' && value !== null ? parseInt(value) : null;
       else body.category = value || null;
-      const res = await fetch(`/api/rentals/contracts/${contractId}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/rentals/properties/${propertyId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) { showToast('儲存失敗', 'error'); return; }
       const apiField = field === 'category' ? 'contractCategory' : 'contractSortOrder';
       const parsed = field === 'sortOrder' ? (value !== '' && value !== null ? parseInt(value) : null) : (value || null);
-      setIncomes(prev => prev.map(i => i.contractId === contractId ? { ...i, [apiField]: parsed } : i));
+      setIncomes(prev => prev.map(i => i.propertyId === propertyId ? { ...i, [apiField]: parsed } : i));
     } catch { showToast('儲存失敗', 'error'); }
     finally { setPropInlineSaving(false); setPropInlineEdit(null); }
   }
@@ -695,17 +677,6 @@ function RentalsPage() {
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
       setContracts(list);
-      // 若有合約缺分類，自動從物業同步一次
-      const needsSync = list.some(c => !c.category && c.status !== 'terminated');
-      if (needsSync) {
-        fetch('/api/rentals/contracts', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'sync-from-property' }),
-        }).then(r => r.ok && fetch(`/api/rentals/contracts?${params}`).then(r2 => r2.json()).then(d2 => {
-          setContracts(Array.isArray(d2) ? d2 : []);
-        }));
-      }
     } catch { setContracts([]); }
   }
 
@@ -1159,7 +1130,7 @@ function RentalsPage() {
         rentAccountId: contract.rentAccountId || '', accountingSubjectId: contract.accountingSubjectId ? String(contract.accountingSubjectId) : '',
         status: contract.status || 'pending',
         autoRenew: contract.autoRenew || false, specialTerms: contract.specialTerms || '', note: contract.note || '',
-        previousContractId: '', category: contract.category || ''
+        previousContractId: ''
       });
     } else {
       setEditingContract(null);
@@ -1167,7 +1138,7 @@ function RentalsPage() {
         propertyId: '', tenantId: '', startDate: '', endDate: '',
         monthlyRent: '', paymentDueDay: '5', depositAmount: '', depositAccountId: '',
         rentAccountId: '', accountingSubjectId: '', status: 'pending', autoRenew: false,
-        specialTerms: '', note: '', previousContractId: '', category: ''
+        specialTerms: '', note: '', previousContractId: ''
       });
     }
     setShowContractModal(true);
@@ -1195,7 +1166,6 @@ function RentalsPage() {
       specialTerms: contract.specialTerms || '',
       note: '',
       previousContractId: contract.id,
-      category: contract.category || '',
     });
     setShowContractModal(true);
   }
@@ -1222,8 +1192,8 @@ function RentalsPage() {
 
   async function moveContract(contractId, direction) {
     const sorted = [...contracts].sort((a, b) => {
-      const ao = a.sortOrder ?? 999999;
-      const bo = b.sortOrder ?? 999999;
+      const ao = a.property?.sortOrder ?? 999999;
+      const bo = b.property?.sortOrder ?? 999999;
       return ao !== bo ? ao - bo : a.id - b.id;
     });
     const idx = sorted.findIndex(c => c.id === contractId);
@@ -1234,7 +1204,7 @@ function RentalsPage() {
     const next = [...sorted];
     [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
     // Optimistic UI update
-    setContracts(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+    setContracts(next.map((c, i) => ({ ...c, property: { ...c.property, sortOrder: i + 1 } })));
     const res = await fetch('/api/rentals/contracts', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -2000,19 +1970,19 @@ function RentalsPage() {
                           <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
                             {/* 序號 */}
                             <td className="px-3 py-2 text-center text-xs text-gray-500">
-                              {propInlineEdit?.contractId === income.contractId && propInlineEdit.field === 'sortOrder' ? (
+                              {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'sortOrder' ? (
                                 <input autoFocus type="number" min="1" step="1"
                                   value={propInlineEdit.value}
                                   onChange={e => setPropInlineEdit(p => ({ ...p, value: e.target.value }))}
-                                  onBlur={() => savePropField(income.contractId, 'sortOrder', propInlineEdit.value)}
+                                  onBlur={() => savePropField(income.propertyId, 'sortOrder', propInlineEdit.value)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') savePropField(income.contractId, 'sortOrder', propInlineEdit.value);
+                                    if (e.key === 'Enter') savePropField(income.propertyId, 'sortOrder', propInlineEdit.value);
                                     if (e.key === 'Escape') setPropInlineEdit(null);
                                   }}
                                   className="w-14 border border-indigo-400 rounded px-1 py-0.5 text-xs text-center outline-none ring-1 ring-indigo-400"
                                 />
                               ) : (
-                                <span onClick={() => setPropInlineEdit({ contractId: income.contractId, field: 'sortOrder', value: income.contractSortOrder ?? '' })}
+                                <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'sortOrder', value: income.contractSortOrder ?? '' })}
                                   className="cursor-pointer hover:text-indigo-600 hover:underline"
                                   title="點擊編輯序號">
                                   {income.contractSortOrder ?? '—'}
@@ -2033,10 +2003,10 @@ function RentalsPage() {
                             </td>
                             {/* 分類 */}
                             <td className="px-3 py-2 text-xs">
-                              {propInlineEdit?.contractId === income.contractId && propInlineEdit.field === 'category' ? (
+                              {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'category' ? (
                                 <select autoFocus
                                   value={propInlineEdit.value || ''}
-                                  onChange={e => savePropField(income.contractId, 'category', e.target.value)}
+                                  onChange={e => savePropField(income.propertyId, 'category', e.target.value)}
                                   onBlur={() => setPropInlineEdit(null)}
                                   onKeyDown={e => { if (e.key === 'Escape') setPropInlineEdit(null); }}
                                   className="border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400">
@@ -2044,7 +2014,7 @@ function RentalsPage() {
                                   {CONTRACT_INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                               ) : (
-                                <span onClick={() => setPropInlineEdit({ contractId: income.contractId, field: 'category', value: income.contractCategory || '' })}
+                                <span onClick={() => setPropInlineEdit({ propertyId: income.propertyId, field: 'category', value: income.contractCategory || '' })}
                                   className={`cursor-pointer hover:text-indigo-600 hover:underline px-1.5 py-0.5 rounded ${income.contractCategory ? 'bg-blue-50 text-blue-700' : 'text-gray-300'}`}
                                   title="點擊編輯分類">
                                   {income.contractCategory || '—'}
@@ -2419,11 +2389,6 @@ function RentalsPage() {
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                   <button onClick={fetchContracts} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                  <button onClick={syncContractsFromProperty} disabled={propSyncing}
-                    className="bg-amber-500 text-white px-3 py-1.5 rounded text-sm hover:bg-amber-600 disabled:opacity-50"
-                    title="將資產管理頁面的序號/分類同步到所有合約">
-                    {propSyncing ? '同步中…' : '從資產同步序號/分類'}
-                  </button>
                   <button onClick={() => openContractModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增合約
                   </button>
@@ -2520,8 +2485,8 @@ function RentalsPage() {
                         <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                       ) : (() => {
                         const sortedContracts = [...contracts].sort((a, b) => {
-                          const ao = a.sortOrder ?? 999999;
-                          const bo = b.sortOrder ?? 999999;
+                          const ao = a.property?.sortOrder ?? 999999;
+                          const bo = b.property?.sortOrder ?? 999999;
                           return ao !== bo ? ao - bo : a.id - b.id;
                         });
                         return sortedContracts.map((c, rowIdx) => {
@@ -2550,8 +2515,8 @@ function RentalsPage() {
                               </div>
                             </td>
                             <td className="px-2 py-2 text-center">
-                              {c.category
-                                ? <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[c.category] || 'bg-gray-100 text-gray-700'}`}>{c.category}</span>
+                              {c.property?.category
+                                ? <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${CATEGORY_COLORS[c.property.category] || 'bg-gray-100 text-gray-700'}`}>{c.property.category}</span>
                                 : <span className="text-gray-300 text-xs">—</span>}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">

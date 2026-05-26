@@ -44,10 +44,10 @@ export async function GET(request) {
     const contracts = await prisma.rentalContract.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true } },
+        property: { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
         tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
       },
-      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+      orderBy: [{ property: { sortOrder: 'asc' } }, { id: 'asc' }],
       take: 500,
     });
 
@@ -100,16 +100,6 @@ export async function POST(request) {
 
     const newStatus = body.status || 'pending';
 
-    // 若未指定分類，自動從物業繼承
-    let resolvedCategory = body.category || null;
-    if (!resolvedCategory) {
-      const prop = await prisma.rentalProperty.findUnique({
-        where: { id: parseInt(propertyId) },
-        select: { category: true },
-      });
-      resolvedCategory = prop?.category || null;
-    }
-
     const contract = await prisma.rentalContract.create({
       data: {
         contractNo,
@@ -130,7 +120,6 @@ export async function POST(request) {
         specialTerms: body.specialTerms || null,
         note: body.note || null,
         previousContractId: body.previousContractId ? parseInt(body.previousContractId) : null,
-        category: resolvedCategory,
       },
       include: {
         property: { select: { id: true, name: true } },
@@ -166,43 +155,24 @@ export async function PATCH(request) {
   try {
     const body = await request.json();
 
-    // ── 從資產（RentalProperty）同步序號/分類到所有合約 ─────────────
-    if (body.action === 'sync-from-property') {
-      const contracts = await prisma.rentalContract.findMany({
-        where: { status: { not: 'cancelled' } },
-        select: { id: true, propertyId: true },
-      });
-      const propIds = [...new Set(contracts.map(c => c.propertyId).filter(Boolean))];
-      const props = await prisma.rentalProperty.findMany({
-        where: { id: { in: propIds } },
-        select: { id: true, sortOrder: true, category: true },
-      });
-      const propMap = Object.fromEntries(props.map(p => [p.id, p]));
-      const updates = contracts
-        .filter(c => propMap[c.propertyId])
-        .map(c => {
-          const p = propMap[c.propertyId];
-          return prisma.rentalContract.update({
-            where: { id: c.id },
-            data: {
-              sortOrder: p.sortOrder ?? null,
-              category:  p.category  ?? null,
-            },
-          });
-        });
-      await prisma.$transaction(updates);
-      return NextResponse.json({ ok: true, updated: updates.length });
-    }
-
-    // ── 手動排序 ──────────────────────────────────────────────────
+    // ── 手動排序：透過合約 id 取得對應物業，更新 property.sortOrder ──
     if (body.action !== 'reorder' || !Array.isArray(body.orderedIds)) {
       return createErrorResponse('VALIDATION_FAILED', '未知操作', 400);
     }
-    await prisma.$transaction(
-      body.orderedIds.map((id, index) =>
-        prisma.rentalContract.update({ where: { id }, data: { sortOrder: index + 1 } })
-      )
-    );
+    const items = await prisma.rentalContract.findMany({
+      where: { id: { in: body.orderedIds } },
+      select: { id: true, propertyId: true },
+    });
+    const contractToProperty = Object.fromEntries(items.map(c => [c.id, c.propertyId]));
+    const updates = body.orderedIds
+      .map((id, index) => {
+        const propId = contractToProperty[id];
+        return propId
+          ? prisma.rentalProperty.update({ where: { id: propId }, data: { sortOrder: index + 1 } })
+          : null;
+      })
+      .filter(Boolean);
+    await prisma.$transaction(updates);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);
