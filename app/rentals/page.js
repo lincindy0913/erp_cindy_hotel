@@ -200,12 +200,16 @@ function RentalsPage() {
     month: '',
     status: '',
     propertySearch: '',
+    category: '',
   });
   const sortedIncomes = useMemo(() => {
     const kw = (incomeFilter.propertySearch || '').trim();
-    const filtered = kw
-      ? incomes.filter(i => (i.propertyName || '').includes(kw) || (i.buildingName || '').includes(kw))
-      : incomes;
+    const cat = (incomeFilter.category || '').trim();
+    const filtered = incomes.filter(i => {
+      if (kw && !(i.propertyName || '').includes(kw) && !(i.buildingName || '').includes(kw)) return false;
+      if (cat && (i.contractCategory || '') !== cat) return false;
+      return true;
+    });
     return sortRows(filtered, rentIncKey, rentIncDir, {
       contractSortOrder: (i) => i.contractSortOrder ?? 9999,
       contractCategory: (i) => i.contractCategory || '',
@@ -218,7 +222,13 @@ function RentalsPage() {
       status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
       payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
     });
-  }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch]);
+  }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch, incomeFilter.category]);
+
+  const expiringContractCount = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const limit = new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0];
+    return contracts.filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= limit).length;
+  }, [contracts]);
 
   const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '' });
   const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
@@ -1252,6 +1262,31 @@ function RentalsPage() {
   }
 
   // ==================== INCOME (CASHIER) ====================
+  function exportIncomeCSV() {
+    const today = new Date().toISOString().split('T')[0];
+    const rows = [
+      ['物業', '棟別', '租客', '年', '月', '分類', '應收', '已收', '欠款', '到期日', '狀態', '備註'],
+      ...sortedIncomes.map(i => {
+        const expected = Number(i.expectedAmount || 0);
+        const actual = Number(i.actualAmount || 0);
+        const remaining = Math.max(0, expected - actual);
+        const isOvd = i.status === 'pending' && i.dueDate < today;
+        const statusLabel = isOvd ? '逾期' : (INCOME_STATUSES.find(s => s.value === i.status)?.label || i.status);
+        return [i.propertyName || '', i.buildingName || '', i.tenantName || '', i.incomeYear || '', i.incomeMonth || '',
+          i.contractCategory || '', expected, actual, remaining, i.dueDate || '', statusLabel, i.note || ''];
+      })
+    ];
+    const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ym = `${incomeFilter.year || ''}${incomeFilter.month ? '_' + incomeFilter.month + '月' : ''}`;
+    a.download = `收租工作台${ym ? '_' + ym : ''}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function generateMonthlyIncome() {
     const genYear = incomeFilter.year || new Date().getFullYear();
     const genMonth = incomeFilter.month || (new Date().getMonth() + 1);
@@ -1543,13 +1578,18 @@ function RentalsPage() {
             <button
               key={tab.key}
               onClick={() => switchTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+              className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors inline-flex items-center gap-1 ${
                 activeTab === tab.key
                   ? 'border-teal-500 text-teal-700 bg-teal-50'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               {tab.label}
+              {tab.key === 'contracts' && expiringContractCount > 0 && (
+                <span className="bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none font-semibold min-w-[18px] text-center">
+                  {expiringContractCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1807,7 +1847,7 @@ function RentalsPage() {
                     </select>
                     <button onClick={fetchIncomes} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
                     <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
-                      產生本月租金
+                      產生 {incomeFilter.year || new Date().getFullYear()}/{incomeFilter.month || (new Date().getMonth() + 1)} 月租金
                     </button>
                     <button
                       onClick={() => {
@@ -1820,6 +1860,24 @@ function RentalsPage() {
                       className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700 disabled:opacity-50">
                       {batchLockSaving ? '鎖帳中…' : '🔒 批次鎖帳'}
                     </button>
+                    <button onClick={exportIncomeCSV} className="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700">
+                      ↓ 匯出 CSV
+                    </button>
+                  </div>
+                  {/* 分類篩選 */}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-xs font-semibold text-gray-500 w-16">分類篩選</span>
+                    {['', '公司', '湯三姐'].map(cat => (
+                      <button key={cat || 'all'} type="button"
+                        onClick={() => setIncomeFilter(f => ({ ...f, category: cat }))}
+                        className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                          incomeFilter.category === cat
+                            ? 'bg-teal-600 text-white border-teal-600'
+                            : 'bg-white border-gray-300 text-gray-600 hover:bg-teal-50'
+                        }`}>
+                        {cat === '' ? '全部' : cat}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 {selectedIncomeIds.size > 0 && (
@@ -2001,7 +2059,14 @@ function RentalsPage() {
                             )}
                             <td className="px-3 py-2 text-right">{income.actualAmount ? `$${fmt(income.actualAmount)}` : '-'}</td>
                             <td className="px-3 py-2 text-right font-medium">{remaining > 0 ? `$${fmt(remaining)}` : '-'}</td>
-                            <td className="px-3 py-2">{income.dueDate}</td>
+                            <td className="px-3 py-2">
+                              {income.dueDate}
+                              {isOverdue && (
+                                <span className="text-red-600 text-xs ml-1 font-medium">
+                                  逾期 {Math.ceil((new Date() - new Date(income.dueDate)) / 86400000)} 天
+                                </span>
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-center">
                               <StatusBadge value={isOverdue ? 'overdue' : income.status} list={INCOME_STATUSES} />
                             </td>
