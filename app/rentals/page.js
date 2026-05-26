@@ -208,9 +208,9 @@ function RentalsPage() {
     return contracts.filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= limit).length;
   }, [contracts]);
 
-  const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '' });
+  const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '', propertyId: tabParam === 'taxes' ? (searchParams.get('propertyId') || '') : '' });
   const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
-  const [maintenanceFilter, setMaintenanceFilter] = useState({ category: '', status: '' });
+  const [maintenanceFilter, setMaintenanceFilter] = useState({ category: '', status: '', propertyId: tabParam === 'maintenance' ? (searchParams.get('propertyId') || '') : '' });
 
   // Modal states
   const [showTenantModal, setShowTenantModal] = useState(false);
@@ -358,7 +358,7 @@ function RentalsPage() {
     if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'tenants') fetchTenants();
     if (activeTab === 'contracts') fetchContracts();
-    if (activeTab === 'taxes') fetchTaxes();
+    if (activeTab === 'taxes') { fetchTaxes(); if (properties.length === 0) fetchProperties(); }
     // 維護費頁面也需要物業清單供下拉選單使用
     if (activeTab === 'maintenance') {
       fetchMaintenances();
@@ -711,6 +711,7 @@ function RentalsPage() {
       const params = new URLSearchParams();
       if (taxFilter.taxYear) params.set('taxYear', taxFilter.taxYear);
       if (taxFilter.status) params.set('status', taxFilter.status);
+      if (taxFilter.propertyId) params.set('propertyId', taxFilter.propertyId);
       const res = await fetch(`/api/rentals/taxes?${params}`);
       const data = await res.json();
       setTaxes(Array.isArray(data) ? data : []);
@@ -1001,6 +1002,7 @@ function RentalsPage() {
       const params = new URLSearchParams();
       if (maintenanceFilter.category) params.set('category', maintenanceFilter.category);
       if (maintenanceFilter.status) params.set('status', maintenanceFilter.status);
+      if (maintenanceFilter.propertyId) params.set('propertyId', maintenanceFilter.propertyId);
       const res = await fetch(`/api/rentals/maintenance?${params}`);
       const data = await res.json();
       setMaintenances(Array.isArray(data) ? data : []);
@@ -2693,10 +2695,15 @@ function RentalsPage() {
 
                 {taxView === 'list' && (
                   <>
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-4 flex-wrap">
                       <label className="text-sm text-gray-600">年度:</label>
                       <input type="number" value={taxFilter.taxYear} onChange={e => setTaxFilter(f => ({ ...f, taxYear: e.target.value }))}
                         className="border rounded px-2 py-1.5 w-24 text-sm" />
+                      <select value={taxFilter.propertyId} onChange={e => setTaxFilter(f => ({ ...f, propertyId: e.target.value }))}
+                        className="border rounded px-2 py-1.5 text-sm">
+                        <option value="">全部物業</option>
+                        {properties.map(p => <option key={p.id} value={p.id}>{p.name}{p.asset?.hasHouseTax || p.asset?.hasLandTax ? ` [${[p.asset?.hasHouseTax && '房屋稅', p.asset?.hasLandTax && '地價稅'].filter(Boolean).join('·')}]` : ''}</option>)}
+                      </select>
                       <select value={taxFilter.status} onChange={e => setTaxFilter(f => ({ ...f, status: e.target.value }))}
                         className="border rounded px-2 py-1.5 text-sm">
                         <option value="">全部狀態</option>
@@ -2704,7 +2711,7 @@ function RentalsPage() {
                         <option value="paid">已繳</option>
                       </select>
                       <button onClick={fetchTaxes} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
-                      <button onClick={() => { setEditingTax(null); setTaxForm({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '', certNo: '', paidDate: '', note: '' }); setShowTaxModal(true); }} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
+                      <button onClick={() => { setEditingTax(null); setTaxForm({ propertyId: taxFilter.propertyId || '', taxYear: taxFilter.taxYear || new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '', certNo: '', paidDate: '', note: '' }); setShowTaxModal(true); }} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                         新增稅款
                       </button>
                     </div>
@@ -2960,7 +2967,12 @@ function RentalsPage() {
                     </div>
                   </div>
                 )}
-                <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center gap-3 mb-4 flex-wrap">
+                  <select value={maintenanceFilter.propertyId} onChange={e => setMaintenanceFilter(f => ({ ...f, propertyId: e.target.value }))}
+                    className="border rounded px-2 py-1.5 text-sm">
+                    <option value="">全部物業</option>
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}{p.asset?.hasMaintenanceFee ? ' [維護費]' : ''}</option>)}
+                  </select>
                   <select value={maintenanceFilter.category} onChange={e => setMaintenanceFilter(f => ({ ...f, category: e.target.value }))}
                     className="border rounded px-2 py-1.5 text-sm">
                     <option value="">全部類別</option>
@@ -2975,7 +2987,7 @@ function RentalsPage() {
                   <button onClick={fetchMaintenances} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
                   <button onClick={() => {
                     setEditingMaintenance(null);
-                    setMaintenanceForm({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
+                    setMaintenanceForm({ propertyId: maintenanceFilter.propertyId || '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
                     setShowMaintenanceModal(true);
                   }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">

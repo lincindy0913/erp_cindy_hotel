@@ -991,9 +991,21 @@ function AssetsPageInner() {
                   <button onClick={() => openPropertyEdit(selected)}
                     className="text-xs text-indigo-700 hover:underline border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded">編輯物業</button>
                 )}
+                <Link href={`/rentals?tab=cashier&propertySearch=${encodeURIComponent(selected.name)}`}
+                  className="text-xs text-green-700 hover:underline border border-green-300 bg-green-50 px-2 py-1 rounded">
+                  收款
+                </Link>
+                <Link href={`/rentals?tab=taxes&propertyId=${selected.id}`}
+                  className="text-xs text-amber-700 hover:underline border border-amber-300 bg-amber-50 px-2 py-1 rounded">
+                  稅款
+                </Link>
+                <Link href={`/rentals?tab=maintenance&propertyId=${selected.id}`}
+                  className="text-xs text-blue-700 hover:underline border border-blue-300 bg-blue-50 px-2 py-1 rounded">
+                  維護費
+                </Link>
                 <Link href={`/rentals?propertyId=${selected.id}&tab=contracts`}
                   className="text-xs text-teal-700 hover:underline border border-teal-300 px-2 py-1 rounded">
-                  租屋管理 →
+                  合約管理
                 </Link>
                 <button onClick={() => setSelected(null)}
                   className="text-gray-400 hover:text-gray-600 text-lg leading-none px-1">✕</button>
@@ -1054,12 +1066,25 @@ function AssetsPageInner() {
 
               {/* Col 2: Taxes */}
               <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年稅款</h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-gray-700">{year} 年稅款</h4>
+                  {canEdit && (
+                    <a href={`/rentals?tab=taxes&propertyId=${selected.id}`}
+                      className="text-xs text-amber-600 hover:underline">
+                      + 新增稅款
+                    </a>
+                  )}
+                </div>
                 {selectedTaxes.length === 0 ? (
                   <p className="text-xs text-gray-400">
-                    {(selected.asset?.hasHouseTax || selected.asset?.hasLandTax)
-                      ? '已標記稅費，請至租屋管理 > 稅款登錄。'
-                      : '無稅款紀錄'}
+                    {(selected.asset?.hasHouseTax || selected.asset?.hasLandTax) ? (
+                      <>已標記稅費，請至{' '}
+                        <a href={`/rentals?tab=taxes&propertyId=${selected.id}`}
+                          className="text-teal-600 underline hover:text-teal-800">
+                          租屋管理 › 稅款登錄
+                        </a>
+                      </>
+                    ) : '無稅款紀錄'}
                   </p>
                 ) : (
                   <table className="w-full text-xs border">
@@ -1158,7 +1183,15 @@ function AssetsPageInner() {
                   })()}
                 </div>
 
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年維護費</h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-gray-700">{year} 年維護費</h4>
+                  {canEdit && (
+                    <a href={`/rentals?tab=maintenance&propertyId=${selected.id}`}
+                      className="text-xs text-blue-600 hover:underline">
+                      + 新增維護費
+                    </a>
+                  )}
+                </div>
                 <MaintenanceList propertyId={selected.id} year={year} />
               </div>
             </div>
