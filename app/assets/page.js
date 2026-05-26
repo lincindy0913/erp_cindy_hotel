@@ -388,7 +388,7 @@ function AssetsPageInner() {
   }
 
   async function syncPropertyStatus(p) {
-    const correctStatus = p.currentContractId ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
+    const correctStatus = p.currentContractStatus === 'active' ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
     if (p.status === correctStatus) { showToast('狀態已是最新，無需同步', 'info'); return; }
     const res = await fetch(`/api/rentals/properties/${p.id}`, {
       method: 'PATCH',
@@ -406,7 +406,7 @@ function AssetsPageInner() {
     let updated = 0;
     try {
       for (const p of properties) {
-        const correctStatus = p.currentContractId ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
+        const correctStatus = p.currentContractStatus === 'active' ? 'rented' : (p.status === 'rented' ? 'available' : p.status);
         if (p.status !== correctStatus) {
           await fetch(`/api/rentals/properties/${p.id}`, {
             method: 'PATCH',
@@ -815,10 +815,10 @@ function AssetsPageInner() {
                                 : p.status === 'available' ? 'bg-gray-100 text-gray-500'
                                 : 'bg-yellow-100 text-yellow-700'}`}>
                               {STATUS_LABELS[p.status] || p.status || '—'}
-                              {canEdit && p.currentContractId && p.status !== 'rented' && (
+                              {canEdit && p.currentContractStatus === 'active' && p.status !== 'rented' && (
                                 <span className="ml-1 text-amber-500" title="有活躍合約但狀態非已出租，建議同步">⚠</span>
                               )}
-                              {canEdit && !p.currentContractId && p.status === 'rented' && (
+                              {canEdit && p.currentContractStatus !== 'active' && p.status === 'rented' && (
                                 <span className="ml-1 text-amber-500" title="無活躍合約但狀態為已出租，建議同步">⚠</span>
                               )}
                             </span>
@@ -953,10 +953,10 @@ function AssetsPageInner() {
                   {selected.publicInterestLandlord && (
                     <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">公益出租人</span>
                   )}
-                  {selected.currentContractId && selected.status !== 'rented' && (
+                  {selected.currentContractStatus === 'active' && selected.status !== 'rented' && (
                     <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⚠ 狀態與合約不符</span>
                   )}
-                  {!selected.currentContractId && selected.status === 'rented' && (
+                  {selected.currentContractStatus !== 'active' && selected.status === 'rented' && (
                     <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">⚠ 無活躍合約</span>
                   )}
                 </div>
@@ -1023,7 +1023,7 @@ function AssetsPageInner() {
                       </thead>
                       <tbody>
                         {detailIncomes.map(inc => {
-                          const statusMap = { paid: { l: '已繳', cls: 'bg-green-100 text-green-700' }, partial: { l: '部分', cls: 'bg-yellow-100 text-yellow-700' }, pending: { l: '待繳', cls: 'bg-gray-100 text-gray-500' } };
+                          const statusMap = { completed: { l: '已收', cls: 'bg-green-100 text-green-700' }, partial: { l: '部分收', cls: 'bg-yellow-100 text-yellow-700' }, pending: { l: '待收', cls: 'bg-gray-100 text-gray-500' } };
                           const st = statusMap[inc.status] || { l: inc.status, cls: 'bg-gray-100 text-gray-500' };
                           return (
                             <tr key={inc.id} className="border-t">

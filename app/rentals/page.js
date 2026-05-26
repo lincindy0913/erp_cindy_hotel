@@ -172,7 +172,7 @@ function RentalsPage() {
 
   // Search / filter states
   const [tenantSearch, setTenantSearch] = useState('');
-  const [contractFilter, setContractFilter] = useState({ status: '', propertyId: '' });
+  const [contractFilter, setContractFilter] = useState({ status: '', propertyId: searchParams.get('propertyId') || '' });
   const [incomeFilter, setIncomeFilter] = useState({
     year: new Date().getFullYear(),
     month: '',
