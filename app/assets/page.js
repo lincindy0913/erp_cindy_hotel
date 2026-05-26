@@ -851,12 +851,12 @@ function AssetsPageInner() {
                         {canEdit && (
                           <td className="px-3 py-2 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-2">
-                              <a
+                              <Link
                                 href={`/rentals?tab=cashier&propertySearch=${encodeURIComponent(p.name)}`}
                                 className="text-teal-600 hover:underline text-xs font-medium"
                                 onClick={e => e.stopPropagation()}>
                                 收款
-                              </a>
+                              </Link>
                               <button className="text-indigo-600 hover:underline text-xs" onClick={() => openPropertyEdit(p)}>編輯</button>
                               {p.asset ? (
                                 <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>資產</button>

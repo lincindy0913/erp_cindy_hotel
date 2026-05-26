@@ -2546,7 +2546,7 @@ function RentalsPage() {
                                     <button onClick={() => handleDepositAction(c.id, 'depositRefund')} className="text-xs text-orange-600 hover:underline ml-1">退押金</button>
                                   )}
                                   {c.depositRefundPaymentOrderId && !c.depositRefunded && (
-                                    <a href="/cashier" className="text-xs text-teal-600 hover:underline ml-1">待出納</a>
+                                    <Link href="/cashier" className="text-xs text-teal-600 hover:underline ml-1">待出納</Link>
                                   )}
                                   {c.depositRefunded && <span className="text-xs text-gray-500 ml-1">已退</span>}
                                 </div>
@@ -2682,7 +2682,7 @@ function RentalsPage() {
                                 <span className="ml-auto font-bold text-sm">${fmt(t.amount)}</span>
                                 <button onClick={()=>openTaxEdit(t)} className="text-blue-600 hover:text-blue-800 text-xs shrink-0">編輯</button>
                                 {t.paymentOrderId
-                                  ? <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs underline shrink-0">前往出納</a>
+                                  ? <Link href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs underline shrink-0">前往出納</Link>
                                   : <button onClick={()=>{setPayingTaxId(t.id);setTaxPayForm({accountId:'',paymentDate:new Date().toISOString().split('T')[0]});}}
                                       className="text-teal-600 hover:text-teal-800 text-xs shrink-0">確認繳納</button>
                                 }
@@ -2765,7 +2765,7 @@ function RentalsPage() {
                                         編輯
                                       </button>
                                       {tax.paymentOrderId ? (
-                                        <a href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</a>
+                                        <Link href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</Link>
                                       ) : (
                                         <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
                                           className="text-teal-600 hover:text-teal-800 text-xs font-medium">
@@ -3031,7 +3031,7 @@ function RentalsPage() {
                           <td className="px-3 py-2 text-center">
                             {m.status === 'pending' && (
                               <>
-                                <a href="/cashier" className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-2">出納</a>
+                                <Link href="/cashier" className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-2">出納</Link>
                                 <button onClick={() => {
                                   setEditingMaintenance(m);
                                   setMaintenanceForm({
@@ -3577,7 +3577,7 @@ function RentalsPage() {
                               {c.depositRefunded
                                 ? <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">已退</span>
                                 : c.depositRefundPaymentOrderId
-                                  ? <a href="/cashier" className="text-xs text-teal-600 hover:underline">待出納</a>
+                                  ? <Link href="/cashier" className="text-xs text-teal-600 hover:underline">待出納</Link>
                                   : c.depositReceived
                                     ? <button onClick={() => handleDepositAction(c.id, 'depositRefund')} className="text-xs text-orange-600 hover:underline">退押金</button>
                                     : <span className="text-gray-300 text-xs">—</span>}
