@@ -65,7 +65,6 @@ const CONTRACT_STATUSES = [
 const INCOME_STATUSES = [
   { value: 'pending', label: '待收', color: 'bg-yellow-100 text-yellow-800' },
   { value: 'completed', label: '已收', color: 'bg-green-100 text-green-800' },
-  { value: 'paid', label: '已收', color: 'bg-green-100 text-green-800' },
   { value: 'partial', label: '部分收', color: 'bg-orange-100 text-orange-800' },
   { value: 'overdue', label: '逾期', color: 'bg-red-100 text-red-800' }
 ];
@@ -3379,7 +3378,7 @@ function RentalsPage() {
                         <tr>
                           <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2 border border-gray-200">物業</th>
-                          <th className="text-right px-3 py-2 border border-gray-200">收租金額</th>
+                          <th className="text-right px-3 py-2 border border-gray-200">租金+水電實收</th>
                           <th className="text-right px-3 py-2 border border-gray-200">維修金額</th>
                           <th className="text-right px-3 py-2 border border-gray-200">房務稅/地價稅</th>
                           <th className="text-right px-3 py-2 border border-gray-200">總支出</th>

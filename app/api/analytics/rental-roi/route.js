@@ -72,7 +72,7 @@ export async function GET(request) {
         : 0;
 
       // Months with income
-      const paidMonths = prop.rentalIncomes.filter(ri => ri.status === 'paid' || ri.status === 'confirmed').length;
+      const paidMonths = prop.rentalIncomes.filter(ri => ri.status === 'completed' || ri.status === 'partial').length;
       const totalMonths = prop.rentalIncomes.length;
 
       totalIncome += yearIncome;

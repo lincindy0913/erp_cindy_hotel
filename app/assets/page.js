@@ -277,7 +277,7 @@ function AssetsPageInner() {
 
   function exportCSV() {
     const headers = ['物業', '棟別', '序號', '分類', '狀態', '租客', '月租金',
-      `${year}年租金實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`];
+      `${year}年租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`];
     const rows = filteredRows.map(p => [
       p.name + (p.unitNo ? `(${p.unitNo})` : ''),
       p.buildingName || '',
@@ -716,7 +716,7 @@ function AssetsPageInner() {
                   <th className="text-left px-3 py-2">租客</th>
                   <th className="text-right px-3 py-2">月租金</th>
                   <th className="text-center px-3 py-2">本月<br/>收款</th>
-                  <th className="text-right px-3 py-2">{year} 年<br/>租金實收</th>
+                  <th className="text-right px-3 py-2">{year} 年<br/>租金+水電實收</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>房屋稅</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>地價稅</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>維護費</th>
@@ -1069,20 +1069,20 @@ function AssetsPageInner() {
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-semibold text-gray-700">{year} 年稅款</h4>
                   {canEdit && (
-                    <a href={`/rentals?tab=taxes&propertyId=${selected.id}`}
+                    <Link href={`/rentals?tab=taxes&propertyId=${selected.id}`}
                       className="text-xs text-amber-600 hover:underline">
                       + 新增稅款
-                    </a>
+                    </Link>
                   )}
                 </div>
                 {selectedTaxes.length === 0 ? (
                   <p className="text-xs text-gray-400">
                     {(selected.asset?.hasHouseTax || selected.asset?.hasLandTax) ? (
                       <>已標記稅費，請至{' '}
-                        <a href={`/rentals?tab=taxes&propertyId=${selected.id}`}
+                        <Link href={`/rentals?tab=taxes&propertyId=${selected.id}`}
                           className="text-teal-600 underline hover:text-teal-800">
                           租屋管理 › 稅款登錄
-                        </a>
+                        </Link>
                       </>
                     ) : '無稅款紀錄'}
                   </p>
@@ -1161,7 +1161,7 @@ function AssetsPageInner() {
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">{year} 年損益小計</h4>
                 <div className="space-y-2 mb-4">
                   {[
-                    { label: '租金實收', value: mergedRows.find(r => r.id === selected.id)?.rentIncome || 0, cls: 'text-teal-700' },
+                    { label: '租金+水電實收', value: mergedRows.find(r => r.id === selected.id)?.rentIncome || 0, cls: 'text-teal-700' },
                     { label: '房屋稅', value: -(mergedRows.find(r => r.id === selected.id)?.houseTax || 0), cls: 'text-amber-700' },
                     { label: '地價稅', value: -(mergedRows.find(r => r.id === selected.id)?.landTax || 0), cls: 'text-orange-700' },
                     { label: '維護費', value: -(mergedRows.find(r => r.id === selected.id)?.maintenanceAmount || 0), cls: 'text-blue-700' },
@@ -1186,10 +1186,10 @@ function AssetsPageInner() {
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-semibold text-gray-700">{year} 年維護費</h4>
                   {canEdit && (
-                    <a href={`/rentals?tab=maintenance&propertyId=${selected.id}`}
+                    <Link href={`/rentals?tab=maintenance&propertyId=${selected.id}`}
                       className="text-xs text-blue-600 hover:underline">
                       + 新增維護費
-                    </a>
+                    </Link>
                   )}
                 </div>
                 <MaintenanceList propertyId={selected.id} year={year} />
