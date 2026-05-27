@@ -698,7 +698,7 @@ export default function PaymentVoucherListPage() {
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-3 text-center w-10">
                     <input
@@ -855,7 +855,7 @@ export default function PaymentVoucherListPage() {
         {activeView === 'invoices' && (
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票號</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">發票日期</th>

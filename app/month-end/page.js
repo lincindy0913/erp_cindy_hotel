@@ -236,7 +236,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依廠商</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">廠商</th>
                       <th className="text-right p-2 border border-slate-200">筆數</th>
@@ -263,7 +263,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依館別</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">館別</th>
                       <th className="text-right p-2 border border-slate-200">筆數</th>
@@ -301,7 +301,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依狀態</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">狀態</th>
                       <th className="text-right p-2 border border-slate-200">筆數</th>
@@ -324,7 +324,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依館別</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">館別</th>
                       <th className="text-right p-2 border border-slate-200">筆數</th>
@@ -358,7 +358,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依類別</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">類別</th>
                       <th className="text-right p-2 border border-slate-200">筆數</th>
@@ -381,7 +381,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依館別</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">館別</th>
                       <th className="text-right p-2 border border-slate-200">筆數</th>
@@ -414,7 +414,7 @@ export default function MonthEndPage() {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">依帳戶類型</h4>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-2 border border-slate-200">帳戶類型</th>
                       <th className="text-right p-2 border border-slate-200">收入</th>
@@ -455,7 +455,7 @@ export default function MonthEndPage() {
           <div className="space-y-3">
             <div className="text-sm text-gray-500">期間: <strong>{data.period}</strong></div>
             <table className="w-full text-sm border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="bg-slate-50">
                   <th className="text-left p-2 border border-slate-200">項目</th>
                   <th className="text-right p-2 border border-slate-200">金額</th>
@@ -480,7 +480,7 @@ export default function MonthEndPage() {
               <details className="mt-2">
                 <summary className="text-xs text-blue-600 cursor-pointer hover:underline">展開科目明細</summary>
                 <table className="w-full text-xs border-collapse mt-2">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="bg-slate-50">
                       <th className="text-left p-1.5 border border-slate-200">層級</th>
                       <th className="text-left p-1.5 border border-slate-200">科目群</th>

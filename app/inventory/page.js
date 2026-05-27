@@ -768,7 +768,7 @@ export default function InventoryPage() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[900px]">
-                    <thead className="bg-gray-50 border-b">
+                    <thead className="bg-gray-50 sticky top-0 z-10 border-b">
                       <tr>
                         <th className="px-3 py-2 text-center w-8">
                           <input type="checkbox"
@@ -885,7 +885,7 @@ export default function InventoryPage() {
             </div>
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <SortableTh label="產品" colKey="productName" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
                     <SortableTh label="館別/倉庫" colKey="warehouseLoc" sortKey={invQKey} sortDir={invQDir} onSort={invQT} className="px-4 py-3" />
@@ -1022,7 +1022,7 @@ export default function InventoryPage() {
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <h3 className="text-lg font-semibold p-4 border-b">領用記錄</h3>
               <table className="w-full">
-                <thead className="bg-gray-50"><tr>
+                <thead className="bg-gray-50 sticky top-0 z-10"><tr>
                   <SortableTh label="單號" colKey="requisitionNo" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
                   <SortableTh label="倉庫" colKey="warehouse" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
                   <SortableTh label="部門" colKey="department" sortKey={reqKey} sortDir={reqDir} onSort={reqT} className="px-4 py-2" />
@@ -1120,7 +1120,7 @@ export default function InventoryPage() {
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <h3 className="text-lg font-semibold p-4 border-b">調撥記錄</h3>
               <table className="w-full">
-                <thead className="bg-gray-50"><tr>
+                <thead className="bg-gray-50 sticky top-0 z-10"><tr>
                   <SortableTh label="單號" colKey="transferNo" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
                   <SortableTh label="來源" colKey="fromWarehouse" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
                   <SortableTh label="目標" colKey="toWarehouse" sortKey={trfKey} sortDir={trfDir} onSort={trfT} className="px-4 py-2" />
@@ -1188,7 +1188,7 @@ export default function InventoryPage() {
               {countForm.items.length > 0 && (
                 <>
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50"><tr>
+                    <thead className="bg-gray-50 sticky top-0 z-10"><tr>
                       <th className="px-4 py-2 text-left font-medium text-gray-600">產品</th>
                       <th className="px-4 py-2 text-right font-medium text-gray-600">帳面數</th>
                       <th className="px-4 py-2 text-right font-medium text-gray-600">實盤數</th>
@@ -1232,7 +1232,7 @@ export default function InventoryPage() {
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <h3 className="text-lg font-semibold p-4 border-b">盤點記錄</h3>
               <table className="w-full">
-                <thead className="bg-gray-50"><tr>
+                <thead className="bg-gray-50 sticky top-0 z-10"><tr>
                   <SortableTh label="單號" colKey="countNo" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />
                   <SortableTh label="倉庫" colKey="warehouse" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />
                   <SortableTh label="日期" colKey="countDate" sortKey={cntKey} sortDir={cntDir} onSort={cntT} className="px-4 py-2" />

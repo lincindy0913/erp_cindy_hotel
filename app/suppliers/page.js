@@ -696,7 +696,7 @@ export default function SuppliersPage() {
                     {contracts.length > 0 ? (
                       <div className="border border-gray-200 rounded-lg overflow-hidden">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-50">
+                          <thead className="bg-gray-50 sticky top-0 z-10">
                             <tr>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">檔案名稱</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">大小</th>
@@ -799,7 +799,7 @@ export default function SuppliersPage() {
         {/* 廠商列表 */}
         <div className="bg-white rounded-lg shadow-sm">
           <table className="w-full table-fixed">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="w-[4%] px-2 py-3 text-left text-xs font-medium text-gray-700">
                   <div className="relative sort-menu-container">

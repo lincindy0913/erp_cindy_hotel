@@ -302,7 +302,7 @@ export default function AccountingSubjectsPage() {
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-purple-50">
                   <tr className="bg-purple-50 border-b border-purple-100">
                     <th className="text-left px-4 py-3 font-semibold text-purple-800 w-32">代碼</th>
                     <th className="text-left px-4 py-3 font-semibold text-purple-800">名稱</th>

@@ -1371,7 +1371,7 @@ function ExpensesPageInner() {
                 </div>
               ) : (
                 <table style={tableStyle}>
-                  <thead>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
                       <th style={thStyle}>名稱</th>
                       <th style={thStyle}>摘要</th>
@@ -1765,7 +1765,7 @@ function ExpensesPageInner() {
                           <h4 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>費用項目（請填入本月金額）</h4>
                           <div style={{ overflowX: 'auto' }}>
                           <table style={{ ...tableStyle, minWidth: 1080 }}>
-                            <thead>
+                            <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                               <tr>
                                 <th style={{ ...thStyle, width: 120 }}>費用名稱</th>
                                 <th style={{ ...thStyle, width: 110 }}>會計科目</th>
@@ -2112,7 +2112,7 @@ function ExpensesPageInner() {
                 </div>
               ) : (
                 <table style={tableStyle}>
-                  <thead>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
                       <SortableThInline label="記錄單號" colKey="recordNo" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />
                       <SortableThInline label="範本" colKey="templateName" sortKey={expRecSortKey} sortDir={expRecSortDir} onSort={toggleExpRecSort} thStyle={thStyle} />

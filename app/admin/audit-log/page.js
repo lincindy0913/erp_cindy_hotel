@@ -381,7 +381,7 @@ export default function AuditLogPage() {
             <div className="p-8 text-center text-gray-500">無稳核日誌記錄</div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-zinc-50 border-b">
+              <thead className="bg-zinc-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">時鐓</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">使用者</th>
@@ -485,7 +485,7 @@ export default function AuditLogPage() {
                 <div className="p-8 text-center text-gray-500">無重大決策記錄</div>
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="bg-zinc-50 border-b">
+                  <thead className="bg-zinc-50 border-b sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">時間</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">使用者</th>
@@ -588,7 +588,7 @@ export default function AuditLogPage() {
                       <h3 className="text-sm font-medium text-gray-700">操作最多使用者</h3>
                     </div>
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
+                      <thead className="bg-gray-50 border-b sticky top-0 z-10">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-gray-600">排名</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-600">使用者</th>

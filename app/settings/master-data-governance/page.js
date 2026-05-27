@@ -312,7 +312,7 @@ export default function MasterDataGovernancePage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-gray-50">
                     <tr className="bg-gray-50 border-b border-gray-100">
                       {batchMode && <th className="px-4 py-3 w-10"></th>}
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">狀態</th>

@@ -294,7 +294,7 @@ function ProjectDetailInner() {
                   {terms.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500">
+                        <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                           <tr>
                             <th className="px-4 py-2 text-left font-medium">期別</th>
                             <th className="px-4 py-2 text-right font-medium">金額</th>
@@ -372,7 +372,7 @@ function ProjectDetailInner() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">品項／說明</th>
                       <th className="px-4 py-3 text-right font-medium">數量</th>
@@ -447,7 +447,7 @@ function ProjectDetailInner() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-xs text-gray-500">
+                    <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3 text-left font-medium">付款單號</th>
                         <th className="px-4 py-3 text-left font-medium">廠商</th>
@@ -537,7 +537,7 @@ function ProjectDetailInner() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">期數名稱</th>
                       <th className="px-4 py-3 text-right font-medium">收款金額</th>
@@ -580,7 +580,7 @@ function ProjectDetailInner() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">廠商</th>
                       <th className="px-4 py-3 text-left font-medium">合約</th>
@@ -637,7 +637,7 @@ function ProjectDetailInner() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">業主</th>
                       <th className="px-4 py-3 text-left font-medium">發票號碼</th>

@@ -163,7 +163,7 @@ export default function BackupPage() {
           <div className="p-8 text-center text-gray-400 text-sm">尚無備份紀錄</div>
         ) : (
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-gray-50">
               <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2 text-left">#</th>
                 <th className="px-4 py-2 text-left">類型</th>

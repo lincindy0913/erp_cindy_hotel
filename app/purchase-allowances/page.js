@@ -700,7 +700,7 @@ export default function PurchaseAllowancesPage() {
                 {/* 已選進貨單：顯示 checkbox 勾選介面 */}
                 {selectedPurchase && purchaseItems.length > 0 ? (
                   <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8, border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-                    <thead>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fef9c3' }}>
                       <tr style={{ background: '#fef9c3' }}>
                         <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'center', width: 50, borderBottom: '1px solid #e5e7eb' }}>退貨</th>
                         <th style={{ padding: '7px 10px', fontSize: '0.875rem', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>品名</th>
@@ -758,7 +758,7 @@ export default function PurchaseAllowancesPage() {
                   /* 無選取進貨單：手動填寫模式 */
                   form.details.length > 0 && (
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8 }}>
-                      <thead>
+                      <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fef9c3' }}>
                         <tr style={{ background: '#fef9c3' }}>
                           <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'left' }}>品名</th>
                           <th style={{ padding: '6px 8px', fontSize: '0.875rem', textAlign: 'right', width: 80 }}>數量</th>
@@ -903,7 +903,7 @@ export default function PurchaseAllowancesPage() {
             <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>目前沒有草稿退貨單</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                 <tr style={{ background: '#f9fafb' }}>
                   <th style={thStyle}>單號</th>
                   <th style={thStyle}>類型</th>
@@ -968,7 +968,7 @@ export default function PurchaseAllowancesPage() {
             <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無已確認退貨紀錄</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                 <tr style={{ background: '#f9fafb' }}>
                   <th style={thStyle}>單號</th>
                   <th style={thStyle}>類型</th>

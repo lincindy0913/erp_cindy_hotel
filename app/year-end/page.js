@@ -295,7 +295,7 @@ export default function YearEndPage() {
                 <h5 className="text-sm font-medium text-gray-700 mb-2">月度明細</h5>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs border-collapse">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-violet-50">
                       <tr className="bg-violet-50">
                         <th className="text-left p-2 border border-violet-200">月份</th>
                         <th className="text-right p-2 border border-violet-200">收入</th>
@@ -394,7 +394,7 @@ export default function YearEndPage() {
               <div>
                 <h5 className="text-sm font-medium text-gray-700 mb-2">貸款明細</h5>
                 <table className="w-full text-sm border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-gray-50">
                     <tr className="bg-gray-50">
                       <th className="text-left p-2 border border-gray-200">貸款名稱</th>
                       <th className="text-left p-2 border border-gray-200">銀行</th>
@@ -452,7 +452,7 @@ export default function YearEndPage() {
             {/* Activities detail */}
             <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse min-w-[400px]">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-violet-50">
                 <tr className="bg-violet-50">
                   <th className="text-left p-2 border border-violet-200">項目</th>
                   <th className="text-right p-2 border border-violet-200">流入</th>
@@ -495,7 +495,7 @@ export default function YearEndPage() {
                 <h5 className="text-sm font-medium text-gray-700 mb-2">月度明細</h5>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs border-collapse">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-violet-50">
                       <tr className="bg-violet-50">
                         <th className="text-left p-2 border border-violet-200">月份</th>
                         <th className="text-right p-2 border border-violet-200">營業</th>
@@ -592,7 +592,7 @@ export default function YearEndPage() {
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-violet-50">
                       <tr className="bg-violet-50">
                         <th className="text-left px-4 py-3 text-violet-700 font-medium">年度</th>
                         <th className="text-left px-4 py-3 text-violet-700 font-medium">狀態</th>
@@ -673,7 +673,7 @@ export default function YearEndPage() {
                                     {detailTab === 'inventory' && (
                                       <div className="overflow-x-auto">
                                         <table className="w-full text-sm border-collapse">
-                                          <thead>
+                                          <thead className="sticky top-0 z-10 bg-violet-100">
                                             <tr className="bg-violet-100/50">
                                               <th className="text-left p-2 border border-violet-200">商品代碼</th>
                                               <th className="text-left p-2 border border-violet-200">商品名稱</th>
@@ -729,7 +729,7 @@ export default function YearEndPage() {
                                     {detailTab === 'balance' && (
                                       <div className="overflow-x-auto">
                                         <table className="w-full text-sm border-collapse">
-                                          <thead>
+                                          <thead className="sticky top-0 z-10 bg-violet-100">
                                             <tr className="bg-violet-100/50">
                                               <th className="text-left p-2 border border-violet-200">帳戶名稱</th>
                                               <th className="text-left p-2 border border-violet-200">帳戶類型</th>
@@ -878,7 +878,7 @@ export default function YearEndPage() {
                               <h4 className="text-sm font-semibold text-gray-700 mb-3">月結狀態確認（12個月 x 各館別）</h4>
                               <div className="overflow-x-auto">
                                 <table className="w-full text-xs border-collapse">
-                                  <thead>
+                                  <thead className="sticky top-0 z-10 bg-violet-50">
                                     <tr className="bg-violet-50">
                                       <th className="text-left p-2 border border-violet-200">月份</th>
                                       {validationResult.monthStatuses[0]?.warehouses?.map((w, i) => (

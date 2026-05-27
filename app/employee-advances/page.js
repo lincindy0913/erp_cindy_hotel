@@ -469,7 +469,7 @@ export default function EmployeeAdvancesPage() {
 
                 {/* Selected items detail table */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
-                  <thead>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#ecfdf5' }}>
                     <tr style={{ background: '#ecfdf5' }}>
                       <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊單號</th>
                       <th style={{ padding: '8px 12px', fontSize: '1rem', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #d1fae5' }}>代墊員工</th>
@@ -580,7 +580,7 @@ export default function EmployeeAdvancesPage() {
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>目前沒有待結算的代墊款</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                   <tr style={{ background: '#f9fafb' }}>
                     <th style={thStyle}>
                       <input type="checkbox" checked={selectedIds.size === filteredPending.length && filteredPending.length > 0} onChange={toggleSelectAll} />
@@ -642,7 +642,7 @@ export default function EmployeeAdvancesPage() {
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無已結算紀錄</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                   <tr style={{ background: '#f9fafb' }}>
                     <SortableThInline label="代墊單號" colKey="advanceNo" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
                     <SortableThInline label="代墊員工" colKey="employeeName" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
@@ -682,7 +682,7 @@ export default function EmployeeAdvancesPage() {
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無代墊款紀錄</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                   <tr style={{ background: '#f9fafb' }}>
                     <SortableThInline label="員工" colKey="name" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={thStyle} />
                     <SortableThInline label="待結算筆數" colKey="pending" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={{ ...thStyle, textAlign: 'center' }} align="center" />

@@ -416,7 +416,7 @@ export default function BankReconciliationPage() {
         {stmts.length > 0 && !detail && (
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500">
+              <thead className="bg-gray-50 text-xs text-gray-500 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left">月份</th>
                   <th className="px-4 py-3 text-left">帳戶</th>

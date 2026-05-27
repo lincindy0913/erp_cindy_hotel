@@ -333,7 +333,7 @@ export default function FundManagementPage() {
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-emerald-50">
                   <tr className="bg-emerald-50 border-b border-emerald-100">
                     <th className="text-left px-4 py-3 font-semibold text-emerald-800 w-28">帳戶序號</th>
                     <th className="text-left px-4 py-3 font-semibold text-emerald-800 w-28">分類</th>

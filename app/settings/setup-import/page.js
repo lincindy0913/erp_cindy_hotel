@@ -524,7 +524,7 @@ export default function SetupImportPage() {
                       <h4 className="text-sm font-medium text-gray-700">批次進度</h4>
                     </div>
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-4 py-2 text-left text-xs text-gray-500">類型</th>
                           <th className="px-4 py-2 text-center text-xs text-gray-500">總計</th>

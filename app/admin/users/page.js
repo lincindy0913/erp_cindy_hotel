@@ -420,7 +420,7 @@ export default function UserManagementPage() {
 
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">姓名</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">電子郵件</th>

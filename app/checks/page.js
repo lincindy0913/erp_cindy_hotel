@@ -706,7 +706,7 @@ export default function ChecksPage() {
   const renderCheckTable = (data, showActions = true, showSelect = false, sortKey, sortDir, toggleSort) => (
     <div className="overflow-x-auto">
       <table className="w-full text-base">
-        <thead>
+        <thead className="sticky top-0 z-10 bg-gray-50">
           <tr className="bg-gray-50">
             {showSelect && <th className="px-3 py-2 text-left w-10"><input type="checkbox"
               checked={data.length > 0 && data.every(c => selectedIds.includes(c.id))}
@@ -1148,7 +1148,7 @@ export default function ChecksPage() {
             {bouncedChecks.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-base">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-red-50">
                     <tr className="bg-red-50">
                       <th className="px-3 py-2 text-left">支票號碼</th>
                       <th className="px-3 py-2 text-left">類型</th>
@@ -1201,7 +1201,7 @@ export default function ChecksPage() {
             {overdueChecks.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-base">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-orange-50">
                     <tr className="bg-orange-50">
                       <th className="px-3 py-2 text-left">支票號碼</th>
                       <th className="px-3 py-2 text-left">類型</th>
@@ -1511,7 +1511,7 @@ export default function ChecksPage() {
           <p className="text-base text-gray-600">以下為應付且待兌現／到期之支票{printWarehouse ? `（${printWarehouse}）` : ''}，共 {checksForPrintSheet.length} 張。廠商領取時請於簽收欄簽名。</p>
           <div className="overflow-x-auto border border-gray-200 rounded-lg">
             <table className="w-full text-base">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr className="bg-gray-100">
                   <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
                   <th className="px-3 py-2 text-left border-b border-gray-200">支票號碼</th>
@@ -1621,7 +1621,7 @@ export default function ChecksPage() {
               <p className="text-base text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（付款單館別：{printSearchWarehouse}）</p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-base">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr className="bg-gray-100">
                       <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
                       <th className="px-3 py-2 text-left border-b border-gray-200">支票號碼</th>
@@ -1730,7 +1730,7 @@ export default function ChecksPage() {
               <p className="text-base text-gray-600">查詢結果：共 {printSearchResults.length} 張支票（進貨單館別：{printSearchWarehouse}）</p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-base">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr className="bg-gray-100">
                       <th className="px-3 py-2 text-left border-b border-gray-200 w-12">序號</th>
                       <th className="px-3 py-2 text-left border-b border-gray-200">支票號碼</th>

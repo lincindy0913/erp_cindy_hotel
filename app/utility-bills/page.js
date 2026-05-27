@@ -847,7 +847,7 @@ export default function UtilityBillsPage() {
                 </h4>
                 <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="min-w-full text-xs">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">#</th>
                         <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">電號</th>
@@ -922,7 +922,7 @@ export default function UtilityBillsPage() {
                 </h4>
                 <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="min-w-full text-xs">
-                    <thead className="bg-sky-50">
+                    <thead className="bg-sky-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">#</th>
                         <th className="px-3 py-2 text-left font-semibold text-gray-700 whitespace-nowrap">水號</th>
@@ -1267,7 +1267,7 @@ export default function UtilityBillsPage() {
             ) : (
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">館別</th>
                       <th className="px-4 py-2 text-left font-medium text-gray-700">年月</th>
@@ -1404,7 +1404,7 @@ export default function UtilityBillsPage() {
                   <div className="py-16 text-center text-gray-400">查無資料</div>
                 ) : (
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-teal-600">
                       <tr className="bg-teal-600 text-white text-xs">
                         <th className="px-4 py-2 text-left font-medium">館別</th>
                         <th className="px-4 py-2 text-left font-medium">年月</th>
@@ -1563,7 +1563,7 @@ export default function UtilityBillsPage() {
                   <div className="py-16 text-center text-gray-400">帳單資料中無法辨識地址，請至「帳單明細管理」手動補填</div>
                 ) : (
                   <table className="w-full text-sm border-collapse">
-                    <thead>
+                    <thead className="sticky top-0 z-10">
                       <tr className={isElec ? 'bg-amber-600 text-white' : 'bg-sky-600 text-white'}>
                         <th className="px-3 py-2 text-left font-medium whitespace-nowrap sticky left-0 z-10 bg-inherit min-w-[200px]">
                           列標籤

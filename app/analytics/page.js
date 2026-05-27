@@ -1377,7 +1377,7 @@ function AnalyticsPageContent() {
             {pnlTraceLoading ? <Loading text="載入明細中..." /> :
               pnlTrace ? (
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs text-gray-500">日期</th>
                       <th className="px-3 py-2 text-left text-xs text-gray-500">說明</th>
@@ -1477,7 +1477,7 @@ function UtilityOccupancyPivot({ data }) {
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
         <table className="w-full text-sm border-collapse min-w-[920px]">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-cyan-700">
             <tr className="bg-cyan-700 text-white">
               <th className="px-3 py-2 text-left font-medium whitespace-nowrap sticky left-0 z-10 bg-cyan-700 min-w-[200px]">指標</th>
               {months.map((m) => (
@@ -1700,7 +1700,7 @@ function PnlTab({ data, onTrace }) {
             <div className="p-4">
               <p className="text-xs font-semibold text-red-500 mb-2">支出明細</p>
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="text-gray-400 border-b border-gray-100">
                     <th className="py-1 text-left font-normal">廠商</th>
                     <th className="py-1 text-left font-normal">會計科目</th>
@@ -1776,7 +1776,7 @@ function CashflowTab({ data }) {
             <p className="font-semibold text-sm text-red-700">到期支票（應付）— {data.outflows.checks.length} 張</p>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">到期日</th>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">收款人</th>
@@ -1806,7 +1806,7 @@ function CashflowTab({ data }) {
             <p className="font-semibold text-sm text-green-700">待收租金 — {data.inflows.rentals.length} 筆</p>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">到期日</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
@@ -1831,7 +1831,7 @@ function CashflowTab({ data }) {
             <p className="font-semibold text-sm text-orange-700">貸款月繳 — {data.outflows.loans.length} 筆</p>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">貸款名稱</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">月繳金額</th>
@@ -1894,7 +1894,7 @@ function ProcurementTab({ data }) {
           <p className="font-semibold text-sm text-gray-700">供應商採購佔比</p>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-2 text-left text-xs text-gray-500">排名</th>
               <th className="px-4 py-2 text-left text-xs text-gray-500">供應商</th>
@@ -1959,7 +1959,7 @@ function PayablesTab({ data }) {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <SectionTitle>資金壓力預測</SectionTitle>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">期間</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">到期支出</th>
@@ -1988,7 +1988,7 @@ function PayablesTab({ data }) {
             <p className="font-semibold text-sm text-red-700">高風險逾期項目（超過 60 天 & 金額 &gt; 50,000）</p>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">客戶</th>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">發票日</th>
@@ -2084,7 +2084,7 @@ function RentalRoiTab({ data }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[960px]">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">物件</th>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">地址／單位</th>
@@ -2178,7 +2178,7 @@ function OccupancyStatsTab({ payload }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">館別</th>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">年月</th>
@@ -2284,7 +2284,7 @@ function ExpenseApAgingTab({ data }) {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs text-gray-500">發票／單號</th>
                   <th className="px-4 py-2 text-left text-xs text-gray-500">發票日</th>
@@ -2332,7 +2332,7 @@ function ProcurementStructureTab({ data }) {
           <p className="font-semibold text-sm text-gray-700">前十大供應商（依進貨金額）</p>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-2 text-left text-xs text-gray-500">排名</th>
               <th className="px-4 py-2 text-left text-xs text-gray-500">供應商</th>
@@ -2362,7 +2362,7 @@ function ProcurementStructureTab({ data }) {
           <p className="font-semibold text-sm text-gray-700">品類金額結構（依明細列計）</p>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-2 text-left text-xs text-gray-500">品類</th>
               <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
@@ -2391,7 +2391,7 @@ function ProcurementStructureTab({ data }) {
             <p className="font-semibold text-sm text-gray-700">月度進貨趨勢（依進貨單日期）</p>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs text-gray-500">月份</th>
                 <th className="px-4 py-2 text-right text-xs text-gray-500">金額</th>
@@ -2537,7 +2537,7 @@ function SupplierPnlTab({ data, search }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 w-8">#</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">廠商名稱</th>
@@ -2784,7 +2784,7 @@ function SupplierItemsTab({ data, filterMeta }) {
         {!isMonthly && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">日期</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">進貨單號</th>
@@ -2840,7 +2840,7 @@ function SupplierItemsTab({ data, filterMeta }) {
         {isMonthly && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap sticky left-0 bg-gray-50 z-10">
                     廠商／月份
@@ -3096,7 +3096,7 @@ ${anomalyCount>0?`<p class="leg">▲ 橘色 = 每人採購超過本期館別平�
         {!isMonthly && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 whitespace-nowrap">日期</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 whitespace-nowrap">館別</th>
@@ -3164,7 +3164,7 @@ ${anomalyCount>0?`<p class="leg">▲ 橘色 = 每人採購超過本期館別平�
         {isMonthly && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap sticky left-0 bg-gray-50 z-10">館別／月份</th>
                   {MONTHS.map(m => (

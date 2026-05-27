@@ -1112,7 +1112,7 @@ ${projectRows.map(p => `<tr>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <SortableTh label="代碼" colKey="code" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
                     <SortableTh label="名稱" colKey="name" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
@@ -1171,7 +1171,7 @@ ${projectRows.map(p => `<tr>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <SortableTh label="工程案" colKey="projectLabel" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
                       <SortableTh label="合約編號" colKey="contractNo" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
@@ -1204,7 +1204,7 @@ ${projectRows.map(p => `<tr>
                           <td className="px-4 py-2">
                             {(c.terms || []).length > 0 && (
                             <table className="w-full text-xs border-collapse">
-                              <thead>
+                              <thead className="sticky top-0 z-10 bg-white">
                                 <tr className="text-gray-400 border-b border-gray-200">
                                   <th className="text-left py-1 pr-2 font-normal whitespace-nowrap">期別</th>
                                   <th className="text-right py-1 px-2 font-normal whitespace-nowrap">期款</th>
@@ -1835,7 +1835,7 @@ ${projectRows.map(p => `<tr>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50"><tr>
+                  <thead className="bg-gray-50 sticky top-0 z-10"><tr>
                     <SortableTh label="付款單號" colKey="orderNo" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
                     <SortableTh label="摘要" colKey="summary" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
                     <SortableTh label="廠商" colKey="supplierName" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
@@ -1871,6 +1871,24 @@ ${projectRows.map(p => `<tr>
                             ) : isPending ? (
                               <div className="flex items-center justify-center gap-2">
                                 <Link href="/cashier" className="text-amber-600 hover:underline text-xs whitespace-nowrap">→ 至出納</Link>
+                                <button onClick={() => {
+                                  setEditingPaymentOrder(o);
+                                  setPaymentForm({
+                                    projectId: '', termId: o.sourceRecordId ? String(o.sourceRecordId) : '', contractId: '',
+                                    supplierId: o.supplierId ? String(o.supplierId) : '', supplierName: o.supplierName || '',
+                                    amount: String(o.amount || o.netAmount), netAmount: String(o.netAmount),
+                                    paymentMethod: o.paymentMethod || '轉帳', accountId: o.accountId ? String(o.accountId) : '',
+                                    dueDate: o.dueDate || '', summary: o.summary || '', note: o.note || '',
+                                    materials: [],
+                                  });
+                                  setShowPaymentModal(true);
+                                }} className="text-amber-600 hover:underline text-xs">編輯</button>
+                                <button onClick={async () => {
+                                  if (!confirm(`確定要刪除付款單 ${o.orderNo}？`)) return;
+                                  const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'DELETE' });
+                                  if (res.ok) { showToast('付款單已刪除', 'success'); fetchPaymentOrders(); }
+                                  else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '刪除失敗', 'error'); }
+                                }} className="text-red-500 hover:underline text-xs">刪除</button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-center gap-2">
@@ -1958,7 +1976,7 @@ ${projectRows.map(p => `<tr>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <SortableTh label="工程案" colKey="projectCode" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
                       <SortableTh label="合約" colKey="contractNo" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
@@ -2535,7 +2553,7 @@ ${projectRows.map(p => `<tr>
                   <>
                     <div className={`border rounded-lg overflow-hidden ${hasMismatch ? 'border-red-300' : ''}`}>
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">內容</th><th className="px-2 py-1 text-left">備註</th><th className="w-8" /></tr></thead>
+                        <thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">內容</th><th className="px-2 py-1 text-left">備註</th><th className="w-8" /></tr></thead>
                         <tbody>
                           {contractForm.terms.length === 0 ? (
                             <tr><td colSpan={6} className="px-2 py-3 text-center text-gray-400 text-xs">{editingContract ? '點擊上方「＋ 新增一期」追加期數' : '尚未新增期數'}</td></tr>
@@ -2580,7 +2598,7 @@ ${projectRows.map(p => `<tr>
                 );
               })()}
               <div className="flex justify-between items-center"><label className="text-xs text-gray-500">材料（會連動至「材料使用」TAB）</label><button type="button" onClick={addContractMaterialRow} className="text-amber-600 text-sm">＋ 新增一筆</button></div>
-              <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-2 py-1 text-left">材料名稱</th><th className="px-2 py-1 text-right">數量</th><th className="px-2 py-1 text-right">金額</th><th className="w-8" /></tr></thead><tbody>
+              <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="px-2 py-1 text-left">材料名稱</th><th className="px-2 py-1 text-right">數量</th><th className="px-2 py-1 text-right">金額</th><th className="w-8" /></tr></thead><tbody>
                 {(contractForm.materials || []).map((m, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={m.materialName} onChange={e => updateContractMaterial(i, 'materialName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="材料名稱" /></td><td className="px-2 py-1"><input type="number" value={m.quantity} onChange={e => updateContractMaterial(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="any" min="0" /></td><td className="px-2 py-1"><input type="number" value={m.amount} onChange={e => updateContractMaterial(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" min="0" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractMaterialRow(i)} className="text-red-500">×</button></td></tr>))}
               </tbody></table></div>
               <div><label className="block text-xs text-gray-500 mb-1">備註 *</label><textarea value={contractForm.note} onChange={e => setContractForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="請填寫備註（必填）" /></div>

@@ -186,7 +186,7 @@ function NotificationChannelsSection({ showToast }) {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h3 className="text-lg font-semibold text-gray-700 mb-4">事件通知偏好</h3>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-500">事件</th>
               <th className="px-4 py-3 text-center font-medium text-gray-500">站內</th>
@@ -278,7 +278,7 @@ function CashCountConfigSection({ showToast }) {
           <div className="text-center py-8 text-gray-400">尚無現金帳戶，請先至現金流管理建立帳戶</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">帳戶</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">館別</th>
@@ -1746,7 +1746,7 @@ export default function SettingsPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-white">
                     <tr className="border-b border-gray-200">
                       <th className="text-left py-3 px-3 text-gray-600 font-medium w-8">#</th>
                       <th className="text-left py-3 px-3 text-gray-600 font-medium">PMS 欄位名稱</th>
@@ -1937,7 +1937,7 @@ export default function SettingsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-gray-600 font-medium">排序</th>
                     <th className="text-left py-3 px-4 text-gray-600 font-medium">名稱</th>
@@ -2076,7 +2076,7 @@ export default function SettingsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-gray-600 font-medium">名稱</th>
                     <th className="text-left py-3 px-4 text-gray-600 font-medium">Email</th>

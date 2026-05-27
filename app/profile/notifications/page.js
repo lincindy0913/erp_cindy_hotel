@@ -313,7 +313,7 @@ export default function ProfileNotificationsPage() {
                 <p className="text-xs text-gray-400 mt-0.5">站內通知永遠開啟；Email/LINE 為額外推播渠道</p>
               </div>
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+                <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
                   <tr>
                     <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 w-1/2">通知事件</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">站內</th>

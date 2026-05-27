@@ -160,7 +160,7 @@ export default function ProductDetailPage() {
             <h3 className="text-lg font-semibold">採購記錄</h3>
           </div>
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">進貨單號</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">日期</th>

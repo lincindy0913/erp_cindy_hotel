@@ -820,7 +820,7 @@ export default function LoansPage() {
               <p className="text-sm text-gray-500 mb-4">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 border-b sticky top-0 z-10">
                     <tr>
                       <th className="text-left px-3 py-2 font-medium text-gray-600">貸款</th>
                       <th className="text-left px-3 py-2 font-medium text-gray-600">銀行</th>
@@ -1024,7 +1024,7 @@ export default function LoansPage() {
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <SortableTh label="貸款編號" colKey="loanCode" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" />
                   <SortableTh label="貸款名稱" colKey="loanName" sortKey={loanOvKey} sortDir={loanOvDir} onSort={toggleLoanOv} className="px-4 py-3" />
@@ -1262,7 +1262,7 @@ export default function LoansPage() {
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <SortableTh label="貸款名稱" colKey="loanName" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" />
                   <SortableTh label="扣款帳戶" colKey="deductAccount" sortKey={loanMonKey} sortDir={loanMonDir} onSort={toggleLoanMon} className="px-3 py-3" />
@@ -1501,7 +1501,7 @@ export default function LoansPage() {
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <SortableTh label="年/月" colKey="ym" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" />
                   <SortableTh label="貸款編號" colKey="loanCode" sortKey={loanRecKey} sortDir={loanRecDir} onSort={toggleLoanRec} className="px-4 py-3" />
@@ -1638,7 +1638,7 @@ export default function LoansPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">貸款</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">銀行</th>
@@ -1811,7 +1811,7 @@ export default function LoansPage() {
               <div className="text-center py-12 text-gray-400">此年度暫無還款資料</div>
             ) : (
               <table className="w-full text-xs whitespace-nowrap">
-                <thead className="bg-gray-50 border-b text-gray-600">
+                <thead className="bg-gray-50 border-b text-gray-600 sticky top-0 z-10">
                   <tr>
                     <th className="text-left px-3 py-2 font-medium sticky left-0 bg-gray-50 z-10 min-w-[140px]">貸款</th>
                     <th className="text-left px-3 py-2 font-medium min-w-[80px]">銀行</th>
@@ -1877,7 +1877,7 @@ export default function LoansPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">貸款名稱</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">銀行</th>
@@ -1972,7 +1972,7 @@ export default function LoansPage() {
             {/* Pivot table */}
             <div className="overflow-x-auto mb-6">
               <table className="w-full text-xs border-collapse border border-gray-300">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-gray-100">
                   <tr className="bg-gray-100">
                     <th className="border border-gray-300 px-2 py-1.5 text-left">貸款名稱</th>
                     <th className="border border-gray-300 px-2 py-1.5 text-left">銀行</th>
@@ -2016,7 +2016,7 @@ export default function LoansPage() {
             </div>
             {/* Per-loan summary */}
             <table className="w-full text-xs border-collapse border border-gray-300">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr className="bg-gray-100">
                   <th className="border border-gray-300 px-2 py-1.5 text-left">貸款名稱</th>
                   <th className="border border-gray-300 px-2 py-1.5 text-left">銀行</th>

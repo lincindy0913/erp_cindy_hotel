@@ -1127,7 +1127,7 @@ export default function PaymentPage() {
                   </div>
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 w-12">
                             <input
@@ -1639,7 +1639,7 @@ export default function PaymentPage() {
             </div>
           )}
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 {(activeTab === 'draft' || activeTab === 'rejected') && (
                   <th className="px-3 py-3 text-left text-sm font-medium text-gray-700 w-12">
@@ -1993,7 +1993,7 @@ export default function PaymentPage() {
                                   </div>
                                   <div className="border rounded-lg overflow-hidden">
                                     <table className="w-full text-sm">
-                                      <thead className="bg-gray-100">
+                                      <thead className="bg-gray-100 sticky top-0 z-10">
                                         <tr>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">序號</th>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">發票號</th>
@@ -2106,7 +2106,7 @@ export default function PaymentPage() {
                   </select>
                 </div>
               </div>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
                 {Object.keys(reportOrdersByWarehouse).length === 0 ? (
                   <div className="px-4 py-8 text-center text-gray-500 text-sm">該月份無草稿付款單，或請選擇其他館別。</div>
                 ) : (
@@ -2117,7 +2117,7 @@ export default function PaymentPage() {
                       <div key={whKey} className="mb-6 last:mb-0">
                         <div className="bg-gray-100 px-4 py-2 font-semibold text-gray-800 border-b border-gray-200">館別：{whLabel}（共 {list.length} 筆，淨額合計 NT$ {total.toLocaleString()}）</div>
                         <table className="w-full text-sm">
-                          <thead>
+                          <thead className="sticky top-0 z-10 bg-gray-50">
                             <tr className="bg-gray-50">
                               <th className="px-3 py-2 text-left">序號</th>
                               <th className="px-3 py-2 text-left">付款單號</th>
@@ -2321,7 +2321,7 @@ export default function PaymentPage() {
                           {/* Table */}
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead>
+                              <thead className="sticky top-0 z-10 bg-gray-50">
                                 <tr className="bg-gray-50 border-b border-gray-200">
                                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-8">#</th>
                                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款單號</th>

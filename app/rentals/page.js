@@ -1679,7 +1679,7 @@ function RentalsPage() {
                         <button onClick={() => switchTab('cashier')} className="text-xs text-teal-600 underline">前往收租</button>
                       </div>
                       <table className="w-full text-xs">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="text-gray-400 border-b">
                             <th className="text-left pb-1">物業</th>
                             <th className="text-left pb-1">租客</th>
@@ -1714,7 +1714,7 @@ function RentalsPage() {
                         <button onClick={() => switchTab('contracts')} className="text-xs text-teal-600 underline">前往合約</button>
                       </div>
                       <table className="w-full text-xs">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="text-gray-400 border-b">
                             <th className="text-left pb-1">物業</th>
                             <th className="text-left pb-1">租客</th>
@@ -1929,7 +1929,7 @@ function RentalsPage() {
                   return (
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <SortableTh label="序號" colKey="contractSortOrder" sortKey={rentIncKey} sortDir={rentIncDir} onSort={rentIncToggle} className="px-3 py-2 w-12" align="center" />
                         <th className="px-3 py-2 text-center w-8">
@@ -2226,7 +2226,7 @@ function RentalsPage() {
                           <div className="mt-4 border-t border-gray-200 pt-4">
                             <h5 className="text-sm font-medium text-teal-700 mb-2">歷次收款紀錄（可個別編輯）</h5>
                             <table className="w-full text-xs">
-                              <thead>
+                              <thead className="sticky top-0 z-10 bg-white">
                                 <tr className="text-gray-500 border-b">
                                   <th className="text-left py-1">次數</th>
                                   <th className="text-left py-1">收款日期</th>
@@ -2333,7 +2333,7 @@ function RentalsPage() {
 
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <th className="text-left px-3 py-2">代碼</th>
                         <th className="text-left px-3 py-2">類型</th>
@@ -2426,7 +2426,7 @@ function RentalsPage() {
                           <p className="text-sm text-gray-400 py-2">{reminderThreshold} 天內無即將到期合約</p>
                         ) : (
                           <table className="w-full text-sm">
-                            <thead>
+                            <thead className="sticky top-0 z-10 bg-white">
                               <tr className="text-xs text-gray-500 border-b">
                                 <th className="text-left pb-1">物業</th>
                                 <th className="text-left pb-1">租客</th>
@@ -2469,7 +2469,7 @@ function RentalsPage() {
 
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <th className="text-center px-2 py-2 w-16">序號</th>
                         <th className="text-center px-2 py-2 w-20">分類</th>
@@ -2592,7 +2592,7 @@ function RentalsPage() {
                   </div>
                   <div className="bg-white rounded-lg shadow overflow-x-auto border border-gray-200">
                     <table className="w-full text-sm">
-                      <thead className="bg-teal-50">
+                      <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
                           <th className="text-left px-3 py-2 border-b border-gray-200">門牌</th>
                           <th className="text-right px-3 py-2 border-b border-gray-200">地價稅</th>
@@ -2719,7 +2719,7 @@ function RentalsPage() {
                     </div>
                     <div className="bg-white rounded-lg shadow overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-teal-50">
+                        <thead className="bg-teal-50 sticky top-0 z-10">
                           <tr>
                             <th className="text-left px-3 py-2">物業</th>
                             <th className="text-center px-3 py-2">年度</th>
@@ -2849,7 +2849,7 @@ function RentalsPage() {
 
                 <div className="bg-white rounded-xl shadow overflow-x-auto mb-4">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50 text-teal-900 text-xs">
+                    <thead className="bg-teal-50 text-teal-900 text-xs sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-2 text-left">列</th>
                         <th className="px-3 py-2 text-left">物業</th>
@@ -2999,7 +2999,7 @@ function RentalsPage() {
 
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <th className="text-left px-3 py-2">物業</th>
                         <th className="text-left px-3 py-2">日期</th>
@@ -3088,7 +3088,7 @@ function RentalsPage() {
                 <p className="text-sm text-gray-600 mb-2">物業每月向租客收取之水電等費用，在此登記為收入。</p>
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <th className="text-left px-3 py-2">物業</th>
                         <th className="text-center px-3 py-2">年月</th>
@@ -3284,7 +3284,7 @@ function RentalsPage() {
                 ) : (
                   <div className="bg-white rounded-lg shadow overflow-x-auto overflow-y-auto">
                     <table className="w-full text-sm border-collapse">
-                      <thead className="bg-teal-50">
+                      <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
                           <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2 border border-gray-200">房號</th>
@@ -3380,7 +3380,7 @@ function RentalsPage() {
                 ) : (
                   <div className="bg-white rounded-lg shadow overflow-x-auto">
                     <table className="w-full text-sm border-collapse">
-                      <thead className="bg-teal-50">
+                      <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
                           <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2 border border-gray-200">物業</th>
@@ -3447,7 +3447,7 @@ function RentalsPage() {
                     </div>
                     <div className="bg-white rounded-lg shadow overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
-                        <thead className="bg-red-50">
+                        <thead className="bg-red-50 sticky top-0 z-10">
                           <tr>
                             <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
@@ -3541,7 +3541,7 @@ function RentalsPage() {
                   </div>
                   <div className="bg-white rounded-lg shadow overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-teal-50">
+                      <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
                           <th className="text-center px-2 py-2 w-8 text-gray-500">#</th>
                           <th className="text-left px-3 py-2">合約號</th>
@@ -3641,7 +3641,7 @@ function RentalsPage() {
                     )}
                     <div className="bg-white rounded-lg shadow overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
-                        <thead className="bg-teal-50">
+                        <thead className="bg-teal-50 sticky top-0 z-10">
                           <tr>
                             <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
@@ -3738,7 +3738,7 @@ function RentalsPage() {
                 )}
                 <div className="bg-white rounded-lg shadow overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-teal-50">
+                    <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
                         <th className="text-center px-3 py-2 font-medium text-gray-700">序號</th>
                         <th className="text-left px-3 py-2 font-medium text-gray-700">分類</th>

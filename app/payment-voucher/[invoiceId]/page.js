@@ -172,7 +172,7 @@ export default function PaymentVoucherPage() {
           
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr className="bg-gray-100 border-b-2 border-gray-800">
                   <th className="px-3 py-2 text-left text-sm font-semibold border-r border-gray-300">序號</th>
                   <th className="px-3 py-2 text-left text-sm font-semibold border-r border-gray-300">產品代碼</th>

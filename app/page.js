@@ -763,7 +763,7 @@ export default function Dashboard() {
               <h2 className="text-base font-semibold text-gray-800 mb-4">最近交易</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-white">
                     <tr className="border-b border-gray-100">
                       <th className="pb-2 text-left text-xs font-medium text-gray-500">時間</th>
                       <th className="pb-2 text-left text-xs font-medium text-gray-500">類型</th>

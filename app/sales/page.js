@@ -1178,7 +1178,7 @@ function InvoicePageInner() {
                   </div>
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 w-12">
                             <input
@@ -1263,7 +1263,7 @@ function InvoicePageInner() {
                   <h4 className="text-md font-semibold mb-3">已選品項（共 {selectedItems.length} 項）</h4>
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-green-50">
+                      <thead className="bg-green-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">進貨單號</th>
@@ -1767,7 +1767,7 @@ function InvoicePageInner() {
                 ) : (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-orange-50">
                         <tr className="bg-orange-50 text-orange-800 text-xs">
                           {['發票日期', '發票號碼', '發票抬頭', '館別', '金額（NT$）', '備註', '操作'].map(h => (
                             <th key={h} className="px-4 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
@@ -1997,7 +1997,7 @@ function InvoicePageInner() {
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead>
+                          <thead className="sticky top-0 z-10 bg-gray-50">
                             <tr className="bg-gray-50 text-gray-500 text-xs border-b">
                               <th className="px-4 py-2 text-left font-medium whitespace-nowrap">館別</th>
                               <th className="px-4 py-2 text-left font-medium whitespace-nowrap">發票抬頭</th>
@@ -2069,7 +2069,7 @@ function InvoicePageInner() {
                       {/* 明細表 */}
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead>
+                          <thead className="sticky top-0 z-10 bg-gray-50">
                             <tr className="bg-gray-50 text-gray-500 text-xs border-b">
                               <th className="px-4 py-2 text-left font-medium whitespace-nowrap">館別</th>
                               <th className="px-4 py-2 text-left font-medium whitespace-nowrap">發票抬頭</th>
@@ -2125,7 +2125,7 @@ function InvoicePageInner() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-gray-50">
                           <tr className="bg-gray-50 text-gray-500 text-xs border-b">
                             <th className="px-4 py-2 text-left font-medium whitespace-nowrap">館別</th>
                             <th className="px-4 py-2 text-left font-medium whitespace-nowrap">廠商</th>
@@ -2256,7 +2256,7 @@ function InvoicePageInner() {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-green-50">
                         <tr className="bg-green-50 text-green-800 text-xs border-b border-green-100">
                           <th className="px-4 py-2.5 text-left font-medium whitespace-nowrap sticky left-0 bg-green-50">月份</th>
                           {statsData.warehouses.map(wh => (
@@ -2335,7 +2335,7 @@ function InvoicePageInner() {
                       </div>
                     </div>
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-orange-50">
                         <tr className="bg-orange-50/60 text-orange-700 text-xs border-b border-orange-100">
                           <th className="px-4 py-2 text-left font-medium">月份</th>
                           <th className="px-4 py-2 text-right font-medium">張數</th>
@@ -2382,7 +2382,7 @@ function InvoicePageInner() {
                       <p className="text-sm font-semibold text-gray-700">發票抬頭分析</p>
                     </div>
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-gray-50">
                         <tr className="bg-gray-50 text-gray-500 text-xs">
                           <th className="px-4 py-2 text-left font-medium">發票抬頭</th>
                           <th className="px-4 py-2 text-right font-medium">金額</th>
@@ -2536,7 +2536,7 @@ function InvoicePageInner() {
         {/* 列表 */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-3 w-10">
                   <input
@@ -2751,7 +2751,7 @@ function InvoicePageInner() {
                                   <div className="text-sm font-semibold mb-3 text-gray-700">核銷品項詳情</div>
                                   <div className="border rounded-lg overflow-hidden">
                                     <table className="w-full text-sm">
-                                      <thead className="bg-gray-100">
+                                      <thead className="bg-gray-100 sticky top-0 z-10">
                                         <tr>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">序號</th>
                                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-700">進貨單號</th>

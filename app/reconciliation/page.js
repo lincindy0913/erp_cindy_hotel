@@ -333,7 +333,7 @@ function ReconciliationPageInner() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 sticky top-0 z-10 border-b">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
                       <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">PMS信用卡金額</th>
@@ -387,7 +387,7 @@ function ReconciliationPageInner() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 sticky top-0 z-10 border-b">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
@@ -477,7 +477,7 @@ function ReconciliationPageInner() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 sticky top-0 z-10 border-b">
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">筆數</th>
@@ -543,7 +543,7 @@ function ReconciliationPageInner() {
             <h4 className="text-sm font-semibold text-violet-800">對帳單明細 ({ccStatements.length} 筆)</h4>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 sticky top-0 z-10 border-b">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-8"></th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">館別</th>
@@ -612,7 +612,7 @@ function ReconciliationPageInner() {
                               <h5 className="text-sm font-semibold text-gray-700 mb-2">批次明細</h5>
                               {stmt.batchLines?.length > 0 ? (
                                 <table className="w-full text-xs">
-                                  <thead className="bg-gray-50">
+                                  <thead className="bg-gray-50 sticky top-0 z-10">
                                     <tr>
                                       <th className="px-2 py-1 text-left">終端機</th>
                                       <th className="px-2 py-1 text-left">批次</th>
@@ -649,7 +649,7 @@ function ReconciliationPageInner() {
                                 <h5 className="text-sm font-semibold text-gray-700 mb-2">手續費明細</h5>
                                 {stmt.feeDetails?.length > 0 ? (
                                   <table className="w-full text-xs">
-                                    <thead className="bg-gray-50">
+                                    <thead className="bg-gray-50 sticky top-0 z-10">
                                       <tr>
                                         <th className="px-2 py-1 text-left">類型</th>
                                         <th className="px-2 py-1 text-left">卡別</th>
@@ -717,7 +717,7 @@ function ReconciliationPageInner() {
                                     </div>
                                     {ccMatchResults[stmt.id].pmsRecords?.length > 0 ? (
                                       <table className="w-full text-xs">
-                                        <thead className="bg-gray-50">
+                                        <thead className="bg-gray-50 sticky top-0 z-10">
                                           <tr>
                                             <th className="px-2 py-1 text-left text-gray-500">日期</th>
                                             <th className="px-2 py-1 text-left text-gray-500">項目</th>
@@ -848,7 +848,7 @@ function ReconciliationPageInner() {
             {ccMerchantConfigs.length > 0 && (
               <div className="mb-4 border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-3 py-1.5 text-left text-xs">館別</th>
                       <th className="px-3 py-1.5 text-left text-xs">銀行</th>
@@ -1116,7 +1116,7 @@ function ReconciliationPageInner() {
             ) : (
               <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 sticky top-0 z-10 border-b">
                     <tr>
                       <SortableTh label="帳戶名稱" colKey="accountName" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" />
                       <SortableTh label="館別" colKey="warehouse" sortKey={dashSortKey} sortDir={dashSortDir} onSort={dashToggleSort} className="px-4 py-3" />
@@ -1319,7 +1319,7 @@ function ReconciliationPageInner() {
                         </div>
                       ) : (
                         <table className="w-full text-xs">
-                          <thead className="bg-gray-50 sticky top-0">
+                          <thead className="bg-gray-50 sticky top-0 z-10 sticky top-0">
                             <tr>
                               <th className="px-2 py-2 text-left">日期</th>
                               <th className="px-2 py-2 text-left">說明</th>
@@ -1436,7 +1436,7 @@ function ReconciliationPageInner() {
                         </div>
                       ) : (
                         <table className="w-full text-xs">
-                          <thead className="bg-gray-50 sticky top-0">
+                          <thead className="bg-gray-50 sticky top-0 z-10 sticky top-0">
                             <tr>
                               <th className="px-2 py-2 text-left">日期</th>
                               <th className="px-2 py-2 text-left">說明</th>
@@ -1696,7 +1696,7 @@ function ReconciliationPageInner() {
             ) : (
               <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-violet-50 border-b">
+                  <thead className="bg-violet-50 sticky top-0 z-10 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium text-violet-800">銀行名稱</th>
                       <th className="px-4 py-3 text-left font-medium text-violet-800">銀行代碼</th>
@@ -1840,7 +1840,7 @@ function ReconciliationPageInner() {
               {/* Table */}
               <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-violet-50 border-b">
+                  <thead className="bg-violet-50 sticky top-0 z-10 border-b">
                     <tr>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">收款日期</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-600">物業</th>
@@ -1931,7 +1931,7 @@ function ReconciliationPageInner() {
                     <p className="text-sm text-gray-600 mb-2">預覽: 共 {importLines.length} 筆</p>
                     <div className="max-h-40 overflow-auto text-xs">
                       <table className="w-full">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="text-gray-500">
                             <th className="text-left py-1">日期</th>
                             <th className="text-left py-1">說明</th>

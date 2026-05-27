@@ -779,7 +779,7 @@ export default function CashierPage() {
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-amber-50 border-b">
+              <thead className="bg-amber-50 border-b sticky top-0 z-10">
                 <tr>
                   {isPendingTab && (
                     <th className="px-3 py-3 text-center w-10">
@@ -1213,7 +1213,7 @@ export default function CashierPage() {
             {/* Selected orders detail list */}
             <div className="mb-4 border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">付款單號</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">廠商</th>
@@ -1346,7 +1346,7 @@ export default function CashierPage() {
               </div>
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">帳戶</th>
                       <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-40">支出金額</th>

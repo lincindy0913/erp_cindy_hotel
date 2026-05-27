@@ -853,7 +853,7 @@ export default function CashFlowPage() {
                   <h3 className="text-lg font-semibold mb-3 text-gray-700">{type}</h3>
                   <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                     <table className="w-full">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
                           <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">帳戶名稱</th>
@@ -1330,7 +1330,7 @@ export default function CashFlowPage() {
             {/* Transaction list */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <SortableTh label="交易編號" colKey="transactionNo" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
                     <SortableTh label="日期" colKey="transactionDate" sortKey={cfTxKey} sortDir={cfTxDir} onSort={cfTxToggle} className="px-3 py-3" />
@@ -1584,7 +1584,7 @@ export default function CashFlowPage() {
                 {/* Grouped table */}
                 <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                   <table className="w-full">
-                    <thead className="bg-emerald-50">
+                    <thead className="bg-emerald-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">會計科目</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">館別</th>
@@ -1739,7 +1739,7 @@ export default function CashFlowPage() {
                     <h4 className="text-md font-semibold mb-4 text-green-700">收入明細</h4>
                     {reportData.incomeByCategory.length > 0 ? (
                       <table className="w-full">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="border-b">
                             <th className="text-left text-sm font-medium text-gray-700 pb-2">類別</th>
                             <th className="text-right text-sm font-medium text-gray-700 pb-2">金額</th>
@@ -1773,7 +1773,7 @@ export default function CashFlowPage() {
                     <h4 className="text-md font-semibold mb-4 text-red-700">支出明細</h4>
                     {reportData.expenseByCategory.length > 0 ? (
                       <table className="w-full">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="border-b">
                             <th className="text-left text-sm font-medium text-gray-700 pb-2">類別</th>
                             <th className="text-right text-sm font-medium text-gray-700 pb-2">金額</th>
@@ -1808,7 +1808,7 @@ export default function CashFlowPage() {
                   <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
                     <h4 className="text-md font-semibold mb-4 text-orange-700">廠商支出明細</h4>
                     <table className="w-full">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-white">
                         <tr className="border-b">
                           <th className="text-left text-sm font-medium text-gray-700 pb-2">廠商</th>
                           <th className="text-right text-sm font-medium text-gray-700 pb-2">金額</th>
@@ -1960,7 +1960,7 @@ export default function CashFlowPage() {
                     {/* Forecast table */}
                     <div className="border rounded-lg overflow-hidden">
                       <table className="w-full">
-                        <thead className="bg-gray-50">
+                        <thead className="bg-gray-50 sticky top-0 z-10">
                           <tr>
                             <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">日期</th>
                             <th className="px-4 py-2 text-right text-sm font-medium text-gray-700">預估餘額</th>
@@ -2175,7 +2175,7 @@ export default function CashFlowPage() {
               )}
 
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">科目名稱</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">類型</th>
@@ -2481,7 +2481,7 @@ function CashCountTab({ accounts, warehouses }) {
       ) : (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">盤點編號</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">日期</th>

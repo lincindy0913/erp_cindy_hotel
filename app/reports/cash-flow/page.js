@@ -139,7 +139,7 @@ export default function CashFlowPage() {
                         <p className="px-5 py-4 text-sm text-gray-400">本期無相關交易</p>
                       ) : (
                         <table className="w-full text-xs">
-                          <thead className="bg-gray-50 text-gray-500">
+                          <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10">
                             <tr>
                               <th className="px-4 py-2 text-left">日期</th>
                               <th className="px-4 py-2 text-left">說明</th>

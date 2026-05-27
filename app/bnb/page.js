@@ -2036,7 +2036,7 @@ export default function BnbPage() {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
-                        <thead className="bg-gray-50 text-gray-500">
+                        <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10">
                           <tr>
                             {['來源','姓名','房間','入住日','離店日','房費','狀態'].map(h => (
                               <th key={h} className="px-3 py-1.5 text-left font-medium">{h}</th>
@@ -2243,7 +2243,7 @@ export default function BnbPage() {
               return (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10">
                     <tr className={`text-xs ${editMode ? 'bg-emerald-50 text-emerald-800' : 'bg-indigo-50 text-indigo-800'}`}>
                       <th className="px-3 py-2">
                         <input type="checkbox"
@@ -2759,7 +2759,7 @@ export default function BnbPage() {
             ) : (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
                       {['日期','筆數','房費','消費','營收合計','訂金','當天匯款','刷卡','現金','住宿卷','手續費',''].map(h => (
                         <th key={h} className="px-3 py-2.5 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
@@ -2879,7 +2879,7 @@ export default function BnbPage() {
             ) : (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
                       {['月份','間數','住宿房費','其他消費','訂金匯款','當天匯款','刷卡','現金','住宿卷','手續費','淨收入','鎖帳'].map(h => (
                         <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
@@ -3047,7 +3047,7 @@ export default function BnbPage() {
             ) : (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
                       {[summaryMode === 'annual' ? '年份' : '月份','住宿淨收入','其他收入','收入合計','採購支出','固定費用','支出合計','淨利'].map(h => (
                         <th key={h} className="px-3 py-2 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
@@ -3380,7 +3380,7 @@ export default function BnbPage() {
             ) : (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
                       {['月份','刷卡總計','房價金額','補助間數','平均房價','每月間數','客房備品','餐飲支出','住客FIT','員工','薪資','業務來源%','其他收入','備註'].map(h => (
                         <th key={h} className="px-3 py-2.5 text-right first:text-left font-medium whitespace-nowrap">{h}</th>
@@ -4709,7 +4709,7 @@ export default function BnbPage() {
                 <div className="text-center py-10 text-gray-400">載入中…</div>
               ) : (
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-orange-50">
                     <tr className="bg-orange-50 text-orange-800 text-xs">
                       <th className="px-4 py-2 text-left font-medium">日期</th>
                       <th className="px-4 py-2 text-left font-medium">館別</th>
@@ -4800,7 +4800,7 @@ export default function BnbPage() {
             {!oiLoading && oiRows.length > 0 && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
                       <th className="px-3 py-2 text-left">月份</th>
                       <th className="px-3 py-2 text-left">館別</th>
@@ -5015,7 +5015,7 @@ export default function BnbPage() {
                     <h4 className="text-sm font-semibold text-gray-700 mb-4">月度訂房數與收入</h4>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="text-xs text-gray-400 border-b">
                             <th className="text-left py-2 pr-3 font-medium">月份</th>
                             <th className="text-right py-2 px-2 font-medium">訂房</th>
@@ -5104,7 +5104,7 @@ export default function BnbPage() {
                         <h4 className="text-sm font-semibold text-red-700">需處理記錄</h4>
                       </div>
                       <table className="w-full text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-gray-50">
                           <tr className="text-xs text-gray-400 border-b bg-gray-50">
                             <th className="px-4 py-2 text-left font-medium">問題類型</th>
                             <th className="px-4 py-2 text-left font-medium">館別</th>
@@ -5214,7 +5214,7 @@ export default function BnbPage() {
                     <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 overflow-x-auto">
                       <h4 className="text-sm font-semibold text-gray-700 mb-3">月度趨勢（訂房數）</h4>
                       <table className="w-full text-xs">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="border-b text-gray-400">
                             <th className="text-left py-1.5 pr-3 font-medium">月份</th>
                             {sources.map(s => <th key={s.source} className="text-right py-1.5 px-2 font-medium">{s.source}</th>)}
@@ -5292,7 +5292,7 @@ export default function BnbPage() {
                     <h4 className="text-sm font-semibold text-gray-700 mb-4">來源分析（{oaData.year} 年）</h4>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-white">
                           <tr className="border-b text-gray-400">
                             <th className="text-left py-2 pr-3 font-medium">來源</th>
                             <th className="text-right py-2 px-2 font-medium">訂房</th>
@@ -5330,7 +5330,7 @@ export default function BnbPage() {
                   <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 overflow-x-auto">
                     <h4 className="text-sm font-semibold text-gray-700 mb-3">月度 OTA 收益趨勢</h4>
                     <table className="w-full text-xs">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-white">
                         <tr className="border-b text-gray-400">
                           <th className="text-left py-1.5 pr-3 font-medium">月份</th>
                           <th className="text-right py-1.5 px-2 font-medium">OTA訂</th>
@@ -5424,7 +5424,7 @@ export default function BnbPage() {
                   })()}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-gray-50">
                         <tr className="bg-gray-50 text-xs text-gray-400 border-b">
                           <th className="px-4 py-2 text-left font-medium">入住月</th>
                           <th className="px-4 py-2 text-left font-medium">館別</th>

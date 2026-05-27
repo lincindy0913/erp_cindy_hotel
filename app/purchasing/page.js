@@ -1235,7 +1235,7 @@ function PurchasingPageInner() {
                 <div className="border rounded-lg p-4 mb-4">
                   {items.length > 0 ? (
                     <table className="w-full">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">產品</th>
                           <th className="px-3 py-2 text-left text-sm font-medium text-gray-700">數量</th>
@@ -1496,7 +1496,7 @@ function PurchasingPageInner() {
                         <p className="text-xs text-gray-500">載入中...</p>
                       ) : recentPurchases.length > 0 ? (
                         <table className="w-full text-sm">
-                          <thead>
+                          <thead className="sticky top-0 z-10 bg-blue-100">
                             <tr className="bg-blue-100">
                               <th className="px-3 py-1.5 text-left text-xs font-medium text-blue-800">日期</th>
                               <th className="px-3 py-1.5 text-left text-xs font-medium text-blue-800">單價</th>
@@ -1675,7 +1675,7 @@ function PurchasingPageInner() {
         {/* 列表 */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <SortableTh label="單號" colKey="purchaseNo" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
                 <SortableTh label="館別" colKey="warehouse" sortKey={purSortKey} sortDir={purSortDir} onSort={togglePurSort} className="px-4 py-3" />
@@ -1869,7 +1869,7 @@ function PurchasingPageInner() {
                                 <h5 className="text-md font-semibold mb-2 text-gray-800">商品明細</h5>
                                 {purchase.items && purchase.items.length > 0 ? (
                                   <table className="w-full border-collapse">
-                                    <thead>
+                                    <thead className="sticky top-0 z-10 bg-gray-100">
                                       <tr className="bg-gray-100">
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">產品</th>
                                         <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 border border-gray-300">數量</th>
@@ -2086,7 +2086,7 @@ function PurchasingPageInner() {
                     {/* Product Items Table */}
                     <h5 className="text-sm font-semibold mb-2">預設進貨品項</h5>
                     <table className="w-full border-collapse border border-gray-300 text-sm mb-2">
-                      <thead>
+                      <thead className="sticky top-0 z-10 bg-gray-100">
                         <tr className="bg-gray-100">
                           <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
                           <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
@@ -2180,7 +2180,7 @@ function PurchasingPageInner() {
 
                 {/* Template List */}
                 <table className="w-full border-collapse border border-gray-300 text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr className="bg-gray-100">
                       <th className="border border-gray-300 px-2 py-2 text-left">範本名稱</th>
                       <th className="border border-gray-300 px-2 py-2 text-left">廠商</th>
@@ -2316,7 +2316,7 @@ function PurchasingPageInner() {
                     <div className="mb-4">
                       <h4 className="text-sm font-semibold mb-2">進貨品項（需入庫品項將連動至 <Link href="/inventory" className="text-orange-600 hover:underline">庫存</Link>）</h4>
                       <table className="w-full border-collapse border border-gray-300 text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-gray-100">
                           <tr className="bg-gray-100">
                             <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
                             <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
@@ -2611,7 +2611,7 @@ function PurchasingPageInner() {
                   <p className="text-gray-500">尚無進銷存每月費用記錄</p>
                 ) : (
                   <table className="w-full border-collapse border border-gray-300 text-sm">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-gray-100">
                       <tr className="bg-gray-100">
                         <th className="border border-gray-300 px-2 py-2 text-left">記錄單號</th>
                         <th className="border border-gray-300 px-2 py-2 text-left">範本</th>
