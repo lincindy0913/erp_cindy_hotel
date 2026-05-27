@@ -440,9 +440,15 @@ table th, table td {
 .page-bg-import { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
 
 
-/* Sticky table headers — th sticky works even inside overflow-x-auto containers.
-   The chain: thead gets bg from Tailwind class → tr inherits → th inherits,
-   so th has an opaque background when pinned to top. */
+/* Sticky table headers — compatible with overflow-x-auto wrappers.
+   overflow-x: auto implicitly sets overflow-y: auto, which makes the element
+   a scroll container that breaks position: sticky.  Setting overflow-y: clip
+   prevents vertical clipping AND does not create a sticky containing block,
+   so sticky th elements reference the viewport scroll instead of the wrapper.
+   overflow: clip is supported in Chrome 90+, Firefox 81+, Safari 16+. */
+.overflow-x-auto {
+  overflow-y: clip;
+}
 table thead tr {
   background: inherit;
 }
