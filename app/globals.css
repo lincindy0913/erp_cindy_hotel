@@ -452,7 +452,8 @@ table th, table td {
    :has(> table) targets only divs that directly wrap a <table>, leaving other
    overflow-x-auto elements (tab nav, etc.) unaffected.
    ─────────────────────────────────────────────────────────────────────────── */
-.overflow-x-auto:has(> table) {
+.overflow-x-auto:has(> table),
+.overflow-hidden:has(> table) {
   overflow-y: auto;
   max-height: 65vh;
 }

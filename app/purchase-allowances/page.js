@@ -902,6 +902,7 @@ export default function PurchaseAllowancesPage() {
           filteredDraft.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>目前沒有草稿退貨單</div>
           ) : (
+            <div className="overflow-x-auto">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                 <tr style={{ background: '#f9fafb' }}>
@@ -959,6 +960,7 @@ export default function PurchaseAllowancesPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           )
         )}
 
@@ -967,6 +969,7 @@ export default function PurchaseAllowancesPage() {
           filteredConfirmed.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無已確認退貨紀錄</div>
           ) : (
+            <div className="overflow-x-auto">
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                 <tr style={{ background: '#f9fafb' }}>
@@ -1020,6 +1023,7 @@ export default function PurchaseAllowancesPage() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           )
         )}
       </div>
