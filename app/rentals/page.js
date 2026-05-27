@@ -277,6 +277,7 @@ function RentalsPage() {
   const [taxTableRows, setTaxTableRows] = useState([]);
   const [taxTableSaving, setTaxTableSaving] = useState(false);
   const [tenantSaving, setTenantSaving] = useState(false);
+  const [terminateModal, setTerminateModal] = useState(null); // { tenant, contracts: [{id,propertyName,endDate}] }
   const [propertySaving, setPropertySaving] = useState(false);
   const [contractSaving, setContractSaving] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
@@ -1053,6 +1054,20 @@ function RentalsPage() {
         fetchTenants();
       } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
     }, '刪除租客');
+  }
+
+  async function terminateContract(contractId, endDate) {
+    try {
+      const res = await fetch(`/api/rentals/contracts/${contractId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'terminated', endDate })
+      });
+      if (!res.ok) { const d = await res.json(); showToast(d.error || '操作失敗', 'error'); return; }
+      showToast('合約已終止（退租完成）', 'success');
+      setTerminateModal(null);
+      fetchTenants();
+    } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
   }
 
   // ==================== PROPERTY CRUD（租屋營運欄位；主檔請至資產管理）====================
@@ -2342,7 +2357,7 @@ function RentalsPage() {
                         <SortableTh label="類型" colKey="tenantType" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
                         <SortableTh label="姓名/公司" colKey="displayName" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
                         <SortableTh label="電話" colKey="phone" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
-                        <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">物業</th>
+                        <SortableTh label="物業" colKey="propertyNames" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
                         <SortableTh label="有效合約" colKey="activeContractCount" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
                         <SortableTh label="退租" colKey="terminatedContractCount" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
                         <SortableTh label="信用評等" colKey="creditScore" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
@@ -2356,51 +2371,64 @@ function RentalsPage() {
                           displayName: t => getTenantDisplayName(t),
                           creditScore: t => { const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0; return oc === 0 ? 0 : oc <= 2 ? 1 : 2; },
                           isBlacklisted: t => t.isBlacklisted ? 1 : 0,
+                          propertyNames: t => (t.properties || []).map(p => p.name).join(', '),
                         };
                         const sorted = sortRows(tenants, tenantSortKey, tenantSortDir, tenantAccessors);
                         if (sorted.length === 0) return (
                           <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                         );
-                        return sorted.map(t => (
-                          <tr key={t.id} className={`border-t hover:bg-gray-50 ${t.isBlacklisted ? 'bg-red-50' : ''}`}>
-                            <td className="px-3 py-2 font-mono text-xs">{t.tenantCode}</td>
-                            <td className="px-3 py-2">{t.tenantType === 'company' ? '公司' : '個人'}</td>
-                            <td className="px-3 py-2 font-medium">{getTenantDisplayName(t)}</td>
-                            <td className="px-3 py-2">{t.phone}</td>
-                            <td className="px-3 py-2">
-                              {t.properties && t.properties.length > 0
-                                ? <div className="flex flex-wrap gap-1">
-                                    {t.properties.map(p => (
-                                      <span key={p.id} className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded">{p.name}</span>
-                                    ))}
-                                  </div>
-                                : <span className="text-gray-400 text-xs">-</span>
-                              }
-                            </td>
-                            <td className="px-3 py-2 text-center">{t.activeContractCount}</td>
-                            <td className="px-3 py-2 text-center">
-                              {(t.terminatedContractCount || 0) > 0
-                                ? <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded">{t.terminatedContractCount} 筆</span>
-                                : <span className="text-gray-400 text-xs">-</span>
-                              }
-                            </td>
-                            <td className={`px-3 py-2 text-center font-medium ${getCreditColor(t.contracts?.filter(c => c.status === 'overdue').length || 0)}`}>
-                              {(() => {
-                                const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0;
-                                if (oc === 0) return '良好';
-                                if (oc <= 2) return '注意';
-                                return '警示';
-                              })()}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {t.isBlacklisted ? <span className="text-xs px-2 py-0.5 bg-red-100 text-red-800 rounded">黑名單</span> : '-'}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <button onClick={() => openTenantModal(t)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
-                              <button onClick={() => deleteTenant(t.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
-                            </td>
-                          </tr>
-                        ));
+                        return sorted.map(t => {
+                          const activeContracts = (t.contracts || []).filter(c => c.status === 'active' || c.status === 'pending');
+                          return (
+                            <tr key={t.id}
+                              onClick={() => openTenantModal(t)}
+                              className={`border-t cursor-pointer hover:bg-teal-50/40 transition-colors ${t.isBlacklisted ? 'bg-red-50' : ''}`}>
+                              <td className="px-3 py-2 font-mono text-xs">{t.tenantCode}</td>
+                              <td className="px-3 py-2">{t.tenantType === 'company' ? '公司' : '個人'}</td>
+                              <td className="px-3 py-2 font-medium">{getTenantDisplayName(t)}</td>
+                              <td className="px-3 py-2">{t.phone}</td>
+                              <td className="px-3 py-2">
+                                {t.properties && t.properties.length > 0
+                                  ? <div className="flex flex-wrap gap-1">
+                                      {t.properties.map(p => (
+                                        <span key={p.id} className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded">{p.name}</span>
+                                      ))}
+                                    </div>
+                                  : <span className="text-gray-400 text-xs">-</span>
+                                }
+                              </td>
+                              <td className="px-3 py-2 text-center">{t.activeContractCount}</td>
+                              <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                                {activeContracts.length > 0 ? (
+                                  <button
+                                    onClick={() => setTerminateModal({ tenant: t, contracts: activeContracts, endDate: new Date().toISOString().split('T')[0] })}
+                                    className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-300 rounded hover:bg-orange-100 font-medium">
+                                    退租
+                                  </button>
+                                ) : (t.terminatedContractCount || 0) > 0 ? (
+                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded">已退 {t.terminatedContractCount} 筆</span>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">-</span>
+                                )}
+                              </td>
+                              <td className={`px-3 py-2 text-center font-medium ${getCreditColor(t.contracts?.filter(c => c.status === 'overdue').length || 0)}`}>
+                                {(() => {
+                                  const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0;
+                                  if (oc === 0) return '良好';
+                                  if (oc <= 2) return '注意';
+                                  return '警示';
+                                })()}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {t.isBlacklisted ? <span className="text-xs px-2 py-0.5 bg-red-100 text-red-800 rounded">黑名單</span> : '-'}
+                              </td>
+                              <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => openTenantModal(t)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
+                                <button onClick={() => deleteTenant(t.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
+                              </td>
+                            </tr>
+                          );
+                        });
                       })()}
                     </tbody>
                   </table>
@@ -3959,6 +3987,44 @@ function RentalsPage() {
                 }}
                 className={`px-4 py-2 text-sm text-white rounded-lg ${confirmDialog.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}
               >確定</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL: 退租確認 ==================== */}
+      {terminateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setTerminateModal(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-5">
+              <h3 className="text-base font-semibold text-gray-800 mb-1">辦理退租</h3>
+              <p className="text-sm text-gray-500 mb-4">租客：{getTenantDisplayName(terminateModal.tenant)}</p>
+              <div className="mb-3">
+                <label className="text-sm text-gray-600 block mb-1">退租日期</label>
+                <input type="date" value={terminateModal.endDate}
+                  onChange={e => setTerminateModal(m => ({ ...m, endDate: e.target.value }))}
+                  className="border rounded px-3 py-1.5 text-sm w-full" />
+              </div>
+              <p className="text-sm text-gray-600 mb-2">選擇要終止的合約：</p>
+              <div className="space-y-2 mb-5">
+                {terminateModal.contracts.map(c => (
+                  <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-orange-50">
+                    <div>
+                      <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
+                      <span className="text-xs text-gray-500 ml-2">（{c.status === 'active' ? '生效中' : '待審核'}）</span>
+                      {c.endDate && <span className="text-xs text-gray-400 ml-2">到期 {c.endDate}</span>}
+                    </div>
+                    <button
+                      onClick={() => terminateContract(c.id, terminateModal.endDate)}
+                      className="text-xs px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 font-medium whitespace-nowrap">
+                      確認退租
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <button onClick={() => setTerminateModal(null)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+              </div>
             </div>
           </div>
         </div>
