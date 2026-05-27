@@ -3761,8 +3761,16 @@ function RentalsPage() {
                       ) : paymentRecords.length === 0 ? (
                         <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
                       ) : paymentRecords.map((p, idx) => (
-                        <tr key={p.id} className={`border-t hover:bg-gray-50 ${p.incomeIsLocked ? 'bg-amber-50/40' : idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                          <td className="px-3 py-2 text-center text-xs text-gray-500">{p.serialNo || '—'}</td>
+                        <tr key={p.id} className={`border-t ${p.incomeIsLocked ? 'bg-amber-50 border-l-4 border-l-amber-400 hover:bg-amber-100' : `hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}`}>
+                          <td className="px-3 py-2 text-center text-xs text-gray-500">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span>{p.serialNo || '—'}</span>
+                              {p.incomeIsLocked && (
+                                <span title={`已鎖帳${p.incomeLockedBy ? `（${p.incomeLockedBy}）` : ''}`}
+                                  className="text-amber-500 leading-none">🔒</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-2">
                             {p.category ? (
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${p.category === '公司' ? 'bg-blue-50 text-blue-700' : p.category === '湯三姐' ? 'bg-orange-50 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
