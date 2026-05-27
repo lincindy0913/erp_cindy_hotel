@@ -440,30 +440,40 @@ table th, table td {
 .page-bg-import { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
 
 
-/* Sticky table headers — compatible with overflow-x-auto wrappers.
-   overflow-x: auto implicitly sets overflow-y: auto, which makes the element
-   a scroll container that breaks position: sticky.  Setting overflow-y: clip
-   prevents vertical clipping AND does not create a sticky containing block,
-   so sticky th elements reference the viewport scroll instead of the wrapper.
-   overflow: clip is supported in Chrome 90+, Firefox 81+, Safari 16+. */
+/* ─── Sticky table headers ───────────────────────────────────────────────────
+   Two problems to solve:
+   1. overflow-x: auto on the wrapper implicitly sets overflow-y: auto, turning
+      the wrapper into a scroll container that traps position:sticky.
+      Fix: overflow-y: clip — does NOT create a sticky containing block.
+   2. When <th> is sticky it leaves the table background-painting cascade
+      (transparent th normally shows thead bg), so it needs its own bg color.
+      Fix: explicit background-color rules keyed on the thead's Tailwind class.
+   ─────────────────────────────────────────────────────────────────────────── */
 .overflow-x-auto {
-  overflow-y: clip;
-}
-table thead tr {
-  background: inherit;
+  overflow-y: clip; /* Chrome 90+, Firefox 81+, Safari 16+ */
 }
 table thead th {
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 10;
-  background: inherit;
+  /* fallback for any thead without an explicit color class */
+  background-color: #fff;
 }
+/* Match each thead background class so sticky th stays opaque */
+thead.bg-teal-50   th { background-color: #f0fdfa; }
+thead.bg-blue-50   th { background-color: #eff6ff; }
+thead.bg-green-50  th { background-color: #f0fdf4; }
+thead.bg-red-50    th { background-color: #fef2f2; }
+thead.bg-yellow-50 th { background-color: #fefce8; }
+thead.bg-orange-50 th { background-color: #fff7ed; }
+thead.bg-gray-50   th { background-color: #f9fafb; }
+thead.bg-purple-50 th { background-color: #faf5ff; }
+thead.bg-indigo-50 th { background-color: #eef2ff; }
+thead.bg-white     th { background-color: #ffffff; }
 
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; }
-  /* Disable sticky in print — no scrolling in print context */
-  table thead th {
-    position: static;
-  }
+  table thead th { position: static; }
 }
