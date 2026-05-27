@@ -112,6 +112,9 @@ function AssetsPageInner() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
 
+  // Sort state (序號 column)
+  const [sortDir, setSortDir] = useState('asc');
+
   // Asset modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -275,13 +278,21 @@ function AssetsPageInner() {
     });
   }, [mergedRows, searchText, filterStatus, filterCategory]);
 
+  // Sorted rows (by 序號/sortOrder)
+  const sortedRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      const va = a.sortOrder ?? Infinity;
+      const vb = b.sortOrder ?? Infinity;
+      return sortDir === 'asc' ? va - vb : vb - va;
+    });
+  }, [filteredRows, sortDir]);
+
   function exportCSV() {
-    const headers = ['物業', '棟別', '序號', '分類', '狀態', '租客', '月租金',
+    const headers = ['序號', '物業', '分類', '狀態', '租客', '月租金',
       `${year}年租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`];
-    const rows = filteredRows.map(p => [
-      p.name + (p.unitNo ? `(${p.unitNo})` : ''),
-      p.buildingName || '',
+    const rows = sortedRows.map(p => [
       p.sortOrder ?? '',
+      p.name + (p.unitNo ? `(${p.unitNo})` : ''),
       p.category || '',
       STATUS_LABELS[p.status] || p.status || '',
       p.currentTenantName || '',
@@ -633,7 +644,7 @@ function AssetsPageInner() {
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <input
               type="text"
-              placeholder="搜尋物業名稱、棟別、租客…"
+              placeholder="搜尋物業名稱、租客…"
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               className="border rounded px-3 py-1.5 text-sm w-56"
@@ -655,7 +666,7 @@ function AssetsPageInner() {
                 ✕ 清除篩選
               </button>
             )}
-            <span className="text-xs text-gray-400 ml-1">共 {filteredRows.length} 筆</span>
+            <span className="text-xs text-gray-400 ml-1">共 {sortedRows.length} 筆</span>
           </div>
         )}
 
@@ -665,11 +676,13 @@ function AssetsPageInner() {
         ) : (
           <div className="bg-white rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-teal-50 text-xs">
+              <thead className="bg-teal-50 text-xs sticky top-0 z-10">
                 <tr>
+                  <th className="text-center px-3 py-2 cursor-pointer select-none whitespace-nowrap"
+                    onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
+                    序號 {sortDir === 'asc' ? '↑' : '↓'}
+                  </th>
                   <th className="text-left px-3 py-2">物業</th>
-                  <th className="text-left px-3 py-2">棟別</th>
-                  <th className="text-center px-3 py-2">序號</th>
                   <th className="text-left px-3 py-2">分類</th>
                   <th className="text-left px-3 py-2">狀態</th>
                   <th className="text-left px-3 py-2">租客</th>
@@ -680,16 +693,15 @@ function AssetsPageInner() {
                   <th className="text-right px-3 py-2">{year} 年<br/>地價稅</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>維護費</th>
                   <th className="text-right px-3 py-2">{year} 年<br/>淨利</th>
-                  <th className="text-left px-3 py-2">資產主檔</th>
                   <th className="text-left px-3 py-2">標記</th>
                   {canEdit && <th className="text-center px-3 py-2 w-20">操作</th>}
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 16 : 15} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
+                {sortedRows.length === 0 ? (
+                  <tr><td colSpan={canEdit ? 14 : 13} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
                 ) : (
-                  filteredRows.map(p => {
+                  sortedRows.map(p => {
                     const isSelected = selected?.id === p.id;
                     const highlight = highlightPropertyId && p.id === parseInt(highlightPropertyId, 10);
                     const hasIncome = p.rentIncome > 0;
@@ -707,10 +719,6 @@ function AssetsPageInner() {
                           ${highlight ? 'bg-amber-50' : ''}
                           ${isSelected ? 'bg-teal-50/70' : ''}`}
                       >
-                        <td className="px-3 py-2 font-medium text-gray-800">
-                          {p.name}{p.unitNo ? <span className="text-gray-400 text-xs ml-1">({p.unitNo})</span> : ''}
-                        </td>
-                        <td className="px-3 py-2 text-gray-500 text-xs">{p.buildingName || '—'}</td>
                         <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
                           {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'sortOrder' ? (
                             <input
@@ -731,6 +739,10 @@ function AssetsPageInner() {
                               {p.sortOrder ?? <span className="text-gray-300">—</span>}
                             </span>
                           )}
+                        </td>
+                        <td className="px-3 py-2 font-medium text-gray-800">
+                          {p.name}{p.unitNo ? <span className="text-gray-400 text-xs ml-1">({p.unitNo})</span> : ''}
+                          {p.buildingName && <span className="ml-1 text-gray-400 text-xs font-normal">({p.buildingName})</span>}
                         </td>
                         <td className="px-3 py-2 text-xs" onClick={e => e.stopPropagation()}>
                           {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'category' ? (
@@ -828,15 +840,6 @@ function AssetsPageInner() {
                             : 'text-gray-300'}`}>
                           {hasIncome || hasTax || hasMaint ? fmtMoney(p.netProfit) : '—'}
                         </td>
-                        <td className="px-3 py-2 text-xs text-teal-700">
-                          {p.asset ? (
-                            <span>
-                              {p.asset.name}
-                              {p.asset.serialNo && <span className="ml-1 text-gray-400">#{p.asset.serialNo}</span>}
-                              {p.asset.category && <span className="ml-1 text-gray-400">({p.asset.category})</span>}
-                            </span>
-                          ) : <span className="text-gray-300">未建立</span>}
-                        </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
                             {p.publicInterestLandlord && (
@@ -880,7 +883,7 @@ function AssetsPageInner() {
               {mergedRows.length > 0 && (
                 <tfoot className="bg-teal-50 border-t-2 border-teal-200 text-xs font-semibold">
                   <tr>
-                    <td colSpan={7} className="px-3 py-2 text-gray-700">合計</td>
+                    <td colSpan={6} className="px-3 py-2 text-gray-700">合計</td>
                     <td className="px-3 py-2" />
                     <td className="px-3 py-2 text-right text-teal-700">{fmtMoney(summary.totalRent)}</td>
                     <td className="px-3 py-2 text-right text-amber-700">{fmtMoney(summary.totalHouse)}</td>
@@ -889,7 +892,7 @@ function AssetsPageInner() {
                     <td className={`px-3 py-2 text-right ${summary.totalNet >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                       {fmtMoney(summary.totalNet)}
                     </td>
-                    <td colSpan={canEdit ? 3 : 2} />
+                    <td colSpan={canEdit ? 2 : 1} />
                   </tr>
                 </tfoot>
               )}
@@ -897,9 +900,12 @@ function AssetsPageInner() {
           </div>
         )}
 
-        {/* Detail Panel */}
+        {/* Detail Panel Modal */}
         {selected && (
-          <div className="mt-5 border border-gray-200 rounded-lg bg-white overflow-hidden">
+          <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-40 py-6 px-4 overflow-y-auto"
+            onClick={() => setSelected(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
             {/* Panel Header */}
             <div className="bg-teal-50 border-b border-teal-100 px-4 py-3 flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -1014,7 +1020,7 @@ function AssetsPageInner() {
                       </thead>
                       <tbody>
                         {detailIncomes.map(inc => {
-                          const statusMap = { completed: { l: '已收', cls: 'bg-green-100 text-green-700' }, partial: { l: '部分收', cls: 'bg-yellow-100 text-yellow-700' }, pending: { l: '待收', cls: 'bg-gray-100 text-gray-500' } };
+                          const statusMap = { completed: { l: '已收', cls: 'bg-green-100 text-green-700' }, paid: { l: '已收', cls: 'bg-green-100 text-green-700' }, partial: { l: '部分收', cls: 'bg-yellow-100 text-yellow-700' }, pending: { l: '待收', cls: 'bg-gray-100 text-gray-500' } };
                           const st = statusMap[inc.status] || { l: inc.status, cls: 'bg-gray-100 text-gray-500' };
                           return (
                             <tr key={inc.id} className="border-t">
@@ -1174,6 +1180,7 @@ function AssetsPageInner() {
                 <MaintenanceList propertyId={selected.id} year={year} />
               </div>
             </div>
+          </div>
           </div>
         )}
       </div>
