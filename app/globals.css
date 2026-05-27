@@ -441,19 +441,13 @@ table th, table td {
 
 
 /* ─── Sticky table headers ───────────────────────────────────────────────────
-   Root cause: any ancestor with overflow ≠ visible (incl. overflow-x:auto)
-   becomes the sticky containing block.  sticky top:0 then references that
-   container — which never scrolls vertically — so headers scroll away.
-
-   Fix: give every table wrapper a max-height + overflow-y:auto so the scroll
-   happens INSIDE the wrapper.  sticky top:0 then references the wrapper top,
-   which stays in view as the user scrolls within the container.
-
-   :has(> table) targets only divs that directly wrap a <table>, leaving other
-   overflow-x-auto elements (tab nav, etc.) unaffected.
+   Use .tbl-wrap on any div directly wrapping a <table> to get:
+   - horizontal scroll if the table is wider than the viewport
+   - vertical scroll capped at 65vh so the header sticks at the container top
    ─────────────────────────────────────────────────────────────────────────── */
-.overflow-x-auto:has(> table),
-.overflow-hidden:has(> table) {
+.tbl-wrap,
+.overflow-x-auto:has(> table) {
+  overflow-x: auto;
   overflow-y: auto;
   max-height: 65vh;
 }
@@ -464,7 +458,7 @@ table thead th {
   position: sticky;
   top: 0;
   z-index: 10;
-  background-color: #fff; /* default fallback */
+  background-color: #fff;
 }
 thead.bg-teal-50   th { background-color: #f0fdfa; }
 thead.bg-blue-50   th { background-color: #eff6ff; }

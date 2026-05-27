@@ -768,7 +768,7 @@ export default function CashierPage() {
         </div>
 
         {/* Orders Table */}
-        {activeTab !== 'report' && <div className="bg-white rounded-lg shadow overflow-hidden">
+        {activeTab !== 'report' && <div className="bg-white rounded-lg shadow tbl-wrap">
           {loading ? (
             <div className="p-8 text-center text-gray-500">載入中...</div>
           ) : displayOrders.length === 0 ? (

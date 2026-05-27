@@ -851,7 +851,7 @@ export default function CashFlowPage() {
               return (
                 <div key={type} className="mb-6">
                   <h3 className="text-lg font-semibold mb-3 text-gray-700">{type}</h3>
-                  <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                  <div className="bg-white rounded-lg shadow-sm tbl-wrap">
                     <table className="w-full">
                       <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr>
@@ -1328,7 +1328,7 @@ export default function CashFlowPage() {
             )}
 
             {/* Transaction list */}
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm tbl-wrap">
               <table className="w-full">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
@@ -2479,7 +2479,7 @@ function CashCountTab({ accounts, warehouses }) {
       ) : cashCounts.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">尚無盤點紀錄</div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm tbl-wrap">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>

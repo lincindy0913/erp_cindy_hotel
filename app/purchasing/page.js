@@ -1673,7 +1673,7 @@ function PurchasingPageInner() {
         </div>
 
         {/* 列表 */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm tbl-wrap">
           <table className="w-full">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>

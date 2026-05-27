@@ -1370,7 +1370,7 @@ function ExpensesPageInner() {
                   尚無{mainTab === 'purchase' ? '進銷存' : '固定'}費用範本
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="tbl-wrap">
                 <table style={tableStyle}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>
@@ -2113,7 +2113,7 @@ function ExpensesPageInner() {
                   本月尚無{mainTab === 'purchase' ? '進銷存' : '固定'}費用記錄
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="tbl-wrap">
                 <table style={tableStyle}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr>

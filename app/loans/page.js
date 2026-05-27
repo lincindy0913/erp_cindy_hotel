@@ -1022,7 +1022,7 @@ export default function LoansPage() {
 
         {/* Loans Table */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
@@ -1260,7 +1260,7 @@ export default function LoansPage() {
 
         {/* Monthly Matrix */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
@@ -1499,7 +1499,7 @@ export default function LoansPage() {
 
         {/* Records Table */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
@@ -1636,7 +1636,7 @@ export default function LoansPage() {
           <div className="px-4 py-3 border-b bg-gray-50">
             <h3 className="font-medium text-gray-700">{reportYear}年{reportMonth}月 貸款還款明細</h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
@@ -1875,7 +1875,7 @@ export default function LoansPage() {
           <div className="px-4 py-3 border-b bg-gray-50">
             <h3 className="font-medium text-gray-700">{annualYear} 年度 — 各貸款年度費用匯總</h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>

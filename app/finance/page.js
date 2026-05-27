@@ -1621,7 +1621,7 @@ export default function PaymentPage() {
         </div>
 
         {/* 付款單列表 */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm tbl-wrap">
           {/* 批量操作列：草稿/已拒絕 有勾選時顯示 */}
           {selectedOrderIds.size > 0 && (activeTab === 'draft' || activeTab === 'rejected') && (
             <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between">
