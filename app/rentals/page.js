@@ -363,7 +363,11 @@ function RentalsPage() {
   useEffect(() => {
     if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'tenants') fetchTenants();
-    if (activeTab === 'contracts') fetchContracts();
+    if (activeTab === 'contracts') {
+      fetchContracts();
+      if (properties.length === 0) fetchProperties();
+      if (tenants.length === 0) fetchTenants();
+    }
     if (activeTab === 'taxes') { fetchTaxes(); if (properties.length === 0) fetchProperties(); }
     // 維護費頁面也需要物業清單供下拉選單使用
     if (activeTab === 'maintenance') {
@@ -1145,7 +1149,7 @@ function RentalsPage() {
     if (contract) {
       setEditingContract(contract);
       setContractForm({
-        propertyId: contract.propertyId || '', tenantId: contract.tenantId || '',
+        propertyId: String(contract.propertyId || ''), tenantId: String(contract.tenantId || ''),
         startDate: contract.startDate || '', endDate: contract.endDate || '',
         monthlyRent: contract.monthlyRent || '', paymentDueDay: contract.paymentDueDay || '5',
         depositAmount: contract.depositAmount || '', depositAccountId: contract.depositAccountId || '',
@@ -2373,7 +2377,11 @@ function RentalsPage() {
                           isBlacklisted: t => t.isBlacklisted ? 1 : 0,
                           propertyNames: t => (t.properties || []).map(p => p.name).join(', '),
                         };
-                        const sorted = sortRows(tenants, tenantSortKey, tenantSortDir, tenantAccessors);
+                        const _sorted = sortRows(tenants, tenantSortKey, tenantSortDir, tenantAccessors);
+                        const sorted = [
+                          ..._sorted.filter(t => (t.activeContractCount || 0) > 0 || ((t.activeContractCount || 0) === 0 && (t.terminatedContractCount || 0) === 0)),
+                          ..._sorted.filter(t => (t.activeContractCount || 0) === 0 && (t.terminatedContractCount || 0) > 0),
+                        ];
                         if (sorted.length === 0) return (
                           <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                         );
@@ -2406,7 +2414,7 @@ function RentalsPage() {
                                     退租
                                   </button>
                                 ) : (t.terminatedContractCount || 0) > 0 ? (
-                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded">已退 {t.terminatedContractCount} 筆</span>
+                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded">已退租</span>
                                 ) : (
                                   <span className="text-gray-300 text-xs">-</span>
                                 )}
