@@ -334,6 +334,8 @@ function EngineeringPageInner() {
   }
 
   const { sortKey: engMatKey, sortDir: engMatDir, toggleSort: engMatToggle } = useColumnSort('usedAt', 'desc');
+  const { sortKey: inputInvKey, sortDir: inputInvDir, toggleSort: inputInvToggle } = useColumnSort('invoiceDate', 'desc');
+  const { sortKey: outputInvKey, sortDir: outputInvDir, toggleSort: outputInvToggle } = useColumnSort('invoiceDate', 'desc');
   // 計算每個材料的已領用數量（依 projectId + contractId + description/productId 分組）
   const materialUsedMap = useMemo(() => {
     const map = {};
@@ -2332,26 +2334,32 @@ ${projectRows.map(p => `<tr>
           </div>
           <div className="bg-white rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-blue-50 text-xs">
+              <thead className="bg-blue-50 text-xs sticky top-0 z-10">
                 <tr>
-                  <th className="text-left px-3 py-2">工程案</th>
-                  <th className="text-left px-3 py-2">廠商</th>
-                  <th className="text-left px-3 py-2">發票號碼</th>
-                  <th className="text-left px-3 py-2">發票日期</th>
-                  <th className="text-right px-3 py-2">未稅金額</th>
-                  <th className="text-right px-3 py-2">稅額</th>
-                  <th className="text-right px-3 py-2">含稅金額</th>
-                  <th className="text-left px-3 py-2">類型</th>
-                  <th className="text-left px-3 py-2">狀態</th>
-                  <th className="text-left px-3 py-2">關聯合約</th>
-                  <th className="text-left px-3 py-2">備註</th>
-                  <th className="text-center px-3 py-2">操作</th>
+                  <SortableTh label="工程案" colKey="projectCode" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="廠商" colKey="supplierName" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="發票號碼" colKey="invoiceNo" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="發票日期" colKey="invoiceDate" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="未稅金額" colKey="amount" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" align="right" />
+                  <SortableTh label="稅額" colKey="taxAmount" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" align="right" />
+                  <SortableTh label="含稅金額" colKey="totalAmount" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" align="right" />
+                  <SortableTh label="類型" colKey="invoiceType" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="狀態" colKey="status" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
+                  <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">關聯合約</th>
+                  <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">備註</th>
+                  <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {inputInvoices.length === 0 ? (
                   <tr><td colSpan={12} className="text-center py-10 text-gray-400">尚無進項發票紀錄，請按「新增進項發票」開始登錄</td></tr>
-                ) : inputInvoices.map(inv => (
+                ) : sortRows(inputInvoices, inputInvKey, inputInvDir, {
+                    projectCode: inv => `${inv.project?.code || ''} ${inv.project?.name || ''}`,
+                    supplierName: inv => inv.supplierName || inv.contract?.supplier?.name || '',
+                    amount: inv => Number(inv.amount || 0),
+                    taxAmount: inv => Number(inv.taxAmount || 0),
+                    totalAmount: inv => Number(inv.totalAmount || 0),
+                  }).map(inv => (
                   <tr key={inv.id} className="border-t hover:bg-gray-50">
                     <td className="px-3 py-2 text-xs text-gray-600">{inv.project?.code} {inv.project?.name}</td>
                     <td className="px-3 py-2 font-medium">{inv.supplierName || inv.contract?.supplier?.name || <span className="text-gray-300">—</span>}</td>
@@ -2411,25 +2419,31 @@ ${projectRows.map(p => `<tr>
           </div>
           <div className="bg-white rounded-lg shadow overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-green-50 text-xs">
+              <thead className="bg-green-50 text-xs sticky top-0 z-10">
                 <tr>
-                  <th className="text-left px-3 py-2">工程案</th>
-                  <th className="text-left px-3 py-2">業主名稱</th>
-                  <th className="text-left px-3 py-2">發票號碼</th>
-                  <th className="text-left px-3 py-2">發票日期</th>
-                  <th className="text-right px-3 py-2">未稅金額</th>
-                  <th className="text-right px-3 py-2">稅額</th>
-                  <th className="text-right px-3 py-2">含稅金額</th>
-                  <th className="text-left px-3 py-2">類型</th>
-                  <th className="text-left px-3 py-2">狀態</th>
-                  <th className="text-left px-3 py-2">備註</th>
-                  <th className="text-center px-3 py-2">操作</th>
+                  <SortableTh label="工程案" colKey="projectCode" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="業主名稱" colKey="clientName" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="發票號碼" colKey="invoiceNo" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="發票日期" colKey="invoiceDate" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="未稅金額" colKey="amount" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" align="right" />
+                  <SortableTh label="稅額" colKey="taxAmount" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" align="right" />
+                  <SortableTh label="含稅金額" colKey="totalAmount" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" align="right" />
+                  <SortableTh label="類型" colKey="invoiceType" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
+                  <SortableTh label="狀態" colKey="status" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
+                  <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">備註</th>
+                  <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {outputInvoices.length === 0 ? (
                   <tr><td colSpan={11} className="text-center py-10 text-gray-400">尚無銷項發票紀錄，請按「新增銷項發票」開始登錄</td></tr>
-                ) : outputInvoices.map(inv => (
+                ) : sortRows(outputInvoices, outputInvKey, outputInvDir, {
+                    projectCode: inv => `${inv.project?.code || ''} ${inv.project?.name || ''}`,
+                    clientName: inv => inv.clientName || inv.project?.clientName || '',
+                    amount: inv => Number(inv.amount || 0),
+                    taxAmount: inv => Number(inv.taxAmount || 0),
+                    totalAmount: inv => Number(inv.totalAmount || 0),
+                  }).map(inv => (
                   <tr key={inv.id} className="border-t hover:bg-gray-50">
                     <td className="px-3 py-2 text-xs text-gray-600">{inv.project?.code} {inv.project?.name}</td>
                     <td className="px-3 py-2 font-medium">{inv.clientName || inv.project?.clientName || <span className="text-gray-300">—</span>}</td>
