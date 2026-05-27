@@ -441,26 +441,30 @@ table th, table td {
 
 
 /* ─── Sticky table headers ───────────────────────────────────────────────────
-   Two problems to solve:
-   1. overflow-x: auto on the wrapper implicitly sets overflow-y: auto, turning
-      the wrapper into a scroll container that traps position:sticky.
-      Fix: overflow-y: clip — does NOT create a sticky containing block.
-   2. When <th> is sticky it leaves the table background-painting cascade
-      (transparent th normally shows thead bg), so it needs its own bg color.
-      Fix: explicit background-color rules keyed on the thead's Tailwind class.
+   Root cause: any ancestor with overflow ≠ visible (incl. overflow-x:auto)
+   becomes the sticky containing block.  sticky top:0 then references that
+   container — which never scrolls vertically — so headers scroll away.
+
+   Fix: give every table wrapper a max-height + overflow-y:auto so the scroll
+   happens INSIDE the wrapper.  sticky top:0 then references the wrapper top,
+   which stays in view as the user scrolls within the container.
+
+   :has(> table) targets only divs that directly wrap a <table>, leaving other
+   overflow-x-auto elements (tab nav, etc.) unaffected.
    ─────────────────────────────────────────────────────────────────────────── */
-.overflow-x-auto {
-  overflow-y: clip; /* Chrome 90+, Firefox 81+, Safari 16+ */
+.overflow-x-auto:has(> table) {
+  overflow-y: auto;
+  max-height: 65vh;
 }
+/* When <th> is sticky it leaves the table's background-painting cascade and
+   needs its own explicit background-color to remain opaque. */
 table thead th {
   position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 10;
-  /* fallback for any thead without an explicit color class */
-  background-color: #fff;
+  background-color: #fff; /* default fallback */
 }
-/* Match each thead background class so sticky th stays opaque */
 thead.bg-teal-50   th { background-color: #f0fdfa; }
 thead.bg-blue-50   th { background-color: #eff6ff; }
 thead.bg-green-50  th { background-color: #f0fdf4; }
