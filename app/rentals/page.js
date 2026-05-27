@@ -114,6 +114,8 @@ function RentalsPage() {
   const [incomesHasMore, setIncomesHasMore] = useState(false);
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
   const { sortKey: tenantSortKey, sortDir: tenantSortDir, toggleSort: tenantToggleSort } = useColumnSort('tenantCode', 'asc');
+  const { sortKey: contractSortKey, sortDir: contractSortDir, toggleSort: contractToggleSort } = useColumnSort('sortOrder', 'asc');
+  const { sortKey: paymentSortKey, sortDir: paymentSortDir, toggleSort: paymentToggleSort } = useColumnSort('paymentDate', 'desc');
 
   // ── 物業欄位 inline edit (分類/序號) ─────────────────────────
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
@@ -2499,28 +2501,37 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
-                        <th className="text-center px-2 py-2 w-16">序號</th>
-                        <th className="text-center px-2 py-2 w-20">分類</th>
-                        <th className="text-left px-3 py-2">合約編號</th>
-                        <th className="text-left px-3 py-2">物業</th>
-                        <th className="text-left px-3 py-2">租客</th>
-                        <th className="text-left px-3 py-2">期間</th>
-                        <th className="text-right px-3 py-2">月租</th>
-                        <th className="text-right px-3 py-2">押金</th>
-                        <th className="text-center px-3 py-2">押金狀態</th>
-                        <th className="text-center px-3 py-2">狀態</th>
-                        <th className="text-center px-3 py-2">操作</th>
+                        <th className="text-center px-2 py-2 w-16 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
+                        <SortableTh label="分類" colKey="category" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-2 py-2 w-20" align="center" />
+                        <SortableTh label="合約編號" colKey="contractNo" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
+                        <SortableTh label="物業" colKey="propertyName" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
+                        <SortableTh label="租客" colKey="tenantName" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
+                        <SortableTh label="起始日" colKey="startDate" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
+                        <SortableTh label="到期日" colKey="endDate" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" />
+                        <SortableTh label="月租" colKey="monthlyRent" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" align="right" />
+                        <SortableTh label="押金" colKey="depositAmount" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" align="right" />
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">押金狀態</th>
+                        <SortableTh label="狀態" colKey="status" sortKey={contractSortKey} sortDir={contractSortDir} onSort={contractToggleSort} className="px-3 py-2" align="center" />
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {contracts.length === 0 ? (
-                        <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                        <tr><td colSpan={12} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                       ) : (() => {
-                        const sortedContracts = [...contracts].sort((a, b) => {
-                          const ao = a.property?.sortOrder ?? 999999;
-                          const bo = b.property?.sortOrder ?? 999999;
-                          return ao !== bo ? ao - bo : a.id - b.id;
-                        });
+                        const contractAccessors = {
+                          sortOrder: c => c.property?.sortOrder ?? 999999,
+                          category: c => c.property?.category || '',
+                          monthlyRent: c => Number(c.monthlyRent || 0),
+                          depositAmount: c => Number(c.depositAmount || 0),
+                        };
+                        const sortedContracts = contractSortKey === 'sortOrder'
+                          ? [...contracts].sort((a, b) => {
+                              const ao = a.property?.sortOrder ?? 999999;
+                              const bo = b.property?.sortOrder ?? 999999;
+                              return ao !== bo ? ao - bo : a.id - b.id;
+                            })
+                          : sortRows(contracts, contractSortKey, contractSortDir, contractAccessors);
                         return sortedContracts.map((c, rowIdx) => {
                         const today = new Date().toISOString().split('T')[0];
                         const daysToExpire = Math.ceil((new Date(c.endDate) - new Date()) / (1000 * 60 * 60 * 24));
@@ -2557,9 +2568,10 @@ function RentalsPage() {
                             </td>
                             <td className="px-3 py-2">{c.propertyName}</td>
                             <td className="px-3 py-2">{c.tenantName}</td>
+                            <td className="px-3 py-2 text-xs">{c.startDate}</td>
                             <td className="px-3 py-2 text-xs">
-                              {c.startDate} ~ {c.endDate}
-                              {isExpiring && <span className="ml-1 text-yellow-600 font-medium">({daysToExpire}天到期)</span>}
+                              {c.endDate}
+                              {isExpiring && <span className="ml-1 text-yellow-600 font-medium">({daysToExpire}天)</span>}
                             </td>
                             <td className="px-3 py-2 text-right">${fmt(c.monthlyRent)}</td>
                             <td className="px-3 py-2 text-right">${fmt(c.depositAmount)}</td>
@@ -3768,19 +3780,19 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
-                        <th className="text-center px-3 py-2 font-medium text-gray-700">序號</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">分類</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款日期</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">物業</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">租客</th>
-                        <th className="text-center px-3 py-2 font-medium text-gray-700">租期</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-700">應收金額</th>
-                        <th className="text-right px-3 py-2 font-medium text-gray-700 text-teal-800">實收金額</th>
-                        <th className="text-center px-3 py-2 font-medium text-gray-700">次序</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">付款方式</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">收款帳戶</th>
-                        <th className="text-left px-3 py-2 font-medium text-gray-700">匯款人/備註</th>
-                        <th className="text-center px-3 py-2 font-medium text-gray-700">操作</th>
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">序號</th>
+                        <SortableTh label="分類" colKey="category" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
+                        <SortableTh label="收款日期" colKey="paymentDate" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
+                        <SortableTh label="物業" colKey="propertyName" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
+                        <SortableTh label="租客" colKey="tenantName" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
+                        <SortableTh label="租期" colKey="incomeYear" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="center" />
+                        <SortableTh label="應收金額" colKey="expectedAmount" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" align="right" />
+                        <SortableTh label="實收金額" colKey="amount" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2 text-teal-800" align="right" />
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">次序</th>
+                        <SortableTh label="付款方式" colKey="paymentMethod" sortKey={paymentSortKey} sortDir={paymentSortDir} onSort={paymentToggleSort} className="px-3 py-2" />
+                        <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">收款帳戶</th>
+                        <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">匯款人/備註</th>
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3788,7 +3800,11 @@ function RentalsPage() {
                         <tr><td colSpan={13} className="text-center py-8 text-gray-400">載入中…</td></tr>
                       ) : paymentRecords.length === 0 ? (
                         <tr><td colSpan={13} className="text-center py-8 text-gray-400">暫無付款紀錄</td></tr>
-                      ) : paymentRecords.map((p, idx) => (
+                      ) : sortRows(paymentRecords, paymentSortKey, paymentSortDir, {
+                          expectedAmount: p => Number(p.expectedAmount || 0),
+                          amount: p => Number(p.amount || 0),
+                          incomeYear: p => p.incomeYear * 100 + (p.incomeMonth || 0),
+                        }).map((p, idx) => (
                         <tr key={p.id} className={`border-t ${p.incomeIsLocked ? 'bg-amber-50 border-l-4 border-l-amber-400 hover:bg-amber-100' : `hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/50'}`}`}>
                           <td className="px-3 py-2 text-center text-xs text-gray-500">
                             <div className="flex flex-col items-center gap-0.5">

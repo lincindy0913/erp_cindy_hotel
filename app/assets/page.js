@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const ASSET_TYPE_OPTIONS = [
   { value: 'BUILDING', label: '建物' },
@@ -112,8 +113,8 @@ function AssetsPageInner() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
 
-  // Sort state (序號 column)
-  const [sortDir, setSortDir] = useState('asc');
+  // Sort state
+  const { sortKey: assetSortKey, sortDir: assetSortDir, toggleSort: assetToggleSort } = useColumnSort('sortOrder', 'asc');
 
   // Asset modal
   const [showModal, setShowModal] = useState(false);
@@ -278,14 +279,23 @@ function AssetsPageInner() {
     });
   }, [mergedRows, searchText, filterStatus, filterCategory]);
 
-  // Sorted rows (by 序號/sortOrder)
+  // Sorted rows
   const sortedRows = useMemo(() => {
-    return [...filteredRows].sort((a, b) => {
-      const va = a.sortOrder ?? Infinity;
-      const vb = b.sortOrder ?? Infinity;
-      return sortDir === 'asc' ? va - vb : vb - va;
-    });
-  }, [filteredRows, sortDir]);
+    const accessors = {
+      sortOrder: r => r.sortOrder ?? Infinity,
+      name: r => r.name || '',
+      category: r => r.category || '',
+      status: r => r.status || '',
+      tenantName: r => r.currentTenant || '',
+      monthlyRent: r => Number(r.monthlyRent || 0),
+      rentIncome: r => Number(r.rentIncome || 0),
+      houseTax: r => Number(r.houseTax || 0),
+      landTax: r => Number(r.landTax || 0),
+      maintenanceAmount: r => Number(r.maintenanceAmount || 0),
+      netProfit: r => Number(r.rentIncome || 0) - Number(r.houseTax || 0) - Number(r.landTax || 0) - Number(r.maintenanceAmount || 0),
+    };
+    return sortRows(filteredRows, assetSortKey, assetSortDir, accessors);
+  }, [filteredRows, assetSortKey, assetSortDir]);
 
   function exportCSV() {
     const headers = ['序號', '物業', '分類', '狀態', '租客', '月租金',
@@ -678,23 +688,20 @@ function AssetsPageInner() {
             <table className="w-full text-sm">
               <thead className="bg-teal-50 text-xs sticky top-0 z-10">
                 <tr>
-                  <th className="text-center px-3 py-2 cursor-pointer select-none whitespace-nowrap"
-                    onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
-                    序號 {sortDir === 'asc' ? '↑' : '↓'}
-                  </th>
-                  <th className="text-left px-3 py-2">物業</th>
-                  <th className="text-left px-3 py-2">分類</th>
-                  <th className="text-left px-3 py-2">狀態</th>
-                  <th className="text-left px-3 py-2">租客</th>
-                  <th className="text-right px-3 py-2">月租金</th>
-                  <th className="text-center px-3 py-2">本月<br/>收款</th>
-                  <th className="text-right px-3 py-2">{year} 年<br/>租金+水電實收</th>
-                  <th className="text-right px-3 py-2">{year} 年<br/>房屋稅</th>
-                  <th className="text-right px-3 py-2">{year} 年<br/>地價稅</th>
-                  <th className="text-right px-3 py-2">{year} 年<br/>維護費</th>
-                  <th className="text-right px-3 py-2">{year} 年<br/>淨利</th>
-                  <th className="text-left px-3 py-2">標記</th>
-                  {canEdit && <th className="text-center px-3 py-2 w-20">操作</th>}
+                  <SortableTh label="序號" colKey="sortOrder" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="center" />
+                  <SortableTh label="物業" colKey="name" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
+                  <SortableTh label="分類" colKey="category" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
+                  <SortableTh label="狀態" colKey="status" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
+                  <SortableTh label="租客" colKey="tenantName" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
+                  <SortableTh label="月租金" colKey="monthlyRent" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <th className="text-center px-3 py-2 whitespace-nowrap">本月<br/>收款</th>
+                  <SortableTh label={`${year}年 租金+水電實收`} colKey="rentIncome" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label={`${year}年 房屋稅`} colKey="houseTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label={`${year}年 地價稅`} colKey="landTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label={`${year}年 維護費`} colKey="maintenanceAmount" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label={`${year}年 淨利`} colKey="netProfit" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <th className="text-left px-3 py-2 whitespace-nowrap">標記</th>
+                  {canEdit && <th className="text-center px-3 py-2 w-20 whitespace-nowrap">操作</th>}
                 </tr>
               </thead>
               <tbody>
