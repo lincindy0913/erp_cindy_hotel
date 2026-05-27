@@ -220,7 +220,15 @@ function RentalsPage() {
   // Modal states
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
-  const [tenantForm, setTenantForm] = useState({ tenantType: 'individual', fullName: '', companyName: '', phone: '', email: '', address: '', note: '' });
+  const [tenantForm, setTenantForm] = useState({
+    tenantCode: '', tenantType: 'individual',
+    fullName: '', companyName: '', taxId: '', representativeName: '',
+    idNumber: '', birthDate: '',
+    phone: '', phone2: '', email: '', address: '',
+    emergencyContact: '', emergencyPhone: '',
+    bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
+    isBlacklisted: false, blacklistReason: '', creditNote: '', note: ''
+  });
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
@@ -1024,13 +1032,30 @@ function RentalsPage() {
     if (tenant) {
       setEditingTenant(tenant);
       setTenantForm({
-        tenantType: tenant.tenantType, fullName: tenant.fullName || '', companyName: tenant.companyName || '',
-        phone: tenant.phone || '', email: tenant.email || '', address: tenant.address || '',
-        note: tenant.note || '', isBlacklisted: tenant.isBlacklisted || false, blacklistReason: tenant.blacklistReason || ''
+        tenantCode: tenant.tenantCode || '',
+        tenantType: tenant.tenantType || 'individual',
+        fullName: tenant.fullName || '', companyName: tenant.companyName || '',
+        taxId: tenant.taxId || '', representativeName: tenant.representativeName || '',
+        idNumber: tenant.idNumber || '', birthDate: tenant.birthDate || '',
+        phone: tenant.phone || '', phone2: tenant.phone2 || '',
+        email: tenant.email || '', address: tenant.address || '',
+        emergencyContact: tenant.emergencyContact || '', emergencyPhone: tenant.emergencyPhone || '',
+        bankCode: tenant.bankCode || '', bankBranch: tenant.bankBranch || '',
+        bankAccountName: tenant.bankAccountName || '', bankAccountNumber: tenant.bankAccountNumber || '',
+        isBlacklisted: tenant.isBlacklisted || false, blacklistReason: tenant.blacklistReason || '',
+        creditNote: tenant.creditNote || '', note: tenant.note || ''
       });
     } else {
       setEditingTenant(null);
-      setTenantForm({ tenantType: 'individual', fullName: '', companyName: '', phone: '', email: '', address: '', note: '', isBlacklisted: false, blacklistReason: '' });
+      setTenantForm({
+        tenantCode: '', tenantType: 'individual',
+        fullName: '', companyName: '', taxId: '', representativeName: '',
+        idNumber: '', birthDate: '',
+        phone: '', phone2: '', email: '', address: '',
+        emergencyContact: '', emergencyPhone: '',
+        bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
+        isBlacklisted: false, blacklistReason: '', creditNote: '', note: ''
+      });
     }
     setShowTenantModal(true);
   }
@@ -2378,15 +2403,18 @@ function RentalsPage() {
                           propertyNames: t => (t.properties || []).map(p => p.name).join(', '),
                         };
                         const _sorted = sortRows(tenants, tenantSortKey, tenantSortDir, tenantAccessors);
+                        const isRetired = t => (t.activeContractCount || 0) === 0 &&
+                          ((t.contracts || []).some(c => c.status === 'terminated' || c.status === 'expired') || (t.terminatedContractCount || 0) > 0);
                         const sorted = [
-                          ..._sorted.filter(t => (t.activeContractCount || 0) > 0 || ((t.activeContractCount || 0) === 0 && (t.terminatedContractCount || 0) === 0)),
-                          ..._sorted.filter(t => (t.activeContractCount || 0) === 0 && (t.terminatedContractCount || 0) > 0),
+                          ..._sorted.filter(t => !isRetired(t)),
+                          ..._sorted.filter(t => isRetired(t)),
                         ];
                         if (sorted.length === 0) return (
                           <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                         );
                         return sorted.map(t => {
                           const activeContracts = (t.contracts || []).filter(c => c.status === 'active' || c.status === 'pending');
+                          const retiredContracts = (t.contracts || []).filter(c => c.status === 'terminated' || c.status === 'expired');
                           return (
                             <tr key={t.id}
                               onClick={() => openTenantModal(t)}
@@ -2413,7 +2441,7 @@ function RentalsPage() {
                                     className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-300 rounded hover:bg-orange-100 font-medium">
                                     退租
                                   </button>
-                                ) : (t.terminatedContractCount || 0) > 0 ? (
+                                ) : retiredContracts.length > 0 ? (
                                   <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded">已退租</span>
                                 ) : (
                                   <span className="text-gray-300 text-xs">-</span>
@@ -4041,10 +4069,20 @@ function RentalsPage() {
       {/* ==================== MODAL: TENANT ==================== */}
       {showTenantModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTenantModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6">
               <h3 className="text-lg font-bold text-gray-800 mb-4">{editingTenant ? '編輯租客' : '新增租客'}</h3>
-              <div className="space-y-3">
+
+              {/* 基本資料 */}
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">基本資料</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {editingTenant && (
+                  <div>
+                    <label className="text-sm text-gray-600">代碼</label>
+                    <input type="text" value={tenantForm.tenantCode} onChange={e => setTenantForm(f => ({ ...f, tenantCode: e.target.value }))}
+                      className="w-full border rounded px-3 py-2 text-sm font-mono" />
+                  </div>
+                )}
                 <div>
                   <label className="text-sm text-gray-600">類型 *</label>
                   <select value={tenantForm.tenantType} onChange={e => setTenantForm(f => ({ ...f, tenantType: e.target.value }))}
@@ -4054,21 +4092,55 @@ function RentalsPage() {
                   </select>
                 </div>
                 {tenantForm.tenantType === 'individual' ? (
-                  <div>
-                    <label className="text-sm text-gray-600">姓名 *</label>
-                    <input type="text" value={tenantForm.fullName} onChange={e => setTenantForm(f => ({ ...f, fullName: e.target.value }))}
-                      className="w-full border rounded px-3 py-2 text-sm" />
-                  </div>
+                  <>
+                    <div>
+                      <label className="text-sm text-gray-600">姓名 *</label>
+                      <input type="text" value={tenantForm.fullName} onChange={e => setTenantForm(f => ({ ...f, fullName: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600">身分證號</label>
+                      <input type="text" value={tenantForm.idNumber} onChange={e => setTenantForm(f => ({ ...f, idNumber: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600">生日</label>
+                      <input type="date" value={tenantForm.birthDate} onChange={e => setTenantForm(f => ({ ...f, birthDate: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" />
+                    </div>
+                  </>
                 ) : (
-                  <div>
-                    <label className="text-sm text-gray-600">公司名稱 *</label>
-                    <input type="text" value={tenantForm.companyName} onChange={e => setTenantForm(f => ({ ...f, companyName: e.target.value }))}
-                      className="w-full border rounded px-3 py-2 text-sm" />
-                  </div>
+                  <>
+                    <div>
+                      <label className="text-sm text-gray-600">公司名稱 *</label>
+                      <input type="text" value={tenantForm.companyName} onChange={e => setTenantForm(f => ({ ...f, companyName: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600">統一編號</label>
+                      <input type="text" value={tenantForm.taxId} onChange={e => setTenantForm(f => ({ ...f, taxId: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600">負責人</label>
+                      <input type="text" value={tenantForm.representativeName} onChange={e => setTenantForm(f => ({ ...f, representativeName: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" />
+                    </div>
+                  </>
                 )}
+              </div>
+
+              {/* 聯絡資料 */}
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">聯絡資料</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
                   <label className="text-sm text-gray-600">電話 *</label>
                   <input type="text" value={tenantForm.phone} onChange={e => setTenantForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">電話 2</label>
+                  <input type="text" value={tenantForm.phone2} onChange={e => setTenantForm(f => ({ ...f, phone2: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
@@ -4076,33 +4148,77 @@ function RentalsPage() {
                   <input type="email" value={tenantForm.email} onChange={e => setTenantForm(f => ({ ...f, email: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
-                <div>
+                <div className="col-span-2">
                   <label className="text-sm text-gray-600">地址</label>
                   <input type="text" value={tenantForm.address} onChange={e => setTenantForm(f => ({ ...f, address: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
-                {editingTenant && (
-                  <div className="border-t pt-3 mt-3">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={tenantForm.isBlacklisted || false}
-                        onChange={e => setTenantForm(f => ({ ...f, isBlacklisted: e.target.checked }))} />
-                      列入黑名單
-                    </label>
-                    {tenantForm.isBlacklisted && (
-                      <div className="mt-2">
-                        <label className="text-sm text-gray-600">黑名單原因 *</label>
-                        <textarea value={tenantForm.blacklistReason || ''} onChange={e => setTenantForm(f => ({ ...f, blacklistReason: e.target.value }))}
-                          className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div>
+                  <label className="text-sm text-gray-600">緊急聯絡人</label>
+                  <input type="text" value={tenantForm.emergencyContact} onChange={e => setTenantForm(f => ({ ...f, emergencyContact: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">緊急聯絡電話</label>
+                  <input type="text" value={tenantForm.emergencyPhone} onChange={e => setTenantForm(f => ({ ...f, emergencyPhone: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* 銀行資料 */}
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">銀行資料</p>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="text-sm text-gray-600">銀行代碼</label>
+                  <input type="text" value={tenantForm.bankCode} onChange={e => setTenantForm(f => ({ ...f, bankCode: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">分行</label>
+                  <input type="text" value={tenantForm.bankBranch} onChange={e => setTenantForm(f => ({ ...f, bankBranch: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">帳戶名稱</label>
+                  <input type="text" value={tenantForm.bankAccountName} onChange={e => setTenantForm(f => ({ ...f, bankAccountName: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">帳號</label>
+                  <input type="text" value={tenantForm.bankAccountNumber} onChange={e => setTenantForm(f => ({ ...f, bankAccountNumber: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* 信用與備註 */}
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">信用與備註</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm text-gray-600">信用備註</label>
+                  <textarea value={tenantForm.creditNote} onChange={e => setTenantForm(f => ({ ...f, creditNote: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" rows={2} />
+                </div>
                 <div>
                   <label className="text-sm text-gray-600">備註</label>
                   <textarea value={tenantForm.note} onChange={e => setTenantForm(f => ({ ...f, note: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" rows={2} />
                 </div>
+                <div className="border-t pt-3">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={tenantForm.isBlacklisted || false}
+                      onChange={e => setTenantForm(f => ({ ...f, isBlacklisted: e.target.checked }))} />
+                    列入黑名單
+                  </label>
+                  {tenantForm.isBlacklisted && (
+                    <div className="mt-2">
+                      <label className="text-sm text-gray-600">黑名單原因</label>
+                      <textarea value={tenantForm.blacklistReason || ''} onChange={e => setTenantForm(f => ({ ...f, blacklistReason: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm" rows={2} />
+                    </div>
+                  )}
+                </div>
               </div>
+
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowTenantModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
                 <button onClick={saveTenant} disabled={tenantSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{tenantSaving ? '儲存中…' : '儲存'}</button>
