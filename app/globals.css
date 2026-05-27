@@ -440,7 +440,24 @@ table th, table td {
 .page-bg-import { background: linear-gradient(180deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.15) 100%); }
 
 
+/* Sticky table headers — th sticky works even inside overflow-x-auto containers.
+   The chain: thead gets bg from Tailwind class → tr inherits → th inherits,
+   so th has an opaque background when pinned to top. */
+table thead tr {
+  background: inherit;
+}
+table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: inherit;
+}
+
 @media print {
   .no-print { display: none !important; }
   body { background: #fff; }
+  /* Disable sticky in print — no scrolling in print context */
+  table thead th {
+    position: static;
+  }
 }
