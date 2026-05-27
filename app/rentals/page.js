@@ -3390,7 +3390,7 @@ function RentalsPage() {
                     <table className="w-full text-sm border-collapse">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
-                          <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
+                          <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
                           <th className="text-left px-3 py-2 border border-gray-200">房號</th>
                           {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                             <th key={m} className="text-right px-2 py-2 border border-gray-200 whitespace-nowrap">{incomeReportData.year || reportYear}/{m}</th>
@@ -3486,7 +3486,7 @@ function RentalsPage() {
                     <table className="w-full text-sm border-collapse">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
-                          <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
+                          <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
                           <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                           <th className="text-right px-3 py-2 border border-gray-200">租金+水電實收</th>
                           <th className="text-right px-3 py-2 border border-gray-200">維修金額</th>
@@ -3553,7 +3553,7 @@ function RentalsPage() {
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-red-50 sticky top-0 z-10">
                           <tr>
-                            <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
+                            <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                             <th className="text-left px-3 py-2 border border-gray-200">租客</th>
                             <th className="text-left px-3 py-2 border border-gray-200">聯絡電話</th>
@@ -3647,7 +3647,7 @@ function RentalsPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
-                          <th className="text-center px-2 py-2 w-8 text-gray-500">#</th>
+                          <th className="text-center px-2 py-2 w-8 text-gray-500">序號</th>
                           <th className="text-left px-3 py-2">合約號</th>
                           <th className="text-left px-3 py-2">物業</th>
                           <th className="text-left px-3 py-2">租客</th>
@@ -3747,7 +3747,7 @@ function RentalsPage() {
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-teal-50 sticky top-0 z-10">
                           <tr>
-                            <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">#</th>
+                            <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                             {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                               <th key={m} className="text-center px-2 py-2 border border-gray-200 text-xs w-10">{m}月</th>
