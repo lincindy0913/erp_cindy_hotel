@@ -1582,7 +1582,7 @@ export default function CashFlowPage() {
                 </div>
 
                 {/* Grouped table */}
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="bg-white rounded-lg shadow-sm tbl-wrap">
                   <table className="w-full">
                     <thead className="bg-emerald-50 sticky top-0 z-10">
                       <tr>
@@ -1933,7 +1933,7 @@ export default function CashFlowPage() {
                   <p className="text-sm text-gray-500 mb-4">
                     基於過去30日平均淨流量（{formatMoney(summaryData.avgDailyNet)}/日）進行線性預測
                   </p>
-                  <div className="overflow-hidden">
+                  <div style={{ overflow: 'clip' }}>
                     {/* Visual bar chart */}
                     <div className="space-y-1 mb-6">
                       {(summaryData.forecast || []).filter((_, i) => i % 3 === 0 || i === summaryData.forecast.length - 1).map((f, idx) => {
@@ -1958,7 +1958,7 @@ export default function CashFlowPage() {
                     </div>
 
                     {/* Forecast table */}
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="border rounded-lg tbl-wrap">
                       <table className="w-full">
                         <thead className="bg-gray-50 sticky top-0 z-10">
                           <tr>
@@ -2119,7 +2119,7 @@ export default function CashFlowPage() {
             )}
 
             {/* 科目列表 */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm" style={{ overflow: 'clip' }}>
               <div className="px-4 py-3 border-b flex justify-between items-center bg-gray-50">
                 <h3 className="font-semibold text-sm text-gray-700">現金流科目列表（{categories.length} 筆）</h3>
                 <button onClick={() => { setShowCategoryForm(v => !v); }}

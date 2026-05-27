@@ -1021,7 +1021,7 @@ export default function LoansPage() {
         </div>
 
         {/* Loans Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm" style={{ overflow: 'clip' }}>
           <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
@@ -1259,7 +1259,7 @@ export default function LoansPage() {
         )}
 
         {/* Monthly Matrix */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm" style={{ overflow: 'clip' }}>
           <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
@@ -1498,7 +1498,7 @@ export default function LoansPage() {
         </div>
 
         {/* Records Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm" style={{ overflow: 'clip' }}>
           <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
@@ -1632,7 +1632,7 @@ export default function LoansPage() {
         </div>
 
         {/* Report Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm" style={{ overflow: 'clip' }}>
           <div className="px-4 py-3 border-b bg-gray-50">
             <h3 className="font-medium text-gray-700">{reportYear}年{reportMonth}月 貸款還款明細</h3>
           </div>
@@ -1799,7 +1799,7 @@ export default function LoansPage() {
         )}
 
         {/* Monthly interest pivot table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+        <div className="bg-white rounded-xl shadow-sm mb-6" style={{ overflow: 'clip' }}>
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
             <h3 className="font-medium text-gray-700">{annualYear} 年度 — 各貸款月度利息費用明細</h3>
             <span className="text-xs text-gray-400">單位: 元</span>
@@ -1871,7 +1871,7 @@ export default function LoansPage() {
         </div>
 
         {/* Per-loan annual summary table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm" style={{ overflow: 'clip' }}>
           <div className="px-4 py-3 border-b bg-gray-50">
             <h3 className="font-medium text-gray-700">{annualYear} 年度 — 各貸款年度費用匯總</h3>
           </div>
