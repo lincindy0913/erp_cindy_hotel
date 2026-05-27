@@ -4219,6 +4219,53 @@ function RentalsPage() {
                 </div>
               </div>
 
+              {/* 合約 / 物業 — 僅編輯時顯示 */}
+              {editingTenant && (() => {
+                const tenantContracts = editingTenant.contracts || [];
+                if (tenantContracts.length === 0) return null;
+                return (
+                  <div className="mt-5 border-t pt-4">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">合約 / 物業</p>
+                    <div className="space-y-2">
+                      {tenantContracts.map(c => {
+                        const isActive = c.status === 'active' || c.status === 'pending';
+                        const isTerminated = c.status === 'terminated' || c.status === 'expired';
+                        const statusLabel = { active: '生效中', pending: '待審核', terminated: '已終止', expired: '已到期' }[c.status] || c.status;
+                        const statusColor = isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200';
+                        return (
+                          <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-gray-50 gap-2">
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
+                              {c.contractNo && <span className="text-xs text-gray-400 ml-2">{c.contractNo}</span>}
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                <span className={`text-xs px-2 py-0.5 border rounded ${statusColor}`}>{statusLabel}</span>
+                                {c.startDate && <span className="text-xs text-gray-400">{c.startDate}{c.endDate ? ` ~ ${c.endDate}` : ''}</span>}
+                              </div>
+                            </div>
+                            {isActive ? (
+                              <button
+                                onClick={() => {
+                                  setShowTenantModal(false);
+                                  setTerminateModal({
+                                    tenant: editingTenant,
+                                    contracts: [c],
+                                    endDate: new Date().toISOString().split('T')[0]
+                                  });
+                                }}
+                                className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-300 rounded hover:bg-orange-100 font-medium whitespace-nowrap shrink-0">
+                                退租
+                              </button>
+                            ) : isTerminated ? (
+                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded shrink-0">已退租</span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowTenantModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
                 <button onClick={saveTenant} disabled={tenantSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{tenantSaving ? '儲存中…' : '儲存'}</button>
