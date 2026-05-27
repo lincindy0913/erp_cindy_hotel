@@ -443,13 +443,12 @@ table th, table td {
 /* ─── Sticky table headers ───────────────────────────────────────────────────
    Use .tbl-wrap on any div directly wrapping a <table> to get:
    - horizontal scroll if the table is wider than the viewport
-   - vertical scroll capped at 65vh so the header sticks at the container top
+   - vertical scroll capped at calc(100vh - 220px) so the header sticks
    ─────────────────────────────────────────────────────────────────────────── */
-.tbl-wrap,
-.overflow-x-auto:has(> table) {
+.tbl-wrap {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 65vh;
+  max-height: calc(100vh - 220px);
 }
 /* When <th> is sticky it leaves the table's background-painting cascade and
    needs its own explicit background-color to remain opaque. */
