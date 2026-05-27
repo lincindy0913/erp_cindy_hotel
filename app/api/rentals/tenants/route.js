@@ -40,7 +40,8 @@ export async function GET(request) {
         { fullName: { contains: search, mode: 'insensitive' } },
         { companyName: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search } },
-        { tenantCode: { contains: search, mode: 'insensitive' } }
+        { tenantCode: { contains: search, mode: 'insensitive' } },
+        { contracts: { some: { property: { name: { contains: search, mode: 'insensitive' } } } } },
       ];
     }
 
@@ -48,18 +49,39 @@ export async function GET(request) {
       where,
       include: {
         contracts: {
-          select: { id: true, status: true }
+          select: {
+            id: true,
+            status: true,
+            endDate: true,
+            property: { select: { id: true, name: true } }
+          }
         }
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
 
-    const result = tenants.map(t => ({
-      ...t,
-      activeContractCount: t.contracts.filter(c => c.status === 'active').length,
-      totalContractCount: t.contracts.length
-    }));
+    const result = tenants.map(t => {
+      const activeContracts = t.contracts.filter(c => c.status === 'active');
+      const terminatedContracts = t.contracts.filter(c => c.status === 'terminated' || c.status === 'expired');
+      // Deduplicate properties from active contracts
+      const propertyMap = new Map();
+      for (const c of t.contracts) {
+        if (c.property && (c.status === 'active' || c.status === 'pending')) {
+          propertyMap.set(c.property.id, c.property.name);
+        }
+      }
+      return {
+        ...t,
+        activeContractCount: activeContracts.length,
+        totalContractCount: t.contracts.length,
+        terminatedContractCount: terminatedContracts.length,
+        properties: Array.from(propertyMap.entries()).map(([id, name]) => ({ id, name })),
+        lastTerminatedDate: terminatedContracts.length > 0
+          ? terminatedContracts.sort((a, b) => (b.endDate || '').localeCompare(a.endDate || ''))[0].endDate
+          : null,
+      };
+    });
 
     return NextResponse.json(result);
   } catch (error) {

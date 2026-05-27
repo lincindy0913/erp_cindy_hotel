@@ -113,6 +113,7 @@ function RentalsPage() {
   const [incomes, setIncomes] = useState([]);
   const [incomesHasMore, setIncomesHasMore] = useState(false);
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
+  const { sortKey: tenantSortKey, sortDir: tenantSortDir, toggleSort: tenantToggleSort } = useColumnSort('tenantCode', 'asc');
 
   // ── 物業欄位 inline edit (分類/序號) ─────────────────────────
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
@@ -2320,11 +2321,11 @@ function RentalsPage() {
             {/* ==================== TAB: TENANTS ==================== */}
             {activeTab === 'tenants' && (
               <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <input type="text" placeholder="搜尋姓名/公司/電話/代碼..." value={tenantSearch}
+                <div className="flex items-center gap-3 mb-4 flex-wrap">
+                  <input type="text" placeholder="搜尋姓名/公司/電話/代碼/物業..." value={tenantSearch}
                     onChange={e => setTenantSearch(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && fetchTenants()}
-                    className="border rounded px-3 py-1.5 text-sm w-64" />
+                    className="border rounded px-3 py-1.5 text-sm w-72" />
                   <button onClick={fetchTenants} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">搜尋</button>
                   <button onClick={() => openTenantModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增租客
@@ -2335,43 +2336,70 @@ function RentalsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
-                        <th className="text-left px-3 py-2">代碼</th>
-                        <th className="text-left px-3 py-2">類型</th>
-                        <th className="text-left px-3 py-2">姓名/公司</th>
-                        <th className="text-left px-3 py-2">電話</th>
-                        <th className="text-center px-3 py-2">有效合約</th>
-                        <th className="text-center px-3 py-2">信用評等</th>
-                        <th className="text-center px-3 py-2">黑名單</th>
-                        <th className="text-center px-3 py-2">操作</th>
+                        <SortableTh label="代碼" colKey="tenantCode" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
+                        <SortableTh label="類型" colKey="tenantType" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
+                        <SortableTh label="姓名/公司" colKey="displayName" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
+                        <SortableTh label="電話" colKey="phone" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
+                        <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">物業</th>
+                        <SortableTh label="有效合約" colKey="activeContractCount" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
+                        <SortableTh label="退租" colKey="terminatedContractCount" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
+                        <SortableTh label="信用評等" colKey="creditScore" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
+                        <SortableTh label="黑名單" colKey="isBlacklisted" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {tenants.length === 0 ? (
-                        <tr><td colSpan={8} className="text-center py-8 text-gray-400">暫無資料</td></tr>
-                      ) : tenants.map(t => (
-                        <tr key={t.id} className={`border-t hover:bg-gray-50 ${t.isBlacklisted ? 'bg-red-50' : ''}`}>
-                          <td className="px-3 py-2 font-mono text-xs">{t.tenantCode}</td>
-                          <td className="px-3 py-2">{t.tenantType === 'company' ? '公司' : '個人'}</td>
-                          <td className="px-3 py-2 font-medium">{getTenantDisplayName(t)}</td>
-                          <td className="px-3 py-2">{t.phone}</td>
-                          <td className="px-3 py-2 text-center">{t.activeContractCount}</td>
-                          <td className={`px-3 py-2 text-center font-medium ${getCreditColor(t.contracts?.filter(c => c.status === 'overdue').length || 0)}`}>
-                            {(() => {
-                              const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0;
-                              if (oc === 0) return '良好';
-                              if (oc <= 2) return '注意';
-                              return '警示';
-                            })()}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            {t.isBlacklisted ? <span className="text-xs px-2 py-0.5 bg-red-100 text-red-800 rounded">黑名單</span> : '-'}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <button onClick={() => openTenantModal(t)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
-                            <button onClick={() => deleteTenant(t.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
-                          </td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        const tenantAccessors = {
+                          displayName: t => getTenantDisplayName(t),
+                          creditScore: t => { const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0; return oc === 0 ? 0 : oc <= 2 ? 1 : 2; },
+                          isBlacklisted: t => t.isBlacklisted ? 1 : 0,
+                        };
+                        const sorted = sortRows(tenants, tenantSortKey, tenantSortDir, tenantAccessors);
+                        if (sorted.length === 0) return (
+                          <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                        );
+                        return sorted.map(t => (
+                          <tr key={t.id} className={`border-t hover:bg-gray-50 ${t.isBlacklisted ? 'bg-red-50' : ''}`}>
+                            <td className="px-3 py-2 font-mono text-xs">{t.tenantCode}</td>
+                            <td className="px-3 py-2">{t.tenantType === 'company' ? '公司' : '個人'}</td>
+                            <td className="px-3 py-2 font-medium">{getTenantDisplayName(t)}</td>
+                            <td className="px-3 py-2">{t.phone}</td>
+                            <td className="px-3 py-2">
+                              {t.properties && t.properties.length > 0
+                                ? <div className="flex flex-wrap gap-1">
+                                    {t.properties.map(p => (
+                                      <span key={p.id} className="text-xs px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded">{p.name}</span>
+                                    ))}
+                                  </div>
+                                : <span className="text-gray-400 text-xs">-</span>
+                              }
+                            </td>
+                            <td className="px-3 py-2 text-center">{t.activeContractCount}</td>
+                            <td className="px-3 py-2 text-center">
+                              {(t.terminatedContractCount || 0) > 0
+                                ? <span className="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded">{t.terminatedContractCount} 筆</span>
+                                : <span className="text-gray-400 text-xs">-</span>
+                              }
+                            </td>
+                            <td className={`px-3 py-2 text-center font-medium ${getCreditColor(t.contracts?.filter(c => c.status === 'overdue').length || 0)}`}>
+                              {(() => {
+                                const oc = t.contracts?.filter(c => c.status === 'overdue').length || 0;
+                                if (oc === 0) return '良好';
+                                if (oc <= 2) return '注意';
+                                return '警示';
+                              })()}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {t.isBlacklisted ? <span className="text-xs px-2 py-0.5 bg-red-100 text-red-800 rounded">黑名單</span> : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <button onClick={() => openTenantModal(t)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
+                              <button onClick={() => deleteTenant(t.id)} className="text-red-600 hover:text-red-800 text-xs">刪除</button>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
