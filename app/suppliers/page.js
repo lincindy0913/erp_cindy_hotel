@@ -638,7 +638,7 @@ export default function SuppliersPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  付款條件（<a href="/settings#finance" className="text-blue-600 hover:underline text-xs">設定</a>）
+                  付款條件（<Link href="/settings#finance" className="text-blue-600 hover:underline text-xs">設定</Link>）
                 </label>
                 <select value={formData.paymentTerms}
                   onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}

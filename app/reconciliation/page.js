@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { sortRows, SortableTh } from '@/components/SortableTh';
@@ -255,9 +256,9 @@ function ReconciliationPageInner() {
             <p className="text-xs text-amber-600 mt-0.5">建議前往 PMS 收入頁面的「信用卡對帳」tab 操作，功能更完整且同步。此處保留為舊版備查介面。</p>
           </div>
         </div>
-        <a href="/pms-income?tab=creditCardStatement" className="shrink-0 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-amber-600">
+        <Link href="/pms-income?tab=creditCardStatement" className="shrink-0 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-amber-600">
           前往新版 →
-        </a>
+        </Link>
       </div>
 
       {/* Inner sub-tabs */}
@@ -1809,8 +1810,8 @@ function ReconciliationPageInner() {
                     className="px-4 py-1.5 bg-violet-600 text-white text-sm rounded hover:bg-violet-700 disabled:opacity-50">
                     {rentalReconLoading ? '載入中…' : '查詢'}
                   </button>
-                  <a href="/rentals?tab=cashier" target="_blank"
-                    className="text-xs text-violet-600 underline ml-2">前往收租工作台</a>
+                  <Link href="/rentals?tab=cashier" target="_blank"
+                    className="text-xs text-violet-600 underline ml-2">前往收租工作台</Link>
                 </div>
               </div>
 

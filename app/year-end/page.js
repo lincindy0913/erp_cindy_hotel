@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 
 const MONTH_NAMES = [
@@ -854,7 +855,7 @@ export default function YearEndPage() {
                         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
                           <p className="text-sm font-medium text-red-800">警告：近7天內無全量備份</p>
                           <p className="text-xs text-red-600 mt-1">建議在執行年度結轉前進行 Tier 1 全量備份</p>
-                          <a href="/admin/backup" className="text-xs text-blue-600 hover:underline mt-2 inline-block">前往備份管理 →</a>
+                          <Link href="/admin/backup" className="text-xs text-blue-600 hover:underline mt-2 inline-block">前往備份管理 →</Link>
                         </div>
                       )}
 

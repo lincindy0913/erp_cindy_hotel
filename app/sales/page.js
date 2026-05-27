@@ -1613,9 +1613,9 @@ function InvoicePageInner() {
                 <>此處登記「業主發票私帳」月結金額（每月依發票抬頭填寫一次）。</>
               )}
               發票抬頭請至
-              <a href="/settings?tab=invoice-titles" className="text-green-700 hover:underline mx-1">
+              <Link href="/settings?tab=invoice-titles" className="text-green-700 hover:underline mx-1">
                 設定 → 發票抬頭
-              </a>
+              </Link>
               維護。
             </p>
             <OwnerExpensesPanel

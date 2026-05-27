@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 
 const PRIORITY_COLORS = {
@@ -377,9 +378,9 @@ export default function ProfileNotificationsPage() {
 
             {/* Back link */}
             <div className="text-center">
-              <a href="/" className="text-sm text-gray-400 hover:text-gray-600 underline">
+              <Link href="/" className="text-sm text-gray-400 hover:text-gray-600 underline">
                 ← 返回儀表板
-              </a>
+              </Link>
             </div>
           </div>
         )}

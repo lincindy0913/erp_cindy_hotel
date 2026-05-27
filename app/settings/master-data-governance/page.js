@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 
 const TABS = [
@@ -165,7 +166,7 @@ export default function MasterDataGovernancePage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <a href="/settings" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">← 系統設定</a>
+              <Link href="/settings" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">← 系統設定</Link>
               <span className="text-gray-300">/</span>
               <h1 className="text-xl font-bold text-gray-900">主檔治理 — 資料一致性檢查</h1>
             </div>

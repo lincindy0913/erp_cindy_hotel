@@ -1120,7 +1120,7 @@ function PurchasingPageInner() {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    館別 *（<a href="/settings#warehouses" className="text-xs text-blue-600 hover:underline">設定</a>）
+                    館別 *（<Link href="/settings#warehouses" className="text-xs text-blue-600 hover:underline">設定</Link>）
                   </label>
                   <select
                     required
@@ -2443,7 +2443,7 @@ function PurchasingPageInner() {
                           <label className="block text-sm font-medium text-gray-700 mb-1">
                             發票抬頭
                             {invoiceTitles.length === 0 && (
-                              <a href="/settings" className="text-xs text-blue-600 hover:underline ml-1">（請先至設定新增）</a>
+                              <Link href="/settings" className="text-xs text-blue-600 hover:underline ml-1">（請先至設定新增）</Link>
                             )}
                           </label>
                           <select

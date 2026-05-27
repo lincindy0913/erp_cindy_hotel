@@ -16,18 +16,11 @@ function readPackageVersion() {
 export async function GET() {
   try {
     const pkgVersion = readPackageVersion();
-    const commit =
-      process.env.RAILWAY_GIT_COMMIT_SHA ||
-      process.env.RAILWAY_GIT_COMMIT ||
-      process.env.GIT_COMMIT ||
-      null;
 
     return NextResponse.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version || pkgVersion || '1.0.0',
-      gitCommit: commit,
-      service: process.env.RAILWAY_SERVICE_NAME || null,
       environment: process.env.NODE_ENV || 'development',
     });
   } catch (error) {

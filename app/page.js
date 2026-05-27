@@ -447,7 +447,7 @@ export default function Dashboard() {
               <KpiCard
                 label="庫存警示"
                 value={loading ? '—' : `${kpis.lowInventoryCount || 0} 項`}
-                sub={<a href="/inventory" className="text-blue-600 hover:underline">查看詳情 →</a>}
+                sub={<Link href="/inventory" className="text-blue-600 hover:underline">查看詳情 →</Link>}
                 icon="⚠️"
                 colorClass={(kpis.lowInventoryCount || 0) > 0 ? 'text-red-600' : 'text-gray-400'}
                 borderClass="border-l-4 border-l-red-400"
@@ -455,7 +455,7 @@ export default function Dashboard() {
               <KpiCard
                 label="待付款單"
                 value={loading ? '—' : `${pendingPayments} 筆`}
-                sub={<a href="/finance" className="text-blue-600 hover:underline">前往處理 →</a>}
+                sub={<Link href="/finance" className="text-blue-600 hover:underline">前往處理 →</Link>}
                 icon="💳"
                 colorClass={pendingPayments > 0 ? 'text-orange-600' : 'text-gray-400'}
                 borderClass="border-l-4 border-l-orange-400"
@@ -463,7 +463,7 @@ export default function Dashboard() {
               <KpiCard
                 label="逾期支票"
                 value={loading ? '—' : `${dashboardData.riskAlerts?.overdueChecks || 0} 張`}
-                sub={<a href="/checks" className="text-blue-600 hover:underline">前往處理 →</a>}
+                sub={<Link href="/checks" className="text-blue-600 hover:underline">前往處理 →</Link>}
                 icon="📋"
                 colorClass={(dashboardData.riskAlerts?.overdueChecks || 0) > 0 ? 'text-yellow-700' : 'text-gray-400'}
                 borderClass="border-l-4 border-l-yellow-400"
@@ -471,7 +471,7 @@ export default function Dashboard() {
               <KpiCard
                 label="即將到期貸款"
                 value={loading ? '—' : `${dashboardData.riskAlerts?.expiringLoans || 0} 筆`}
-                sub={<a href="/loans" className="text-blue-600 hover:underline">查看詳情 →</a>}
+                sub={<Link href="/loans" className="text-blue-600 hover:underline">查看詳情 →</Link>}
                 icon="🏦"
                 colorClass={(dashboardData.riskAlerts?.expiringLoans || 0) > 0 ? 'text-purple-700' : 'text-gray-400'}
                 borderClass="border-l-4 border-l-purple-400"

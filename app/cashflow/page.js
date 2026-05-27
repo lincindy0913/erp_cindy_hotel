@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Fragment, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
@@ -685,7 +686,7 @@ export default function CashFlowPage() {
               <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-semibold text-indigo-800">PMS 本月收款概況（{pmsDashboard.yearMonth}・{pmsDashboard.count} 筆訂房）</h4>
-                  <a href="/pms-income?tab=reservations" className="text-xs text-indigo-600 hover:underline">查看明細 →</a>
+                  <Link href="/pms-income?tab=reservations" className="text-xs text-indigo-600 hover:underline">查看明細 →</Link>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                   {[

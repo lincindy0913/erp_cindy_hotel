@@ -330,9 +330,10 @@ export async function DELETE(request, { params }) {
 
   try {
     const id = parseInt(params.id);
-    const record = await prisma.bnbBookingRecord.findUnique({ where: { id }, select: { importMonth: true, warehouse: true } });
+    const record = await prisma.bnbBookingRecord.findUnique({ where: { id }, select: { importMonth: true, warehouse: true, paymentLocked: true } });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆紀錄', 404);
     await assertBnbMonthOpen(record.importMonth, record.warehouse);
+    if (record.paymentLocked) return createErrorResponse('FORBIDDEN', '此筆已鎖帳，無法刪除，請先解除鎖帳', 403);
 
     await prisma.bnbBookingRecord.delete({ where: { id } });
     return NextResponse.json({ ok: true });
