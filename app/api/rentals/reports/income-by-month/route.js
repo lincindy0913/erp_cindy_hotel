@@ -154,10 +154,30 @@ export async function GET(request) {
       row.total += amount;
     }
 
+    // 查詢每個物業目前是否有生效或待審核合約，以標記已退租
+    const activeContractMap = new Map();
+    if (propertyIds.size > 0) {
+      const activeContracts = await prisma.rentalContract.findMany({
+        where: {
+          propertyId: { in: Array.from(propertyIds) },
+          status: { in: ['active', 'pending'] }
+        },
+        select: { propertyId: true }
+      });
+      for (const c of activeContracts) activeContractMap.set(c.propertyId, true);
+    }
+
     const rows = Array.from(byProperty.values())
-      .map(r => ({ ...r, months: r.months, monthsExpected: r.monthsExpected, monthStatus: r.monthStatus }))
+      .map(r => ({
+        ...r,
+        months: r.months, monthsExpected: r.monthsExpected, monthStatus: r.monthStatus,
+        isTerminated: !activeContractMap.has(r.propertyId)
+      }))
       .filter(r => r.total > 0 || r.tenantName)
-      .sort((a, b) => (a.propertyLabel || '').localeCompare(b.propertyLabel || ''));
+      .sort((a, b) => {
+        if (a.isTerminated !== b.isTerminated) return a.isTerminated ? 1 : -1;
+        return (a.propertyLabel || '').localeCompare(b.propertyLabel || '');
+      });
 
     return NextResponse.json({ year: displayYear, rows });
   } catch (error) {

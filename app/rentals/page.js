@@ -3402,10 +3402,18 @@ function RentalsPage() {
                         {incomeReportData.rows.length === 0 ? (
                           <tr><td colSpan={15} className="px-3 py-4 text-gray-500 text-center">尚無資料</td></tr>
                         ) : (
-                          incomeReportData.rows.map((r, idx) => (
-                            <tr key={r.propertyId} className="hover:bg-gray-50">
+                          (() => {
+                            const sorted = [
+                              ...incomeReportData.rows.filter(r => !r.isTerminated),
+                              ...incomeReportData.rows.filter(r => r.isTerminated),
+                            ];
+                            return sorted.map((r, idx) => (
+                            <tr key={r.propertyId} className={r.isTerminated ? 'bg-gray-50/60 opacity-70' : 'hover:bg-gray-50'}>
                               <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
-                              <td className="px-3 py-2 border border-gray-200">{r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}</td>
+                              <td className="px-3 py-2 border border-gray-200">
+                                {r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}
+                                {r.isTerminated && <span className="ml-2 text-xs text-gray-400">（已退租）</span>}
+                              </td>
                               {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
                                 const st = r.monthStatus?.[m] || 'empty';
                                 const actual = r.months[m] || 0;
@@ -3436,7 +3444,8 @@ function RentalsPage() {
                               })}
                               <td className="text-right px-3 py-2 border border-gray-200 font-semibold">{fmt(r.total)}</td>
                             </tr>
-                          ))
+                          ));
+                          })()}
                         )}
                       </tbody>
                     </table>
