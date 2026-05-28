@@ -2710,9 +2710,10 @@ model EngineeringProject {
   departmentRef Department? @relation(fields: [departmentId], references: [id])
   contracts      EngineeringContract[]
   materials      EngineeringMaterial[]
-  incomes        EngineeringIncome[]
-  inputInvoices  EngineeringInputInvoice[]
-  outputInvoices EngineeringOutputInvoice[]
+  incomes             EngineeringIncome[]
+  inputInvoices       EngineeringInputInvoice[]
+  outputInvoices      EngineeringOutputInvoice[]
+  companyInputInvoices CompanyInputInvoice[]
 
   @@index([status])
   @@index([warehouse])
@@ -3510,4 +3511,56 @@ model BackupVerification {
 
   @@index([backupId])
   @@map("backup_verifications")
+}
+
+// ============================================
+// 慶豐營造公司費用 (company expenses)
+// ============================================
+
+model CompanyExpense {
+  id          Int      @id @default(autoincrement())
+  expenseDate String   @map("expense_date") @db.VarChar(20)
+  invoiceNo   String?  @map("invoice_no") @db.VarChar(100)
+  invoiceType String?  @map("invoice_type") @db.VarChar(30)
+  vendorTaxId String?  @map("vendor_tax_id") @db.VarChar(20)
+  vendorName  String?  @map("vendor_name") @db.VarChar(255)
+  itemName    String?  @map("item_name") @db.VarChar(500)
+  amount      Decimal  @default(0) @db.Decimal(14, 2)
+  taxAmount   Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  otherAmount Decimal  @default(0) @map("other_amount") @db.Decimal(14, 2)
+  totalAmount Decimal  @default(0) @map("total_amount") @db.Decimal(14, 2)
+  period      String?  @db.VarChar(20)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([expenseDate])
+  @@index([period])
+  @@map("company_expenses")
+}
+
+model CompanyInputInvoice {
+  id          Int      @id @default(autoincrement())
+  invoiceDate String   @map("invoice_date") @db.VarChar(20)
+  invoiceNo   String?  @map("invoice_no") @db.VarChar(100)
+  vendorTaxId String?  @map("vendor_tax_id") @db.VarChar(20)
+  vendorName  String?  @map("vendor_name") @db.VarChar(255)
+  materialType String? @map("material_type") @db.VarChar(100)
+  itemName    String?  @map("item_name") @db.VarChar(500)
+  amount      Decimal  @default(0) @db.Decimal(14, 2)
+  taxAmount   Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount Decimal  @default(0) @map("total_amount") @db.Decimal(14, 2)
+  projectId   Int?     @map("project_id")
+  location    String?  @db.VarChar(255)
+  period      String?  @db.VarChar(20)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceDate])
+  @@index([projectId])
+  @@index([period])
+  @@map("company_input_invoices")
 }
