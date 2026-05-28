@@ -242,7 +242,7 @@ function RentalsPage() {
     isBlacklisted: false, blacklistReason: '', creditNote: '', note: '',
     leaseStatus: 'active',
     // 初始合約欄位（僅新增時使用）
-    initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '',
+    initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '', initPaymentDueDay: '5',
   });
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
@@ -1129,6 +1129,7 @@ function RentalsPage() {
 
   // ==================== TENANT CRUD ====================
   function openTenantModal(tenant = null) {
+    setContractPropertyChanges({});
     if (tenant) {
       setEditingTenant(tenant);
       setTenantForm({
@@ -1145,7 +1146,7 @@ function RentalsPage() {
         isBlacklisted: tenant.isBlacklisted || false, blacklistReason: tenant.blacklistReason || '',
         creditNote: tenant.creditNote || '', note: tenant.note || '',
         leaseStatus: tenant.leaseStatus || 'active',
-        initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '',
+        initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '', initPaymentDueDay: '5',
       });
       const initChanges = {};
       (tenant.contracts || []).forEach(c => {
@@ -1155,7 +1156,6 @@ function RentalsPage() {
       setInitContractErrors(new Set());
     } else {
       setEditingTenant(null);
-      setContractPropertyChanges({});
       setInitContractErrors(new Set());
       setTenantForm({
         tenantCode: '', tenantType: 'individual',
@@ -1166,7 +1166,7 @@ function RentalsPage() {
         bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
         isBlacklisted: false, blacklistReason: '', creditNote: '', note: '',
         leaseStatus: 'active',
-        initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '',
+        initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '', initPaymentDueDay: '5',
       });
     }
     setShowTenantModal(true);
@@ -1221,7 +1221,7 @@ function RentalsPage() {
             startDate: sd,
             endDate: ed,
             monthlyRent: parseFloat(tenantForm.initMonthlyRent),
-            paymentDueDay: 5,
+            paymentDueDay: parseInt(tenantForm.initPaymentDueDay) || 5,
             rentAccountId: parseInt(tenantForm.initRentAccountId),
             status: 'pending',
           })
@@ -1290,6 +1290,7 @@ function RentalsPage() {
   }
 
   async function terminateContract(contractId, endDate) {
+    const tenantId = terminateModal?.tenant?.id;
     try {
       const res = await fetch(`/api/rentals/contracts/${contractId}`, {
         method: 'PUT',
@@ -1300,6 +1301,13 @@ function RentalsPage() {
       showToast('合約已終止（退租完成）', 'success');
       setTerminateModal(null);
       fetchTenants();
+      if (contracts.length > 0) fetchContracts();
+      if (properties.length > 0) fetchProperties();
+      // 退租完成後自動重開租客 modal，方便繼續新增合約
+      if (tenantId) {
+        const freshRes = await fetch(`/api/rentals/tenants/${tenantId}`);
+        if (freshRes.ok) openTenantModal(await freshRes.json());
+      }
     } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
   }
 
@@ -4652,9 +4660,11 @@ function RentalsPage() {
                                     className="text-sm border rounded px-2 py-1 w-full max-w-xs"
                                   >
                                     <option value="">-- 選擇物業 --</option>
-                                    {properties.map(p => (
-                                      <option key={p.id} value={String(p.id)}>{p.name}</option>
-                                    ))}
+                                    {properties.map(p => {
+                                      const isOccupied = (p.currentContractStatus === 'active' || p.currentContractStatus === 'pending')
+                                        && String(p.id) !== String(c.property?.id);
+                                      return <option key={p.id} value={String(p.id)} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
+                                    })}
                                   </select>
                                 ) : (
                                   <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
@@ -4698,7 +4708,10 @@ function RentalsPage() {
                               onChange={e => setTenantForm(f => ({ ...f, initPropertyId: e.target.value }))}
                               className="w-full border rounded px-3 py-2 text-sm">
                               <option value="">-- 不設定 --</option>
-                              {properties.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                              {properties.map(p => {
+                                const isOccupied = p.currentContractStatus === 'active' || p.currentContractStatus === 'pending';
+                                return <option key={p.id} value={String(p.id)} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
+                              })}
                             </select>
                           </div>
                           {tenantForm.initPropertyId && (
@@ -4708,6 +4721,12 @@ function RentalsPage() {
                                 <input type="number" min="0" value={tenantForm.initMonthlyRent}
                                   onChange={e => { setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initMonthlyRent'); return n; }); }}
                                   className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initMonthlyRent') ? 'border-red-400 bg-red-50' : ''}`} placeholder="0" />
+                              </div>
+                              <div>
+                                <label className="text-sm text-gray-600">每月應繳日</label>
+                                <input type="number" min="1" max="28" value={tenantForm.initPaymentDueDay}
+                                  onChange={e => setTenantForm(f => ({ ...f, initPaymentDueDay: e.target.value }))}
+                                  className="w-full border rounded px-3 py-2 text-sm" />
                               </div>
                               <div>
                                 <label className={`text-sm ${initContractErrors.has('initStartDate') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>開始日期 *</label>
@@ -4750,7 +4769,10 @@ function RentalsPage() {
                         onChange={e => setTenantForm(f => ({ ...f, initPropertyId: e.target.value }))}
                         className="w-full border rounded px-3 py-2 text-sm">
                         <option value="">-- 不設定 --</option>
-                        {properties.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                        {properties.map(p => {
+                          const isOccupied = p.currentContractStatus === 'active' || p.currentContractStatus === 'pending';
+                          return <option key={p.id} value={String(p.id)} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
+                        })}
                       </select>
                     </div>
                     {tenantForm.initPropertyId && (
@@ -4760,6 +4782,12 @@ function RentalsPage() {
                           <input type="number" min="0" value={tenantForm.initMonthlyRent}
                             onChange={e => { setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initMonthlyRent'); return n; }); }}
                             className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initMonthlyRent') ? 'border-red-400 bg-red-50' : ''}`} placeholder="0" />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gray-600">每月應繳日</label>
+                          <input type="number" min="1" max="28" value={tenantForm.initPaymentDueDay}
+                            onChange={e => setTenantForm(f => ({ ...f, initPaymentDueDay: e.target.value }))}
+                            className="w-full border rounded px-3 py-2 text-sm" />
                         </div>
                         <div>
                           <label className={`text-sm ${initContractErrors.has('initStartDate') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>開始日期 *</label>
@@ -5158,7 +5186,11 @@ function RentalsPage() {
                   }}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">選擇物業</option>
-                    {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {properties.map(p => {
+                      const isOccupied = (p.currentContractStatus === 'active' || p.currentContractStatus === 'pending')
+                        && String(p.id) !== String(contractForm.propertyId);
+                      return <option key={p.id} value={p.id} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
+                    })}
                   </select>
                 </div>
                 <div>
