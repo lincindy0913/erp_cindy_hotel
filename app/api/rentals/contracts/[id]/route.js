@@ -151,6 +151,8 @@ export async function PUT(request, { params }) {
 
     // Standard update
     const updateData = {};
+    if (body.propertyId !== undefined) updateData.propertyId = parseInt(body.propertyId);
+    if (body.tenantId !== undefined) updateData.tenantId = parseInt(body.tenantId);
     if (body.startDate !== undefined) updateData.startDate = body.startDate;
     if (body.endDate !== undefined) updateData.endDate = body.endDate;
     if (body.monthlyRent !== undefined) updateData.monthlyRent = parseFloat(body.monthlyRent);
