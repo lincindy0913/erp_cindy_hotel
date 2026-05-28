@@ -1,5 +1,6 @@
 import './globals.css'
 import { Providers } from './providers'
+import StickyTableHeaders from '@/components/StickyTableHeaders'
 
 export const metadata = {
   title: '進銷存暨營運決策分析系統',
@@ -13,7 +14,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="zh-TW">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <StickyTableHeaders />
+          {children}
+        </Providers>
       </body>
     </html>
   )
