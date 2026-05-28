@@ -2636,7 +2636,16 @@ function RentalsPage() {
                                 const lastReminder = reminderSentDates[c.id];
                                 return (
                                   <tr key={c.id} className="border-b border-yellow-100">
-                                    <td className="py-1.5 text-gray-800">{c.propertyName}</td>
+                                    <td className="py-1.5">
+                                      <button
+                                        onClick={async () => {
+                                          if (tenants.length === 0) await fetchTenants();
+                                          openContractModal(c);
+                                        }}
+                                        className="text-teal-700 hover:text-teal-900 hover:underline font-medium text-left">
+                                        {c.propertyName}
+                                      </button>
+                                    </td>
                                     <td className="py-1.5 text-gray-600">{c.tenantName}</td>
                                     <td className="py-1.5 text-right text-gray-700">{c.endDate}</td>
                                     <td className="py-1.5 text-right">
