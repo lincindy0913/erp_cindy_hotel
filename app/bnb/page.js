@@ -2379,9 +2379,11 @@ export default function BnbPage() {
                         );
                       };
 
+                      const isPaymentComplete = !isDeleted && !isLocked && r.paymentFilled && !paymentMismatch;
+
                       return (
                         <tr key={r.id} className={`
-                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : paymentMismatch ? 'bg-orange-50' : isOverdueUnpaid ? 'bg-red-50' : 'hover:bg-gray-50'}
+                          ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : paymentMismatch ? 'bg-orange-50' : isOverdueUnpaid ? 'bg-red-50' : isPaymentComplete ? 'bg-gray-100 text-gray-400' : 'hover:bg-gray-50'}
                           ${isDeleted ? 'opacity-40' : ''}
                           ${editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
                         `}>
