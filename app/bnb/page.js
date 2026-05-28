@@ -649,7 +649,7 @@ export default function BnbPage() {
   const [dmSelBnb,      setDmSelBnb]      = useState(null);  // selected BNB id
   const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
   const [dmMatching,    setDmMatching]    = useState(false);
-  const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all | ledger | combined
+  const [dmPayType,     setDmPayType]     = useState('combined'); // deposit | transfer | card | cash | all | ledger | combined
   const [dmMarkModal,   setDmMarkModal]   = useState(null);     // { bnbId, skipType }
   const [dmMarkNote,    setDmMarkNote]    = useState('');
 
