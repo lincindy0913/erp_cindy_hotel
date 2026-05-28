@@ -3445,7 +3445,7 @@ function RentalsPage() {
                               <td className="text-right px-3 py-2 border border-gray-200 font-semibold">{fmt(r.total)}</td>
                             </tr>
                           ));
-                          })()}
+                          })()
                         )}
                       </tbody>
                     </table>
