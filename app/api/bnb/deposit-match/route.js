@@ -27,6 +27,8 @@ const PAY_TYPE_CONFIG = {
     bankLineField: 'depositBankLineId',
     matchedAtField:'depositMatchedAt',
     matchedByField:'depositMatchedBy',
+    skipField:     'depositMatchSkip',
+    skipNoteField: 'depositMatchSkipNote',
     label:         '訂金匯款',
     bankDateField: 'txDate',  // 比對用的銀行日期欄位
     searchWindowDays: 14,
@@ -38,6 +40,8 @@ const PAY_TYPE_CONFIG = {
     bankLineField: 'transferBankLineId',
     matchedAtField:'transferMatchedAt',
     matchedByField:'transferMatchedBy',
+    skipField:     'transferMatchSkip',
+    skipNoteField: 'transferMatchSkipNote',
     label:         '當天匯款',
     bankDateField: 'txDate',
     searchWindowDays: 7,
@@ -49,6 +53,8 @@ const PAY_TYPE_CONFIG = {
     bankLineField: 'cardBankLineId',
     matchedAtField:'cardMatchedAt',
     matchedByField:'cardMatchedBy',
+    skipField:     'cardMatchSkip',
+    skipNoteField: 'cardMatchSkipNote',
     label:         '刷卡',
     bankDateField: 'txDate',
     searchWindowDays: 5,
@@ -60,6 +66,8 @@ const PAY_TYPE_CONFIG = {
     bankLineField: 'cashBankLineId',
     matchedAtField:'cashMatchedAt',
     matchedByField:'cashMatchedBy',
+    skipField:     'cashMatchSkip',
+    skipNoteField: 'cashMatchSkipNote',
     label:         '現金存款',
     bankDateField: 'txDate',
     searchWindowDays: 7,
@@ -93,36 +101,44 @@ export async function GET(request) {
       const records = await prisma.bnbBookingRecord.findMany({
         where,
         select: {
-          payDeposit:        true, depositBankLineId:  true,
-          payTransfer:       true, transferBankLineId: true,
-          payCard:           true, cardBankLineId:     true,
-          payCash:           true, cashBankLineId:     true, cashDestination: true,
+          payDeposit:        true, depositBankLineId:  true, depositMatchSkip:  true,
+          payTransfer:       true, transferBankLineId: true, transferMatchSkip: true,
+          payCard:           true, cardBankLineId:     true, cardMatchSkip:     true,
+          payCash:           true, cashBankLineId:     true, cashDestination:   true, cashMatchSkip: true,
         },
       });
 
       const summary = {
-        deposit:  { label: '訂金匯款', total: 0, matched: 0, unmatched: 0, amount: 0 },
-        transfer: { label: '當天匯款', total: 0, matched: 0, unmatched: 0, amount: 0 },
-        card:     { label: '刷卡',     total: 0, matched: 0, unmatched: 0, amount: 0 },
-        cash:     { label: '現金存款', total: 0, matched: 0, unmatched: 0, amount: 0 },
+        deposit:  { label: '訂金匯款', total: 0, matched: 0, unmatched: 0, skipped: 0, amount: 0 },
+        transfer: { label: '當天匯款', total: 0, matched: 0, unmatched: 0, skipped: 0, amount: 0 },
+        card:     { label: '刷卡',     total: 0, matched: 0, unmatched: 0, skipped: 0, amount: 0 },
+        cash:     { label: '現金存款', total: 0, matched: 0, unmatched: 0, skipped: 0, amount: 0 },
       };
 
       for (const r of records) {
         if (Number(r.payDeposit)  > 0) {
           summary.deposit.total++;  summary.deposit.amount  += Number(r.payDeposit);
-          if (r.depositBankLineId)  summary.deposit.matched++;  else summary.deposit.unmatched++;
+          if (r.depositBankLineId)  summary.deposit.matched++;
+          else if (r.depositMatchSkip) summary.deposit.skipped++;
+          else summary.deposit.unmatched++;
         }
         if (Number(r.payTransfer) > 0) {
           summary.transfer.total++; summary.transfer.amount += Number(r.payTransfer);
-          if (r.transferBankLineId) summary.transfer.matched++; else summary.transfer.unmatched++;
+          if (r.transferBankLineId) summary.transfer.matched++;
+          else if (r.transferMatchSkip) summary.transfer.skipped++;
+          else summary.transfer.unmatched++;
         }
         if (Number(r.payCard)     > 0) {
           summary.card.total++;     summary.card.amount     += Number(r.payCard);
-          if (r.cardBankLineId)     summary.card.matched++;     else summary.card.unmatched++;
+          if (r.cardBankLineId)     summary.card.matched++;
+          else if (r.cardMatchSkip) summary.card.skipped++;
+          else summary.card.unmatched++;
         }
         if (Number(r.payCash)     > 0 && r.cashDestination === '存帳') {
           summary.cash.total++;     summary.cash.amount     += Number(r.payCash);
-          if (r.cashBankLineId)     summary.cash.matched++;     else summary.cash.unmatched++;
+          if (r.cashBankLineId)     summary.cash.matched++;
+          else if (r.cashMatchSkip) summary.cash.skipped++;
+          else summary.cash.unmatched++;
         }
       }
 
@@ -138,20 +154,20 @@ export async function GET(request) {
         select: {
           id: true, guestName: true, checkInDate: true, checkOutDate: true,
           warehouse: true, source: true,
-          payDeposit: true, depositDate: true, depositLast5: true, depositBankLineId: true,
-          payTransfer: true, transferDate: true, transferLast5: true, transferBankLineId: true,
-          payCard: true, cardSettlementDate: true, cardBankLineId: true,
-          payCash: true, cashDepositDate: true, cashBankLineId: true, cashDestination: true,
+          payDeposit: true, depositDate: true, depositLast5: true, depositBankLineId: true, depositMatchSkip: true, depositMatchSkipNote: true,
+          payTransfer: true, transferDate: true, transferLast5: true, transferBankLineId: true, transferMatchSkip: true, transferMatchSkipNote: true,
+          payCard: true, cardSettlementDate: true, cardBankLineId: true, cardMatchSkip: true, cardMatchSkipNote: true,
+          payCash: true, cashDepositDate: true, cashBankLineId: true, cashDestination: true, cashMatchSkip: true, cashMatchSkipNote: true,
         },
         orderBy: { checkInDate: 'asc' },
       });
       // 展開為每筆付款型別一列
       const rows = [];
       for (const r of records) {
-        if (Number(r.payDeposit) > 0) rows.push({ id: `${r.id}-dep`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'deposit', paymentTypeLabel: '訂金匯款', payAmount: Number(r.payDeposit), payDate: r.depositDate, last5: r.depositLast5, bankLineId: r.depositBankLineId });
-        if (Number(r.payTransfer) > 0) rows.push({ id: `${r.id}-xfr`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'transfer', paymentTypeLabel: '當天匯款', payAmount: Number(r.payTransfer), payDate: r.transferDate, last5: r.transferLast5, bankLineId: r.transferBankLineId });
-        if (Number(r.payCard) > 0) rows.push({ id: `${r.id}-crd`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'card', paymentTypeLabel: '刷卡入款', payAmount: Number(r.payCard), payDate: r.cardSettlementDate, last5: null, bankLineId: r.cardBankLineId });
-        if (Number(r.payCash) > 0) rows.push({ id: `${r.id}-csh`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'cash', paymentTypeLabel: '現金存款', payAmount: Number(r.payCash), payDate: r.cashDepositDate, last5: null, bankLineId: r.cashBankLineId });
+        if (Number(r.payDeposit) > 0) rows.push({ id: `${r.id}-dep`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'deposit', paymentTypeLabel: '訂金匯款', payAmount: Number(r.payDeposit), payDate: r.depositDate, last5: r.depositLast5, bankLineId: r.depositBankLineId, matchSkip: r.depositMatchSkip || null, matchSkipNote: r.depositMatchSkipNote || null });
+        if (Number(r.payTransfer) > 0) rows.push({ id: `${r.id}-xfr`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'transfer', paymentTypeLabel: '當天匯款', payAmount: Number(r.payTransfer), payDate: r.transferDate, last5: r.transferLast5, bankLineId: r.transferBankLineId, matchSkip: r.transferMatchSkip || null, matchSkipNote: r.transferMatchSkipNote || null });
+        if (Number(r.payCard) > 0) rows.push({ id: `${r.id}-crd`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'card', paymentTypeLabel: '刷卡入款', payAmount: Number(r.payCard), payDate: r.cardSettlementDate, last5: null, bankLineId: r.cardBankLineId, matchSkip: r.cardMatchSkip || null, matchSkipNote: r.cardMatchSkipNote || null });
+        if (Number(r.payCash) > 0) rows.push({ id: `${r.id}-csh`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'cash', paymentTypeLabel: '現金存款', payAmount: Number(r.payCash), payDate: r.cashDepositDate, last5: null, bankLineId: r.cashBankLineId, matchSkip: r.cashMatchSkip || null, matchSkipNote: r.cashMatchSkipNote || null });
       }
       return NextResponse.json({ month, bnbRecords: rows, bankLines: [], suggestions: [] });
     }
@@ -175,6 +191,8 @@ export async function GET(request) {
       [cfg.bankLineField]: true,
       [cfg.matchedAtField]:true,
       [cfg.matchedByField]:true,
+      [cfg.skipField]:     true,
+      [cfg.skipNoteField]: true,
     };
     if (cfg.last5Field) selectFields[cfg.last5Field] = true;
     if (paymentType === 'cash') selectFields.cashDestination = true;
@@ -209,7 +227,8 @@ export async function GET(request) {
     );
 
     // ── 4. 自動配對建議 ──────────────────────────────────────────
-    const unmatchedBnb   = bnbRecords.filter(r => !r[cfg.bankLineField]);
+    // 已跳過（skip 標記）不納入自動配對建議
+    const unmatchedBnb   = bnbRecords.filter(r => !r[cfg.bankLineField] && !r[cfg.skipField]);
     const unmatchedLines = bankLines.filter(l => !usedLineIds.has(l.id));
     const usedSuggLines  = new Set();
     const suggestions    = [];
@@ -241,23 +260,26 @@ export async function GET(request) {
     const totalBnbAmount  = bnbRecords.reduce((s, r) => s + Number(r[cfg.amountField]), 0);
     const totalBankCredit = bankLines.reduce((s, l) => s + Number(l.creditAmount), 0);
     const matchedCount    = bnbRecords.filter(r => r[cfg.bankLineField]).length;
+    const skippedCount    = bnbRecords.filter(r => !r[cfg.bankLineField] && r[cfg.skipField]).length;
 
     // 正規化欄位名稱（統一為 payAmount / dateField / last5 / bankLineId / matchedAt / matchedBy）
     const normalizedBnb = bnbRecords.map(r => ({
-      id:          r.id,
-      guestName:   r.guestName,
-      checkInDate: r.checkInDate,
-      checkOutDate:r.checkOutDate,
-      roomCharge:  Number(r.roomCharge),
-      source:      r.source,
-      status:      r.status,
-      note:        r.note,
-      payAmount:   Number(r[cfg.amountField]),
-      payDate:     r[cfg.dateField] || null,
-      last5:       cfg.last5Field ? (r[cfg.last5Field] || null) : null,
-      bankLineId:  r[cfg.bankLineField] || null,
-      matchedAt:   r[cfg.matchedAtField] || null,
-      matchedBy:   r[cfg.matchedByField] || null,
+      id:            r.id,
+      guestName:     r.guestName,
+      checkInDate:   r.checkInDate,
+      checkOutDate:  r.checkOutDate,
+      roomCharge:    Number(r.roomCharge),
+      source:        r.source,
+      status:        r.status,
+      note:          r.note,
+      payAmount:     Number(r[cfg.amountField]),
+      payDate:       r[cfg.dateField] || null,
+      last5:         cfg.last5Field ? (r[cfg.last5Field] || null) : null,
+      bankLineId:    r[cfg.bankLineField] || null,
+      matchedAt:     r[cfg.matchedAtField] || null,
+      matchedBy:     r[cfg.matchedByField] || null,
+      matchSkip:     r[cfg.skipField] || null,
+      matchSkipNote: r[cfg.skipNoteField] || null,
     }));
 
     return NextResponse.json({
@@ -268,6 +290,7 @@ export async function GET(request) {
         totalBnbAmount,
         totalBankCredit,
         matchedCount,
+        skippedCount,
         unmatchedBnbCount:  unmatchedBnb.length,
         unmatchedLineCount: unmatchedLines.length,
         diff: totalBnbAmount - totalBankCredit,
@@ -332,6 +355,37 @@ export async function POST(request) {
     });
 
     return NextResponse.json({ ok: true, id: updated.id });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// ── PATCH（設定 / 清除跳過標記）────────────────────────────────────────
+export async function PATCH(request) {
+  const auth = await requireAnyPermission([PERMISSIONS.BNB_EDIT, PERMISSIONS.BNB_CREATE]);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const { bnbId, paymentType = 'deposit', matchSkip, matchSkipNote } = await request.json();
+    if (!bnbId) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 bnbId', 400);
+
+    const cfg = getConfig(paymentType);
+    const bnbRec = await prisma.bnbBookingRecord.findUnique({
+      where: { id: parseInt(bnbId) },
+      select: { importMonth: true, warehouse: true },
+    });
+    if (bnbRec) await assertBnbMonthOpen(bnbRec.importMonth, bnbRec.warehouse);
+
+    await prisma.bnbBookingRecord.update({
+      where: { id: parseInt(bnbId) },
+      data: {
+        [cfg.skipField]:     matchSkip     ?? null,
+        [cfg.skipNoteField]: matchSkipNote ?? null,
+      },
+      select: { id: true },
+    });
+
+    return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);
   }

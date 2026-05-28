@@ -25,19 +25,39 @@ export function sortRows(rows, sortKey, dir, accessors = {}) {
   });
 }
 
-export function useColumnSort(defaultKey = null, defaultDir = 'desc') {
-  const [sortKey, setSortKey] = useState(defaultKey);
-  const [sortDir, setSortDir] = useState(defaultDir);
+export function useColumnSort(defaultKey = null, defaultDir = 'desc', storageKey = null) {
+  const [sortKey, setSortKey] = useState(() => {
+    if (storageKey && typeof window !== 'undefined') {
+      try { const s = JSON.parse(localStorage.getItem(`sort:${storageKey}`)); if (s?.key) return s.key; } catch {}
+    }
+    return defaultKey;
+  });
+  const [sortDir, setSortDir] = useState(() => {
+    if (storageKey && typeof window !== 'undefined') {
+      try { const s = JSON.parse(localStorage.getItem(`sort:${storageKey}`)); if (s?.dir) return s.dir; } catch {}
+    }
+    return defaultDir;
+  });
+
+  const persist = useCallback((key, dir) => {
+    if (storageKey && typeof window !== 'undefined') {
+      try { localStorage.setItem(`sort:${storageKey}`, JSON.stringify({ key, dir })); } catch {}
+    }
+  }, [storageKey]);
+
   const toggleSort = useCallback(
     (key) => {
       if (sortKey === key) {
-        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        const next = sortDir === 'asc' ? 'desc' : 'asc';
+        setSortDir(next);
+        persist(key, next);
       } else {
         setSortKey(key);
         setSortDir('asc');
+        persist(key, 'asc');
       }
     },
-    [sortKey]
+    [sortKey, sortDir, persist]
   );
   return { sortKey, sortDir, toggleSort, setSortKey, setSortDir };
 }

@@ -50,6 +50,9 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [summary, setSummary] = useState({ total: 0, critical: 0, urgent: 0, warning: 0 });
   const [isOpen, setIsOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const dropdownRef = useRef(null);
 
   const fetchNotifications = useCallback(async () => {
@@ -63,6 +66,7 @@ export default function NotificationBell() {
         const data = await res.json();
         setNotifications(data.notifications || []);
         setSummary(data.summary || { total: 0, critical: 0, urgent: 0, warning: 0 });
+        setLastUpdated(new Date());
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
@@ -91,6 +95,38 @@ export default function NotificationBell() {
     setIsOpen(false);
     if (targetUrl) {
       router.push(targetUrl);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch('/api/notifications/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: true }),
+      }).then(async res => {
+        if (res.ok) {
+          const data = await res.json();
+          setNotifications(data.notifications || []);
+          setSummary(data.summary || { total: 0, critical: 0, urgent: 0, warning: 0 });
+          setLastUpdated(new Date());
+        }
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm('確認清除所有通知？下次重新計算時若條件仍存在，通知會再次出現。')) return;
+    setClearing(true);
+    try {
+      await fetch('/api/notifications/clear', { method: 'POST' });
+      setNotifications([]);
+      setSummary({ total: 0, critical: 0, urgent: 0, warning: 0 });
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -135,15 +171,20 @@ export default function NotificationBell() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-800">通知中心</h3>
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                router.push('/notifications');
-              }}
-              className="text-xs text-amber-600 hover:text-amber-800 hover:underline"
-            >
-              查看全部
-            </button>
+            <div className="flex items-center gap-2">
+              {notifications.length > 0 && (
+                <button onClick={handleClearAll} disabled={clearing}
+                  className="text-xs text-gray-400 hover:text-gray-600 hover:underline disabled:opacity-50">
+                  {clearing ? '清除中…' : '全部清除'}
+                </button>
+              )}
+              <button
+                onClick={() => { setIsOpen(false); router.push('/notifications'); }}
+                className="text-xs text-amber-600 hover:text-amber-800 hover:underline"
+              >
+                查看全部
+              </button>
+            </div>
           </div>
 
           {/* Notification list */}
@@ -183,9 +224,9 @@ export default function NotificationBell() {
           </div>
 
           {/* Footer */}
-          {sortedNotifications.length > 0 && (
-            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
-              <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
+          <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                 {summary.critical > 0 && (
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-red-500"></span>
@@ -205,8 +246,15 @@ export default function NotificationBell() {
                   </span>
                 )}
               </div>
+              <button onClick={handleRefresh} disabled={refreshing}
+                className="text-xs text-gray-400 hover:text-indigo-600 whitespace-nowrap disabled:opacity-50 shrink-0"
+                title={lastUpdated ? `最後更新：${lastUpdated.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}` : '點擊重新計算'}>
+                {refreshing ? '計算中…' : lastUpdated
+                  ? `更新於 ${Math.round((Date.now() - lastUpdated) / 60000) || '<1'} 分鐘前 ↻`
+                  : '↻ 重新計算'}
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>

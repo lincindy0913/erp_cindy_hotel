@@ -650,6 +650,8 @@ export default function BnbPage() {
   const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
   const [dmMatching,    setDmMatching]    = useState(false);
   const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all | ledger | combined
+  const [dmMarkModal,   setDmMarkModal]   = useState(null);     // { bnbId, skipType }
+  const [dmMarkNote,    setDmMarkNote]    = useState('');
 
   // ── 存簿匯入 modal state ──────────────────────────────────────
   const [showBankImport, setShowBankImport] = useState(false);
@@ -1052,6 +1054,31 @@ export default function BnbPage() {
     fetchDepositMatch();
   }
 
+  async function handleMark() {
+    if (!dmMarkModal) return;
+    const { bnbId, skipType } = dmMarkModal;
+    const res = await fetch('/api/bnb/deposit-match', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bnbId, paymentType: dmPayType, matchSkip: skipType, matchSkipNote: dmMarkNote || null }),
+    });
+    if (!res.ok) { showToast('標記失敗', 'error'); return; }
+    showToast('已標記', 'success');
+    setDmMarkModal(null);
+    setDmMarkNote('');
+    fetchDepositMatch();
+  }
+
+  async function handleClearMark(bnbId) {
+    const res = await fetch('/api/bnb/deposit-match', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bnbId, paymentType: dmPayType, matchSkip: null, matchSkipNote: null }),
+    });
+    if (!res.ok) { showToast('清除標記失敗', 'error'); return; }
+    fetchDepositMatch();
+  }
+
   // ── 自動配對（套用全部建議）──────────────────────────────────
   async function handleAutoMatch() {
     const suggestions = dmData?.suggestions || [];
@@ -1067,8 +1094,14 @@ export default function BnbPage() {
         });
         if (res.ok) count++;
       }
-      showToast(`自動配對完成：${count} 筆`, 'success');
-      fetchDepositMatch();
+      const totalUnmatched = (dmData?.summary?.unmatchedBnbCount ?? 0) - count;
+      showToast(`已配對 ${count} 筆${totalUnmatched > 0 ? `，仍有 ${totalUnmatched} 筆待處理` : '，全部配對完成！'}`, count > 0 ? 'success' : 'info');
+      await fetchDepositMatch();
+      if (totalUnmatched > 0) {
+        setTimeout(() => {
+          document.querySelector('[data-first-unmatched]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
     } catch { showToast('自動配對發生錯誤', 'error'); }
     finally { setDmMatching(false); }
   }
@@ -3927,6 +3960,7 @@ export default function BnbPage() {
                           </div>
                           <div className="mt-1 flex justify-between text-xs">
                             <span className="text-green-600">✓ {s.matched}</span>
+                            {s.skipped > 0 && <span className="text-orange-500">↗ {s.skipped}</span>}
                             <span className={s.unmatched > 0 ? 'text-amber-600' : 'text-gray-400'}>
                               ○ {s.unmatched}
                             </span>
@@ -3941,13 +3975,14 @@ export default function BnbPage() {
 
               {/* 摘要卡 */}
               {summary && dmPayType !== 'all' && dmPayType !== 'ledger' && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
                   {[
                     { label: `BNB ${PAY_SUB_TYPES.find(t => t.key === dmPayType)?.label || ''}合計`,
                       val: `NT$ ${summary.totalBnbAmount.toLocaleString()}`, color: 'text-indigo-700' },
                     { label: '存簿入帳合計',   val: `NT$ ${summary.totalBankCredit.toLocaleString()}`,  color: 'text-blue-700' },
                     { label: '差異',          val: `NT$ ${Math.abs(summary.diff).toLocaleString()}`,    color: summary.diff !== 0 ? 'text-red-600 font-bold' : 'text-green-600' },
                     { label: '已配對',         val: `${summary.matchedCount} 筆`,                        color: 'text-green-600' },
+                    { label: '標記處理',       val: `${summary.skippedCount || 0} 筆`,                   color: summary.skippedCount > 0 ? 'text-orange-500' : 'text-gray-400' },
                     { label: '未配對（BNB）',  val: `${summary.unmatchedBnbCount} 筆`,                   color: summary.unmatchedBnbCount > 0 ? 'text-amber-600' : 'text-gray-500' },
                   ].map(c => (
                     <div key={c.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
@@ -4022,7 +4057,15 @@ export default function BnbPage() {
                               <td className="px-3 py-2 text-blue-600 font-mono">{r.last5 || '—'}</td>
                               <td className="px-3 py-2 text-right font-semibold text-indigo-700">{r.payAmount.toLocaleString()}</td>
                               <td className="px-3 py-2 text-center">
-                                {r.bankLineId ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">○</span>}
+                                {r.bankLineId
+                                  ? <span className="text-green-600 font-bold">✓</span>
+                                  : r.matchSkip
+                                    ? <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.matchSkip === 'next_month' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}
+                                        title={r.matchSkipNote || ''}>
+                                        {r.matchSkip === 'next_month' ? '跨月' : '免配'}
+                                      </span>
+                                    : <span className="text-gray-300">○</span>
+                                }
                               </td>
                             </tr>
                           );
@@ -4075,24 +4118,33 @@ export default function BnbPage() {
                           {bnbRecords.length === 0 && (
                             <tr><td colSpan={(dmPayType === 'deposit' || dmPayType === 'transfer') ? 8 : 7} className="text-center py-8 text-gray-400">本月無此類型收款記錄</td></tr>
                           )}
-                          {bnbRecords.map(r => {
+                          {bnbRecords.map((r, _ri, arr) => {
                             const isMatched   = !!r.bankLineId;
-                            const isSuggested = !isMatched && suggestMap.has(r.id);
+                            const isSkipped   = !r.bankLineId && !!r.matchSkip;
+                            const isSuggested = !isMatched && !isSkipped && suggestMap.has(r.id);
                             const isSelected  = dmSelBnb === r.id;
-                            let rowCls = 'cursor-pointer transition-colors ';
+                            const isFirstUnmatched = !isMatched && !isSkipped && arr.findIndex(x => !x.bankLineId && !x.matchSkip) === _ri;
+                            let rowCls = 'transition-colors ';
+                            if (!isMatched && !isSkipped) rowCls += 'cursor-pointer ';
                             if (isSelected)       rowCls += 'bg-indigo-100 ring-1 ring-inset ring-indigo-300';
                             else if (isMatched)   rowCls += 'bg-green-50 hover:bg-green-100';
+                            else if (isSkipped)   rowCls += r.matchSkip === 'next_month' ? 'bg-orange-50' : 'bg-gray-50';
                             else if (isSuggested) rowCls += 'bg-amber-50 hover:bg-amber-100';
                             else rowCls += 'hover:bg-gray-50';
                             return (
                               <tr key={r.id} className={rowCls}
-                                onClick={() => !isMatched && setDmSelBnb(isSelected ? null : r.id)}>
+                                {...(isFirstUnmatched ? { 'data-first-unmatched': '1' } : {})}
+                                onClick={() => !isMatched && !isSkipped && setDmSelBnb(isSelected ? null : r.id)}>
                                 <td className="px-3 py-2.5">
                                   {isMatched
                                     ? <span className="text-green-600 font-bold">✓</span>
-                                    : isSuggested
-                                      ? <span className="text-amber-500">⚡</span>
-                                      : <span className="text-gray-300">○</span>
+                                    : isSkipped
+                                      ? <span className={`text-[10px] font-semibold ${r.matchSkip === 'next_month' ? 'text-orange-500' : 'text-gray-400'}`}>
+                                          {r.matchSkip === 'next_month' ? '↗' : '–'}
+                                        </span>
+                                      : isSuggested
+                                        ? <span className="text-amber-500">⚡</span>
+                                        : <span className="text-gray-300">○</span>
                                   }
                                 </td>
                                 <td className="px-3 py-2.5 max-w-[100px] truncate font-medium">{r.guestName}</td>
@@ -4110,12 +4162,36 @@ export default function BnbPage() {
                                   {r.payAmount.toLocaleString()}
                                 </td>
                                 <td className="px-3 py-2.5 text-right">
-                                  {isMatched && !isLocked && (
-                                    <button onClick={e => { e.stopPropagation(); handleUnmatch(r.id); }}
-                                      className="text-[10px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded border border-red-200 hover:bg-red-50">
-                                      解除
-                                    </button>
-                                  )}
+                                  {isSkipped ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.matchSkip === 'next_month' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}
+                                        title={r.matchSkipNote || ''}>
+                                        {r.matchSkip === 'next_month' ? '跨月' : '免配'}
+                                      </span>
+                                      {!isLocked && (
+                                        <button onClick={e => { e.stopPropagation(); handleClearMark(r.id); }}
+                                          className="text-gray-300 hover:text-red-400 text-sm leading-none ml-0.5">×</button>
+                                      )}
+                                    </div>
+                                  ) : isMatched ? (
+                                    !isLocked && (
+                                      <button onClick={e => { e.stopPropagation(); handleUnmatch(r.id); }}
+                                        className="text-[10px] text-red-400 hover:text-red-600 px-1.5 py-0.5 rounded border border-red-200 hover:bg-red-50">
+                                        解除
+                                      </button>
+                                    )
+                                  ) : !isLocked ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <button onClick={e => { e.stopPropagation(); setDmMarkNote(''); setDmMarkModal({ bnbId: r.id, skipType: 'next_month' }); }}
+                                        className="text-[10px] text-orange-600 border border-orange-200 hover:bg-orange-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+                                        跨月
+                                      </button>
+                                      <button onClick={e => { e.stopPropagation(); setDmMarkNote(''); setDmMarkModal({ bnbId: r.id, skipType: 'no_match' }); }}
+                                        className="text-[10px] text-gray-500 border border-gray-200 hover:bg-gray-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+                                        免配
+                                      </button>
+                                    </div>
+                                  ) : null}
                                 </td>
                               </tr>
                             );
@@ -5835,6 +5911,45 @@ export default function BnbPage() {
           onClose={() => setAddBookingOpen(false)}
           onSaved={() => { setAddBookingOpen(false); fetchRecords(); }}
         />
+      )}
+
+      {/* ══ 存簿比對：標記跳過 Modal ══ */}
+      {dmMarkModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setDmMarkModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-[340px]" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-800 mb-2">
+              {dmMarkModal.skipType === 'next_month' ? '標記為跨月入帳' : '標記為無需配對'}
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              {dmMarkModal.skipType === 'next_month'
+                ? '此筆款項下月才入帳存簿，本月暫不配對。'
+                : '此筆款項為現金收帳或已另行處理，不需存簿配對。'}
+            </p>
+            <div className="mb-5">
+              <label className="block text-xs text-gray-500 mb-1">備註（選填）</label>
+              <input
+                type="text"
+                value={dmMarkNote}
+                onChange={e => setDmMarkNote(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleMark()}
+                placeholder="說明原因…"
+                maxLength={255}
+                autoFocus
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setDmMarkModal(null); setDmMarkNote(''); }}
+                className="px-4 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+                取消
+              </button>
+              <button onClick={handleMark}
+                className={`px-4 py-1.5 text-sm rounded-lg text-white ${dmMarkModal.skipType === 'next_month' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-600 hover:bg-gray-700'}`}>
+                確認標記
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ══ 存簿對帳單匯入 Modal ══ */}

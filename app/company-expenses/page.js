@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 import ExportButtons from '@/components/ExportButtons';
+import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 
 const TABS = [
   { key: 'expenses',  label: '公司費用' },
@@ -68,10 +69,15 @@ function CompanyExpensesPageInner() {
   const [expenseForm,   setExpenseForm]   = useState(EMPTY_EXPENSE);
   const [invoiceForm,   setInvoiceForm]   = useState(EMPTY_INVOICE);
 
-  const { addToast } = useToast();
+  const [showCsvModal,  setShowCsvModal]  = useState(false);
+  const [csvRows,       setCsvRows]       = useState([]);
+  const [csvImporting,  setCsvImporting]  = useState(false);
 
-  const { sortKey: expKey, sortDir: expDir, toggleSort: expToggle } = useColumnSort('expenseDate', 'desc');
-  const { sortKey: invKey, sortDir: invDir, toggleSort: invToggle } = useColumnSort('invoiceDate', 'desc');
+  const { addToast } = useToast();
+  const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
+
+  const { sortKey: expKey, sortDir: expDir, toggleSort: expToggle } = useColumnSort('expenseDate', 'desc', 'companyExp');
+  const { sortKey: invKey, sortDir: invDir, toggleSort: invToggle } = useColumnSort('invoiceDate', 'desc', 'companyInv');
 
   function switchTab(key) {
     setActiveTab(key);
@@ -195,20 +201,94 @@ function CompanyExpensesPageInner() {
     }
   }
 
-  async function deleteRow(row) {
-    if (!confirm('確認刪除？')) return;
-    const url = activeTab === 'expenses'
-      ? `/api/company-expenses/expense/${row.id}`
-      : `/api/company-expenses/input-invoice/${row.id}`;
-    try {
-      const res = await fetch(url, { method: 'DELETE' });
-      if (!res.ok) throw new Error(await res.text());
-      if (activeTab === 'expenses') setExpenses(prev => prev.filter(e => e.id !== row.id));
-      else setInvoices(prev => prev.filter(i => i.id !== row.id));
-      addToast('已刪除', 'success');
-    } catch (e) {
-      addToast('刪除失敗：' + e.message, 'error');
+  function deleteRow(row) {
+    const label = activeTab === 'expenses'
+      ? `${row.expenseDate || ''} ${row.vendorName || ''} NT$${Number(row.totalAmount || 0).toLocaleString('zh-TW')}`
+      : `${row.invoiceDate || ''} ${row.vendorName || ''} ${row.invoiceNo || ''}`;
+    askConfirm(`確定刪除？\n${label.trim()}`, async () => {
+      const url = activeTab === 'expenses'
+        ? `/api/company-expenses/expense/${row.id}`
+        : `/api/company-expenses/input-invoice/${row.id}`;
+      try {
+        const res = await fetch(url, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+        if (activeTab === 'expenses') setExpenses(prev => prev.filter(e => e.id !== row.id));
+        else setInvoices(prev => prev.filter(i => i.id !== row.id));
+        addToast('已刪除', 'success');
+      } catch (e) {
+        addToast('刪除失敗：' + e.message, 'error');
+      }
+    }, '確認刪除');
+  }
+
+  function downloadCsvTemplate() {
+    const header = '日期,發票號碼,廠商統編,廠商名稱,材料別,品名,未稅,稅額,總計,地點,期間,備註';
+    const example = '2026-01-15,AB12345678,12345678,範例廠商有限公司,鋼筋,鋼筋材料,100000,5000,105000,台北市,114.1-2,備註說明';
+    const blob = new Blob(['﻿' + header + '\n' + example], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '工程進項匯入範本.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const COL_MAP = {
+      '日期': 'invoiceDate', '發票日期': 'invoiceDate',
+      '發票號碼': 'invoiceNo', '統編': 'vendorTaxId', '廠商統編': 'vendorTaxId',
+      '廠商名稱': 'vendorName', '廠商': 'vendorName',
+      '材料別': 'materialType', '材料類別': 'materialType',
+      '品名': 'itemName', '材料名稱': 'itemName',
+      '未稅': 'amount', '未稅金額': 'amount',
+      '稅額': 'taxAmount', '含稅': 'totalAmount', '總計': 'totalAmount', '合計': 'totalAmount',
+      '地點': 'location', '期間': 'period', '備註': 'note',
+    };
+    return lines.slice(1).map(line => {
+      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const row = { ...EMPTY_INVOICE };
+      headers.forEach((h, i) => {
+        const key = COL_MAP[h];
+        if (key) row[key] = vals[i] || '';
+      });
+      return row;
+    }).filter(r => r.invoiceDate || r.vendorName);
+  }
+
+  function handleCsvFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const rows = parseCsv(ev.target.result);
+      setCsvRows(rows);
+      setShowCsvModal(true);
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  }
+
+  async function importCsvRows() {
+    if (!csvRows.length) return;
+    setCsvImporting(true);
+    let ok = 0; let fail = 0;
+    for (const row of csvRows) {
+      try {
+        const res = await fetch('/api/company-expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...row, type: 'invoice' }),
+        });
+        if (res.ok) ok++; else fail++;
+      } catch { fail++; }
     }
+    setCsvImporting(false);
+    setShowCsvModal(false);
+    setCsvRows([]);
+    await load();
+    addToast(`匯入完成：${ok} 筆成功${fail > 0 ? `，${fail} 筆失敗` : ''}`, fail > 0 ? 'error' : 'success');
   }
 
   if (!session) return null;
@@ -220,9 +300,23 @@ function CompanyExpensesPageInner() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-gray-900">慶豐營造工程分業</h1>
-          <button onClick={openAdd} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-            + 新增
-          </button>
+          <div className="flex items-center gap-2">
+            {activeTab === 'invoices' && (
+              <>
+                <button onClick={downloadCsvTemplate}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 border border-gray-300">
+                  ↓ 下載範本
+                </button>
+                <label className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 cursor-pointer">
+                  ↑ 匯入 CSV
+                  <input type="file" accept=".csv" className="hidden" onChange={handleCsvFile} />
+                </label>
+              </>
+            )}
+            <button onClick={openAdd} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+              + 新增
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -400,10 +494,64 @@ function CompanyExpensesPageInner() {
         )}
       </div>
 
+      {/* ===== CSV 匯入預覽 Modal ===== */}
+      {showCsvModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-bold">CSV 匯入預覽（工程進項）</h3>
+              <button onClick={() => { setShowCsvModal(false); setCsvRows([]); }}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <div className="px-6 py-3 text-sm text-gray-500 bg-gray-50 border-b">
+              共 <span className="font-semibold text-gray-800">{csvRows.length}</span> 筆資料。確認後點「確認匯入」。
+              <span className="ml-2 text-xs text-gray-400">CSV 欄位：日期, 發票號碼, 廠商統編, 廠商名稱, 材料別, 品名, 未稅, 稅額, 總計, 地點, 期間, 備註</span>
+            </div>
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-gray-100 text-gray-600">
+                  <tr>
+                    {['日期','發票號碼','廠商名稱','材料別','品名','未稅','稅額','總計','地點','期間'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {csvRows.map((r, i) => (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-3 py-1.5 whitespace-nowrap">{r.invoiceDate}</td>
+                      <td className="px-3 py-1.5 font-mono text-gray-500">{r.invoiceNo}</td>
+                      <td className="px-3 py-1.5 max-w-[120px] truncate">{r.vendorName}</td>
+                      <td className="px-3 py-1.5">{r.materialType}</td>
+                      <td className="px-3 py-1.5 max-w-[150px] truncate">{r.itemName}</td>
+                      <td className="px-3 py-1.5 text-right">{r.amount}</td>
+                      <td className="px-3 py-1.5 text-right text-gray-500">{r.taxAmount}</td>
+                      <td className="px-3 py-1.5 text-right font-medium">{r.totalAmount}</td>
+                      <td className="px-3 py-1.5">{r.location}</td>
+                      <td className="px-3 py-1.5">{r.period}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button onClick={() => { setShowCsvModal(false); setCsvRows([]); }}
+                className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">取消</button>
+              <button onClick={importCsvRows} disabled={csvImporting || !csvRows.length}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                {csvImporting ? '匯入中…' : `確認匯入 ${csvRows.length} 筆`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== Modal ===== */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onKeyDown={e => { if (e.key === 'Escape') setShowModal(false); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onKeyDown={e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT' && !saving) (activeTab === 'expenses' ? saveExpense : saveInvoice)(); }}>
             <div className="px-6 py-4 border-b">
               <h3 className="text-lg font-bold">
                 {editingRow ? '編輯' : '新增'}
@@ -601,6 +749,7 @@ function CompanyExpensesPageInner() {
           </div>
         </div>
       )}
+      <ConfirmModal dialog={confirmDlg} onClose={closeConfirm} />
     </div>
   );
 }

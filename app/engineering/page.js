@@ -10,6 +10,7 @@ import AttachmentSection from '@/components/AttachmentSection';
 import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
 import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -76,6 +77,8 @@ function EngineeringPageInner() {
   const [companyInvoices, setCompanyInvoices] = useState([]);
   const [companyInvLoading, setCompanyInvLoading] = useState(false);
   const [companyInvProjectFilter, setCompanyInvProjectFilter] = useState('');
+  const [companyInvUpdating, setCompanyInvUpdating] = useState({});
+  const [unassignedInvCount, setUnassignedInvCount] = useState(0);
 
   // 發票 state
   const [inputInvoices, setInputInvoices] = useState([]);
@@ -403,6 +406,7 @@ function EngineeringPageInner() {
 
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
 
   function switchEngineeringTab(key) {
     setActiveTab(key);
@@ -418,6 +422,10 @@ function EngineeringPageInner() {
     fetchProjects();
     fetchSuppliers();
     refreshDashInvoices();
+    fetch('/api/company-expenses?type=invoice&projectId=null')
+      .then(r => r.json())
+      .then(data => setUnassignedInvCount(Array.isArray(data) ? data.length : 0))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -568,13 +576,14 @@ function EngineeringPageInner() {
     setIncomeSaving(false);
   }
 
-  async function handleDeleteIncome(id) {
-    if (!confirm('確定要刪除此收款紀錄？對應的現金流交易也會一併刪除。')) return;
-    try {
-      const res = await fetch(`/api/engineering/income/${id}`, { method: 'DELETE' });
-      if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); refreshDashIncomes(); }
-      else { const err = await res.json(); showToast(err.error?.message || '刪除失敗', 'error'); }
-    } catch { showToast('刪除失敗', 'error'); }
+  function handleDeleteIncome(id) {
+    askConfirm('確定要刪除此收款紀錄？對應的現金流交易也會一併刪除。', async () => {
+      try {
+        const res = await fetch(`/api/engineering/income/${id}`, { method: 'DELETE' });
+        if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); refreshDashIncomes(); }
+        else { const err = await res.json(); showToast(err.error?.message || '刪除失敗', 'error'); }
+      } catch { showToast('刪除失敗', 'error'); }
+    });
   }
 
   function openEditIncome(inc) {
@@ -630,6 +639,28 @@ function EngineeringPageInner() {
       setCompanyInvoices(Array.isArray(data) ? data : []);
     } catch { setCompanyInvoices([]); }
     finally { setCompanyInvLoading(false); }
+  }
+
+  async function updateInvoiceProject(invoiceId, projectId) {
+    setCompanyInvUpdating(prev => ({ ...prev, [invoiceId]: true }));
+    try {
+      const res = await fetch(`/api/company-expenses/input-invoice/${invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: projectId ? Number(projectId) : null }),
+      });
+      if (!res.ok) throw new Error();
+      const updated = await res.json();
+      setCompanyInvoices(prev => {
+        const next = prev.map(r => r.id === invoiceId ? { ...r, projectId: updated.projectId, project: updated.project } : r);
+        setUnassignedInvCount(next.filter(r => !r.projectId).length);
+        return next;
+      });
+    } catch {
+      alert('案件更新失敗');
+    } finally {
+      setCompanyInvUpdating(prev => ({ ...prev, [invoiceId]: false }));
+    }
   }
 
   async function fetchInputInvoices(pid) {
@@ -752,13 +783,14 @@ function EngineeringPageInner() {
     finally { setProjectSaving(false); }
   }
 
-  async function deleteProject(p) {
-    if (!confirm(`確定刪除工程案「${p.name}」？其合約與材料記錄也會一併刪除。`)) return;
-    try {
-      await fetch(`/api/engineering/projects/${p.id}`, { method: 'DELETE' });
-      fetchProjects();
-      if (filterProjectId === String(p.id)) setFilterProjectId('');
-    } catch (e) { showToast('刪除失敗', 'error'); }
+  function deleteProject(p) {
+    askConfirm(`確定刪除工程案「${p.name}」？\n其合約與材料記錄也會一併刪除。`, async () => {
+      try {
+        await fetch(`/api/engineering/projects/${p.id}`, { method: 'DELETE' });
+        fetchProjects();
+        if (filterProjectId === String(p.id)) setFilterProjectId('');
+      } catch (e) { showToast('刪除失敗', 'error'); }
+    });
   }
 
   function openAddContract() {
@@ -857,13 +889,14 @@ function EngineeringPageInner() {
     finally { setContractSaving(false); }
   }
 
-  async function deleteContract(c) {
-    if (!confirm(`確定刪除合約「${c.contractNo}」？`)) return;
-    try {
-      const res = await fetch(`/api/engineering/contracts/${c.id}`, { method: 'DELETE' });
-      if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '刪除失敗', 'error'); return; }
-      fetchContracts(filterProjectId || undefined);
-    } catch (e) { showToast('刪除失敗', 'error'); }
+  function deleteContract(c) {
+    askConfirm(`確定刪除合約「${c.contractNo}」？`, async () => {
+      try {
+        const res = await fetch(`/api/engineering/contracts/${c.id}`, { method: 'DELETE' });
+        if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '刪除失敗', 'error'); return; }
+        fetchContracts(filterProjectId || undefined);
+      } catch (e) { showToast('刪除失敗', 'error'); }
+    });
   }
 
   function openMarkTermPaid(term) {
@@ -1080,8 +1113,13 @@ ${projectRows.map(p => `<tr>
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow p-1">
           {TABS.map(tab => (
             <button key={tab.key} type="button" onClick={() => switchEngineeringTab(tab.key)}
-              className={`flex-1 py-2.5 rounded-md text-sm font-medium ${activeTab === tab.key ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+              className={`flex-1 py-2.5 rounded-md text-sm font-medium flex items-center justify-center gap-1.5 ${activeTab === tab.key ? 'bg-amber-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
               {tab.label}
+              {tab.key === 'companyInvoices' && unassignedInvCount > 0 && (
+                <span className={`text-xs rounded-full px-1.5 py-0.5 font-bold leading-none min-w-[18px] text-center ${activeTab === tab.key ? 'bg-white text-amber-700' : 'bg-amber-500 text-white'}`}>
+                  {unassignedInvCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -3109,10 +3147,19 @@ ${projectRows.map(p => `<tr>
                     <td className="px-3 py-1.5 text-xs text-right">{Number(r.amount).toLocaleString('zh-TW')}</td>
                     <td className="px-3 py-1.5 text-xs text-right font-medium">{Number(r.totalAmount).toLocaleString('zh-TW')}</td>
                     <td className="px-3 py-1.5 text-xs">
-                      {r.project
-                        ? <span className="px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded text-xs">{r.project.name}</span>
-                        : <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded text-xs">未分配</span>
-                      }
+                      <select
+                        value={r.projectId ? String(r.projectId) : ''}
+                        onChange={e => updateInvoiceProject(r.id, e.target.value || null)}
+                        disabled={!!companyInvUpdating[r.id]}
+                        className={`border rounded px-1.5 py-0.5 text-xs max-w-[150px] ${
+                          r.projectId
+                            ? 'bg-teal-50 text-teal-700 border-teal-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        } ${companyInvUpdating[r.id] ? 'opacity-50' : ''}`}
+                      >
+                        <option value="">未分配</option>
+                        {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                      </select>
                     </td>
                     <td className="px-3 py-1.5 text-xs text-gray-500">{r.location || '—'}</td>
                   </tr>
@@ -3230,6 +3277,7 @@ ${projectRows.map(p => `<tr>
       )}
 
       {/* ── Engineering cashier execute modal ── */}
+      <ConfirmModal dialog={confirmDlg} onClose={closeConfirm} />
     </div>
   );
 }

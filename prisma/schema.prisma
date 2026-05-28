@@ -2978,6 +2978,15 @@ model BnbBookingRecord {
   cardBankLineId       Int?     @map("card_bank_line_id")                   // 刷卡入帳 → 存簿行
   cardMatchedAt        DateTime? @map("card_matched_at")
   cardMatchedBy        String?  @map("card_matched_by") @db.VarChar(255)
+  // 存簿比對跳過標記（next_month = 跨月入帳 / no_match = 無需配對）
+  depositMatchSkip     String?  @map("deposit_match_skip") @db.VarChar(20)
+  depositMatchSkipNote String?  @map("deposit_match_skip_note") @db.VarChar(255)
+  transferMatchSkip    String?  @map("transfer_match_skip") @db.VarChar(20)
+  transferMatchSkipNote String? @map("transfer_match_skip_note") @db.VarChar(255)
+  cardMatchSkip        String?  @map("card_match_skip") @db.VarChar(20)
+  cardMatchSkipNote    String?  @map("card_match_skip_note") @db.VarChar(255)
+  cashMatchSkip        String?  @map("cash_match_skip") @db.VarChar(20)
+  cashMatchSkipNote    String?  @map("cash_match_skip_note") @db.VarChar(255)
   // 自動產生的 CashTransaction IDs（連動出納系統）
   depositCashTxId      Int?     @map("deposit_cash_tx_id")
   transferCashTxId     Int?     @map("transfer_cash_tx_id")

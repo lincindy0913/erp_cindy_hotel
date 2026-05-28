@@ -36,6 +36,28 @@ export async function PUT(req, { params }) {
   }
 }
 
+export async function PATCH(req, { params }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const id = Number(params.id);
+  const body = await req.json();
+
+  try {
+    const data = {};
+    if ('projectId' in body) data.projectId = body.projectId ? Number(body.projectId) : null;
+
+    const row = await prisma.companyInputInvoice.update({
+      where: { id },
+      data,
+      include: { project: { select: { id: true, code: true, name: true } } },
+    });
+    return NextResponse.json(row);
+  } catch (e) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 export async function DELETE(req, { params }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

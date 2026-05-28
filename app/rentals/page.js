@@ -17,7 +17,8 @@ const TABS = [
   { key: 'rentFiling', label: '租金申報' },
   { key: 'maintenance', label: '維護費' },
   { key: 'utilityIncome', label: '水電收入' },
-  { key: 'analytics', label: '分析報表' }
+  { key: 'analytics', label: '分析報表' },
+  { key: 'help', label: '說明' }
 ];
 
 /** 舊網址 ?tab=incomeReport 等 → 導向 ?tab=analytics&sub=… */
@@ -68,6 +69,7 @@ const CONTRACT_STATUSES = [
 const INCOME_STATUSES = [
   { value: 'pending', label: '待收', color: 'bg-yellow-100 text-yellow-800' },
   { value: 'completed', label: '已收', color: 'bg-green-100 text-green-800' },
+  { value: 'paid', label: '已收', color: 'bg-green-100 text-green-800' },
   { value: 'partial', label: '部分收', color: 'bg-orange-100 text-orange-800' },
   { value: 'overdue', label: '逾期', color: 'bg-red-100 text-red-800' }
 ];
@@ -83,6 +85,13 @@ function StatusBadge({ value, list }) {
   const item = list.find(s => s.value === value);
   if (!item) return <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{value}</span>;
   return <span className={`text-xs px-2 py-0.5 rounded ${item.color}`}>{item.label}</span>;
+}
+
+function getContractDisplayStatus(c) {
+  if (c.status === 'active' && c.endDate && c.endDate < new Date().toISOString().slice(0, 10)) {
+    return 'expired';
+  }
+  return c.status;
 }
 
 function fmt(n) {
@@ -189,7 +198,7 @@ function RentalsPage() {
     const kw = (incomeFilter.propertySearch || '').trim();
     const cat = (incomeFilter.category || '').trim();
     const filtered = incomes.filter(i => {
-      if (kw && !(i.propertyName || '').includes(kw) && !(i.buildingName || '').includes(kw)) return false;
+      if (kw && !(i.propertyName || '').includes(kw) && !(i.buildingName || '').includes(kw) && !(i.tenantName || '').includes(kw)) return false;
       if (cat && (i.contractCategory || '') !== cat) return false;
       return true;
     });
@@ -378,7 +387,7 @@ function RentalsPage() {
   }, [rentFilingYear, activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
+    if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); if (contracts.length === 0) fetchContracts(); }
     if (activeTab === 'tenants') { fetchTenants(); if (properties.length === 0) fetchProperties(); if (accounts.length === 0) fetchAccounts(); }
     if (activeTab === 'contracts') {
       fetchContracts();
@@ -1092,7 +1101,8 @@ function RentalsPage() {
         bankAccountName: tenant.bankAccountName || '', bankAccountNumber: tenant.bankAccountNumber || '',
         isBlacklisted: tenant.isBlacklisted || false, blacklistReason: tenant.blacklistReason || '',
         creditNote: tenant.creditNote || '', note: tenant.note || '',
-        leaseStatus: tenant.leaseStatus || 'active'
+        leaseStatus: tenant.leaseStatus || 'active',
+        initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '',
       });
       const initChanges = {};
       (tenant.contracts || []).forEach(c => {
@@ -1125,9 +1135,9 @@ function RentalsPage() {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tenantForm) });
       const data = await res.json();
       if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
-      // 新增租客：若有填物業初始合約欄位，自動建立 pending 合約
-      if (!editingTenant && tenantForm.initPropertyId && tenantForm.initMonthlyRent && tenantForm.initStartDate && tenantForm.initRentAccountId) {
-        const newTenantId = data.id;
+      // 新增租客 或 編輯租客（無生效合約時）：若有填物業合約欄位，自動建立 pending 合約
+      if (tenantForm.initPropertyId && tenantForm.initMonthlyRent && tenantForm.initStartDate && tenantForm.initRentAccountId) {
+        const targetTenantId = editingTenant ? editingTenant.id : data.id;
         const sd = tenantForm.initStartDate;
         const ed = `${parseInt(sd.slice(0,4)) + 1}${sd.slice(4)}`; // +1 year
         await fetch('/api/rentals/contracts', {
@@ -1135,7 +1145,7 @@ function RentalsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             propertyId: parseInt(tenantForm.initPropertyId),
-            tenantId: newTenantId,
+            tenantId: targetTenantId,
             startDate: sd,
             endDate: ed,
             monthlyRent: parseFloat(tenantForm.initMonthlyRent),
@@ -1893,6 +1903,36 @@ function RentalsPage() {
                     目前顯示最近 1,200 筆，請使用年份或月份篩選縮小範圍
                   </p>
                 )}
+                {/* 合約到期提醒橫幅 */}
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const threshold = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+                  const expiring30 = contracts
+                    .filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= threshold)
+                    .sort((a, b) => a.endDate.localeCompare(b.endDate));
+                  if (expiring30.length === 0) return null;
+                  return (
+                    <div className="bg-orange-50 border border-orange-300 rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base shrink-0">⚠️</span>
+                        <div className="min-w-0">
+                          <span className="text-orange-800 font-semibold text-sm">
+                            {expiring30.length} 份合約將於 30 天內到期
+                          </span>
+                          <span className="text-orange-600 text-xs ml-2 truncate">
+                            最近：{expiring30[0].propertyName}（{expiring30[0].endDate}）
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { switchTab('contracts'); setReminderOpen(true); setReminderThreshold(30); }}
+                        className="shrink-0 text-xs text-orange-700 bg-orange-100 hover:bg-orange-200 border border-orange-300 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">
+                        查看到期合約 →
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 {/* Cashier summary cards */}
                 {incomes.length > 0 && (
                   <div className="grid grid-cols-4 gap-3 mb-4">
@@ -1947,15 +1987,15 @@ function RentalsPage() {
                       </button>
                     ))}
                   </div>
-                  {/* 物業搜尋 */}
+                  {/* 即時搜尋 */}
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 w-16">物業搜尋</span>
+                    <span className="text-xs font-semibold text-gray-500 w-16">即時搜尋</span>
                     <input
                       type="text"
                       value={incomeFilter.propertySearch}
                       onChange={e => setIncomeFilter(f => ({ ...f, propertySearch: e.target.value }))}
-                      placeholder="輸入物業名稱關鍵字…"
-                      className="border rounded px-2 py-1 text-sm w-48"
+                      placeholder="物業名稱 / 租客姓名…"
+                      className="border rounded px-2 py-1 text-sm w-52"
                     />
                     {incomeFilter.propertySearch && (
                       <button type="button" onClick={() => setIncomeFilter(f => ({ ...f, propertySearch: '' }))}
@@ -2035,9 +2075,12 @@ function RentalsPage() {
                       </div>
                       <div>
                         <label className="text-xs text-gray-600">收款帳戶 *</label>
-                        <select value={batchPayForm.accountId} onChange={e => setBatchPayForm(f => ({ ...f, accountId: e.target.value }))}
-                          className="w-full border rounded px-2 py-1 text-sm">
-                          <option value="">選擇帳戶</option>
+                        <select value={batchPayForm.accountId} onChange={e => {
+                          const acct = accounts.find(a => String(a.id) === e.target.value);
+                          const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
+                          setBatchPayForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
+                        }} className="w-full border rounded px-2 py-1 text-sm">
+                          <option value="">-- 選擇帳戶 --</option>
                           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                       </div>
@@ -2109,7 +2152,7 @@ function RentalsPage() {
                         const utilityExpected = utilityRec ? Number(utilityRec.expectedAmount) : 0;
                         const totalExpected = expected + utilityExpected;
                         return (
-                          <tr key={income.id} className={`border-t hover:bg-gray-50 ${isOverdue ? 'bg-red-50' : ''}`}>
+                          <tr key={income.id} className={`border-t ${isOverdue ? 'bg-orange-50 border-l-4 border-l-red-400 hover:bg-orange-100' : 'hover:bg-gray-50'}`}>
                             {/* 序號 */}
                             <td className="px-3 py-2 text-center text-xs text-gray-500">
                               {propInlineEdit?.propertyId === income.propertyId && propInlineEdit.field === 'sortOrder' ? (
@@ -2183,7 +2226,7 @@ function RentalsPage() {
                             <td className="px-3 py-2">
                               {income.dueDate}
                               {isOverdue && (
-                                <span className="text-red-600 text-xs ml-1 font-medium">
+                                <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white">
                                   逾期 {Math.ceil((new Date() - new Date(income.dueDate)) / 86400000)} 天
                                 </span>
                               )}
@@ -2288,7 +2331,10 @@ function RentalsPage() {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="text-xs text-gray-600">實收金額</label>
+                            <label className="text-xs text-gray-600">
+                              實收金額
+                              {incomeFormMode === 'confirm' && <span className="ml-1 text-teal-500 font-normal">（自動帶入尚欠）</span>}
+                            </label>
                             <input type="number" value={incomePayForm.actualAmount} onChange={e => setIncomePayForm(f => ({ ...f, actualAmount: e.target.value }))}
                               className="w-full border rounded px-2 py-1.5 text-sm" />
                           </div>
@@ -2299,9 +2345,12 @@ function RentalsPage() {
                           </div>
                           <div>
                             <label className="text-xs text-gray-600">收款帳戶</label>
-                            <select value={incomePayForm.accountId} onChange={e => setIncomePayForm(f => ({ ...f, accountId: e.target.value }))}
-                              className="w-full border rounded px-2 py-1.5 text-sm">
-                              <option value="">選擇帳戶</option>
+                            <select value={incomePayForm.accountId} onChange={e => {
+                              const acct = accounts.find(a => String(a.id) === e.target.value);
+                              const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
+                              setIncomePayForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
+                            }} className="w-full border rounded px-2 py-1.5 text-sm">
+                              <option value="">-- 選擇帳戶 --</option>
                               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
                           </div>
@@ -2407,7 +2456,7 @@ function RentalsPage() {
                                             </div>
                                             <div>
                                               <label className="text-xs text-gray-500">收款帳戶</label>
-                                              <select value={editingPaymentForm.accountId} onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
+                                              <select value={editingPaymentForm.accountId} onChange={e => { const acct = accounts.find(a => String(a.id) === e.target.value); const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null; setEditingPaymentForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) })); }} className="w-full border rounded px-2 py-0.5 text-xs">
                                                 <option value="">選擇</option>
                                                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                               </select>
@@ -2752,7 +2801,7 @@ function RentalsPage() {
                               ) : '-'}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <StatusBadge value={c.status} list={CONTRACT_STATUSES} />
+                              <StatusBadge value={getContractDisplayStatus(c)} list={CONTRACT_STATUSES} />
                             </td>
                             <td className="px-3 py-2 text-center whitespace-nowrap">
                               <button onClick={() => openContractModal(c)} className="text-blue-600 hover:text-blue-800 text-xs mr-2">編輯</button>
@@ -2996,7 +3045,7 @@ function RentalsPage() {
                         <label className="text-xs text-gray-600">付款帳戶</label>
                         <select value={taxPayForm.accountId} onChange={e => setTaxPayForm(f => ({ ...f, accountId: e.target.value }))}
                           className="w-full border rounded px-2 py-1 text-sm">
-                          <option value="">選擇帳戶</option>
+                          <option value="">-- 選擇帳戶 --</option>
                           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                       </div>
@@ -3414,7 +3463,7 @@ function RentalsPage() {
                           <div>
                             <label className="text-sm text-gray-600">收款帳戶</label>
                             <select value={utilityForm.accountId} onChange={e => setUtilityForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm">
-                              <option value="">選擇帳戶</option>
+                              <option value="">-- 選擇帳戶 --</option>
                               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
                           </div>
@@ -3792,7 +3841,7 @@ function RentalsPage() {
                                     : <span className="text-gray-300 text-xs">—</span>}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <StatusBadge value={c.status} list={CONTRACT_STATUSES} />
+                              <StatusBadge value={getContractDisplayStatus(c)} list={CONTRACT_STATUSES} />
                             </td>
                             <td className="px-3 py-2 text-center">
                               <button onClick={() => { switchTab('contracts'); }} className="text-xs text-teal-600 hover:underline">查看合約</button>
@@ -4071,9 +4120,13 @@ function RentalsPage() {
                       <div>
                         <label className="text-xs text-gray-600">收款帳戶 *</label>
                         <select value={editingPaymentForm.accountId}
-                          onChange={e => setEditingPaymentForm(f => ({ ...f, accountId: e.target.value }))}
+                          onChange={e => {
+                            const acct = accounts.find(a => String(a.id) === e.target.value);
+                            const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
+                            setEditingPaymentForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
+                          }}
                           className="w-full border rounded px-3 py-1.5 text-sm mt-0.5">
-                          <option value="">選擇帳戶</option>
+                          <option value="">-- 選擇帳戶 --</option>
                           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                       </div>
@@ -4104,6 +4157,73 @@ function RentalsPage() {
                 </div>
               )}
               </>
+            )}
+
+            {/* ==================== TAB: HELP / 說明 ==================== */}
+            {activeTab === 'help' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h3 className="text-lg font-bold text-gray-800 mb-3">租屋管理 — 使用說明</h3>
+                  <p className="text-sm text-gray-600">本頁彙整最近功能調整與常見操作流程，協助您快速上手。最新異動置於最上方。</p>
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <span className="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded">最新</span>
+                    編輯租客 — 無生效合約時可直接綁定物業
+                  </h4>
+                  <p className="text-sm text-gray-600 mb-3">過往於「編輯租客」彈窗中，只有「新增租客」流程才能選擇物業並建立初始合約；當該租客的合約全部退租（或從未綁定物業）時，畫面只剩基本資料、聯絡資料、銀行資料、信用備註等欄位，無法新增物業合約。現已改善：</p>
+                  <ul className="text-sm text-gray-700 list-disc pl-5 space-y-1.5">
+                    <li>「新增物業合約」區塊會在以下情況自動顯示：
+                      <ul className="list-disc pl-5 mt-1 space-y-1">
+                        <li>新增租客時（標題顯示「初始物業合約」）</li>
+                        <li>編輯租客時，且該租客<strong>沒有任何生效中／待審核合約</strong>（標題顯示「新增物業合約」）</li>
+                      </ul>
+                    </li>
+                    <li>填寫「物業 / 月租金 / 開始日期 / 收租帳戶」後按「儲存」，系統會自動建立一張<strong>待審核（pending）</strong>合約。</li>
+                    <li>合約結束日期預設為「開始日期 +1 年」，可至「合約管理」分頁進一步調整。</li>
+                  </ul>
+                  <div className="mt-4 bg-gray-50 border border-gray-200 rounded p-3 text-sm text-gray-600">
+                    <strong className="text-gray-800">操作位置：</strong>
+                    <span className="ml-1">「租客管理」分頁 → 點選租客列的「編輯」 → 滑到彈窗下方「新增物業合約」區塊。</span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h4 className="font-semibold text-gray-800 mb-3">租客狀態 vs. 合約狀態</h4>
+                  <div className="grid md:grid-cols-2 gap-4 text-sm">
+                    <div className="border rounded p-3">
+                      <p className="font-medium text-gray-800 mb-1">租客狀態（leaseStatus）</p>
+                      <ul className="list-disc pl-5 text-gray-600 space-y-1">
+                        <li><span className="text-green-700 font-medium">出租中</span>（active）</li>
+                        <li><span className="text-orange-700 font-medium">退租</span>（terminating）</li>
+                        <li><span className="text-gray-500 font-medium">已退租</span>（terminated）</li>
+                      </ul>
+                    </div>
+                    <div className="border rounded p-3">
+                      <p className="font-medium text-gray-800 mb-1">合約狀態（contract.status）</p>
+                      <ul className="list-disc pl-5 text-gray-600 space-y-1">
+                        <li><span className="text-gray-700 font-medium">待審核</span>（pending）</li>
+                        <li><span className="text-green-700 font-medium">生效中</span>（active）</li>
+                        <li><span className="text-yellow-700 font-medium">已到期</span>（expired，由結束日期自動判定）</li>
+                        <li><span className="text-red-700 font-medium">已終止</span>（terminated，含退租）</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-3">小提醒：實際房屋是否「出租中」以<strong>合約狀態</strong>為準；租客狀態僅作為租客主檔的標記。</p>
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h4 className="font-semibold text-gray-800 mb-3">常見操作</h4>
+                  <ul className="text-sm text-gray-700 list-disc pl-5 space-y-2">
+                    <li><strong>新增租客 + 物業綁定</strong>：「租客管理」→「新增租客」→ 填基本資料 → 下方填「初始物業合約」→ 儲存。</li>
+                    <li><strong>替既有租客新增物業</strong>：若該租客<strong>沒有</strong>生效合約 → 直接在「編輯租客」中填「新增物業合約」；若<strong>已有</strong>生效合約 → 請至「合約管理」→「新增合約」。</li>
+                    <li><strong>更換物業</strong>：「編輯租客」→「合約 / 物業」區塊 → 對生效合約使用下拉選單切換物業 → 儲存。</li>
+                    <li><strong>辦理退租</strong>：「編輯租客」→「合約 / 物業」區塊 → 對應合約右側「退租」按鈕 → 選退租日期 → 確認。</li>
+                    <li><strong>合約待審核 → 生效</strong>：「合約管理」→ 編輯該合約 → 將狀態改為「生效中」→ 儲存。</li>
+                  </ul>
+                </div>
+              </div>
             )}
 
           </>
@@ -4152,7 +4272,7 @@ function RentalsPage() {
                   <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-orange-50">
                     <div>
                       <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
-                      <span className="text-xs text-gray-500 ml-2">（{c.status === 'active' ? '生效中' : '待審核'}）</span>
+                      <span className="text-xs text-gray-500 ml-2">（{{ active: '生效中', pending: '待審核', expired: '已到期', terminated: '已終止' }[getContractDisplayStatus(c)] || c.status}）</span>
                       {c.endDate && <span className="text-xs text-gray-400 ml-2">到期 {c.endDate}</span>}
                     </div>
                     <button
@@ -4336,64 +4456,116 @@ function RentalsPage() {
               {/* 合約 / 物業 — 僅編輯時顯示 */}
               {editingTenant && (() => {
                 const tenantContracts = editingTenant.contracts || [];
-                if (tenantContracts.length === 0) return null;
+                const hasActiveContract = tenantContracts.some(c => {
+                  const ds = getContractDisplayStatus(c);
+                  return (c.status === 'active' || c.status === 'pending') && ds !== 'expired';
+                });
                 return (
                   <div className="mt-5 border-t pt-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">合約 / 物業 <span className="normal-case font-normal text-gray-400">（生效合約可更換物業）</span></p>
-                    <div className="space-y-2">
-                      {tenantContracts.map(c => {
-                        const isActive = c.status === 'active' || c.status === 'pending';
-                        const isTerminated = c.status === 'terminated' || c.status === 'expired';
-                        const statusLabel = { active: '生效中', pending: '待審核', terminated: '已終止', expired: '已到期' }[c.status] || c.status;
-                        const statusColor = isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200';
-                        return (
-                          <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-gray-50 gap-2">
-                            <div className="flex-1 min-w-0">
-                              {isActive ? (
-                                <select
-                                  value={contractPropertyChanges[c.id] || ''}
-                                  onChange={e => setContractPropertyChanges(prev => ({ ...prev, [c.id]: e.target.value }))}
-                                  className="text-sm border rounded px-2 py-1 w-full max-w-xs"
-                                >
-                                  <option value="">-- 選擇物業 --</option>
-                                  {properties.map(p => (
-                                    <option key={p.id} value={String(p.id)}>{p.name}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
-                              )}
-                              {c.contractNo && <span className="text-xs text-gray-400 ml-2">{c.contractNo}</span>}
-                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                <span className={`text-xs px-2 py-0.5 border rounded ${statusColor}`}>{statusLabel}</span>
-                                {c.startDate && <span className="text-xs text-gray-400">{c.startDate}{c.endDate ? ` ~ ${c.endDate}` : ''}</span>}
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">合約 / 物業 <span className="normal-case font-normal text-gray-400">（生效中及待審核合約可更換物業）</span></p>
+
+                    {/* 現有合約列表 */}
+                    {tenantContracts.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {tenantContracts.map(c => {
+                          const contractDisplayStatus = getContractDisplayStatus(c);
+                          const isActive = (c.status === 'active' || c.status === 'pending') && contractDisplayStatus !== 'expired';
+                          const isTerminated = c.status === 'terminated' || contractDisplayStatus === 'expired';
+                          const statusLabel = { active: '生效中', pending: '待審核', terminated: '已終止', expired: '已到期' }[contractDisplayStatus] || contractDisplayStatus;
+                          const statusColor = isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200';
+                          return (
+                            <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-gray-50 gap-2">
+                              <div className="flex-1 min-w-0">
+                                {isActive ? (
+                                  <select
+                                    value={contractPropertyChanges[c.id] || ''}
+                                    onChange={e => setContractPropertyChanges(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                    className="text-sm border rounded px-2 py-1 w-full max-w-xs"
+                                  >
+                                    <option value="">-- 選擇物業 --</option>
+                                    {properties.map(p => (
+                                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
+                                )}
+                                {c.contractNo && <span className="text-xs text-gray-400 ml-2">{c.contractNo}</span>}
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <span className={`text-xs px-2 py-0.5 border rounded ${statusColor}`}>{statusLabel}</span>
+                                  {c.startDate && <span className="text-xs text-gray-400">{c.startDate}{c.endDate ? ` ~ ${c.endDate}` : ''}</span>}
+                                </div>
                               </div>
+                              {isActive ? (
+                                <button
+                                  onClick={() => {
+                                    setShowTenantModal(false);
+                                    setTerminateModal({
+                                      tenant: editingTenant,
+                                      contracts: [c],
+                                      endDate: new Date().toISOString().split('T')[0]
+                                    });
+                                  }}
+                                  className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-300 rounded hover:bg-orange-100 font-medium whitespace-nowrap shrink-0">
+                                  退租
+                                </button>
+                              ) : isTerminated ? (
+                                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded shrink-0">已退租</span>
+                              ) : null}
                             </div>
-                            {isActive ? (
-                              <button
-                                onClick={() => {
-                                  setShowTenantModal(false);
-                                  setTerminateModal({
-                                    tenant: editingTenant,
-                                    contracts: [c],
-                                    endDate: new Date().toISOString().split('T')[0]
-                                  });
-                                }}
-                                className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-300 rounded hover:bg-orange-100 font-medium whitespace-nowrap shrink-0">
-                                退租
-                              </button>
-                            ) : isTerminated ? (
-                              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded shrink-0">已退租</span>
-                            ) : null}
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 新增物業合約（無生效合約時顯示） */}
+                    {!hasActiveContract && (
+                      <div className={`${tenantContracts.length > 0 ? 'border-t pt-3 mt-2' : ''}`}>
+                        <p className="text-xs text-gray-500 mb-2">新增物業合約 <span className="text-gray-400">（儲存後自動建立待審核合約）</span></p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="col-span-2">
+                            <label className="text-sm text-gray-600">物業</label>
+                            <select value={tenantForm.initPropertyId}
+                              onChange={e => setTenantForm(f => ({ ...f, initPropertyId: e.target.value }))}
+                              className="w-full border rounded px-3 py-2 text-sm">
+                              <option value="">-- 不設定 --</option>
+                              {properties.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                            </select>
                           </div>
-                        );
-                      })}
-                    </div>
+                          {tenantForm.initPropertyId && (
+                            <>
+                              <div>
+                                <label className="text-sm text-gray-600">月租金 *</label>
+                                <input type="number" min="0" value={tenantForm.initMonthlyRent}
+                                  onChange={e => setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value }))}
+                                  className="w-full border rounded px-3 py-2 text-sm" placeholder="0" />
+                              </div>
+                              <div>
+                                <label className="text-sm text-gray-600">開始日期 *</label>
+                                <input type="date" value={tenantForm.initStartDate}
+                                  onChange={e => setTenantForm(f => ({ ...f, initStartDate: e.target.value }))}
+                                  className="w-full border rounded px-3 py-2 text-sm" />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="text-sm text-gray-600">收租帳戶 *</label>
+                                <select value={tenantForm.initRentAccountId}
+                                  onChange={e => setTenantForm(f => ({ ...f, initRentAccountId: e.target.value }))}
+                                  className="w-full border rounded px-3 py-2 text-sm">
+                                  <option value="">-- 選擇帳戶 --</option>
+                                  {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                                </select>
+                              </div>
+                              <p className="col-span-2 text-xs text-gray-400">合約結束日期自動設為開始日期 +1 年，狀態為「待審核」，可至合約管理補全資訊。</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
 
-              {/* 初始物業合約（僅新增租客時顯示） */}
+              {/* 物業合約：新增租客時顯示 */}
               {!editingTenant && (
                 <div className="mt-5 border-t pt-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
@@ -4500,7 +4672,11 @@ function RentalsPage() {
                 <div>
                   <label className="text-sm text-gray-600">收款帳戶 *</label>
                   <select value={quickPayForm.accountId}
-                    onChange={e => setQuickPayForm(f => ({ ...f, accountId: e.target.value }))}
+                    onChange={e => {
+                      const acct = accounts.find(a => String(a.id) === e.target.value);
+                      const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
+                      setQuickPayForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
+                    }}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">-- 選擇帳戶 --</option>
                     {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
@@ -4855,7 +5031,7 @@ function RentalsPage() {
                   <label className="text-sm text-gray-600">收租帳戶 *</label>
                   <select value={contractForm.rentAccountId} onChange={e => setContractForm(f => ({ ...f, rentAccountId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">選擇帳戶</option>
+                    <option value="">-- 選擇帳戶 --</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
