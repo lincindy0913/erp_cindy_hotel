@@ -307,6 +307,11 @@ function RentalsPage() {
   const [overdueReportData, setOverdueReportData] = useState([]);
   const [overdueReportLoading, setOverdueReportLoading] = useState(false);
 
+  // Quick-pay modal (從逾期催繳直接收款)
+  const [quickPayIncome, setQuickPayIncome] = useState(null);
+  const [quickPayForm, setQuickPayForm] = useState({ actualAmount: '', actualDate: '', accountId: '', paymentMethod: '匯款' });
+  const [quickPaySaving, setQuickPaySaving] = useState(false);
+
   // Confirm dialog (replaces window.confirm)
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null, danger: true });
 
@@ -391,7 +396,7 @@ function RentalsPage() {
     if (activeTab === 'paymentRecords') { fetchPaymentRecords(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'overview') fetchSummary();
     if (activeTab === 'analytics') {
-      if (analyticsSub === 'overdue') { fetchOverdueReport(); if (properties.length === 0) fetchProperties(); }
+      if (analyticsSub === 'overdue') { fetchOverdueReport(); if (properties.length === 0) fetchProperties(); if (accounts.length === 0) fetchAccounts(); }
       if (analyticsSub === 'deposit') { fetchContracts(); if (properties.length === 0) fetchProperties(); }
       if (analyticsSub === 'vacancy') fetchVacancyReport();
       if (analyticsSub === 'income') { fetchIncomeReport(); fetchProperties(); }
@@ -872,6 +877,45 @@ function RentalsPage() {
       setOverdueReportData(overdue);
     } catch { setOverdueReportData([]); }
     finally { setOverdueReportLoading(false); }
+  }
+
+  function openQuickPay(income) {
+    const prop = properties.find(p => p.id === income.propertyId);
+    const defaultAccountId = String(
+      income.accountId ||
+      prop?.rentCollectAccountId ||
+      prop?.rentCollectAccount?.id ||
+      ''
+    );
+    const expected = Number(income.expectedAmount || 0);
+    const received = Number(income.actualAmount || 0);
+    const remaining = Math.max(0, expected - received);
+    setQuickPayForm({
+      actualAmount: remaining > 0 ? String(remaining) : String(expected),
+      actualDate: new Date().toISOString().split('T')[0],
+      accountId: defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId,
+      paymentMethod: income.paymentMethod || '匯款',
+    });
+    setQuickPayIncome(income);
+  }
+
+  async function confirmQuickPay() {
+    if (!quickPayForm.actualAmount || Number(quickPayForm.actualAmount) <= 0) return showToast('請填寫實收金額', 'error');
+    if (!quickPayForm.accountId) return showToast('請選擇收款帳戶', 'error');
+    setQuickPaySaving(true);
+    try {
+      const res = await fetch(`/api/rentals/income/${quickPayIncome.id}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rent: quickPayForm })
+      });
+      const data = await res.json();
+      if (!res.ok) return showToast(data.error || '收款失敗', 'error');
+      showToast('收款成功！', 'success');
+      setQuickPayIncome(null);
+      fetchOverdueReport();
+    } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
+    finally { setQuickPaySaving(false); }
   }
 
   async function fetchVacancyReport() {
@@ -3651,9 +3695,9 @@ function RentalsPage() {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 border border-gray-200 text-center no-print">
-                                  <button onClick={() => { switchTab('cashier'); }}
-                                    className="text-teal-600 hover:text-teal-800 text-xs underline">
-                                    前往收款
+                                  <button onClick={() => openQuickPay(i)}
+                                    className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">
+                                    收款
                                   </button>
                                 </td>
                               </tr>
@@ -4403,6 +4447,85 @@ function RentalsPage() {
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowTenantModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
                 <button onClick={saveTenant} disabled={tenantSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{tenantSaving ? '儲存中…' : '儲存'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL: QUICK PAY ==================== */}
+      {quickPayIncome && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setQuickPayIncome(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4">確認收款</h3>
+              {/* 唯讀資訊 */}
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">物業</span>
+                  <span className="font-medium text-gray-800">{quickPayIncome.propertyName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">租客</span>
+                  <span className="font-medium text-gray-800">
+                    {quickPayIncome.tenantName || (quickPayIncome.tenant?.tenantType === 'company' ? quickPayIncome.tenant?.companyName : quickPayIncome.tenant?.fullName) || '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">聯絡電話</span>
+                  <span className="text-gray-700">{quickPayIncome.tenant?.phone || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">租期</span>
+                  <span className="text-gray-700">{quickPayIncome.incomeYear}/{String(quickPayIncome.incomeMonth).padStart(2,'0')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">應收金額</span>
+                  <span className="font-semibold text-gray-800">${fmt(quickPayIncome.expectedAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">到期日</span>
+                  <span className="text-red-600 font-medium">{quickPayIncome.dueDate}</span>
+                </div>
+              </div>
+              {/* 可編輯欄位 */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm text-gray-600">實收金額 *</label>
+                  <input type="number" min="0" value={quickPayForm.actualAmount}
+                    onChange={e => setQuickPayForm(f => ({ ...f, actualAmount: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">收款日期 *</label>
+                  <input type="date" value={quickPayForm.actualDate}
+                    onChange={e => setQuickPayForm(f => ({ ...f, actualDate: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">收款帳戶 *</label>
+                  <select value={quickPayForm.accountId}
+                    onChange={e => setQuickPayForm(f => ({ ...f, accountId: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="">-- 選擇帳戶 --</option>
+                    {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">付款方式</label>
+                  <select value={quickPayForm.paymentMethod}
+                    onChange={e => setQuickPayForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    {['現金','匯款','轉帳','支票'].map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={() => setQuickPayIncome(null)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+                <button onClick={confirmQuickPay} disabled={quickPaySaving}
+                  className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">
+                  {quickPaySaving ? '處理中…' : '確認收款'}
+                </button>
               </div>
             </div>
           </div>
