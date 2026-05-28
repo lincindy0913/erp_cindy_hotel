@@ -300,6 +300,7 @@ function RentalsPage() {
   const [taxTableRows, setTaxTableRows] = useState([]);
   const [taxTableSaving, setTaxTableSaving] = useState(false);
   const [tenantSaving, setTenantSaving] = useState(false);
+  const [initContractErrors, setInitContractErrors] = useState(new Set());
   const [terminateModal, setTerminateModal] = useState(null); // { tenant, contracts: [{id,propertyName,endDate}] }
   const [propertySaving, setPropertySaving] = useState(false);
   const [contractSaving, setContractSaving] = useState(false);
@@ -1151,9 +1152,11 @@ function RentalsPage() {
         if (c.property?.id) initChanges[c.id] = String(c.property.id);
       });
       setContractPropertyChanges(initChanges);
+      setInitContractErrors(new Set());
     } else {
       setEditingTenant(null);
       setContractPropertyChanges({});
+      setInitContractErrors(new Set());
       setTenantForm({
         tenantCode: '', tenantType: 'individual',
         fullName: '', companyName: '', taxId: '', representativeName: '',
@@ -1175,6 +1178,22 @@ function RentalsPage() {
     let tenantSaved = false;
 
     try {
+      // ── 前置驗證：選了物業時，其餘必填不可空白 ──────────────
+      if (tenantForm.initPropertyId) {
+        const missing = new Set();
+        if (!tenantForm.initMonthlyRent || Number(tenantForm.initMonthlyRent) <= 0) missing.add('initMonthlyRent');
+        if (!tenantForm.initStartDate) missing.add('initStartDate');
+        if (!tenantForm.initRentAccountId) missing.add('initRentAccountId');
+        if (missing.size > 0) {
+          setInitContractErrors(missing);
+          const labels = [...missing].map(f => ({ initMonthlyRent: '月租金', initStartDate: '開始日期', initRentAccountId: '收租帳戶' }[f])).join('、');
+          showToast(`物業已選取，請補齊必填欄位：${labels}`, 'error');
+          setTenantSaving(false);
+          return;
+        }
+      }
+      setInitContractErrors(new Set());
+
       // ── Step 1：儲存租客本體 ──────────────────────────────────
       const url = editingTenant ? `/api/rentals/tenants/${editingTenant.id}` : '/api/rentals/tenants';
       const method = editingTenant ? 'PUT' : 'POST';
@@ -4676,26 +4695,29 @@ function RentalsPage() {
                           {tenantForm.initPropertyId && (
                             <>
                               <div>
-                                <label className="text-sm text-gray-600">月租金 *</label>
+                                <label className={`text-sm ${initContractErrors.has('initMonthlyRent') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>月租金 *</label>
                                 <input type="number" min="0" value={tenantForm.initMonthlyRent}
-                                  onChange={e => setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value }))}
-                                  className="w-full border rounded px-3 py-2 text-sm" placeholder="0" />
+                                  onChange={e => { setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initMonthlyRent'); return n; }); }}
+                                  className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initMonthlyRent') ? 'border-red-400 bg-red-50' : ''}`} placeholder="0" />
                               </div>
                               <div>
-                                <label className="text-sm text-gray-600">開始日期 *</label>
+                                <label className={`text-sm ${initContractErrors.has('initStartDate') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>開始日期 *</label>
                                 <input type="date" value={tenantForm.initStartDate}
-                                  onChange={e => setTenantForm(f => ({ ...f, initStartDate: e.target.value }))}
-                                  className="w-full border rounded px-3 py-2 text-sm" />
+                                  onChange={e => { setTenantForm(f => ({ ...f, initStartDate: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initStartDate'); return n; }); }}
+                                  className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initStartDate') ? 'border-red-400 bg-red-50' : ''}`} />
                               </div>
                               <div className="col-span-2">
-                                <label className="text-sm text-gray-600">收租帳戶 *</label>
+                                <label className={`text-sm ${initContractErrors.has('initRentAccountId') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>收租帳戶 *</label>
                                 <select value={tenantForm.initRentAccountId}
-                                  onChange={e => setTenantForm(f => ({ ...f, initRentAccountId: e.target.value }))}
-                                  className="w-full border rounded px-3 py-2 text-sm">
+                                  onChange={e => { setTenantForm(f => ({ ...f, initRentAccountId: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initRentAccountId'); return n; }); }}
+                                  className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initRentAccountId') ? 'border-red-400 bg-red-50' : ''}`}>
                                   <option value="">-- 選擇帳戶 --</option>
                                   {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                                 </select>
                               </div>
+                              {initContractErrors.size > 0 && (
+                                <p className="col-span-2 text-xs text-red-500 font-medium">請補齊標紅的必填欄位</p>
+                              )}
                               <p className="col-span-2 text-xs text-gray-400">合約結束日期自動設為開始日期 +1 年，狀態為「待審核」，可至合約管理補全資訊。</p>
                             </>
                           )}
@@ -4725,26 +4747,29 @@ function RentalsPage() {
                     {tenantForm.initPropertyId && (
                       <>
                         <div>
-                          <label className="text-sm text-gray-600">月租金 *</label>
+                          <label className={`text-sm ${initContractErrors.has('initMonthlyRent') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>月租金 *</label>
                           <input type="number" min="0" value={tenantForm.initMonthlyRent}
-                            onChange={e => setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value }))}
-                            className="w-full border rounded px-3 py-2 text-sm" placeholder="0" />
+                            onChange={e => { setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initMonthlyRent'); return n; }); }}
+                            className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initMonthlyRent') ? 'border-red-400 bg-red-50' : ''}`} placeholder="0" />
                         </div>
                         <div>
-                          <label className="text-sm text-gray-600">開始日期 *</label>
+                          <label className={`text-sm ${initContractErrors.has('initStartDate') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>開始日期 *</label>
                           <input type="date" value={tenantForm.initStartDate}
-                            onChange={e => setTenantForm(f => ({ ...f, initStartDate: e.target.value }))}
-                            className="w-full border rounded px-3 py-2 text-sm" />
+                            onChange={e => { setTenantForm(f => ({ ...f, initStartDate: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initStartDate'); return n; }); }}
+                            className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initStartDate') ? 'border-red-400 bg-red-50' : ''}`} />
                         </div>
                         <div className="col-span-2">
-                          <label className="text-sm text-gray-600">收租帳戶 *</label>
+                          <label className={`text-sm ${initContractErrors.has('initRentAccountId') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>收租帳戶 *</label>
                           <select value={tenantForm.initRentAccountId}
-                            onChange={e => setTenantForm(f => ({ ...f, initRentAccountId: e.target.value }))}
-                            className="w-full border rounded px-3 py-2 text-sm">
+                            onChange={e => { setTenantForm(f => ({ ...f, initRentAccountId: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initRentAccountId'); return n; }); }}
+                            className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initRentAccountId') ? 'border-red-400 bg-red-50' : ''}`}>
                             <option value="">-- 選擇帳戶 --</option>
                             {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                           </select>
                         </div>
+                        {initContractErrors.size > 0 && (
+                          <p className="col-span-2 text-xs text-red-500 font-medium">請補齊標紅的必填欄位</p>
+                        )}
                         <p className="col-span-2 text-xs text-gray-400">合約結束日期自動設為開始日期 +1 年，狀態為「待審核」，可至合約管理補全資訊。</p>
                       </>
                     )}
