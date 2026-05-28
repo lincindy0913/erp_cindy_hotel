@@ -105,7 +105,7 @@ export async function GET(request) {
       propertyIds.size > 0
         ? await prisma.rentalProperty.findMany({
             where: { id: { in: Array.from(propertyIds) } },
-            select: { id: true, name: true, buildingName: true, unitNo: true, address: true }
+            select: { id: true, name: true, buildingName: true, unitNo: true, address: true, sortOrder: true }
           })
         : [];
 
@@ -117,6 +117,7 @@ export async function GET(request) {
       byProperty.set(p.id, {
         propertyId: p.id,
         propertyLabel: propLabel(p),
+        sortOrder: p.sortOrder ?? null,
         tenantName: null,
         months: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
         monthsExpected: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
@@ -176,6 +177,9 @@ export async function GET(request) {
       .filter(r => r.total > 0 || r.tenantName)
       .sort((a, b) => {
         if (a.isTerminated !== b.isTerminated) return a.isTerminated ? 1 : -1;
+        const sa = a.sortOrder ?? 999999;
+        const sb = b.sortOrder ?? 999999;
+        if (sa !== sb) return sa - sb;
         return (a.propertyLabel || '').localeCompare(b.propertyLabel || '');
       });
 

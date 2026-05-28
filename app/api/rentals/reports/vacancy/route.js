@@ -22,7 +22,8 @@ export async function GET(request) {
 
     const [properties, contracts] = await Promise.all([
       prisma.rentalProperty.findMany({
-        select: { id: true, name: true, buildingName: true, unitNo: true, address: true, status: true }
+        select: { id: true, name: true, buildingName: true, unitNo: true, address: true, status: true, sortOrder: true },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }]
       }),
       prisma.rentalContract.findMany({
         where: {
@@ -68,12 +69,13 @@ export async function GET(request) {
         propertyId: p.id,
         propertyLabel: propLabel(p),
         currentStatus: p.status,
+        sortOrder: p.sortOrder ?? null,
         monthRented,  // boolean[12]
         rentedCount,
         vacancyRate,
         avgRent
       };
-    }).sort((a, b) => b.vacancyRate - a.vacancyRate);
+    }); // 順序已由 orderBy sortOrder 決定，不再按空置率排序
 
     const totalProps = rows.length;
     const avgVacancy = totalProps > 0 ? Math.round(rows.reduce((s, r) => s + r.vacancyRate, 0) / totalProps) : 0;
