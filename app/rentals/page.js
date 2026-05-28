@@ -2412,6 +2412,7 @@ function RentalsPage() {
                         <SortableTh label="電話" colKey="phone" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
                         <SortableTh label="物業" colKey="propertyNames" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" />
                         <SortableTh label="有效合約" colKey="activeContractCount" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
+                        <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">狀態</th>
                         <SortableTh label="退租" colKey="terminatedContractCount" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
                         <SortableTh label="信用評等" colKey="creditScore" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
                         <SortableTh label="黑名單" colKey="isBlacklisted" sortKey={tenantSortKey} sortDir={tenantSortDir} onSort={tenantToggleSort} className="px-3 py-2" align="center" />
@@ -2434,7 +2435,7 @@ function RentalsPage() {
                           ..._sorted.filter(t => isRetired(t)),
                         ];
                         if (sorted.length === 0) return (
-                          <tr><td colSpan={10} className="text-center py-8 text-gray-400">暫無資料</td></tr>
+                          <tr><td colSpan={11} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                         );
                         return sorted.map(t => {
                           const activeContracts = (t.contracts || []).filter(c => c.status === 'active' || c.status === 'pending');
@@ -2458,6 +2459,14 @@ function RentalsPage() {
                                 }
                               </td>
                               <td className="px-3 py-2 text-center">{t.activeContractCount}</td>
+                              <td className="px-3 py-2 text-center">
+                                {activeContracts.length > 0
+                                  ? <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 border border-green-300 rounded font-medium">出租中</span>
+                                  : retiredContracts.length > 0
+                                    ? <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded">已退租</span>
+                                    : <span className="text-gray-300 text-xs">-</span>
+                                }
+                              </td>
                               <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
                                 {activeContracts.length > 0 ? (
                                   <button
@@ -4126,10 +4135,10 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">租約狀態</label>
+                  <label className="text-sm text-gray-600">狀態</label>
                   <select value={tenantForm.leaseStatus || 'active'} onChange={e => setTenantForm(f => ({ ...f, leaseStatus: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="active">租約中</option>
+                    <option value="active">出租中</option>
                     <option value="terminating">退租</option>
                     <option value="terminated">已退租</option>
                   </select>
@@ -4268,7 +4277,7 @@ function RentalsPage() {
                 if (tenantContracts.length === 0) return null;
                 return (
                   <div className="mt-5 border-t pt-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">合約 / 物業</p>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">合約 / 物業 <span className="normal-case font-normal text-gray-400">（生效合約可更換物業）</span></p>
                     <div className="space-y-2">
                       {tenantContracts.map(c => {
                         const isActive = c.status === 'active' || c.status === 'pending';

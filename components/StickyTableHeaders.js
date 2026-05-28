@@ -33,7 +33,7 @@ export default function StickyTableHeaders() {
       // Fixed container clipped to wrapper width
       const bar = document.createElement('div');
       bar.style.cssText =
-        'position:fixed;left:0;top:0;z-index:55;overflow:hidden;display:none;' +
+        'position:fixed;left:0;top:0;z-index:48;overflow:hidden;display:none;' +
         'box-shadow:0 2px 6px rgba(0,0,0,.12);';
       document.body.appendChild(bar);
 
