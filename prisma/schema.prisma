@@ -1482,6 +1482,7 @@ model TenantMaster {
   blacklistReason     String?  @map("blacklist_reason") @db.Text
   creditNote          String?  @map("credit_note") @db.Text
   note                String?  @db.Text
+  leaseStatus         String?  @default("active") @map("lease_status") @db.VarChar(20)
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 

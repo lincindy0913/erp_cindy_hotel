@@ -130,7 +130,8 @@ export async function POST(request) {
         bankBranch: body.bankBranch || null,
         bankAccountName: body.bankAccountName || null,
         bankAccountNumber: body.bankAccountNumber || null,
-        note: body.note || null
+        note: body.note || null,
+        leaseStatus: body.leaseStatus || 'active'
       }
     });
 

@@ -89,7 +89,8 @@ export async function PUT(request, { params }) {
         isBlacklisted: body.isBlacklisted,
         blacklistReason: body.blacklistReason,
         creditNote: body.creditNote,
-        note: body.note
+        note: body.note,
+        leaseStatus: body.leaseStatus || 'active'
       }
     });
 

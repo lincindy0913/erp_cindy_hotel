@@ -227,7 +227,8 @@ function RentalsPage() {
     phone: '', phone2: '', email: '', address: '',
     emergencyContact: '', emergencyPhone: '',
     bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
-    isBlacklisted: false, blacklistReason: '', creditNote: '', note: ''
+    isBlacklisted: false, blacklistReason: '', creditNote: '', note: '',
+    leaseStatus: 'active'
   });
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
@@ -1043,7 +1044,8 @@ function RentalsPage() {
         bankCode: tenant.bankCode || '', bankBranch: tenant.bankBranch || '',
         bankAccountName: tenant.bankAccountName || '', bankAccountNumber: tenant.bankAccountNumber || '',
         isBlacklisted: tenant.isBlacklisted || false, blacklistReason: tenant.blacklistReason || '',
-        creditNote: tenant.creditNote || '', note: tenant.note || ''
+        creditNote: tenant.creditNote || '', note: tenant.note || '',
+        leaseStatus: tenant.leaseStatus || 'active'
       });
     } else {
       setEditingTenant(null);
@@ -1054,7 +1056,8 @@ function RentalsPage() {
         phone: '', phone2: '', email: '', address: '',
         emergencyContact: '', emergencyPhone: '',
         bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
-        isBlacklisted: false, blacklistReason: '', creditNote: '', note: ''
+        isBlacklisted: false, blacklistReason: '', creditNote: '', note: '',
+        leaseStatus: 'active'
       });
     }
     setShowTenantModal(true);
@@ -4098,6 +4101,15 @@ function RentalsPage() {
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="individual">個人</option>
                     <option value="company">公司</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">租約狀態</label>
+                  <select value={tenantForm.leaseStatus || 'active'} onChange={e => setTenantForm(f => ({ ...f, leaseStatus: e.target.value }))}
+                    className="w-full border rounded px-3 py-2 text-sm">
+                    <option value="active">租約中</option>
+                    <option value="terminating">退租</option>
+                    <option value="terminated">已退租</option>
                   </select>
                 </div>
                 {tenantForm.tenantType === 'individual' ? (
