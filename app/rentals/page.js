@@ -229,7 +229,9 @@ function RentalsPage() {
     emergencyContact: '', emergencyPhone: '',
     bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
     isBlacklisted: false, blacklistReason: '', creditNote: '', note: '',
-    leaseStatus: 'active'
+    leaseStatus: 'active',
+    // 初始合約欄位（僅新增時使用）
+    initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '',
   });
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
@@ -372,7 +374,7 @@ function RentalsPage() {
 
   useEffect(() => {
     if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
-    if (activeTab === 'tenants') { fetchTenants(); if (properties.length === 0) fetchProperties(); }
+    if (activeTab === 'tenants') { fetchTenants(); if (properties.length === 0) fetchProperties(); if (accounts.length === 0) fetchAccounts(); }
     if (activeTab === 'contracts') {
       fetchContracts();
       if (properties.length === 0) fetchProperties();
@@ -1064,7 +1066,8 @@ function RentalsPage() {
         emergencyContact: '', emergencyPhone: '',
         bankCode: '', bankBranch: '', bankAccountName: '', bankAccountNumber: '',
         isBlacklisted: false, blacklistReason: '', creditNote: '', note: '',
-        leaseStatus: 'active'
+        leaseStatus: 'active',
+        initPropertyId: '', initMonthlyRent: '', initStartDate: '', initRentAccountId: '',
       });
     }
     setShowTenantModal(true);
@@ -1078,7 +1081,27 @@ function RentalsPage() {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tenantForm) });
       const data = await res.json();
       if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
-      // 儲存合約物業變更
+      // 新增租客：若有填物業初始合約欄位，自動建立 pending 合約
+      if (!editingTenant && tenantForm.initPropertyId && tenantForm.initMonthlyRent && tenantForm.initStartDate && tenantForm.initRentAccountId) {
+        const newTenantId = data.id;
+        const sd = tenantForm.initStartDate;
+        const ed = `${parseInt(sd.slice(0,4)) + 1}${sd.slice(4)}`; // +1 year
+        await fetch('/api/rentals/contracts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyId: parseInt(tenantForm.initPropertyId),
+            tenantId: newTenantId,
+            startDate: sd,
+            endDate: ed,
+            monthlyRent: parseFloat(tenantForm.initMonthlyRent),
+            paymentDueDay: 5,
+            rentAccountId: parseInt(tenantForm.initRentAccountId),
+            status: 'pending',
+          })
+        });
+      }
+      // 編輯租客：儲存合約物業變更
       if (editingTenant) {
         const origContracts = editingTenant.contracts || [];
         for (const [cIdStr, newPropId] of Object.entries(contractPropertyChanges)) {
@@ -4330,6 +4353,52 @@ function RentalsPage() {
                   </div>
                 );
               })()}
+
+              {/* 初始物業合約（僅新增租客時顯示） */}
+              {!editingTenant && (
+                <div className="mt-5 border-t pt-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                    初始物業合約 <span className="normal-case font-normal">（選填，儲存後自動建立待審核合約）</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-sm text-gray-600">物業</label>
+                      <select value={tenantForm.initPropertyId}
+                        onChange={e => setTenantForm(f => ({ ...f, initPropertyId: e.target.value }))}
+                        className="w-full border rounded px-3 py-2 text-sm">
+                        <option value="">-- 不設定 --</option>
+                        {properties.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    {tenantForm.initPropertyId && (
+                      <>
+                        <div>
+                          <label className="text-sm text-gray-600">月租金 *</label>
+                          <input type="number" min="0" value={tenantForm.initMonthlyRent}
+                            onChange={e => setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value }))}
+                            className="w-full border rounded px-3 py-2 text-sm" placeholder="0" />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gray-600">開始日期 *</label>
+                          <input type="date" value={tenantForm.initStartDate}
+                            onChange={e => setTenantForm(f => ({ ...f, initStartDate: e.target.value }))}
+                            className="w-full border rounded px-3 py-2 text-sm" />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="text-sm text-gray-600">收租帳戶 *</label>
+                          <select value={tenantForm.initRentAccountId}
+                            onChange={e => setTenantForm(f => ({ ...f, initRentAccountId: e.target.value }))}
+                            className="w-full border rounded px-3 py-2 text-sm">
+                            <option value="">-- 選擇帳戶 --</option>
+                            {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                          </select>
+                        </div>
+                        <p className="col-span-2 text-xs text-gray-400">合約結束日期自動設為開始日期 +1 年，狀態為「待審核」，可至合約管理補全資訊。</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setShowTenantModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>

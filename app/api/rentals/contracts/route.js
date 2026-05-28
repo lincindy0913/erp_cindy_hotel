@@ -75,8 +75,10 @@ export async function POST(request) {
     if (!propertyId || !tenantId || !startDate || !endDate || !monthlyRent || !paymentDueDay || !rentAccountId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
-    if (!accountingSubjectId) {
-      return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇會計科目', 400);
+    // accountingSubjectId 在 pending 合約時為選填，active 合約時必填
+    const effectiveStatus = body.status || 'pending';
+    if (!accountingSubjectId && effectiveStatus === 'active') {
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '生效合約請選擇會計科目', 400);
     }
     if (startDate >= endDate) {
       return createErrorResponse('VALIDATION_FAILED', '合約結束日期必須晚於開始日期', 400);
