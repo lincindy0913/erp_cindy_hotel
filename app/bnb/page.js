@@ -3663,11 +3663,11 @@ export default function BnbPage() {
             { key: 'all',     label: '整體進度' },
           ];
           const PAY_SUB_TYPES = [
+            { key: 'combined', label: '全部' },
             { key: 'deposit',  label: '訂金匯款' },
             { key: 'transfer', label: '當天匯款' },
             { key: 'card',     label: '刷卡' },
             { key: 'cash',     label: '現金存款' },
-            { key: 'combined', label: '全部' },
           ];
           const activeOuterTab = dmPayType === 'all' ? 'all' : dmPayType === 'ledger' ? 'ledger' : 'payment';
 
