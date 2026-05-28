@@ -112,6 +112,9 @@ function AssetsPageInner() {
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const [activeRange, setActiveRange] = useState(null); // { start, end } when in range mode
 
   // Sort state
   const { sortKey: assetSortKey, sortDir: assetSortDir, toggleSort: assetToggleSort } = useColumnSort('sortOrder', 'asc');
@@ -140,9 +143,13 @@ function AssetsPageInner() {
   }, []);
 
   // Load year-dependent report + taxes in parallel
-  const loadYearData = useCallback(async (y) => {
+  // sd/ed = startDate/endDate for range mode; if omitted uses year
+  const loadYearData = useCallback(async (y, sd, ed) => {
+    const opUrl = (sd && ed)
+      ? `/api/rentals/reports/operating?startDate=${sd}&endDate=${ed}`
+      : `/api/rentals/reports/operating?year=${y}`;
     const [repRes, taxRes] = await Promise.all([
-      fetch(`/api/rentals/reports/operating?year=${y}`),
+      fetch(opUrl),
       fetch(`/api/rentals/taxes?taxYear=${y}`),
     ]);
     const repData = await repRes.json();
@@ -571,13 +578,24 @@ function AssetsPageInner() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <h2 className="text-xl font-bold text-gray-800">資產管理總覽</h2>
-            <p className="text-sm text-gray-500 mt-0.5">各物業出租狀況、收租金額、稅費及維護費年度彙整</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              各物業出租狀況、收租金額、稅費及維護費
+              {activeRange
+                ? <span className="ml-1 text-teal-600 font-medium">{activeRange.start} ~ {activeRange.end}</span>
+                : <span className="ml-1">{year} 年度彙整</span>
+              }
+            </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="text-sm text-gray-600">年度：</label>
             <select
               value={year}
-              onChange={e => setYear(Number(e.target.value))}
+              onChange={e => {
+                setYear(Number(e.target.value));
+                setActiveRange(null);
+                setDateStart('');
+                setDateEnd('');
+              }}
               className="border rounded px-3 py-1.5 text-sm"
             >
               {[0,1,2,3,4].map(d => {
@@ -585,6 +603,33 @@ function AssetsPageInner() {
                 return <option key={y} value={y}>{y} 年</option>;
               })}
             </select>
+            {/* 日期區間查詢 */}
+            <div className="flex items-center gap-2 border rounded px-3 py-1 bg-gray-50">
+              <label className="text-sm text-gray-500 whitespace-nowrap">區間：</label>
+              <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)}
+                className="border rounded px-2 py-1 text-sm w-36" />
+              <span className="text-gray-400 text-sm">~</span>
+              <input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)}
+                className="border rounded px-2 py-1 text-sm w-36" />
+              <button type="button"
+                disabled={!dateStart || !dateEnd || loading}
+                onClick={async () => {
+                  if (!dateStart || !dateEnd) return;
+                  if (dateStart > dateEnd) { alert('結束日期不可早於開始日期'); return; }
+                  setLoading(true);
+                  setActiveRange({ start: dateStart, end: dateEnd });
+                  await loadYearData(year, dateStart, dateEnd);
+                  setLoading(false);
+                }}
+                className="px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 disabled:opacity-40 whitespace-nowrap">
+                查詢
+              </button>
+              {activeRange && (
+                <button type="button"
+                  onClick={() => { setActiveRange(null); setDateStart(''); setDateEnd(''); loadYearData(year); }}
+                  className="text-xs text-gray-500 hover:text-red-500 whitespace-nowrap">✕ 清除</button>
+              )}
+            </div>
             <button type="button" onClick={exportCSV}
               className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-200">
               ↓ 匯出 CSV
@@ -695,11 +740,11 @@ function AssetsPageInner() {
                   <SortableTh label="租客" colKey="tenantName" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
                   <SortableTh label="月租金" colKey="monthlyRent" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
                   <th className="text-center px-3 py-2 whitespace-nowrap">本月<br/>收款</th>
-                  <SortableTh label={`${year}年 租金+水電實收`} colKey="rentIncome" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <SortableTh label={`${year}年 房屋稅`} colKey="houseTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <SortableTh label={`${year}年 地價稅`} colKey="landTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <SortableTh label={`${year}年 維護費`} colKey="maintenanceAmount" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <SortableTh label={`${year}年 淨利`} colKey="netProfit" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label="租金+水電實收" colKey="rentIncome" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label="房屋稅" colKey="houseTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label="地價稅" colKey="landTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label="維護費" colKey="maintenanceAmount" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh label="淨利" colKey="netProfit" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
                   <th className="text-left px-3 py-2 whitespace-nowrap">標記</th>
                   {canEdit && <th className="text-center px-3 py-2 w-20 whitespace-nowrap">操作</th>}
                 </tr>
