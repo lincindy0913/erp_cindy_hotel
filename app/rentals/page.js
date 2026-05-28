@@ -3096,7 +3096,8 @@ function RentalsPage() {
                   <button onClick={fetchMaintenances} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
                   <button onClick={() => {
                     setEditingMaintenance(null);
-                    setMaintenanceForm({ propertyId: maintenanceFilter.propertyId || '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
+                    const defaultSubject = accountingSubjects.find(s => s.code === '6010' || s.name.includes('租屋維修'));
+                    setMaintenanceForm({ propertyId: maintenanceFilter.propertyId || '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: defaultSubject ? String(defaultSubject.id) : '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
                     setShowMaintenanceModal(true);
                   }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
