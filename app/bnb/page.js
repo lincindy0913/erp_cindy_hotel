@@ -645,7 +645,15 @@ export default function BnbPage() {
   const [dmSelBnb,      setDmSelBnb]      = useState(null);  // selected BNB id
   const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
   const [dmMatching,    setDmMatching]    = useState(false);
-  const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all | ledger
+  const [dmPayType,     setDmPayType]     = useState('deposit'); // deposit | transfer | card | cash | all | ledger | combined
+
+  // ── 存簿匯入 modal state ──────────────────────────────────────
+  const [showBankImport, setShowBankImport] = useState(false);
+  const [bankImportLines, setBankImportLines] = useState([]);
+  const [bankImportFileName, setBankImportFileName] = useState('');
+  const [bankImportParsing, setBankImportParsing] = useState(false);
+  const [bankImportSubmitting, setBankImportSubmitting] = useState(false);
+  const [bankImportError, setBankImportError] = useState('');
 
   // ── 收款流水帳 state ─────────────────────────────────────────
   const thisMonth = new Date().toISOString().slice(0, 7);
@@ -805,6 +813,148 @@ export default function BnbPage() {
     } catch { showToast('載入核對資料失敗', 'error'); }
     finally { setDmLoading(false); }
   }, [dmMonth, dmAccountId, dmWarehouse, dmPayType]);
+
+  // ── 存簿對帳單匯入（土地銀行 XLS / CSV）────────────────────────
+  async function handleBankFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setBankImportError('');
+    setBankImportLines([]);
+    setBankImportFileName(file.name);
+    setBankImportParsing(true);
+
+    const isExcel = /\.(xls|xlsx)$/i.test(file.name);
+    const parsed = [];
+
+    try {
+      const parseAmount = (v) => {
+        if (v == null || v === '') return 0;
+        const n = parseFloat(String(v).replace(/,/g, '').trim());
+        return isNaN(n) ? 0 : Math.abs(n);
+      };
+      const parseRocDate = (v) => {
+        if (!v) return '';
+        const s = String(v).replace(/\//g, '-').trim();
+        const m = s.match(/^(\d{2,3})-(\d{1,2})-(\d{1,2})/);
+        if (m) {
+          const y = parseInt(m[1]) + (parseInt(m[1]) < 200 ? 1911 : 0);
+          return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+        }
+        return s;
+      };
+
+      if (isExcel) {
+        const mod = await import('xlsx');
+        const XLSX = mod.default || mod;
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', raw: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+
+        // 找到表頭列（土地銀行格式：交易日期 or 交易日）
+        let dataStart = 6;
+        for (let r = 0; r < Math.min(matrix.length, 10); r++) {
+          const first = String(matrix[r]?.[0] || '').trim();
+          if (first === '交易日期' || first === '交易日') { dataStart = r + 1; break; }
+        }
+        for (let i = dataStart; i < matrix.length; i++) {
+          const row = matrix[i];
+          const txDate = parseRocDate(row[0]);
+          if (!txDate) continue;
+          const debit = parseAmount(row[3]);
+          const credit = parseAmount(row[4]);
+          if (debit === 0 && credit === 0) continue;
+          const desc = [row[1], row[2]].filter(Boolean).join(' ').trim();
+          const memo = String(row[6] || '').trim();
+          parsed.push({
+            txDate,
+            description: memo ? `${desc} ｜${memo}` : desc,
+            debitAmount: debit,
+            creditAmount: credit,
+            runningBalance: parseAmount(row[5]),
+            referenceNo: memo.slice(0, 100),
+          });
+        }
+      } else {
+        // CSV（Big5 encoding）
+        const reader = new FileReader();
+        await new Promise((resolve, reject) => {
+          reader.onload = (ev) => {
+            try {
+              const text = ev.target.result;
+              const lines = text.split(/\r?\n/);
+              let dataStart = 0;
+              for (let i = 0; i < Math.min(lines.length, 15); i++) {
+                if (lines[i].includes('交易日')) { dataStart = i + 1; break; }
+              }
+              for (let i = dataStart; i < lines.length; i++) {
+                const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+                if (cols.length < 4) continue;
+                const txDate = parseRocDate(cols[0]);
+                if (!txDate) continue;
+                const debit = parseAmount(cols[2]);
+                const credit = parseAmount(cols[3]);
+                if (debit === 0 && credit === 0) continue;
+                const desc = [cols[1], cols[5]].filter(Boolean).join(' ').trim();
+                parsed.push({
+                  txDate,
+                  description: desc || cols[1],
+                  debitAmount: debit,
+                  creditAmount: credit,
+                  runningBalance: parseAmount(cols[4]),
+                  referenceNo: (cols[5] || '').slice(0, 100),
+                });
+              }
+              resolve();
+            } catch (err) { reject(err); }
+          };
+          reader.onerror = reject;
+          reader.readAsText(file, 'Big5');
+        });
+      }
+
+      if (parsed.length === 0) {
+        setBankImportError('無法解析檔案，請確認為土地銀行的 XLS/CSV 對帳單');
+      } else {
+        setBankImportLines(parsed);
+      }
+    } catch (err) {
+      setBankImportError('解析失敗：' + (err.message || '未知錯誤'));
+    }
+    setBankImportParsing(false);
+    // reset input
+    e.target.value = '';
+  }
+
+  async function submitBankImport() {
+    if (!bankImportLines.length || !dmAccountId) return;
+    setBankImportSubmitting(true);
+    try {
+      const [y, m] = dmMonth.split('-').map(Number);
+      const res = await fetch('/api/reconciliation/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: parseInt(dmAccountId),
+          bankFormatId: 1,          // 土地銀行
+          year: y,
+          month: m,
+          fileName: bankImportFileName,
+          lines: bankImportLines,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setBankImportError(data.error?.message || data.error || '匯入失敗'); return; }
+      showToast(`匯入成功：${bankImportLines.length} 筆`, 'success');
+      setShowBankImport(false);
+      setBankImportLines([]);
+      setBankImportFileName('');
+      fetchDepositMatch();
+    } catch (err) {
+      setBankImportError('匯入失敗：' + (err.message || ''));
+    }
+    setBankImportSubmitting(false);
+  }
 
   // ── 收款流水帳 fetch ───────────────────────────────────────────
   async function fetchLedger() {
@@ -3958,7 +4108,15 @@ export default function BnbPage() {
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
                       <span className="text-sm font-semibold text-blue-800">存簿入帳（銀行明細）</span>
-                      <span className="text-xs text-blue-500">{bankLines.length} 筆入帳</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-500">{bankLines.length} 筆入帳</span>
+                        {dmAccountId && (
+                          <button onClick={() => { setBankImportLines([]); setBankImportError(''); setShowBankImport(true); }}
+                            className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap">
+                            ↑ 匯入對帳單
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="overflow-y-auto max-h-[480px]">
                       <table className="w-full text-xs">
@@ -5562,6 +5720,90 @@ export default function BnbPage() {
           onClose={() => setAddBookingOpen(false)}
           onSaved={() => { setAddBookingOpen(false); fetchRecords(); }}
         />
+      )}
+
+      {/* ══ 存簿對帳單匯入 Modal ══ */}
+      {showBankImport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowBankImport(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-800">↑ 匯入存簿對帳單</h3>
+              <button onClick={() => setShowBankImport(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+              {/* 說明 */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                <p className="font-medium mb-1">📥 土地銀行網路銀行下載步驟</p>
+                <ol className="list-decimal ml-4 space-y-0.5 text-xs">
+                  <li>登入土地銀行網銀 → 帳戶管理 → 存款交易明細</li>
+                  <li>選擇帳戶（土海）、月份區間</li>
+                  <li>點「匯出 Excel」下載 .xls 檔</li>
+                  <li>上傳至此處即可</li>
+                </ol>
+              </div>
+
+              {/* 匯入月份/帳戶顯示 */}
+              <div className="flex items-center gap-4 text-sm text-gray-600">
+                <span>帳戶：<b>{dmAccounts.find(a => String(a.id) === String(dmAccountId))?.name || dmAccountId}</b></span>
+                <span>月份：<b>{dmMonth}</b></span>
+              </div>
+
+              {/* 檔案選擇 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">選擇檔案（.xls / .xlsx / .csv）</label>
+                <input type="file" accept=".xls,.xlsx,.csv"
+                  onChange={handleBankFileUpload}
+                  className="w-full border rounded-lg px-3 py-2 text-sm" />
+                {bankImportParsing && <p className="text-xs text-blue-500 mt-1">解析中…</p>}
+                {bankImportError && <p className="text-xs text-red-500 mt-1">{bankImportError}</p>}
+              </div>
+
+              {/* 解析預覽 */}
+              {bankImportLines.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    預覽：共 {bankImportLines.length} 筆
+                    （存入 {bankImportLines.filter(l => l.creditAmount > 0).length} 筆 /
+                    支出 {bankImportLines.filter(l => l.debitAmount > 0).length} 筆）
+                  </p>
+                  <div className="border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left">日期</th>
+                          <th className="px-3 py-2 text-left">說明</th>
+                          <th className="px-3 py-2 text-right text-green-700">存入</th>
+                          <th className="px-3 py-2 text-right text-red-600">支出</th>
+                          <th className="px-3 py-2 text-right">餘額</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {bankImportLines.map((l, i) => (
+                          <tr key={i} className={l.creditAmount > 0 ? 'bg-green-50/30' : ''}>
+                            <td className="px-3 py-1.5 whitespace-nowrap">{l.txDate}</td>
+                            <td className="px-3 py-1.5 max-w-[200px] truncate" title={l.description}>{l.description}</td>
+                            <td className="px-3 py-1.5 text-right text-green-700">{l.creditAmount > 0 ? l.creditAmount.toLocaleString() : ''}</td>
+                            <td className="px-3 py-1.5 text-right text-red-600">{l.debitAmount > 0 ? l.debitAmount.toLocaleString() : ''}</td>
+                            <td className="px-3 py-1.5 text-right text-gray-500">{l.runningBalance ? l.runningBalance.toLocaleString() : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button onClick={() => setShowBankImport(false)}
+                className="px-4 py-2 text-sm bg-gray-200 rounded-lg hover:bg-gray-300">取消</button>
+              <button onClick={submitBankImport}
+                disabled={bankImportLines.length === 0 || bankImportSubmitting}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                {bankImportSubmitting ? '匯入中…' : `確認匯入 ${bankImportLines.length} 筆`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
