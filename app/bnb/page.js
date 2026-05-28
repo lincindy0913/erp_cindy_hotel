@@ -791,7 +791,7 @@ export default function BnbPage() {
 
   // ── 訂金核對 fetch ────────────────────────────────────────────
   const fetchDepositMatch = useCallback(async () => {
-    if (dmPayType !== 'all' && !dmAccountId) { showToast('請先選擇存簿帳戶', 'error'); return; }
+    if (dmPayType !== 'all' && dmPayType !== 'combined' && !dmAccountId) { showToast('請先選擇存簿帳戶', 'error'); return; }
     setDmLoading(true);
     try {
       const p = new URLSearchParams({ month: dmMonth, paymentType: dmPayType });
@@ -3469,6 +3469,7 @@ export default function BnbPage() {
             { key: 'transfer', label: '當天匯款' },
             { key: 'card',     label: '刷卡' },
             { key: 'cash',     label: '現金存款' },
+            { key: 'combined', label: '全部分類' },
           ];
           const activeOuterTab = dmPayType === 'all' ? 'all' : dmPayType === 'ledger' ? 'ledger' : 'payment';
 
@@ -3809,7 +3810,70 @@ export default function BnbPage() {
               )}
 
               {/* 雙欄核對表 */}
-              {dmData && !dmLoading && dmPayType !== 'all' && (
+              {/* 全部分類合併列表 */}
+              {dmData && !dmLoading && dmPayType === 'combined' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-indigo-800">全部收款類型（BNB）</span>
+                    <span className="text-xs text-indigo-500">
+                      {bnbRecords.length} 筆 　合計 NT${bnbRecords.reduce((s, r) => s + (r.payAmount || 0), 0).toLocaleString('zh-TW')}
+                    </span>
+                  </div>
+                  <div className="overflow-y-auto max-h-[600px]">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-50">
+                        <tr className="text-gray-500">
+                          <th className="px-3 py-2 text-left">姓名</th>
+                          <th className="px-3 py-2 text-left">入住</th>
+                          <th className="px-3 py-2 text-left">付款日</th>
+                          <th className="px-3 py-2 text-left">分類</th>
+                          <th className="px-3 py-2 text-left">後五碼</th>
+                          <th className="px-3 py-2 text-right">金額</th>
+                          <th className="px-3 py-2 text-center">配對</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {bnbRecords.length === 0 && (
+                          <tr><td colSpan={7} className="text-center py-8 text-gray-400">本月無收款記錄</td></tr>
+                        )}
+                        {bnbRecords.map(r => {
+                          const typeColors = { deposit: 'bg-blue-50 text-blue-700', transfer: 'bg-indigo-50 text-indigo-700', card: 'bg-purple-50 text-purple-700', cash: 'bg-green-50 text-green-700' };
+                          return (
+                            <tr key={r.id} className={r.bankLineId ? 'bg-green-50' : 'hover:bg-gray-50'}>
+                              <td className="px-3 py-2 font-medium max-w-[90px] truncate">{r.guestName}</td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.checkInDate}</td>
+                              <td className="px-3 py-2 text-blue-500 whitespace-nowrap">{r.payDate || '—'}</td>
+                              <td className="px-3 py-2">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${typeColors[r.paymentTypeKey] || 'bg-gray-100 text-gray-600'}`}>
+                                  {r.paymentTypeLabel}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-blue-600 font-mono">{r.last5 || '—'}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-indigo-700">{r.payAmount.toLocaleString()}</td>
+                              <td className="px-3 py-2 text-center">
+                                {r.bankLineId ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">○</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-gray-50 font-semibold text-xs">
+                        <tr>
+                          {['deposit','transfer','card','cash'].map(key => {
+                            const typeRows = bnbRecords.filter(r => r.paymentTypeKey === key);
+                            if (typeRows.length === 0) return null;
+                            const label = PAY_SUB_TYPES.find(t => t.key === key)?.label || key;
+                            const total = typeRows.reduce((s, r) => s + (r.payAmount || 0), 0);
+                            return <td key={key} className="px-3 py-2 text-gray-600">{label}: {total.toLocaleString()}</td>;
+                          })}
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {dmData && !dmLoading && dmPayType !== 'all' && dmPayType !== 'combined' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
                   {/* 左欄：BNB 收款 */}

@@ -129,6 +129,33 @@ export async function GET(request) {
       return NextResponse.json({ month, summary: Object.values(summary) });
     }
 
+    // ── 全分類合併（paymentType = 'combined'）──────────────────────
+    if (paymentType === 'combined') {
+      const bnbWhere = { importMonth: month, status: { not: '已刪除' } };
+      if (warehouse) bnbWhere.warehouse = warehouse;
+      const records = await prisma.bnbBookingRecord.findMany({
+        where: bnbWhere,
+        select: {
+          id: true, guestName: true, checkInDate: true, checkOutDate: true,
+          warehouse: true, source: true,
+          payDeposit: true, depositDate: true, depositLast5: true, depositBankLineId: true,
+          payTransfer: true, transferDate: true, transferLast5: true, transferBankLineId: true,
+          payCard: true, cardSettlementDate: true, cardBankLineId: true,
+          payCash: true, cashDepositDate: true, cashBankLineId: true, cashDestination: true,
+        },
+        orderBy: { checkInDate: 'asc' },
+      });
+      // 展開為每筆付款型別一列
+      const rows = [];
+      for (const r of records) {
+        if (Number(r.payDeposit) > 0) rows.push({ id: `${r.id}-dep`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'deposit', paymentTypeLabel: '訂金匯款', payAmount: Number(r.payDeposit), payDate: r.depositDate, last5: r.depositLast5, bankLineId: r.depositBankLineId });
+        if (Number(r.payTransfer) > 0) rows.push({ id: `${r.id}-xfr`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'transfer', paymentTypeLabel: '當天匯款', payAmount: Number(r.payTransfer), payDate: r.transferDate, last5: r.transferLast5, bankLineId: r.transferBankLineId });
+        if (Number(r.payCard) > 0) rows.push({ id: `${r.id}-crd`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'card', paymentTypeLabel: '刷卡入款', payAmount: Number(r.payCard), payDate: r.cardSettlementDate, last5: null, bankLineId: r.cardBankLineId });
+        if (Number(r.payCash) > 0) rows.push({ id: `${r.id}-csh`, bnbId: r.id, guestName: r.guestName, checkInDate: r.checkInDate, checkOutDate: r.checkOutDate, warehouse: r.warehouse, source: r.source, paymentTypeKey: 'cash', paymentTypeLabel: '現金存款', payAmount: Number(r.payCash), payDate: r.cashDepositDate, last5: null, bankLineId: r.cashBankLineId });
+      }
+      return NextResponse.json({ month, bnbRecords: rows, bankLines: [], suggestions: [] });
+    }
+
     // ── 1. BNB 收款記錄 ─────────────────────────────────────────
     const amountFilter = { [cfg.amountField]: { gt: 0 } };
     if (paymentType === 'cash') amountFilter.cashDestination = '存帳';
