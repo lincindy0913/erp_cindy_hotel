@@ -3679,9 +3679,11 @@ export default function BnbPage() {
                   className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
                   {dmLoading ? '載入中…' : '查詢'}
                 </button>
-                <button onClick={() => { setBankImportLines([]); setBankImportError(''); setShowBankImport(true); }}
-                  className={`${btnCls} bg-blue-600 text-white hover:bg-blue-700`}>
-                  ↑ 匯入對帳單
+                <button
+                  type="button"
+                  onClick={() => { setBankImportLines([]); setBankImportError(''); setShowBankImport(true); }}
+                  className="px-4 py-1.5 text-sm rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors whitespace-nowrap">
+                  ↑ 匯入銀行對帳單
                 </button>
                 {dmData && dmPayType !== 'all' && (
                   <>
