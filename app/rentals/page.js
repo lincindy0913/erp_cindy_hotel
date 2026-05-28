@@ -77,6 +77,8 @@ const INCOME_STATUSES = [
 const MAINTENANCE_CATEGORIES = ['水電', '管線', '油漆', '設備', '清潔', '結構', '其他'];
 
 const PAYMENT_METHODS = ['現金', 'transfer', '支票', '匯款'];
+const isTransfer = (m) => m === 'transfer' || m === '轉帳';
+const fmtPayMethod = (m) => isTransfer(m) ? '轉帳' : (m || '—');
 
 /** 報表「未填類別」篩選值，需與 API category 參數一致 */
 const REPORT_CAT_EMPTY = '__RENTAL_CAT_EMPTY__';
@@ -387,7 +389,7 @@ function RentalsPage() {
   }, [rentFilingYear, activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); if (contracts.length === 0) fetchContracts(); }
+    if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); if (contracts.length === 0) fetchContracts(); if (accounts.length === 0) fetchAccounts(); }
     if (activeTab === 'tenants') { fetchTenants(); if (properties.length === 0) fetchProperties(); if (accounts.length === 0) fetchAccounts(); }
     if (activeTab === 'contracts') {
       fetchContracts();
@@ -2442,7 +2444,7 @@ function RentalsPage() {
                                       <td className="py-1">{p.paymentDate || '-'}</td>
                                       <td className="py-1 text-right text-green-700 font-medium">${fmt(p.amount)}</td>
                                       <td className="py-1">{p.account?.name || accounts.find(a => a.id === p.accountId)?.name || '-'}</td>
-                                      <td className="py-1">{p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '-')}</td>
+                                      <td className="py-1">{fmtPayMethod(p.paymentMethod)}</td>
                                       <td className="py-1 text-gray-500">{p.matchNote || p.matchTransferRef || '-'}</td>
                                       <td className="py-1 text-center">
                                         {p.id && (editingPaymentId === p.id ? (
@@ -4058,8 +4060,8 @@ function RentalsPage() {
                           <td className="px-3 py-2 text-right font-semibold text-teal-700">${fmt(p.amount)}</td>
                           <td className="px-3 py-2 text-center text-xs text-gray-500">第{p.sequenceNo}次</td>
                           <td className="px-3 py-2 text-sm">
-                            <span className={`px-2 py-0.5 rounded text-xs ${p.paymentMethod === '匯款' || p.paymentMethod === 'transfer' ? 'bg-blue-100 text-blue-800' : p.paymentMethod === '現金' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                              {p.paymentMethod === 'transfer' ? '轉帳' : (p.paymentMethod || '—')}
+                            <span className={`px-2 py-0.5 rounded text-xs ${p.paymentMethod === '匯款' || isTransfer(p.paymentMethod) ? 'bg-blue-100 text-blue-800' : p.paymentMethod === '現金' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              {fmtPayMethod(p.paymentMethod)}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-xs text-gray-500" title={p.accountWarehouse || ''}>
@@ -4697,7 +4699,7 @@ function RentalsPage() {
                   <select value={quickPayForm.paymentMethod}
                     onChange={e => setQuickPayForm(f => ({ ...f, paymentMethod: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
-                    {['現金','匯款','轉帳','支票'].map(m => <option key={m} value={m}>{m}</option>)}
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
                   </select>
                 </div>
               </div>

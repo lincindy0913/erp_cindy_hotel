@@ -29,12 +29,19 @@ async function generateContractNo() {
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const propertyId = searchParams.get('propertyId');
     const tenantId = searchParams.get('tenantId');
+
+    // 自動將 endDate 已過期的 active 合約更新為 expired
+    const today = new Date().toISOString().split('T')[0];
+    await prisma.rentalContract.updateMany({
+      where: { status: 'active', endDate: { lt: today } },
+      data: { status: 'expired' },
+    });
 
     const where = {};
     if (status) where.status = status;
