@@ -1206,7 +1206,12 @@ function RentalsPage() {
       if (tenantForm.initPropertyId && tenantForm.initMonthlyRent && tenantForm.initStartDate && tenantForm.initRentAccountId) {
         const targetTenantId = editingTenant ? editingTenant.id : data.id;
         const sd = tenantForm.initStartDate;
-        const ed = `${parseInt(sd.slice(0,4)) + 1}${sd.slice(4)}`;
+        const sdDate = new Date(sd);
+        sdDate.setFullYear(sdDate.getFullYear() + 1);
+        // 若 startDate 是閏年 2/29，+1 年後 JS 會自動進位成 3/1，需回退到 2/28
+        const origMonth = parseInt(sd.slice(5, 7), 10);
+        if (origMonth !== sdDate.getMonth() + 1) sdDate.setDate(0); // 0 = 上個月最後一天
+        const ed = sdDate.toISOString().slice(0, 10);
         const contractRes = await fetch('/api/rentals/contracts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
