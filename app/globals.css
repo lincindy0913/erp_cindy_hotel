@@ -441,14 +441,16 @@ table th, table td {
 
 
 /* ─── Sticky table headers ───────────────────────────────────────────────────
-   overflow-x:auto alone forces overflow-y to compute as auto (CSS spec),
-   which creates a scroll container and breaks page-level sticky.
-   overflow-y:clip clips without creating a scroll container, so thead
-   position:sticky references the viewport and sticks on page scroll.
+   Navigation is now sticky (top-0 z-[60]).
+   .tbl-wrap is the scroll container: overflow-y:auto + max-height lets the
+   user scroll within the container; thead th sticks at top:0 inside it.
+   max-height: 100vh minus nav (~72px) minus page top-padding (~32px) minus
+   filter/button bar (~100px) minus bottom margin (~40px) ≈ 244px reserved.
    ─────────────────────────────────────────────────────────────────────────── */
 .tbl-wrap {
   overflow-x: auto;
-  overflow-y: clip;
+  overflow-y: auto;
+  max-height: calc(100vh - 260px);
 }
 /* When <th> is sticky it leaves the table's background-painting cascade and
    needs its own explicit background-color to remain opaque. */
