@@ -3619,7 +3619,7 @@ export default function BnbPage() {
             { key: 'transfer', label: '當天匯款' },
             { key: 'card',     label: '刷卡' },
             { key: 'cash',     label: '現金存款' },
-            { key: 'combined', label: '全部分類' },
+            { key: 'combined', label: '全部' },
           ];
           const activeOuterTab = dmPayType === 'all' ? 'all' : dmPayType === 'ledger' ? 'ledger' : 'payment';
 
@@ -3666,7 +3666,7 @@ export default function BnbPage() {
                   </select>
                   <WhQuickBtns value={dmWarehouse} onChange={setDmWarehouse} />
                 </div>
-                {dmPayType !== 'all' && (
+                {dmPayType !== 'all' && dmPayType !== 'combined' && (
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
                     <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
@@ -3675,7 +3675,7 @@ export default function BnbPage() {
                     </select>
                   </div>
                 )}
-                <button onClick={fetchDepositMatch} disabled={dmLoading || (dmPayType !== 'all' && !dmAccountId)}
+                <button onClick={fetchDepositMatch} disabled={dmLoading || (dmPayType !== 'all' && dmPayType !== 'combined' && !dmAccountId)}
                   className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
                   {dmLoading ? '載入中…' : '查詢'}
                 </button>
