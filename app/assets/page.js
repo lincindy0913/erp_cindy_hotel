@@ -684,7 +684,7 @@ function AssetsPageInner() {
         {loading ? (
           <p className="text-gray-500 py-8">載入中…</p>
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <div className="bg-white rounded-lg shadow tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-teal-50 text-xs sticky top-0 z-10">
                 <tr>
@@ -1015,7 +1015,7 @@ function AssetsPageInner() {
                 ) : detailIncomes.length === 0 ? (
                   <p className="text-xs text-gray-400">{year} 年無收租紀錄</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="tbl-wrap">
                     <table className="w-full text-xs border">
                       <thead className="bg-gray-50">
                         <tr>

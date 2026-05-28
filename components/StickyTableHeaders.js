@@ -12,7 +12,6 @@ export default function StickyTableHeaders() {
   const pathname = usePathname();
 
   useEffect(() => {
-    let rafId = null;
     const disposers = [];
 
     function navH() {
@@ -36,6 +35,8 @@ export default function StickyTableHeaders() {
       document.body.appendChild(bar);
 
       let cloneHead = null;
+      // Each wrapper has its own rafId — prevents RAF contention between multiple tbl-wrap elements
+      let rafId = null;
 
       function rebuild() {
         const ct = document.createElement('table');
@@ -94,6 +95,7 @@ export default function StickyTableHeaders() {
       disposers.push(() => {
         bar.remove();
         delete wrapper._stickyDone;
+        if (rafId) cancelAnimationFrame(rafId);
         window.removeEventListener('scroll',  go);
         window.removeEventListener('resize',  reset);
         wrapper.removeEventListener('scroll', go);
@@ -118,7 +120,6 @@ export default function StickyTableHeaders() {
     return () => {
       clearTimeout(t0);
       clearInterval(iv);
-      if (rafId) cancelAnimationFrame(rafId);
       bodyMo.disconnect();
       disposers.forEach(f => f());
     };
