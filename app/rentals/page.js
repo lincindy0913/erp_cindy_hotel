@@ -1260,12 +1260,16 @@ function RentalsPage() {
       }
       setShowTenantModal(false);
       fetchTenants();
+      if (contracts.length > 0) fetchContracts();
+      if (properties.length > 0) fetchProperties();
 
     } catch (err) {
       if (tenantSaved) {
         showToast(`租客已儲存，但後續操作發生例外：${err.message}`, 'error');
         setShowTenantModal(false);
         fetchTenants();
+        if (contracts.length > 0) fetchContracts();
+        if (properties.length > 0) fetchProperties();
       } else {
         showToast('儲存失敗: ' + err.message, 'error');
       }
