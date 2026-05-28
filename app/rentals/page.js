@@ -1977,7 +1977,7 @@ function RentalsPage() {
                   const hasAnyUtility = incomes.some(i => i.collectUtilityFee);
                   const colSpan = hasAnyUtility ? 14 : 12;
                   return (
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <div className="bg-white rounded-lg shadow tbl-wrap">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
@@ -2381,7 +2381,7 @@ function RentalsPage() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <div className="bg-white rounded-lg shadow tbl-wrap">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
@@ -2564,7 +2564,7 @@ function RentalsPage() {
                   })()}
                 </div>
 
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <div className="bg-white rounded-lg shadow tbl-wrap">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
@@ -2697,7 +2697,7 @@ function RentalsPage() {
                     <button onClick={fetchTaxTable} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">載入</button>
                     <button onClick={saveTaxTable} disabled={taxTableSaving} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50">{taxTableSaving ? '儲存中…' : '儲存'}</button>
                   </div>
-                  <div className="bg-white rounded-lg shadow overflow-x-auto border border-gray-200">
+                  <div className="bg-white rounded-lg shadow tbl-wrap border border-gray-200">
                     <table className="w-full text-sm">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
@@ -2824,7 +2824,7 @@ function RentalsPage() {
                         新增稅款
                       </button>
                     </div>
-                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                    <div className="bg-white rounded-lg shadow tbl-wrap">
                       <table className="w-full text-sm">
                         <thead className="bg-teal-50 sticky top-0 z-10">
                           <tr>
@@ -2954,7 +2954,7 @@ function RentalsPage() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-xl shadow overflow-x-auto mb-4">
+                <div className="bg-white rounded-xl shadow tbl-wrap mb-4">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 text-teal-900 text-xs sticky top-0 z-10">
                       <tr>
@@ -3105,7 +3105,7 @@ function RentalsPage() {
                   </button>
                 </div>
 
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <div className="bg-white rounded-lg shadow tbl-wrap">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
@@ -3194,7 +3194,7 @@ function RentalsPage() {
                   </button>
                 </div>
                 <p className="text-sm text-gray-600 mb-2">物業每月向租客收取之水電等費用，在此登記為收入。</p>
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <div className="bg-white rounded-lg shadow tbl-wrap">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>
@@ -3390,7 +3390,7 @@ function RentalsPage() {
                 {reportLoading ? (
                   <p className="text-gray-500">載入中...</p>
                 ) : (
-                  <div className="bg-white rounded-lg shadow overflow-x-auto overflow-y-auto">
+                  <div className="bg-white rounded-lg shadow tbl-wrap overflow-y-auto">
                     <table className="w-full text-sm border-collapse">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
@@ -3495,7 +3495,7 @@ function RentalsPage() {
                 {reportLoading ? (
                   <p className="text-gray-500">載入中...</p>
                 ) : (
-                  <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <div className="bg-white rounded-lg shadow tbl-wrap">
                     <table className="w-full text-sm border-collapse">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
@@ -3562,7 +3562,7 @@ function RentalsPage() {
                         逾期總金額：<b>${fmt(overdueReportData.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</b>
                       </span>
                     </div>
-                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                    <div className="bg-white rounded-lg shadow tbl-wrap">
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-red-50 sticky top-0 z-10">
                           <tr>
@@ -3656,7 +3656,7 @@ function RentalsPage() {
                         className={`text-sm px-3 py-1 rounded-full border ${depositFilter === v ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>{l}</button>
                     ))}
                   </div>
-                  <div className="bg-white rounded-lg shadow overflow-x-auto">
+                  <div className="bg-white rounded-lg shadow tbl-wrap">
                     <table className="w-full text-sm">
                       <thead className="bg-teal-50 sticky top-0 z-10">
                         <tr>
@@ -3756,7 +3756,7 @@ function RentalsPage() {
                         </div>
                       </div>
                     )}
-                    <div className="bg-white rounded-lg shadow overflow-x-auto">
+                    <div className="bg-white rounded-lg shadow tbl-wrap">
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-teal-50 sticky top-0 z-10">
                           <tr>
@@ -3853,7 +3853,7 @@ function RentalsPage() {
                     </span>
                   </div>
                 )}
-                <div className="bg-white rounded-lg shadow overflow-x-auto">
+                <div className="bg-white rounded-lg shadow tbl-wrap">
                   <table className="w-full text-sm">
                     <thead className="bg-teal-50 sticky top-0 z-10">
                       <tr>

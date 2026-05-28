@@ -4199,7 +4199,7 @@ export default function BnbPage() {
 
                   {/* 已配對 */}
                   {otaViewTab === 'matched' && (
-                    <div className="bg-white rounded-xl shadow overflow-x-auto">
+                    <div className="bg-white rounded-xl shadow tbl-wrap">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr className="text-gray-500">
@@ -4257,7 +4257,7 @@ export default function BnbPage() {
 
                   {/* OTA未配對 */}
                   {otaViewTab === 'unmatchedOta' && (
-                    <div className="bg-white rounded-xl shadow overflow-x-auto">
+                    <div className="bg-white rounded-xl shadow tbl-wrap">
                       <p className="px-4 pt-3 text-sm text-red-600">以下筆數存在於 OTA 帳單，但在系統中找不到對應的訂房紀錄</p>
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
@@ -4302,7 +4302,7 @@ export default function BnbPage() {
 
                   {/* 系統未配對 */}
                   {otaViewTab === 'unmatchedBnb' && (
-                    <div className="bg-white rounded-xl shadow overflow-x-auto">
+                    <div className="bg-white rounded-xl shadow tbl-wrap">
                       <p className="px-4 pt-3 text-sm text-amber-600">以下筆數存在於系統，但在 OTA 帳單中找不到對應紀錄（可能是直接訂房、電話訂、其他來源）</p>
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
@@ -4347,7 +4347,7 @@ export default function BnbPage() {
 
                   {/* 已取消 */}
                   {otaViewTab === 'cancelled' && (
-                    <div className="bg-white rounded-xl shadow overflow-x-auto">
+                    <div className="bg-white rounded-xl shadow tbl-wrap">
                       <p className="px-4 pt-3 text-sm text-gray-500">以下為 OTA 帳單中標記為已取消的訂單</p>
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
@@ -4474,7 +4474,7 @@ export default function BnbPage() {
               )}
             </div>
 
-            <div className="bg-white rounded-xl shadow overflow-x-auto">
+            <div className="bg-white rounded-xl shadow tbl-wrap">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr className="text-gray-500">
@@ -4614,7 +4614,7 @@ export default function BnbPage() {
                   {reconLogsLoading ? '載入中…' : '重新整理'}
                 </button>
               </div>
-              <div className="bg-white rounded-xl shadow overflow-x-auto">
+              <div className="bg-white rounded-xl shadow tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr className="text-gray-500 text-xs">
@@ -5211,7 +5211,7 @@ export default function BnbPage() {
                   </div>
                   {/* monthly trend table */}
                   {trend.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 overflow-x-auto">
+                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 tbl-wrap">
                       <h4 className="text-sm font-semibold text-gray-700 mb-3">月度趨勢（訂房數）</h4>
                       <table className="w-full text-xs">
                         <thead className="sticky top-0 z-10 bg-white">
@@ -5327,7 +5327,7 @@ export default function BnbPage() {
                   </div>
 
                   {/* 月度趨勢 */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 overflow-x-auto">
+                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 tbl-wrap">
                     <h4 className="text-sm font-semibold text-gray-700 mb-3">月度 OTA 收益趨勢</h4>
                     <table className="w-full text-xs">
                       <thead className="sticky top-0 z-10 bg-white">
