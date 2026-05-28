@@ -1171,18 +1171,24 @@ function RentalsPage() {
 
   async function saveTenant() {
     setTenantSaving(true);
+    const stepErrors = [];
+    let tenantSaved = false;
+
     try {
+      // ── Step 1：儲存租客本體 ──────────────────────────────────
       const url = editingTenant ? `/api/rentals/tenants/${editingTenant.id}` : '/api/rentals/tenants';
       const method = editingTenant ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tenantForm) });
       const data = await res.json();
-      if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
-      // 新增租客 或 編輯租客（無生效合約時）：若有填物業合約欄位，自動建立 pending 合約
+      if (!res.ok) return showToast(data.error || '租客儲存失敗', 'error');
+      tenantSaved = true;
+
+      // ── Step 2：建立初始物業合約（選填） ───────────────────────
       if (tenantForm.initPropertyId && tenantForm.initMonthlyRent && tenantForm.initStartDate && tenantForm.initRentAccountId) {
         const targetTenantId = editingTenant ? editingTenant.id : data.id;
         const sd = tenantForm.initStartDate;
-        const ed = `${parseInt(sd.slice(0,4)) + 1}${sd.slice(4)}`; // +1 year
-        await fetch('/api/rentals/contracts', {
+        const ed = `${parseInt(sd.slice(0,4)) + 1}${sd.slice(4)}`;
+        const contractRes = await fetch('/api/rentals/contracts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1196,25 +1202,52 @@ function RentalsPage() {
             status: 'pending',
           })
         });
+        if (!contractRes.ok) {
+          const contractErr = await contractRes.json().catch(() => ({}));
+          stepErrors.push(`建立合約失敗：${contractErr.error || '請至合約管理手動補建'}`);
+        }
       }
-      // 編輯租客：儲存合約物業變更
+
+      // ── Step 3：更換合約物業 ────────────────────────────────────
       if (editingTenant) {
         const origContracts = editingTenant.contracts || [];
         for (const [cIdStr, newPropId] of Object.entries(contractPropertyChanges)) {
           const orig = origContracts.find(c => String(c.id) === cIdStr);
           if (orig && newPropId && String(orig.property?.id) !== String(newPropId)) {
-            await fetch(`/api/rentals/contracts/${cIdStr}`, {
+            const propRes = await fetch(`/api/rentals/contracts/${cIdStr}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ propertyId: parseInt(newPropId) })
             });
+            if (!propRes.ok) {
+              const propErr = await propRes.json().catch(() => ({}));
+              stepErrors.push(`合約 #${cIdStr} 物業更換失敗：${propErr.error || '未知錯誤'}`);
+            }
           }
         }
       }
+
+      // ── 回報結果 ────────────────────────────────────────────────
+      if (stepErrors.length > 0) {
+        // 租客本體已存，後續步驟有錯：告知使用者需手動補救
+        showToast(`租客已儲存，但有 ${stepErrors.length} 個步驟失敗：${stepErrors[0]}`, 'error');
+      } else {
+        showToast(editingTenant ? '租客資料已更新' : '租客已新增', 'success');
+      }
       setShowTenantModal(false);
       fetchTenants();
-    } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
-    finally { setTenantSaving(false); }
+
+    } catch (err) {
+      if (tenantSaved) {
+        showToast(`租客已儲存，但後續操作發生例外：${err.message}`, 'error');
+        setShowTenantModal(false);
+        fetchTenants();
+      } else {
+        showToast('儲存失敗: ' + err.message, 'error');
+      }
+    } finally {
+      setTenantSaving(false);
+    }
   }
 
   function deleteTenant(id) {
