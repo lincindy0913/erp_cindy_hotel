@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { ROLE_LABELS, ROLE_COLORS, hasPermission } from '@/lib/permissions';
 import NotificationBell from '@/components/NotificationBell';
 
-// 主選單順序：儀錶板 → 庫存 → 進貨 → 發票登錄 → 付款 → 支票 → 費用 → 貸款 → 出納 → 代墊款 → 現金流 → 存簿對帳 → 存簿核對 → PMS收入 → 租屋管理 → 工程 → 分析 → 結帳(下拉) → 報表(下拉)
+// 主選單順序：儀錶板 → 庫存 → 進貨 → 發票登錄 → 付款 → 支票 → 費用 → 貸款 → 出納 → 代墊款 → 現金流 → 存簿對帳 → 存簿核對 → PMS收入 → 租屋管理 → 工程 → 工程分業 → 分析 → 結帳(下拉) → 報表(下拉)
 const NAV_ITEMS = [
   { href: '/', label: '儀錶板', linkClass: 'link-dashboard', requiredPermission: null },
   { href: '/inventory', label: '庫存', linkClass: 'link-inventory', requiredPermission: 'inventory.view' },
@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
   { href: '/assets', label: '資產管理', linkClass: 'link-rentals', requiredPermission: 'asset.view' },
   { href: '/engineering', label: '工程',      linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
-  { href: '/company-expenses', label: '公司費用', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+  { href: '/company-expenses', label: '工程分業', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
   { href: '/utility-bills', label: '水電費', linkClass: 'link-utility', requiredPermission: null },
   { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },
 ];

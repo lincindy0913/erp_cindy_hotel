@@ -219,7 +219,7 @@ function CompanyExpensesPageInner() {
       <div className="max-w-screen-xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">慶豐營造費用管理</h1>
+          <h1 className="text-2xl font-bold text-gray-900">慶豐營造工程分業</h1>
           <button onClick={openAdd} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
             + 新增
           </button>
@@ -278,14 +278,14 @@ function CompanyExpensesPageInner() {
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr>
-                        <SortableThInline label="日期" colKey="expenseDate" sortKey={expKey} sortDir={expDir} onSort={expToggle} className="px-3 py-2 text-left" />
+                        <SortableThInline label="日期" colKey="expenseDate" sortKey={expKey} sortDir={expDir} onSort={expToggle} thStyle={{ padding: '8px 12px', textAlign: 'left' }} />
                         <th className="px-3 py-2 text-left">發票號碼</th>
                         <th className="px-3 py-2 text-left">廠商名稱</th>
                         <th className="px-3 py-2 text-left">品名</th>
-                        <SortableThInline label="未稅" colKey="amount" sortKey={expKey} sortDir={expDir} onSort={expToggle} className="px-3 py-2 text-right" />
-                        <SortableThInline label="稅額" colKey="taxAmount" sortKey={expKey} sortDir={expDir} onSort={expToggle} className="px-3 py-2 text-right" />
+                        <SortableThInline label="未稅" colKey="amount" sortKey={expKey} sortDir={expDir} onSort={expToggle} thStyle={{ padding: '8px 12px', textAlign: 'right' }} />
+                        <SortableThInline label="稅額" colKey="taxAmount" sortKey={expKey} sortDir={expDir} onSort={expToggle} thStyle={{ padding: '8px 12px', textAlign: 'right' }} />
                         <th className="px-3 py-2 text-right">其他</th>
-                        <SortableThInline label="總計" colKey="totalAmount" sortKey={expKey} sortDir={expDir} onSort={expToggle} className="px-3 py-2 text-right" />
+                        <SortableThInline label="總計" colKey="totalAmount" sortKey={expKey} sortDir={expDir} onSort={expToggle} thStyle={{ padding: '8px 12px', textAlign: 'right' }} />
                         <th className="px-3 py-2 text-left">期間</th>
                         <th className="px-3 py-2 text-left">備註</th>
                         <th className="px-3 py-2" />
@@ -340,14 +340,14 @@ function CompanyExpensesPageInner() {
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr>
-                        <SortableThInline label="日期" colKey="invoiceDate" sortKey={invKey} sortDir={invDir} onSort={invToggle} className="px-3 py-2 text-left" />
+                        <SortableThInline label="日期" colKey="invoiceDate" sortKey={invKey} sortDir={invDir} onSort={invToggle} thStyle={{ padding: '8px 12px', textAlign: 'left' }} />
                         <th className="px-3 py-2 text-left">發票號碼</th>
-                        <SortableThInline label="材料別" colKey="materialType" sortKey={invKey} sortDir={invDir} onSort={invToggle} className="px-3 py-2 text-left" />
+                        <SortableThInline label="材料別" colKey="materialType" sortKey={invKey} sortDir={invDir} onSort={invToggle} thStyle={{ padding: '8px 12px', textAlign: 'left' }} />
                         <th className="px-3 py-2 text-left">廠商名稱</th>
                         <th className="px-3 py-2 text-left">材料名稱</th>
-                        <SortableThInline label="未稅" colKey="amount" sortKey={invKey} sortDir={invDir} onSort={invToggle} className="px-3 py-2 text-right" />
-                        <SortableThInline label="稅額" colKey="taxAmount" sortKey={invKey} sortDir={invDir} onSort={invToggle} className="px-3 py-2 text-right" />
-                        <SortableThInline label="總計" colKey="totalAmount" sortKey={invKey} sortDir={invDir} onSort={invToggle} className="px-3 py-2 text-right" />
+                        <SortableThInline label="未稅" colKey="amount" sortKey={invKey} sortDir={invDir} onSort={invToggle} thStyle={{ padding: '8px 12px', textAlign: 'right' }} />
+                        <SortableThInline label="稅額" colKey="taxAmount" sortKey={invKey} sortDir={invDir} onSort={invToggle} thStyle={{ padding: '8px 12px', textAlign: 'right' }} />
+                        <SortableThInline label="總計" colKey="totalAmount" sortKey={invKey} sortDir={invDir} onSort={invToggle} thStyle={{ padding: '8px 12px', textAlign: 'right' }} />
                         <th className="px-3 py-2 text-left">工程案</th>
                         <th className="px-3 py-2 text-left">地點</th>
                         <th className="px-3 py-2 text-left">期間</th>
