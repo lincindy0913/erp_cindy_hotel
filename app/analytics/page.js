@@ -2535,7 +2535,7 @@ function SupplierPnlTab({ data, search }) {
           </p>
           <p className="text-xs text-gray-400">依總支出降序排列</p>
         </div>
-        <div className="overflow-x-auto">
+        <div className="tbl-wrap">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b sticky top-0 z-10">
               <tr>
@@ -2782,7 +2782,7 @@ function SupplierItemsTab({ data, filterMeta }) {
 
         {/* ── Detail view ─────────────────────────────────────── */}
         {!isMonthly && (
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
@@ -2838,7 +2838,7 @@ function SupplierItemsTab({ data, filterMeta }) {
 
         {/* ── Monthly pivot view ──────────────────────────────── */}
         {isMonthly && (
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>
@@ -3162,7 +3162,7 @@ ${anomalyCount>0?`<p class="leg">▲ 橘色 = 每人採購超過本期館別平�
 
         {/* Monthly pivot */}
         {isMonthly && (
-          <div className="overflow-x-auto">
+          <div className="tbl-wrap">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b sticky top-0 z-10">
                 <tr>

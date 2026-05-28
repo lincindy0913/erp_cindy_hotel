@@ -766,7 +766,7 @@ export default function InventoryPage() {
                   <p>{pendingInbound.length === 0 ? '目前沒有待入庫商品' : '無符合篩選條件的商品'}</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="tbl-wrap">
                   <table className="w-full text-sm min-w-[900px]">
                     <thead className="bg-gray-50 sticky top-0 z-10 border-b">
                       <tr>
@@ -883,7 +883,7 @@ export default function InventoryPage() {
                 sheetName="庫存清單"
               />
             </div>
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm tbl-wrap">
               <table className="w-full">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
@@ -1019,7 +1019,7 @@ export default function InventoryPage() {
                 {reqSubmitting ? '送出中...' : '建立領用單'}
               </button>
             </div>
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm tbl-wrap">
               <h3 className="text-lg font-semibold p-4 border-b">領用記錄</h3>
               <table className="w-full">
                 <thead className="bg-gray-50 sticky top-0 z-10"><tr>
@@ -1117,7 +1117,7 @@ export default function InventoryPage() {
                 {trfSubmitting ? '送出中...' : '建立調撥單'}
               </button>
             </div>
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm tbl-wrap">
               <h3 className="text-lg font-semibold p-4 border-b">調撥記錄</h3>
               <table className="w-full">
                 <thead className="bg-gray-50 sticky top-0 z-10"><tr>
@@ -1229,7 +1229,7 @@ export default function InventoryPage() {
                 </>
               )}
             </div>
-            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-white rounded-lg shadow-sm tbl-wrap">
               <h3 className="text-lg font-semibold p-4 border-b">盤點記錄</h3>
               <table className="w-full">
                 <thead className="bg-gray-50 sticky top-0 z-10"><tr>

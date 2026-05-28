@@ -110,10 +110,16 @@ export default function StickyTableHeaders() {
     let polls = 0;
     const iv = setInterval(() => { scan(); if (++polls >= 12) clearInterval(iv); }, 500);
 
+    // MutationObserver: catch .tbl-wrap elements added after the polling window
+    // (e.g. tab-switched content, lazy-loaded sections)
+    const bodyMo = new MutationObserver(scan);
+    bodyMo.observe(document.body, { childList: true, subtree: true });
+
     return () => {
       clearTimeout(t0);
       clearInterval(iv);
       if (rafId) cancelAnimationFrame(rafId);
+      bodyMo.disconnect();
       disposers.forEach(f => f());
     };
   }, [pathname]);

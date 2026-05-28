@@ -2241,7 +2241,7 @@ export default function BnbPage() {
               const today = new Date().toISOString().split('T')[0];
 
               return (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr className={`text-xs ${editMode ? 'bg-emerald-50 text-emerald-800' : 'bg-indigo-50 text-indigo-800'}`}>
@@ -2757,7 +2757,7 @@ export default function BnbPage() {
             ) : !drData ? (
               <div className="text-center py-16 text-gray-400">請選擇月份後按「查詢」</div>
             ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
@@ -2877,7 +2877,7 @@ export default function BnbPage() {
             {summaryLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
             ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
@@ -3045,7 +3045,7 @@ export default function BnbPage() {
             {summaryLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
             ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
@@ -3378,7 +3378,7 @@ export default function BnbPage() {
             {dlLoading ? (
               <div className="text-center py-16 text-gray-400">載入中…</div>
             ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">
@@ -3673,7 +3673,7 @@ export default function BnbPage() {
                     <div className="text-center py-20 text-gray-400">請設定月份區間後按「查詢」</div>
                   )}
                   {!ledgerLoading && ledgerRows.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                       <table className="w-full text-xs whitespace-nowrap">
                         <thead className="sticky top-0 bg-indigo-50 text-indigo-800">
                           <tr>
@@ -4798,7 +4798,7 @@ export default function BnbPage() {
               <div className="text-center py-20 text-gray-400">請選擇月份後按「查詢」，或按「+ 新增其他收入」</div>
             )}
             {!oiLoading && oiRows.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-indigo-50">
                     <tr className="bg-indigo-50 text-indigo-800 text-xs">

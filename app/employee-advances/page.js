@@ -579,7 +579,7 @@ export default function EmployeeAdvancesPage() {
             {filteredPending.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>目前沒有待結算的代墊款</div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="tbl-wrap"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                   <tr style={{ background: '#f9fafb' }}>
                     <th style={thStyle}>
@@ -630,7 +630,7 @@ export default function EmployeeAdvancesPage() {
                     <td colSpan={2} style={tdStyle}></td>
                   </tr>
                 </tfoot>
-              </table>
+              </table></div>
             )}
           </div>
         )}
@@ -641,7 +641,7 @@ export default function EmployeeAdvancesPage() {
             {settledAdvances.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無已結算紀錄</div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="tbl-wrap"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                   <tr style={{ background: '#f9fafb' }}>
                     <SortableThInline label="代墊單號" colKey="advanceNo" sortKey={advSetKey} sortDir={advSetDir} onSort={toggleAdvSet} thStyle={thStyle} />
@@ -670,7 +670,7 @@ export default function EmployeeAdvancesPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         )}
@@ -681,7 +681,7 @@ export default function EmployeeAdvancesPage() {
             {employeeSummaryList.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>尚無代墊款紀錄</div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="tbl-wrap"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f9fafb' }}>
                   <tr style={{ background: '#f9fafb' }}>
                     <SortableThInline label="員工" colKey="name" sortKey={advEmpKey} sortDir={advEmpDir} onSort={toggleAdvEmp} thStyle={thStyle} />
@@ -716,7 +716,7 @@ export default function EmployeeAdvancesPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         )}
