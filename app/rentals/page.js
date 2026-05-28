@@ -317,6 +317,10 @@ function RentalsPage() {
   // Overdue report
   const [overdueReportData, setOverdueReportData] = useState([]);
   const [overdueReportLoading, setOverdueReportLoading] = useState(false);
+  const [overdueSelectedIds, setOverdueSelectedIds] = useState(new Set());
+  const [showOverdueBatch, setShowOverdueBatch] = useState(false);
+  const [overdueBatchForm, setOverdueBatchForm] = useState({ actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '匯款' });
+  const [overdueBatchSaving, setOverdueBatchSaving] = useState(false);
 
   // Quick-pay modal (從逾期催繳直接收款)
   const [quickPayIncome, setQuickPayIncome] = useState(null);
@@ -987,6 +991,33 @@ function RentalsPage() {
       fetchIncomes(); fetchSummary();
     } catch (e) { showToast('批次操作失敗: ' + e.message, 'error'); }
     finally { setBatchSaving(false); }
+  }
+
+  async function batchConfirmOverdueIncomes() {
+    if (!overdueBatchForm.accountId) return showToast('請選擇收款帳戶', 'error');
+    if (!overdueBatchForm.actualDate) return showToast('請填寫收款日期', 'error');
+    const ids = Array.from(overdueSelectedIds);
+    if (!ids.length) return;
+    setOverdueBatchSaving(true);
+    let success = 0; let failed = 0;
+    try {
+      for (const id of ids) {
+        const income = overdueReportData.find(i => i.id === id);
+        if (!income) continue;
+        const remaining = Math.max(0, Number(income.expectedAmount || 0) - Number(income.actualAmount || 0));
+        const res = await fetch(`/api/rentals/income/${id}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rent: { actualAmount: String(remaining || Number(income.expectedAmount)), actualDate: overdueBatchForm.actualDate, accountId: overdueBatchForm.accountId, paymentMethod: overdueBatchForm.paymentMethod, matchTransferRef: '', matchBankAccountName: '', matchNote: '' } })
+        });
+        if (res.ok) success++; else failed++;
+      }
+      showToast(`批次收款完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, success > 0 ? 'success' : 'error');
+      setOverdueSelectedIds(new Set());
+      setShowOverdueBatch(false);
+      fetchOverdueReport();
+    } catch (e) { showToast('批次操作失敗: ' + e.message, 'error'); }
+    finally { setOverdueBatchSaving(false); }
   }
 
   async function batchLockIncomes() {
@@ -3707,18 +3738,70 @@ function RentalsPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="no-print flex gap-4 mb-3 text-sm">
+                    <div className="no-print flex flex-wrap gap-3 mb-3 items-center text-sm">
                       <span className="bg-red-50 text-red-700 px-3 py-1.5 rounded-lg font-medium">
                         共 {overdueReportData.length} 筆逾期
                       </span>
                       <span className="bg-red-50 text-red-700 px-3 py-1.5 rounded-lg">
                         逾期總金額：<b>${fmt(overdueReportData.reduce((s, i) => s + Number(i.expectedAmount || 0), 0))}</b>
                       </span>
+                      {overdueSelectedIds.size > 0 && (
+                        <button onClick={() => setShowOverdueBatch(true)}
+                          className="ml-auto px-4 py-1.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700">
+                          批次收款（{overdueSelectedIds.size} 筆）
+                        </button>
+                      )}
                     </div>
+
+                    {/* 批次收款 panel */}
+                    {showOverdueBatch && (
+                      <div className="no-print mb-3 bg-teal-50 border border-teal-200 rounded-xl p-4">
+                        <div className="flex flex-wrap gap-3 items-end">
+                          <div>
+                            <label className="text-xs text-gray-600 block mb-1">收款日期 *</label>
+                            <input type="date" value={overdueBatchForm.actualDate}
+                              onChange={e => setOverdueBatchForm(f => ({ ...f, actualDate: e.target.value }))}
+                              className="border rounded px-2 py-1.5 text-sm" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600 block mb-1">收款帳戶 *</label>
+                            <select value={overdueBatchForm.accountId}
+                              onChange={e => {
+                                const acct = accounts.find(a => String(a.id) === e.target.value);
+                                const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
+                                setOverdueBatchForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
+                              }}
+                              className="border rounded px-2 py-1.5 text-sm min-w-[160px]">
+                              <option value="">-- 選擇帳戶 --</option>
+                              {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600 block mb-1">付款方式</label>
+                            <select value={overdueBatchForm.paymentMethod}
+                              onChange={e => setOverdueBatchForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                              className="border rounded px-2 py-1.5 text-sm">
+                              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
+                            </select>
+                          </div>
+                          <button onClick={batchConfirmOverdueIncomes} disabled={overdueBatchSaving}
+                            className="px-4 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
+                            {overdueBatchSaving ? '處理中…' : `確認收款 ${overdueSelectedIds.size} 筆`}
+                          </button>
+                          <button onClick={() => { setShowOverdueBatch(false); setOverdueSelectedIds(new Set()); }}
+                            className="text-xs text-gray-500 hover:text-gray-700">取消</button>
+                        </div>
+                      </div>
+                    )}
                     <div className="bg-white rounded-lg shadow tbl-wrap">
                       <table className="w-full text-sm border-collapse">
                         <thead className="bg-red-50 sticky top-0 z-10">
                           <tr>
+                            <th className="text-center px-2 py-2 border border-gray-200 w-8 no-print">
+                              <input type="checkbox"
+                                checked={overdueSelectedIds.size === overdueReportData.length && overdueReportData.length > 0}
+                                onChange={e => setOverdueSelectedIds(e.target.checked ? new Set(overdueReportData.map(i => i.id)) : new Set())} />
+                            </th>
                             <th className="text-center px-2 py-2 border border-gray-200 w-8 text-gray-500">序號</th>
                             <th className="text-left px-3 py-2 border border-gray-200">物業</th>
                             <th className="text-left px-3 py-2 border border-gray-200">租客</th>
@@ -3737,7 +3820,11 @@ function RentalsPage() {
                             const tenantPhone = i.tenant?.phone || '—';
                             const tenantName = i.tenantName || (i.tenant?.tenantType === 'company' ? i.tenant?.companyName : i.tenant?.fullName) || '—';
                             return (
-                              <tr key={i.id} className={`border-t ${idx % 2 === 0 ? 'bg-white' : 'bg-red-50/30'}`}>
+                              <tr key={i.id} className={`border-t ${overdueSelectedIds.has(i.id) ? 'bg-teal-50' : idx % 2 === 0 ? 'bg-white' : 'bg-red-50/30'}`}>
+                                <td className="text-center px-2 py-2 border border-gray-200 no-print">
+                                  <input type="checkbox" checked={overdueSelectedIds.has(i.id)}
+                                    onChange={e => setOverdueSelectedIds(prev => { const n = new Set(prev); e.target.checked ? n.add(i.id) : n.delete(i.id); return n; })} />
+                                </td>
                                 <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
                                 <td className="px-3 py-2 border border-gray-200">{i.propertyName}</td>
                                 <td className="px-3 py-2 border border-gray-200 font-medium">{tenantName}</td>

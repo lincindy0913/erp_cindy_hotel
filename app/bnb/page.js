@@ -1056,11 +1056,11 @@ export default function BnbPage() {
 
   async function handleMark() {
     if (!dmMarkModal) return;
-    const { bnbId, skipType } = dmMarkModal;
+    const { bnbId, skipType, paymentType: modalPayType } = dmMarkModal;
     const res = await fetch('/api/bnb/deposit-match', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bnbId, paymentType: dmPayType, matchSkip: skipType, matchSkipNote: dmMarkNote || null }),
+      body: JSON.stringify({ bnbId, paymentType: modalPayType || dmPayType, matchSkip: skipType, matchSkipNote: dmMarkNote || null }),
     });
     if (!res.ok) { showToast('標記失敗', 'error'); return; }
     showToast('已標記', 'success');
@@ -1069,11 +1069,11 @@ export default function BnbPage() {
     fetchDepositMatch();
   }
 
-  async function handleClearMark(bnbId) {
+  async function handleClearMark(bnbId, paymentType) {
     const res = await fetch('/api/bnb/deposit-match', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bnbId, paymentType: dmPayType, matchSkip: null, matchSkipNote: null }),
+      body: JSON.stringify({ bnbId, paymentType: paymentType || dmPayType, matchSkip: null, matchSkipNote: null }),
     });
     if (!res.ok) { showToast('清除標記失敗', 'error'); return; }
     fetchDepositMatch();
@@ -4060,11 +4060,20 @@ export default function BnbPage() {
                                 {r.bankLineId
                                   ? <span className="text-green-600 font-bold">✓</span>
                                   : r.matchSkip
-                                    ? <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.matchSkip === 'next_month' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}
-                                        title={r.matchSkipNote || ''}>
-                                        {r.matchSkip === 'next_month' ? '跨月' : '免配'}
-                                      </span>
-                                    : <span className="text-gray-300">○</span>
+                                    ? <div className="flex items-center justify-center gap-1">
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.matchSkip === 'next_month' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}
+                                          title={r.matchSkipNote || ''}>
+                                          {r.matchSkip === 'next_month' ? '跨月' : '免配'}
+                                        </span>
+                                        <button onClick={() => handleClearMark(r.bnbId, r.paymentTypeKey)}
+                                          className="text-gray-300 hover:text-red-400 text-sm leading-none">×</button>
+                                      </div>
+                                    : <div className="flex items-center justify-center gap-1">
+                                        <button onClick={() => { setDmMarkNote(''); setDmMarkModal({ bnbId: r.bnbId, skipType: 'next_month', paymentType: r.paymentTypeKey }); }}
+                                          className="text-[10px] text-orange-600 border border-orange-200 hover:bg-orange-50 px-1 py-0.5 rounded">跨月</button>
+                                        <button onClick={() => { setDmMarkNote(''); setDmMarkModal({ bnbId: r.bnbId, skipType: 'no_match', paymentType: r.paymentTypeKey }); }}
+                                          className="text-[10px] text-gray-500 border border-gray-200 hover:bg-gray-50 px-1 py-0.5 rounded">免配</button>
+                                      </div>
                                 }
                               </td>
                             </tr>

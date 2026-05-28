@@ -25,6 +25,7 @@ const NOTIFICATION_DEFS = {
   N12: { type: '信用卡繳款到期', level: 'urgent', title: '信用卡帳單繳款即將到期', targetUrl: '/reconciliation' },
   N13: { type: '現金盤點逾期', level: 'urgent', title: '現金盤點逾期', targetUrl: '/cashflow?tab=cash-count' },
   N14: { type: '備份失敗或驗證失敗', level: 'critical', title: '資料備份異常', targetUrl: '/admin/backup' },
+  N15: { type: '逾期租金未收', level: 'urgent', title: '逾期租金未收', targetUrl: '/rentals?tab=analytics&sub=overdue' },
 };
 
 export async function POST(request) {
@@ -586,6 +587,33 @@ export async function POST(request) {
       }
     } catch (err) {
       console.error('N14 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N15: 逾期租金未收 - RentalIncome status='pending' AND dueDate < today
+    // ==============================
+    try {
+      const overdueIncomes = await prisma.rentalIncome.findMany({
+        where: { status: 'pending', dueDate: { lt: todayStr } },
+        select: { id: true, expectedAmount: true },
+      });
+
+      if (overdueIncomes.length > 0) {
+        const totalAmount = overdueIncomes.reduce((sum, i) => sum + Number(i.expectedAmount), 0);
+        const def = NOTIFICATION_DEFS.N15;
+        notifications.push({
+          code: 'N15',
+          type: def.type,
+          level: def.level,
+          title: def.title,
+          message: `${overdueIncomes.length} 筆租金逾期未收，合計 NT$ ${totalAmount.toLocaleString()}`,
+          count: overdueIncomes.length,
+          targetUrl: def.targetUrl,
+          metadata: { totalAmount },
+        });
+      }
+    } catch (err) {
+      console.error('N15 calculation error:', err.message);
     }
 
     // Sort by level priority: critical > urgent > warning
