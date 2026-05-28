@@ -10,14 +10,18 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period');
   const type = searchParams.get('type'); // 'expense' | 'invoice'
+  const projectIdParam = searchParams.get('projectId');
 
   try {
     if (type === 'invoice') {
-      const where = period ? { period } : {};
+      const where = {};
+      if (period) where.period = period;
+      if (projectIdParam === 'null') where.projectId = null;
+      else if (projectIdParam) where.projectId = parseInt(projectIdParam);
       const rows = await prisma.companyInputInvoice.findMany({
         where,
         include: { project: { select: { id: true, code: true, name: true } } },
-        orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
+        orderBy: [{ period: 'asc' }, { invoiceDate: 'asc' }, { id: 'asc' }],
       });
       return NextResponse.json(rows);
     }

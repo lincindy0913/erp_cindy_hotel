@@ -20,6 +20,7 @@ const TABS = [
   { key: 'income', label: '收款管理' },
   { key: 'inputInvoices', label: '廠商進項發票' },
   { key: 'outputInvoices', label: '業主銷項發票' },
+  { key: 'companyInvoices', label: '分業進項' },
 ];
 
 const INPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
@@ -70,6 +71,11 @@ function EngineeringPageInner() {
   const [contractForm, setContractForm] = useState({ projectId: '', supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '', terms: [], materials: [] });
   const [materialForm, setMaterialForm] = useState({ projectId: '', productId: '', contractId: '', termId: '', description: '', quantity: '', unit: '', unitPrice: '', usedAt: '', note: '' });
   const [termForm, setTermForm] = useState({ termName: '', amount: '', dueDate: '', status: 'pending', paidAt: '', paymentOrderId: '', note: '' });
+
+  // 分業進項 state
+  const [companyInvoices, setCompanyInvoices] = useState([]);
+  const [companyInvLoading, setCompanyInvLoading] = useState(false);
+  const [companyInvProjectFilter, setCompanyInvProjectFilter] = useState('');
 
   // 發票 state
   const [inputInvoices, setInputInvoices] = useState([]);
@@ -437,6 +443,10 @@ function EngineeringPageInner() {
       fetchOutputInvoices(invProjectFilter || undefined);
       if (projects.length === 0) fetchProjects();
     }
+    if (activeTab === 'companyInvoices') {
+      fetchCompanyInvoices(companyInvProjectFilter || undefined);
+      if (projects.length === 0) fetchProjects();
+    }
   }, [activeTab, filterProjectId]);
 
   async function fetchProjects() {
@@ -610,6 +620,16 @@ function EngineeringPageInner() {
       const data = await res.json();
       setAccounts(Array.isArray(data) ? data : []);
     } catch { setAccounts([]); }
+  }
+
+  async function fetchCompanyInvoices(pid) {
+    setCompanyInvLoading(true);
+    try {
+      const url = pid ? `/api/company-expenses?type=invoice&projectId=${pid}` : '/api/company-expenses?type=invoice';
+      const data = await fetch(url).then(r => r.json());
+      setCompanyInvoices(Array.isArray(data) ? data : []);
+    } catch { setCompanyInvoices([]); }
+    finally { setCompanyInvLoading(false); }
   }
 
   async function fetchInputInvoices(pid) {
@@ -3008,6 +3028,107 @@ ${projectRows.map(p => `<tr>
                 {inputInvSaving ? '儲存中…' : '儲存'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 分業進項 Tab ===== */}
+      {activeTab === 'companyInvoices' && (
+        <div>
+          {/* 篩選列 */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <select value={companyInvProjectFilter}
+              onChange={e => { setCompanyInvProjectFilter(e.target.value); fetchCompanyInvoices(e.target.value || undefined); }}
+              className="border rounded px-3 py-1.5 text-sm">
+              <option value="">全部案件</option>
+              {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+              <option value="null">未分配</option>
+            </select>
+            <button onClick={() => fetchCompanyInvoices(companyInvProjectFilter || undefined)}
+              className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">
+              {companyInvLoading ? '載入中…' : '重新整理'}
+            </button>
+            <span className="text-xs text-gray-500 ml-auto">
+              共 {companyInvoices.length} 筆｜合計 NT${companyInvoices.reduce((s, r) => s + Number(r.totalAmount || 0), 0).toLocaleString('zh-TW')}
+            </span>
+          </div>
+
+          {/* 各案件彙整卡片 */}
+          {!companyInvProjectFilter && (() => {
+            const byProject = {};
+            companyInvoices.forEach(r => {
+              const key = r.project ? `${r.project.id}` : 'null';
+              const label = r.project ? r.project.name : '未分配（待歸檔）';
+              if (!byProject[key]) byProject[key] = { label, cnt: 0, total: 0 };
+              byProject[key].cnt++;
+              byProject[key].total += Number(r.totalAmount || 0);
+            });
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                {Object.entries(byProject).map(([key, v]) => (
+                  <div key={key}
+                    onClick={() => { setCompanyInvProjectFilter(key); fetchCompanyInvoices(key === 'null' ? 'null' : key); }}
+                    className={`bg-white rounded-lg shadow-sm p-3 border-l-4 cursor-pointer hover:shadow ${key === 'null' ? 'border-amber-400' : 'border-teal-500'}`}>
+                    <p className="text-xs text-gray-500 truncate">{v.label}</p>
+                    <p className="text-sm font-bold mt-1">NT${v.total.toLocaleString('zh-TW')}</p>
+                    <p className="text-xs text-gray-400">{v.cnt} 筆</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* 明細表格 */}
+          <div className="bg-white rounded-lg shadow tbl-wrap">
+            <table className="w-full text-sm">
+              <thead className="bg-teal-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">期別</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">日期</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">發票號碼</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">廠商名稱</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">品名</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">未稅</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">含稅</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">案件</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">地點</th>
+                </tr>
+              </thead>
+              <tbody>
+                {companyInvoices.length === 0 ? (
+                  <tr><td colSpan={9} className="text-center py-8 text-gray-400">
+                    {companyInvLoading ? '載入中…' : '無資料'}
+                  </td></tr>
+                ) : companyInvoices.map(r => (
+                  <tr key={r.id} className={`border-t hover:bg-gray-50 ${!r.projectId ? 'bg-amber-50' : ''}`}>
+                    <td className="px-3 py-1.5 text-xs text-gray-500">{r.period || '—'}</td>
+                    <td className="px-3 py-1.5 text-xs">{r.invoiceDate}</td>
+                    <td className="px-3 py-1.5 text-xs font-mono">{r.invoiceNo || '—'}</td>
+                    <td className="px-3 py-1.5 text-xs">{r.vendorName || '—'}</td>
+                    <td className="px-3 py-1.5 text-xs max-w-[180px] truncate" title={r.itemName}>{r.itemName || '—'}</td>
+                    <td className="px-3 py-1.5 text-xs text-right">{Number(r.amount).toLocaleString('zh-TW')}</td>
+                    <td className="px-3 py-1.5 text-xs text-right font-medium">{Number(r.totalAmount).toLocaleString('zh-TW')}</td>
+                    <td className="px-3 py-1.5 text-xs">
+                      {r.project
+                        ? <span className="px-1.5 py-0.5 bg-teal-50 text-teal-700 rounded text-xs">{r.project.name}</span>
+                        : <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded text-xs">未分配</span>
+                      }
+                    </td>
+                    <td className="px-3 py-1.5 text-xs text-gray-500">{r.location || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {companyInvoices.length > 0 && (
+                <tfoot className="bg-gray-50 font-semibold text-sm">
+                  <tr>
+                    <td colSpan={5} className="px-3 py-2 text-right text-xs">合計</td>
+                    <td className="px-3 py-2 text-right text-xs">{companyInvoices.reduce((s, r) => s + Number(r.amount || 0), 0).toLocaleString('zh-TW')}</td>
+                    <td className="px-3 py-2 text-right text-xs text-teal-700">{companyInvoices.reduce((s, r) => s + Number(r.totalAmount || 0), 0).toLocaleString('zh-TW')}</td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
         </div>
       )}
