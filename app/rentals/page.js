@@ -888,6 +888,14 @@ function RentalsPage() {
     finally { setOverdueReportLoading(false); }
   }
 
+  function resolvePaymentMethod(incomePaymentMethod, accountId) {
+    if (incomePaymentMethod) return incomePaymentMethod;
+    const acct = accounts.find(a => String(a.id) === String(accountId));
+    if (acct?.type === '現金') return '現金';
+    if (acct?.type === '銀行存款') return '匯款';
+    return '匯款';
+  }
+
   function openQuickPay(income) {
     const prop = properties.find(p => p.id === income.propertyId);
     const defaultAccountId = String(
@@ -899,11 +907,12 @@ function RentalsPage() {
     const expected = Number(income.expectedAmount || 0);
     const received = Number(income.actualAmount || 0);
     const remaining = Math.max(0, expected - received);
+    const resolvedQPAccountId = defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId;
     setQuickPayForm({
       actualAmount: remaining > 0 ? String(remaining) : String(expected),
       actualDate: new Date().toISOString().split('T')[0],
-      accountId: defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId,
-      paymentMethod: income.paymentMethod || '匯款',
+      accountId: resolvedQPAccountId,
+      paymentMethod: resolvePaymentMethod(income.paymentMethod, resolvedQPAccountId),
     });
     setQuickPayIncome(income);
   }
@@ -1450,11 +1459,12 @@ function RentalsPage() {
       propertyData?.rentCollectAccount?.id ||
       ''
     );
+    const resolvedAccountId = defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId;
     setIncomePayForm({
       actualAmount: remaining > 0 ? String(remaining) : String(expected),
       actualDate: new Date().toISOString().split('T')[0],
-      accountId: defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId,
-      paymentMethod: income.paymentMethod || '匯款',
+      accountId: resolvedAccountId,
+      paymentMethod: resolvePaymentMethod(income.paymentMethod, resolvedAccountId),
       matchTransferRef: '',
       matchBankAccountName: income.matchBankAccountName || '',
       matchNote: ''
@@ -1477,7 +1487,7 @@ function RentalsPage() {
       actualAmount: String(income.actualAmount ?? ''),
       actualDate: income.actualDate || new Date().toISOString().split('T')[0],
       accountId: income.accountId || '',
-      paymentMethod: income.paymentMethod || '現金',
+      paymentMethod: resolvePaymentMethod(income.paymentMethod, income.accountId || ''),
       matchTransferRef: income.matchTransferRef || '',
       matchBankAccountName: income.matchBankAccountName || '',
       matchNote: income.matchNote || ''
