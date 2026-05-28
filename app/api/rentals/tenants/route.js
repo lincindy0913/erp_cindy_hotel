@@ -51,8 +51,11 @@ export async function GET(request) {
         contracts: {
           select: {
             id: true,
+            contractNo: true,
             status: true,
+            startDate: true,
             endDate: true,
+            propertyId: true,
             property: { select: { id: true, name: true } }
           }
         }

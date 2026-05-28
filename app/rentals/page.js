@@ -220,6 +220,7 @@ function RentalsPage() {
   // Modal states
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
+  const [contractPropertyChanges, setContractPropertyChanges] = useState({});
   const [tenantForm, setTenantForm] = useState({
     tenantCode: '', tenantType: 'individual',
     fullName: '', companyName: '', taxId: '', representativeName: '',
@@ -371,7 +372,7 @@ function RentalsPage() {
 
   useEffect(() => {
     if (activeTab === 'cashier') { fetchIncomes(); if (properties.length === 0) fetchProperties(); }
-    if (activeTab === 'tenants') fetchTenants();
+    if (activeTab === 'tenants') { fetchTenants(); if (properties.length === 0) fetchProperties(); }
     if (activeTab === 'contracts') {
       fetchContracts();
       if (properties.length === 0) fetchProperties();
@@ -1047,8 +1048,14 @@ function RentalsPage() {
         creditNote: tenant.creditNote || '', note: tenant.note || '',
         leaseStatus: tenant.leaseStatus || 'active'
       });
+      const initChanges = {};
+      (tenant.contracts || []).forEach(c => {
+        if (c.property?.id) initChanges[c.id] = String(c.property.id);
+      });
+      setContractPropertyChanges(initChanges);
     } else {
       setEditingTenant(null);
+      setContractPropertyChanges({});
       setTenantForm({
         tenantCode: '', tenantType: 'individual',
         fullName: '', companyName: '', taxId: '', representativeName: '',
@@ -1071,6 +1078,20 @@ function RentalsPage() {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tenantForm) });
       const data = await res.json();
       if (!res.ok) return showToast(data.error || '儲存失敗', 'error');
+      // 儲存合約物業變更
+      if (editingTenant) {
+        const origContracts = editingTenant.contracts || [];
+        for (const [cIdStr, newPropId] of Object.entries(contractPropertyChanges)) {
+          const orig = origContracts.find(c => String(c.id) === cIdStr);
+          if (orig && newPropId && String(orig.property?.id) !== String(newPropId)) {
+            await fetch(`/api/rentals/contracts/${cIdStr}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ propertyId: parseInt(newPropId) })
+            });
+          }
+        }
+      }
       setShowTenantModal(false);
       fetchTenants();
     } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
@@ -4257,7 +4278,20 @@ function RentalsPage() {
                         return (
                           <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-gray-50 gap-2">
                             <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
+                              {isActive ? (
+                                <select
+                                  value={contractPropertyChanges[c.id] || ''}
+                                  onChange={e => setContractPropertyChanges(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                  className="text-sm border rounded px-2 py-1 w-full max-w-xs"
+                                >
+                                  <option value="">-- 選擇物業 --</option>
+                                  {properties.map(p => (
+                                    <option key={p.id} value={String(p.id)}>{p.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
+                              )}
                               {c.contractNo && <span className="text-xs text-gray-400 ml-2">{c.contractNo}</span>}
                               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                 <span className={`text-xs px-2 py-0.5 border rounded ${statusColor}`}>{statusLabel}</span>
