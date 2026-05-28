@@ -1461,20 +1461,24 @@ function RentalsPage() {
   }
 
   function generateMonthlyIncome() {
-    const genYear = incomeFilter.year || new Date().getFullYear();
-    const genMonth = incomeFilter.month || (new Date().getMonth() + 1);
-    askConfirm(`確定產生 ${genYear}/${genMonth} 月份租金紀錄？`, async () => {
-    try {
-      const res = await fetch('/api/rentals/income', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: genYear, month: genMonth })
-      });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || '產生失敗', 'error');
-      showToast(`已產生 ${data.created} 筆，跳過 ${data.skipped} 筆`, 'success');
-      fetchIncomes();
-    } catch (err) { showToast('產生失敗: ' + err.message, 'error'); }
-    }, '產生月份租金', false);
+    const genYear = Number(incomeFilter.year || new Date().getFullYear());
+    const genMonth = Number(incomeFilter.month || (new Date().getMonth() + 1));
+    const existing = incomes.filter(i => Number(i.incomeYear) === genYear && Number(i.incomeMonth) === genMonth);
+    const msg = existing.length > 0
+      ? `⚠️ ${genYear}/${genMonth} 已有 ${existing.length} 筆租金紀錄。\n重複產生可能造成多計，確定繼續？`
+      : `確定產生 ${genYear}/${genMonth} 月份租金紀錄？`;
+    askConfirm(msg, async () => {
+      try {
+        const res = await fetch('/api/rentals/income', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year: genYear, month: genMonth })
+        });
+        const data = await res.json();
+        if (!res.ok) return showToast(data.error || '產生失敗', 'error');
+        showToast(`已產生 ${data.created} 筆，跳過 ${data.skipped} 筆`, 'success');
+        fetchIncomes();
+      } catch (err) { showToast('產生失敗: ' + err.message, 'error'); }
+    }, existing.length > 0 ? '⚠️ 注意：已有資料' : '產生月份租金', existing.length > 0);
   }
 
   function openIncomePayment(income) {
@@ -2604,7 +2608,12 @@ function RentalsPage() {
                               className={`border-t cursor-pointer hover:bg-teal-50/40 transition-colors ${t.isBlacklisted ? 'bg-red-50' : ''}`}>
                               <td className="px-3 py-2 font-mono text-xs">{t.tenantCode}</td>
                               <td className="px-3 py-2">{t.tenantType === 'company' ? '公司' : '個人'}</td>
-                              <td className="px-3 py-2 font-medium">{getTenantDisplayName(t)}</td>
+                              <td className="px-3 py-2 font-medium">
+                                {getTenantDisplayName(t)}
+                                {t.isBlacklisted && (
+                                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-red-500 text-white rounded font-bold align-middle">黑名單</span>
+                                )}
+                              </td>
                               <td className="px-3 py-2">{t.phone}</td>
                               <td className="px-3 py-2">
                                 {t.properties && t.properties.length > 0

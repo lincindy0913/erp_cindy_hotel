@@ -12,6 +12,12 @@ import { useToast } from '@/context/ToastContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 
+const COMPANY_INV_PERIODS = [
+  '113.3-4','113.5-6','113.7-8','113.9-10','113.11-12',
+  '114.1-2','114.3-4','114.5-6','114.7-8','114.9-10','114.11-12',
+  '115.1-2','115.3-4','115.5-6',
+];
+
 const TABS = [
   { key: 'projects', label: '工程案' },
   { key: 'projectMgmt', label: '專案管理' },
@@ -78,6 +84,8 @@ function EngineeringPageInner() {
   const [companyInvLoading, setCompanyInvLoading] = useState(false);
   const [companyInvProjectFilter, setCompanyInvProjectFilter] = useState('');
   const [companyInvUpdating, setCompanyInvUpdating] = useState({});
+  const [companyInvPeriodFilter, setCompanyInvPeriodFilter] = useState('');
+  const [companyInvVendorFilter, setCompanyInvVendorFilter] = useState('');
   const [unassignedInvCount, setUnassignedInvCount] = useState(0);
 
   // 發票 state
@@ -631,11 +639,13 @@ function EngineeringPageInner() {
     } catch { setAccounts([]); }
   }
 
-  async function fetchCompanyInvoices(pid) {
+  async function fetchCompanyInvoices(pid, period) {
     setCompanyInvLoading(true);
     try {
-      const url = pid ? `/api/company-expenses?type=invoice&projectId=${pid}` : '/api/company-expenses?type=invoice';
-      const data = await fetch(url).then(r => r.json());
+      const params = new URLSearchParams({ type: 'invoice' });
+      if (pid) params.set('projectId', pid);
+      if (period) params.set('period', period);
+      const data = await fetch(`/api/company-expenses?${params}`).then(r => r.json());
       setCompanyInvoices(Array.isArray(data) ? data : []);
     } catch { setCompanyInvoices([]); }
     finally { setCompanyInvLoading(false); }
@@ -3076,18 +3086,30 @@ ${projectRows.map(p => `<tr>
           {/* 篩選列 */}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <select value={companyInvProjectFilter}
-              onChange={e => { setCompanyInvProjectFilter(e.target.value); fetchCompanyInvoices(e.target.value || undefined); }}
+              onChange={e => setCompanyInvProjectFilter(e.target.value)}
               className="border rounded px-3 py-1.5 text-sm">
               <option value="">全部案件</option>
               {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
               <option value="null">未分配</option>
             </select>
-            <button onClick={() => fetchCompanyInvoices(companyInvProjectFilter || undefined)}
+            <select value={companyInvPeriodFilter}
+              onChange={e => setCompanyInvPeriodFilter(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm">
+              <option value="">全部期間</option>
+              {COMPANY_INV_PERIODS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <input value={companyInvVendorFilter} onChange={e => setCompanyInvVendorFilter(e.target.value)}
+              placeholder="廠商名稱搜尋…" className="border rounded px-3 py-1.5 text-sm w-36" />
+            <button onClick={() => fetchCompanyInvoices(companyInvProjectFilter || undefined, companyInvPeriodFilter || undefined)}
               className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">
-              {companyInvLoading ? '載入中…' : '重新整理'}
+              {companyInvLoading ? '載入中…' : '查詢'}
             </button>
+            {(companyInvProjectFilter || companyInvPeriodFilter || companyInvVendorFilter) && (
+              <button onClick={() => { setCompanyInvProjectFilter(''); setCompanyInvPeriodFilter(''); setCompanyInvVendorFilter(''); fetchCompanyInvoices(); }}
+                className="text-xs text-gray-500 hover:text-gray-700 border rounded px-2 py-1.5">清除</button>
+            )}
             <span className="text-xs text-gray-500 ml-auto">
-              共 {companyInvoices.length} 筆｜合計 NT${companyInvoices.reduce((s, r) => s + Number(r.totalAmount || 0), 0).toLocaleString('zh-TW')}
+              共 {companyInvoices.filter(r => !companyInvVendorFilter || (r.vendorName || '').includes(companyInvVendorFilter)).length} 筆｜合計 NT${companyInvoices.filter(r => !companyInvVendorFilter || (r.vendorName || '').includes(companyInvVendorFilter)).reduce((s, r) => s + Number(r.totalAmount || 0), 0).toLocaleString('zh-TW')}
             </span>
           </div>
 
@@ -3137,7 +3159,7 @@ ${projectRows.map(p => `<tr>
                   <tr><td colSpan={9} className="text-center py-8 text-gray-400">
                     {companyInvLoading ? '載入中…' : '無資料'}
                   </td></tr>
-                ) : companyInvoices.map(r => (
+                ) : companyInvoices.filter(r => !companyInvVendorFilter || (r.vendorName || '').includes(companyInvVendorFilter)).map(r => (
                   <tr key={r.id} className={`border-t hover:bg-gray-50 ${!r.projectId ? 'bg-amber-50' : ''}`}>
                     <td className="px-3 py-1.5 text-xs text-gray-500">{r.period || '—'}</td>
                     <td className="px-3 py-1.5 text-xs">{r.invoiceDate}</td>
