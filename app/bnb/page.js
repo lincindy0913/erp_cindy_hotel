@@ -3679,6 +3679,10 @@ export default function BnbPage() {
                   className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
                   {dmLoading ? '載入中…' : '查詢'}
                 </button>
+                <button onClick={() => { setBankImportLines([]); setBankImportError(''); setShowBankImport(true); }}
+                  className={`${btnCls} bg-blue-600 text-white hover:bg-blue-700`}>
+                  ↑ 匯入對帳單
+                </button>
                 {dmData && dmPayType !== 'all' && (
                   <>
                     <button onClick={handleAutoMatch} disabled={dmMatching || !(dmData?.suggestions?.length) || isLocked}
@@ -5742,10 +5746,21 @@ export default function BnbPage() {
                 </ol>
               </div>
 
-              {/* 匯入月份/帳戶顯示 */}
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <span>帳戶：<b>{dmAccounts.find(a => String(a.id) === String(dmAccountId))?.name || dmAccountId}</b></span>
-                <span>月份：<b>{dmMonth}</b></span>
+              {/* 匯入月份/帳戶 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">月份</label>
+                  <input type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">存簿帳戶 *</label>
+                  <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                    <option value="">請選擇帳戶</option>
+                    {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               {/* 檔案選擇 */}
@@ -5797,9 +5812,9 @@ export default function BnbPage() {
               <button onClick={() => setShowBankImport(false)}
                 className="px-4 py-2 text-sm bg-gray-200 rounded-lg hover:bg-gray-300">取消</button>
               <button onClick={submitBankImport}
-                disabled={bankImportLines.length === 0 || bankImportSubmitting}
+                disabled={bankImportLines.length === 0 || !dmAccountId || bankImportSubmitting}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
-                {bankImportSubmitting ? '匯入中…' : `確認匯入 ${bankImportLines.length} 筆`}
+                {bankImportSubmitting ? '匯入中…' : bankImportLines.length === 0 ? '請先上傳檔案' : !dmAccountId ? '請選擇帳戶' : `確認匯入 ${bankImportLines.length} 筆`}
               </button>
             </div>
           </div>
