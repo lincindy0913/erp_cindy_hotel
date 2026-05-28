@@ -16,7 +16,10 @@ export default function StickyTableHeaders() {
 
     function navH() {
       const nav = document.querySelector('nav');
-      return nav ? nav.getBoundingClientRect().height : 0;
+      if (!nav) return 0;
+      // Use .bottom so sticky clone tracks the nav even when it scrolls off-screen.
+      // When nav is fully visible: bottom ≈ height. When nav scrolls off: bottom → 0.
+      return Math.max(0, nav.getBoundingClientRect().bottom);
     }
 
     function attach(wrapper) {
