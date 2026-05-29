@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import PmsIncomeVendorBillingDetail from './PmsIncomeVendorBillingDetail';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 
 const DIRECTION_LABEL = { AR: '應收', AP: '應付' };
 
@@ -45,6 +47,8 @@ function Num({ v, cls = '' }) {
 const EMPTY_FORM = { warehouse: '', supplierName: '', supplierId: '', direction: 'AP', billingMonth: '', dueDate: '', notes: '' };
 
 export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
+  const confirm = useConfirm();
+  const { showToast } = useToast();
   const [billings,   setBillings]   = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
@@ -189,17 +193,17 @@ export default function PmsIncomeVendorBillingTab({ WAREHOUSES }) {
           <button onClick={load} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">重新整理</button>
           <button
             onClick={async () => {
-              if (!fWarehouse) { alert('請先選擇館別'); return; }
-              if (!fMonth)     { alert('請先選擇帳單月份'); return; }
-              if (!window.confirm(`確定要依佣金設定，自動建立 ${fWarehouse} ${fMonth} 的 OTA 帳單草稿？`)) return;
+              if (!fWarehouse) { showToast('請先選擇館別', 'error'); return; }
+              if (!fMonth)     { showToast('請先選擇帳單月份', 'error'); return; }
+              if (!(await confirm(`確定要依佣金設定，自動建立 ${fWarehouse} ${fMonth} 的 OTA 帳單草稿？`, { title: '自動建立帳單草稿', danger: false }))) return;
               const res  = await fetch('/api/pms-income/vendor-billing/auto-generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ warehouse: fWarehouse, billingMonth: fMonth }),
               });
               const data = await res.json();
-              if (!res.ok) { alert(`建立失敗：${data.error?.message || '未知錯誤'}`); return; }
-              alert(`已建立 ${data.created} 筆 OTA 帳單草稿${data.skipped ? `（${data.skipped} 筆已存在略過）` : ''}`);
+              if (!res.ok) { showToast(`建立失敗：${data.error?.message || '未知錯誤'}`, 'error'); return; }
+              showToast(`已建立 ${data.created} 筆 OTA 帳單草稿${data.skipped ? `（${data.skipped} 筆已存在略過）` : ''}`, 'success');
               load();
             }}
             disabled={!fWarehouse || !fMonth}

@@ -6,11 +6,13 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [orders, setOrders] = useState([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState([]);
@@ -471,7 +473,7 @@ export default function PaymentPage() {
   }
 
   async function handleDelete(orderId) {
-    if (!confirm('確定要刪除這筆付款單嗎？')) return;
+    if (!(await confirm('確定要刪除這筆付款單嗎？', { title: '刪除確認', danger: true }))) return;
 
     try {
       const response = await fetch(`/api/payment-orders/${orderId}`, {
@@ -518,7 +520,7 @@ export default function PaymentPage() {
     const isResubmit = rejectedCount > 0 && draftCount === 0;
     const isMixed = draftCount > 0 && rejectedCount > 0;
     const actionLabel = isSubmit ? '提交出納' : isResubmit ? '重新提交' : '提交/重新提交';
-    if (!confirm(`確定要將選取的 ${ids.length} 筆付款單${actionLabel}嗎？`)) return;
+    if (!(await confirm(`確定要將選取的 ${ids.length} 筆付款單${actionLabel}嗎？`, { title: '批次提交確認', danger: false }))) return;
 
     setBatchSubmitting(true);
     try {
@@ -556,7 +558,7 @@ export default function PaymentPage() {
   }
 
   async function handleSubmitToCashier(orderId) {
-    if (!confirm('確定要提交此付款單到出納嗎？')) return;
+    if (!(await confirm('確定要提交此付款單到出納嗎？', { title: '提交確認', danger: false }))) return;
 
     setSubmittingOrderId(orderId);
     try {
@@ -582,7 +584,7 @@ export default function PaymentPage() {
   }
 
   async function handleResubmit(orderId) {
-    if (!confirm('確定要重新提交此付款單到出納嗎？')) return;
+    if (!(await confirm('確定要重新提交此付款單到出納嗎？', { title: '重新提交確認', danger: false }))) return;
 
     setSubmittingOrderId(orderId);
     try {
@@ -608,7 +610,7 @@ export default function PaymentPage() {
   }
 
   async function handleVoid(orderId) {
-    if (!confirm('確定要作廢此付款單嗎？此操作不可復原。')) return;
+    if (!(await confirm('確定要作廢此付款單嗎？此操作不可復原。', { title: '作廢確認', danger: true }))) return;
 
     try {
       const response = await fetch(`/api/payment-orders/${orderId}`, {

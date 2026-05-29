@@ -1,6 +1,7 @@
 'use client';
 
 import { formatNumber } from './pmsIncomeFormatters';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function PmsIncomeManualCommissionTab({
   manualMonth,
@@ -17,6 +18,7 @@ export default function PmsIncomeManualCommissionTab({
   setShowConfirmCommissionModal,
   setError,
 }) {
+  const confirm = useConfirm();
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow-sm border p-4">
@@ -148,8 +150,7 @@ export default function PmsIncomeManualCommissionTab({
                           </button>
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (!confirm('確定刪除？')) return;
+                            onClick={() => confirm('確定刪除？', async () => {
                               try {
                                 const r = await fetch(`/api/pms-income/monthly-manual-commission/${entry.id}`, { method: 'DELETE' });
                                 if (r.ok) fetchManualEntries();
@@ -157,7 +158,7 @@ export default function PmsIncomeManualCommissionTab({
                               } catch (err) {
                                 setError(err.message);
                               }
-                            }}
+                            }, '刪除代訂記錄')}
                             className="ml-2 text-red-500 hover:underline text-xs"
                           >
                             刪除

@@ -4,10 +4,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function PurchaseAllowancesPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState('draft');
   const [records, setRecords] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -335,7 +337,7 @@ export default function PurchaseAllowancesPage() {
   }
 
   async function handleDelete(rec) {
-    if (!confirm(`確定刪除退貨單「${rec.allowanceNo}」？`)) return;
+    if (!(await confirm(`確定刪除退貨單「${rec.allowanceNo}」？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/purchase-allowances/${rec.id}`, { method: 'DELETE' });
       if (res.ok) { showToast('已刪除', 'success'); fetchAll(); }
@@ -348,7 +350,7 @@ export default function PurchaseAllowancesPage() {
     const rec = records.find(r => r.id === confirmingId);
     if (!rec) return;
 
-    if (!confirm(`確認退貨單「${rec.allowanceNo}」，退款 NT$ ${Number(rec.totalAmount).toLocaleString()} 至帳戶？`)) return;
+    if (!(await confirm(`確認退貨單「${rec.allowanceNo}」，退款 NT$ ${Number(rec.totalAmount).toLocaleString()} 至帳戶？`, { title: '確認退款', danger: false }))) return;
 
     setConfirmSaving(true);
     try {

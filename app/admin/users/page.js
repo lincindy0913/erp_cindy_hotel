@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { ROLE_CODES, ROLE_LABELS, ROLE_COLORS, PERMISSIONS, ROLE_DEFAULTS, hasRoleConflict } from '@/lib/permissions';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 // 權限分類（用於顯示）
 const PERMISSION_GROUPS = [
@@ -38,6 +39,7 @@ const WAREHOUSE_OPTIONS = [
 
 export default function UserManagementPage() {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { data: session, status } = useSession();
   const router = useRouter();
   const [users, setUsers] = useState([]);
@@ -171,7 +173,7 @@ export default function UserManagementPage() {
   }
 
   async function handleDelete(userId) {
-    if (!confirm('確定要停用此使用者嗎？')) return;
+    if (!(await confirm('確定要停用此使用者嗎？', { title: '停用確認', danger: true }))) return;
 
     try {
       const response = await fetch(`/api/users/${userId}`, { method: 'DELETE' });

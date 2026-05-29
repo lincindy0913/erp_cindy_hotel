@@ -8,6 +8,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
@@ -32,6 +33,7 @@ const PL_GROUP_SUGGESTIONS = {
 export default function CashFlowPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -368,7 +370,7 @@ export default function CashFlowPage() {
   }
 
   async function handleDeleteAccount(id) {
-    if (!confirm('確定要刪除此帳戶嗎？')) return;
+    if (!(await confirm('確定要刪除此帳戶嗎？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/cashflow/accounts/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -410,7 +412,7 @@ export default function CashFlowPage() {
   }
 
   async function handleDeleteCategory(id) {
-    if (!confirm('確定要刪除此類別嗎？')) return;
+    if (!(await confirm('確定要刪除此類別嗎？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/cashflow/categories/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -446,7 +448,7 @@ export default function CashFlowPage() {
   }
 
   async function handleSeedCategories() {
-    if (!confirm('這將新增預設損益科目（不刪除現有科目）。確定執行？')) return;
+    if (!(await confirm('這將新增預設損益科目（不刪除現有科目）。確定執行？', { title: '初始化確認', danger: false }))) return;
     setSeedLoading(true); setSeedResult(null);
     try {
       const res = await fetch('/api/cash-categories/seed', { method: 'POST' });
@@ -554,7 +556,7 @@ export default function CashFlowPage() {
   }
 
   async function handleDeleteTransaction(id) {
-    if (!confirm('確定要刪除此交易嗎？移轉交易將同時刪除配對交易。')) return;
+    if (!(await confirm('確定要刪除此交易嗎？移轉交易將同時刪除配對交易。', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/cashflow/transactions/${id}`, { method: 'DELETE' });
       if (res.ok) {

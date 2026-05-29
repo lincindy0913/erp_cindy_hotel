@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
 
 /**
  * 收入記錄（明細 / records）分頁：篩選、列表、排序、住宿摘要、信用卡手續費、同步現金流、刪除明細。
@@ -12,6 +13,7 @@ export function usePmsIncomeRecords({
   setSuccess,
   WAREHOUSES_FALLBACK,
 }) {
+  const confirm = useConfirm();
   const [records, setRecords] = useState([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsPage, setRecordsPage] = useState(1);
@@ -198,7 +200,7 @@ export function usePmsIncomeRecords({
 
   const handleDeleteRecord = useCallback(
     async (recordId) => {
-      if (!confirm('確定要刪除此筆記錄嗎？')) return;
+      if (!(await confirm('確定要刪除此筆記錄嗎？', { title: '刪除記錄', danger: true }))) return;
       try {
         const res = await fetch(`/api/pms-income/${recordId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('刪除失敗');
@@ -208,7 +210,7 @@ export function usePmsIncomeRecords({
         setError(err.message);
       }
     },
-    [fetchRecords, setError, setSuccess]
+    [confirm, fetchRecords, setError, setSuccess]
   );
 
   const handleSort = useCallback((field) => {

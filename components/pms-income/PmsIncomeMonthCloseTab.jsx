@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 
 function fmt(n) {
   if (n == null || n === '' || Number(n) === 0) return '-';
@@ -14,6 +16,8 @@ const STATUS_META = {
 };
 
 export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
+  const confirm = useConfirm();
+  const { showToast } = useToast();
   const [warehouse, setWarehouse] = useState(WAREHOUSES[0] || '');
   const [yearMonth, setYearMonth] = useState(() => {
     const d = new Date();
@@ -81,7 +85,7 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
   }
 
   async function updateStatus(newStatus) {
-    if (newStatus === 'locked' && !confirm(`確定要鎖定 ${yearMonth} 月結？鎖定後本月訂房資料將無法修改。`)) return;
+    if (newStatus === 'locked' && !(await confirm(`確定要鎖定 ${yearMonth} 月結？鎖定後本月訂房資料將無法修改。`, { title: '鎖定月結', danger: false }))) return;
     setSaving(true); setMsg('');
     try {
       const res = await fetch('/api/pms-income/month-close', {
@@ -125,7 +129,7 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
             try {
               const res  = await fetch(`/api/pms-income/voucher?warehouse=${encodeURIComponent(warehouse)}&yearMonth=${yearMonth}`);
               const data = await res.json();
-              if (!res.ok || !data.entries?.length) { alert('無傳票資料，請先確認該月份有匯入記錄'); return; }
+              if (!res.ok || !data.entries?.length) { showToast('無傳票資料，請先確認該月份有匯入記錄', 'error'); return; }
 
               // 月底日期
               const lastDay = new Date(yearMonth.replace('-', '/') + '/01');
@@ -153,7 +157,7 @@ export default function PmsIncomeMonthCloseTab({ WAREHOUSES = [] }) {
               const a    = document.createElement('a');
               a.href = url; a.download = `傳票_${warehouse}_${yearMonth}.csv`; a.click();
               URL.revokeObjectURL(url);
-            } catch { alert('匯出失敗'); }
+            } catch { showToast('匯出失敗', 'error'); }
           }}
           disabled={!record}
           className="px-3 py-1 text-sm border border-indigo-300 text-indigo-700 rounded hover:bg-indigo-50 disabled:opacity-40"

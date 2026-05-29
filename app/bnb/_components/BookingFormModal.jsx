@@ -2,14 +2,15 @@
 
 import { useState, useMemo } from 'react';
 import { useToast } from '@/context/ToastContext';
+import { todayStr } from '@/lib/localDate';
 
 export default function BookingFormModal({ record, onClose, onSaved, warehouseList, roomNoList = [], existingRecords = [] }) {
   const { showToast } = useToast();
   const isEdit = !!(record?.id);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const today = todayStr();
 
   const [form, setForm] = useState({
-    importMonth:  record?.importMonth  || todayStr.substring(0, 7),
+    importMonth:  record?.importMonth  || today.substring(0, 7),
     warehouse:    record?.warehouse    || '民宿',
     source:       record?.source       || '電話',
     guestName:    record?.guestName    || '',

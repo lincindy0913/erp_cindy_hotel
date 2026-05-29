@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { formatNumber } from './pmsIncomeFormatters';
 import { DEFAULT_PMS_COLUMNS } from './pmsIncomeConstants';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 
 function detectWarehouse(filename, warehouses) {
   const lower = filename.toLowerCase();
@@ -76,6 +78,8 @@ function MonthCalendar({ importedDates, month }) {
 }
 
 export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
+  const confirm = useConfirm();
+  const { showToast } = useToast();
   const [isDragging,  setIsDragging]  = useState(false);
   const [parsing,     setParsing]     = useState(false);
   const [parseError,  setParseError]  = useState('');
@@ -132,7 +136,7 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
   }, [loadRecentBatches]);
 
   const deleteBatch = useCallback(async (batch) => {
-    if (!confirm(`確定要整批刪除「${batch.businessDate} ${batch.batchNo}」嗎？\n共 ${batch.recordCount ?? '?'} 筆記錄，此操作無法還原。`)) return;
+    if (!(await confirm(`確定要整批刪除「${batch.businessDate} ${batch.batchNo}」嗎？\n共 ${batch.recordCount ?? '?'} 筆記錄，此操作無法還原。`, { title: '整批刪除', danger: true }))) return;
     setDeletingBatch(batch.id);
     try {
       const res = await fetch(`/api/pms-income/batches/${batch.id}`, { method: 'DELETE' });
@@ -140,11 +144,11 @@ export default function PmsIncomeExcelImportTab({ WAREHOUSES, setActiveTab }) {
       if (!res.ok) throw new Error(data.error?.message || '刪除失敗');
       await loadRecentBatches();
     } catch (e) {
-      alert(e.message);
+      showToast(e.message, 'error');
     } finally {
       setDeletingBatch(null);
     }
-  }, [loadRecentBatches]);
+  }, [loadRecentBatches, confirm, showToast]);
 
   const processFile = useCallback(async (f) => {
     if (!f) return;

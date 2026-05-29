@@ -8,12 +8,14 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 function PurchasingPageInner() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState(null);
@@ -332,7 +334,7 @@ function PurchasingPageInner() {
   }
 
   async function handleDeleteExpTemplate(id) {
-    if (!confirm('確定要刪除此範本嗎？')) return;
+    if (!(await confirm('確定要刪除此範本嗎？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/expense-templates/${id}`, { method: 'DELETE' });
       if (res.ok) { showToast('範本已刪除', 'success'); fetchExpenseTemplates(); }
@@ -488,7 +490,7 @@ function PurchasingPageInner() {
         fetchExpenseRecords();
       } else if (res.status === 409 && data?.code === 'CONFLICT_UNIQUE') {
         // data.error is the message string (production-safe)
-        if (confirm((typeof data?.error === 'string' ? data.error : '此月份已有記錄') + '\n\n是否仍要再建立一筆？')) {
+        if (await confirm((typeof data?.error === 'string' ? data.error : '此月份已有記錄') + '\n\n是否仍要再建立一筆？', { title: '重複建立確認', danger: false })) {
           payload.allowDuplicate = true;
           const res2 = await fetch('/api/expense-records/execute-purchase', {
             method: 'POST',
@@ -628,7 +630,7 @@ function PurchasingPageInner() {
   }
 
   async function handleDeleteWarehouse(name) {
-    if (!confirm(`確定要刪除館別「${name}」及其所有部門嗎？`)) return;
+    if (!(await confirm(`確定要刪除館別「${name}」及其所有部門嗎？`, { title: '刪除確認', danger: true }))) return;
     try {
       const response = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -669,7 +671,7 @@ function PurchasingPageInner() {
   }
 
   async function handleDeleteDepartment(warehouse, deptName) {
-    if (!confirm(`確定要刪除「${warehouse}」的部門「${deptName}」嗎？`)) return;
+    if (!(await confirm(`確定要刪除「${warehouse}」的部門「${deptName}」嗎？`, { title: '刪除確認', danger: true }))) return;
     try {
       const response = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -863,7 +865,7 @@ function PurchasingPageInner() {
   }
 
   async function handleDelete(purchaseId) {
-    if (!confirm('確定要刪除這張進貨單嗎？')) return;
+    if (!(await confirm('確定要刪除這張進貨單嗎？', { title: '刪除確認', danger: true }))) return;
     
     try {
       const response = await fetch(`/api/purchasing/${purchaseId}`, {

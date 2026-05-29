@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
 import TotpSetupCard from '@/components/security/TotpSetupCard';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const SECTIONS = [
   { key: 'master-data', label: '基礎主資料', icon: '📋' },
@@ -472,6 +473,7 @@ function SecuritySection() {
 }
 
 export default function SettingsPage() {
+  const confirm = useConfirm();
   const [activeSection, setActiveSection] = useState('master-data');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -829,7 +831,7 @@ export default function SettingsPage() {
   }
 
   async function deleteInvoiceTitle(id) {
-    if (!confirm('確定要刪除此發票抬頭？')) return;
+    if (!(await confirm('確定要刪除此發票抬頭？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/settings/invoice-titles?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -866,7 +868,7 @@ export default function SettingsPage() {
   }
 
   async function deletePaymentMethod(id) {
-    if (!confirm('確定要刪除此付款方式？')) return;
+    if (!(await confirm('確定要刪除此付款方式？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/settings/payment-methods?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -940,7 +942,7 @@ export default function SettingsPage() {
   }
 
   async function deleteExpenseCategory(id) {
-    if (!confirm('確定要刪除此費用分類？')) return;
+    if (!(await confirm('確定要刪除此費用分類？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/settings/expense-categories?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -1053,7 +1055,7 @@ export default function SettingsPage() {
   }
 
   async function deleteMappingRule(id) {
-    if (!confirm('確定要刪除此對應規則？')) return;
+    if (!(await confirm('確定要刪除此對應規則？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/pms-income/mapping-rules?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -1134,7 +1136,7 @@ export default function SettingsPage() {
   }
 
   async function deleteStorageLocation(id, name) {
-    if (!confirm(`確定刪除倉庫「${name}」？`)) return;
+    if (!(await confirm(`確定刪除倉庫「${name}」？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -1202,7 +1204,7 @@ export default function SettingsPage() {
   }
 
   async function deleteWarehouse(name) {
-    if (!confirm(`確定刪除「${name}」？`)) return;
+    if (!(await confirm(`確定刪除「${name}」？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -1223,7 +1225,7 @@ export default function SettingsPage() {
   }
 
   async function deleteDepartment(warehouse, deptName) {
-    if (!confirm(`確定刪除部門「${deptName}」？`)) return;
+    if (!(await confirm(`確定刪除部門「${deptName}」？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -2263,7 +2265,7 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={async () => {
-                if (!confirm('確定要執行廠商資料回填嗎？此操作不可逆，建議先備份資料。')) return;
+                if (!(await confirm('確定要執行廠商資料回填嗎？此操作不可逆，建議先備份資料。', { title: '資料回填確認', danger: true }))) return;
                 try {
                   const res = await fetch('/api/admin/backfill-supplier-ids', { method: 'POST' });
                   const d = await res.json();

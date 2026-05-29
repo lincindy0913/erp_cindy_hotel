@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 
 const SOURCE_OPTIONS = ['全部', '電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '團體', '月租'];
 const SOURCE_EDIT_OPTIONS = ['電話', '一般散客', 'OTA-Booking', 'OTA-Agoda', 'OTA-Expedia', '攜程網', '易遊網', '代訂中心', '團體', '月租', '其他', '自訂…'];
@@ -650,6 +652,8 @@ function DuplicateScanModal({ warehouse, month, onClose }) {
 
 // ── Main ──
 export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
+  const confirm = useConfirm();
+  const { showToast } = useToast();
   const [warehouse, setWarehouse] = useState(WAREHOUSES[0]||'');
   const [useRange, setUseRange] = useState(false);
   const [month, setMonth] = useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;});
@@ -751,7 +755,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
   }
 
   async function deleteRow(id) {
-    if (!confirm('確定刪除此訂房記錄？此操作無法還原。')) return;
+    if (!(await confirm('確定刪除此訂房記錄？此操作無法還原。', { title: '刪除訂房記錄', danger: true }))) return;
     const res = await fetch(`/api/pms-income/reservations/${id}`, { method:'DELETE' });
     if (res.ok) {
       setRows((prev) => prev.filter((r) => r.id !== id));
@@ -761,7 +765,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
         return n;
       });
     }
-    else { const j=await res.json(); alert(j.error?.message||'刪除失敗'); }
+    else { const j=await res.json(); showToast(j.error?.message||'刪除失敗', 'error'); }
   }
 
   async function batchUpdate(patch) {
@@ -783,7 +787,7 @@ export default function PmsIncomeReservationTab({ WAREHOUSES = [] }) {
 
   async function batchDelete() {
     if (selectedIds.size === 0) { setBatchMsg('請勾選要刪除的訂單'); return; }
-    if (!window.confirm(`確定要刪除已選的 ${selectedIds.size} 筆訂房記錄？此操作無法復原。`)) return;
+    if (!(await confirm(`確定要刪除已選的 ${selectedIds.size} 筆訂房記錄？此操作無法復原。`, { title: '批次刪除訂房', danger: true }))) return;
     setBatching(true); setBatchMsg('');
     const ids = [...selectedIds];
     const results = await Promise.allSettled(

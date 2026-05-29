@@ -615,7 +615,7 @@ function AssetsPageInner() {
                 disabled={!dateStart || !dateEnd || loading}
                 onClick={async () => {
                   if (!dateStart || !dateEnd) return;
-                  if (dateStart > dateEnd) { alert('結束日期不可早於開始日期'); return; }
+                  if (dateStart > dateEnd) { showToast('結束日期不可早於開始日期', 'error'); return; }
                   setLoading(true);
                   setActiveRange({ start: dateStart, end: dateEnd });
                   await loadYearData(year, dateStart, dateEnd);

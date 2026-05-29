@@ -9,6 +9,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import AttachmentSection from '@/components/AttachmentSection';
 import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 
@@ -414,6 +415,7 @@ function EngineeringPageInner() {
 
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
 
   function switchEngineeringTab(key) {
@@ -667,7 +669,7 @@ function EngineeringPageInner() {
         return next;
       });
     } catch {
-      alert('案件更新失敗');
+      showToast('案件更新失敗', 'error');
     } finally {
       setCompanyInvUpdating(prev => ({ ...prev, [invoiceId]: false }));
     }
@@ -714,7 +716,7 @@ function EngineeringPageInner() {
   }
 
   async function deleteInputInvoice(inv) {
-    if (!confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`)) return;
+    if (!(await confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`, { title: '刪除確認', danger: true }))) return;
     await fetch(`/api/engineering/input-invoices/${inv.id}`, { method: 'DELETE' });
     fetchInputInvoices(invProjectFilter || undefined);
     refreshDashInvoices();
@@ -739,7 +741,7 @@ function EngineeringPageInner() {
   }
 
   async function deleteOutputInvoice(inv) {
-    if (!confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`)) return;
+    if (!(await confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`, { title: '刪除確認', danger: true }))) return;
     await fetch(`/api/engineering/output-invoices/${inv.id}`, { method: 'DELETE' });
     fetchOutputInvoices(invProjectFilter || undefined);
     refreshDashInvoices();
@@ -990,7 +992,7 @@ function EngineeringPageInner() {
   }
 
   async function deleteMaterial(m) {
-    if (!confirm('確定刪除此筆材料？')) return;
+    if (!(await confirm('確定刪除此筆材料？', { title: '刪除確認', danger: true }))) return;
     try {
       await fetch(`/api/engineering/materials/${m.id}`, { method: 'DELETE' });
       fetchMaterials(filterProjectId || undefined);
@@ -1006,7 +1008,7 @@ function EngineeringPageInner() {
   // 列印篩選後的工程案
   function handlePrintProjects() {
     if (sortedProjects.length === 0) {
-      alert('沒有可列印的資料');
+      showToast('沒有可列印的資料', 'info');
       return;
     }
     const filterDesc = [
@@ -1954,7 +1956,7 @@ ${projectRows.map(p => `<tr>
                                   setShowPaymentModal(true);
                                 }} className="text-amber-600 hover:underline text-xs">編輯</button>
                                 <button onClick={async () => {
-                                  if (!confirm(`確定要刪除付款單 ${o.orderNo}？`)) return;
+                                  if (!(await confirm(`確定要刪除付款單 ${o.orderNo}？`, { title: '刪除確認', danger: true }))) return;
                                   const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'DELETE' });
                                   if (res.ok) { showToast('付款單已刪除', 'success'); fetchPaymentOrders(); }
                                   else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '刪除失敗', 'error'); }
@@ -1976,7 +1978,7 @@ ${projectRows.map(p => `<tr>
                                 }} className="text-amber-600 hover:underline text-xs">編輯</button>
                                 {(isDraft || isRejected) && (
                                   <button onClick={async () => {
-                                    if (!confirm(`確定要將付款單 ${o.orderNo} 送出出納？`)) return;
+                                    if (!(await confirm(`確定要將付款單 ${o.orderNo} 送出出納？`, { title: '送出確認', danger: false }))) return;
                                     const action = isRejected ? 'resubmit' : 'submit';
                                     const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
                                     if (res.ok) { showToast('已送出出納', 'success'); fetchPaymentOrders(); setPayTab('pending'); }
@@ -1984,7 +1986,7 @@ ${projectRows.map(p => `<tr>
                                   }} className="text-blue-600 hover:underline text-xs">送出出納</button>
                                 )}
                                 <button onClick={async () => {
-                                  if (!confirm(`確定要刪除付款單 ${o.orderNo}？`)) return;
+                                  if (!(await confirm(`確定要刪除付款單 ${o.orderNo}？`, { title: '刪除確認', danger: true }))) return;
                                   const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'DELETE' });
                                   if (res.ok) { showToast('付款單已刪除', 'success'); fetchPaymentOrders(); }
                                   else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '刪除失敗', 'error'); }

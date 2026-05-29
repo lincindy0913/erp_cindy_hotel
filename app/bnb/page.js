@@ -10,6 +10,7 @@ import { useConfirm } from '@/context/ConfirmContext';
 import ExportButtons from '@/components/ExportButtons';
 import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
+import { todayStr } from '@/lib/localDate';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const DEFAULT_WAREHOUSE = '民宿';
@@ -642,7 +643,7 @@ function BnbPage() {
       setOiForm({ importMonth: row.importMonth, warehouse: row.warehouse, incomeDate: row.incomeDate, category: row.category || '', description: row.description, amount: String(row.amount), note: row.note || '' });
       setOiEditRow(row);
     } else {
-      setOiForm({ importMonth: oiMonth, warehouse: oiWarehouse || DEFAULT_WAREHOUSE, incomeDate: new Date().toISOString().split('T')[0], category: '', description: '', amount: '', note: '' });
+      setOiForm({ importMonth: oiMonth, warehouse: oiWarehouse || DEFAULT_WAREHOUSE, incomeDate: todayStr(), category: '', description: '', amount: '', note: '' });
       setOiEditRow(null);
     }
     setOiModalOpen(true);
@@ -2097,7 +2098,7 @@ function BnbPage() {
                 ? records.filter(r => filterPayment === 'filled' ? r.paymentFilled : !r.paymentFilled)
                 : records;
               // 逾期未填判斷基準日
-              const today = new Date().toISOString().split('T')[0];
+              const today = todayStr();
 
               return (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 tbl-wrap">

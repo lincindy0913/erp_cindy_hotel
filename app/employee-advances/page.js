@@ -4,11 +4,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 
 export default function EmployeeAdvancesPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState('pending');
   const [advances, setAdvances] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -142,7 +144,7 @@ export default function EmployeeAdvancesPage() {
     const confirmMsg = hasPrivate
       ? `確定從「${acct?.name || '帳戶'}」支付信用卡帳單 NT$ ${totalPay.toLocaleString()}？\n\n公費代墊：${selectedIds.size} 筆 = NT$ ${selectedTotal.toLocaleString()}\n老闆私帳：NT$ ${privateAmount.toLocaleString()}`
       : `確定從「${acct?.name || '帳戶'}」支付 ${selectedIds.size} 筆代墊款，共 NT$ ${selectedTotal.toLocaleString()}？`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await confirm(confirmMsg, { title: '結算確認', danger: false }))) return;
 
     setSettling(true);
     try {
@@ -238,7 +240,7 @@ export default function EmployeeAdvancesPage() {
   }
 
   async function handleDeleteAdvance(adv) {
-    if (!confirm(`確定刪除代墊款「${adv.advanceNo}」？\n${adv.expenseName || adv.sourceDescription || ''} NT$ ${Number(adv.amount).toLocaleString()}\n\n此操作會連動刪除關聯的費用記錄和付款單。`)) return;
+    if (!(await confirm(`確定刪除代墊款「${adv.advanceNo}」？\n${adv.expenseName || adv.sourceDescription || ''} NT$ ${Number(adv.amount).toLocaleString()}\n\n此操作會連動刪除關聯的費用記錄和付款單。`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/employee-advances/${adv.id}`, { method: 'DELETE' });
       if (res.ok) {

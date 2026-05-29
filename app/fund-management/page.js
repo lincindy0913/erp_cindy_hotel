@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 
 export default function FundManagementPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ export default function FundManagementPage() {
   }
 
   async function handleDelete(id, name) {
-    if (!confirm(`確定要刪除帳戶「${name}」嗎？\n注意：如果有關聯的交易紀錄將無法刪除。`)) return;
+    if (!(await confirm(`確定要刪除帳戶「${name}」嗎？\n注意：如果有關聯的交易紀錄將無法刪除。`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/cashflow/accounts/${id}`, { method: 'DELETE' });
       if (res.ok) {

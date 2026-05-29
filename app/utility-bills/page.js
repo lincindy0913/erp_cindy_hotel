@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const TABS_ADMIN = [
   { key: 'list',     label: '帳單記錄', icon: '📋' },
@@ -31,6 +32,7 @@ const WAREHOUSE_OPTIONS_FALLBACK = [
 ];
 
 export default function UtilityBillsPage() {
+  const confirm = useConfirm();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'admin';
   const TABS = isAdmin ? TABS_ADMIN : TABS_VIEWER;
@@ -228,7 +230,7 @@ export default function UtilityBillsPage() {
   }
 
   async function createPaymentOrder(record) {
-    if (!confirm(`確定為「${record.warehouse} ${record.billYear}年${record.billMonth}月 ${record.billType}」建立付款單？`)) return;
+    if (!(await confirm(`確定為「${record.warehouse} ${record.billYear}年${record.billMonth}月 ${record.billType}」建立付款單？`, { title: '建立付款單確認', danger: false }))) return;
     setCreatingPO(record.id);
     try {
       const res = await fetch(`/api/utility-bills/${record.id}`, { method: 'PATCH' });

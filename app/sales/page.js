@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
@@ -17,6 +18,7 @@ function InvoicePageInner() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const userPermissions = session?.user?.permissions || [];
   const isAdmin = session?.user?.role === 'admin';
   const canSalesView =
@@ -399,7 +401,7 @@ function InvoicePageInner() {
   }
 
   async function deletePrivateInvoice(id) {
-    if (!window.confirm('確定要刪除此筆業主私帳發票？')) return;
+    if (!(await confirm('確定要刪除此筆業主私帳發票？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/sales/${id}`, { method: 'DELETE', credentials: 'include' });
       const data = await res.json();
@@ -654,7 +656,7 @@ function InvoicePageInner() {
   }
 
   async function handleDeleteTitle(title) {
-    if (!confirm(`確定要刪除「${title}」嗎？`)) return;
+    if (!(await confirm(`確定要刪除「${title}」嗎？`, { title: '刪除確認', danger: true }))) return;
     const item = invoiceTitles.find(t => t.title === title);
     if (!item) return;
     try {
@@ -740,7 +742,7 @@ function InvoicePageInner() {
       });
 
       if (response.ok) {
-        const wantAddMore = confirm(`發票${isEditing ? '更新' : '登錄'}成功！\n\n是否要繼續新增發票？`);
+        const wantAddMore = await confirm(`發票${isEditing ? '更新' : '登錄'}成功！\n\n是否要繼續新增發票？`, { title: '繼續新增', danger: false });
         setEditingInvoice(null);
         setSelectedItems([]);
         setAvailableItems([]);
@@ -805,7 +807,7 @@ function InvoicePageInner() {
   }
 
   async function handleDelete(invoiceId) {
-    if (!confirm('確定要刪除這張發票嗎？刪除後相關進貨單品項將可重新核銷。')) return;
+    if (!(await confirm('確定要刪除這張發票嗎？刪除後相關進貨單品項將可重新核銷。', { title: '刪除確認', danger: true }))) return;
     
     try {
       const response = await fetch(`/api/sales/${invoiceId}`, {

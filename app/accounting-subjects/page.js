@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function AccountingSubjectsPage() {
   const { data: session } = useSession();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,7 @@ export default function AccountingSubjectsPage() {
   };
 
   const handleDelete = async (id, name) => {
-    if (!confirm(`確定要刪除「${name}」嗎？`)) return;
+    if (!(await confirm(`確定要刪除「${name}」嗎？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/accounting-subjects?id=${id}`, { method: 'DELETE' });
       if (res.ok) {

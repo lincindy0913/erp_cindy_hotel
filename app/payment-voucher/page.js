@@ -4,9 +4,11 @@ import { useState, useEffect, Fragment } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { useToast } from '@/context/ToastContext';
 
 export default function PaymentVoucherListPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [invoices, setInvoices] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [paymentOrders, setPaymentOrders] = useState([]);
@@ -170,14 +172,14 @@ export default function PaymentVoucherListPage() {
       const res = await fetch(`/api/export/payment-voucher/${orderId}`, { credentials: 'include' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
-        alert('列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        showToast('列印失敗：' + (err.error?.message || err.error || '未知錯誤'), 'error');
         return;
       }
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
     } catch (e) {
-      alert('列印失敗：' + (e.message || '網路錯誤'));
+      showToast('列印失敗：' + (e.message || '網路錯誤'), 'error');
     }
   }
 
@@ -195,14 +197,14 @@ export default function PaymentVoucherListPage() {
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
-        alert('列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        showToast('列印失敗：' + (err.error?.message || err.error || '未知錯誤'), 'error');
         return;
       }
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
     } catch (e) {
-      alert('列印失敗：' + (e.message || '網路錯誤'));
+      showToast('列印失敗：' + (e.message || '網路錯誤'), 'error');
     }
   }
 
@@ -267,14 +269,14 @@ export default function PaymentVoucherListPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
-        alert('批量列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        showToast('批量列印失敗：' + (err.error?.message || err.error || '未知錯誤'), 'error');
         return;
       }
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
     } catch (e) {
-      alert('批量列印失敗：' + (e.message || '網路錯誤'));
+      showToast('批量列印失敗：' + (e.message || '網路錯誤'), 'error');
     } finally {
       setMonthlyBatchPrinting(false);
     }
@@ -310,14 +312,14 @@ export default function PaymentVoucherListPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
-        alert('批量列印失敗：' + (err.error?.message || err.error || '未知錯誤'));
+        showToast('批量列印失敗：' + (err.error?.message || err.error || '未知錯誤'), 'error');
         return;
       }
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
     } catch (e) {
-      alert('批量列印失敗：' + (e.message || '網路錯誤'));
+      showToast('批量列印失敗：' + (e.message || '網路錯誤'), 'error');
     } finally {
       setBatchPrinting(false);
     }

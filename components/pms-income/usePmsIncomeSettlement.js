@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
 
 /**
  * 月度核對結算（settlement）分頁：批次列表、整月核對、批次核對、結算入帳。
  */
 export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuccess }) {
+  const confirm = useConfirm();
   const [settlementWarehouse, setSettlementWarehouse] = useState('麗格');
   const [settlementYearMonth, setSettlementYearMonth] = useState(() => {
     const d = new Date();
@@ -49,7 +51,7 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
   }, [activeTab, fetchSettlementData]);
 
   const handleVerifyMonth = useCallback(async () => {
-    if (!confirm(`確定要核對 ${settlementWarehouse} ${settlementYearMonth} 的所有批次嗎？`)) return;
+    if (!(await confirm(`確定要核對 ${settlementWarehouse} ${settlementYearMonth} 的所有批次嗎？`, { title: '整月核對', danger: false }))) return;
     setLoading(true);
     try {
       const res = await fetch('/api/pms-income/verify', {
@@ -76,9 +78,10 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
 
   const handleSettleMonth = useCallback(async () => {
     if (
-      !confirm(
-        `確定要結算 ${settlementWarehouse} ${settlementYearMonth} 嗎？\n結算後將自動建立現金流交易（收入、信用卡手續費等）。`
-      )
+      !(await confirm(
+        `確定要結算 ${settlementWarehouse} ${settlementYearMonth} 嗎？\n結算後將自動建立現金流交易（收入、信用卡手續費等）。`,
+        { title: '月結結算', danger: false }
+      ))
     )
       return;
     setSettling(true);
@@ -127,10 +130,11 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
   );
 
   const handleUnlockMonth = useCallback(async () => {
-    if (!confirm(
+    if (!(await confirm(
       `確定解除 ${settlementWarehouse} ${settlementYearMonth} 的月結狀態嗎？\n` +
-      `系統將自動沖銷結算時建立的現金流交易（以今日日期建立對沖分錄）。`
-    )) return;
+      `系統將自動沖銷結算時建立的現金流交易（以今日日期建立對沖分錄）。`,
+      { title: '解除月結', danger: false }
+    ))) return;
     setLoading(true);
     try {
       const res = await fetch('/api/pms-income/settle/unlock', {

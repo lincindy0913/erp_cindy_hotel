@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { parsePdfByBank } from './bankParsers';
+import { useConfirm } from '@/context/ConfirmContext';
 
 function formatMoney(val) {
   if (val == null || isNaN(val)) return '0';
@@ -17,6 +18,7 @@ export const CC_STATUS_MAP = {
 };
 
 export function useCreditCardTab({ activeTab, showMessage }) {
+  const confirm = useConfirm();
   const now = new Date();
 
   const [ccStatements, setCcStatements] = useState([]);
@@ -257,7 +259,7 @@ export function useCreditCardTab({ activeTab, showMessage }) {
   };
 
   const deleteCcStatement = async (id) => {
-    if (!confirm('確定刪除此對帳單？')) return;
+    if (!(await confirm('確定刪除此對帳單？', { title: '刪除對帳單', danger: true }))) return;
     try {
       await fetch(`/api/reconciliation/credit-card-statements?id=${id}`, { method: 'DELETE' });
       fetchCcData();

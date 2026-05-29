@@ -7,10 +7,12 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function ProductsPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,11 +110,12 @@ export default function ProductsPage() {
   }
 
   function removeWarehouseOption(option) {
-    if (!confirm(`確定要刪除倉庫位置「${option}」嗎？`)) return;
-    setWarehouseOptions(warehouseOptions.filter(o => o !== option));
-    if (formData.warehouseLocation === option) {
-      setFormData({ ...formData, warehouseLocation: '' });
-    }
+    confirm(`確定要刪除倉庫位置「${option}」嗎？`, () => {
+      setWarehouseOptions(warehouseOptions.filter(o => o !== option));
+      if (formData.warehouseLocation === option) {
+        setFormData({ ...formData, warehouseLocation: '' });
+      }
+    }, '刪除確認');
   }
 
   async function fetchProducts(page = currentPage, limit = itemsPerPage, keyword = searchKeyword) {
@@ -235,7 +238,7 @@ export default function ProductsPage() {
   }
 
   async function handleDelete(productId) {
-    if (!confirm('確定要刪除這個產品嗎？')) return;
+    if (!(await confirm('確定要刪除這個產品嗎？', { title: '刪除確認', danger: true }))) return;
     
     try {
       const response = await fetch(`/api/products/${productId}`, {
@@ -310,7 +313,7 @@ export default function ProductsPage() {
 
         // 批次新增產品
         const confirmMsg = `即將匯入 ${importedProducts.length} 筆產品資料，是否繼續？`;
-        if (!confirm(confirmMsg)) return;
+        if (!(await confirm(confirmMsg, { title: '匯入確認', danger: false }))) return;
 
         let successCount = 0;
         let failCount = 0;

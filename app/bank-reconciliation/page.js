@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
 const fmtDate = (d) => d || '—';
@@ -18,6 +19,7 @@ const MATCH_BADGE = {
 };
 
 export default function BankReconciliationPage() {
+  const confirm = useConfirm();
   const [accounts, setAccounts]   = useState([]);
   const [accountId, setAccountId] = useState('');
   const [yearMonth, setYearMonth] = useState(() => {
@@ -153,7 +155,7 @@ export default function BankReconciliationPage() {
   }
 
   async function deleteLine(lineId) {
-    if (!confirm('確定刪除此行？')) return;
+    if (!(await confirm('確定刪除此行？', { title: '刪除確認', danger: true }))) return;
     await fetch(`/api/bank-reconciliation/${detail.id}/lines/${lineId}`, { method: 'DELETE' });
     await loadDetail(detail.id);
   }

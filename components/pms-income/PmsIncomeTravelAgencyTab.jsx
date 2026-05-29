@@ -1,5 +1,7 @@
 'use client';
 
+import { useConfirm } from '@/context/ConfirmContext';
+
 export default function PmsIncomeTravelAgencyTab({
   loading,
   travelAgencyConfigs,
@@ -9,6 +11,7 @@ export default function PmsIncomeTravelAgencyTab({
   setTravelAgencyForm,
   setShowTravelAgencyModal,
 }) {
+  const confirm = useConfirm();
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow-sm border p-4">
@@ -89,8 +92,7 @@ export default function PmsIncomeTravelAgencyTab({
                     </button>
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!confirm('確定刪除？')) return;
+                      onClick={() => confirm('確定刪除？', async () => {
                         try {
                           const r = await fetch(`/api/pms-income/travel-agency-config/${c.id}`, { method: 'DELETE' });
                           if (r.ok) fetchTravelAgencyConfigs();
@@ -98,7 +100,7 @@ export default function PmsIncomeTravelAgencyTab({
                         } catch (e) {
                           setError(e.message);
                         }
-                      }}
+                      }, '刪除旅行社配置')}
                       className="ml-2 text-red-500 hover:underline text-xs"
                     >
                       刪除

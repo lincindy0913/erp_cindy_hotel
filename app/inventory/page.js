@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const TABS = [
   { key: 'query', label: '庫存查詢', icon: '📦' },
@@ -115,6 +116,7 @@ function WarehouseSelect({ value, onChange, warehouseList, placeholder = '全部
 
 export default function InventoryPage() {
   const { data: session } = useSession();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [activeTab, setActiveTab] = useState('query');
   // warehouseList: full structured list { id, name, type, parentId, children }
@@ -414,7 +416,7 @@ export default function InventoryPage() {
       showToast(`有 ${missing.length} 筆未選擇入庫倉庫，請先填寫`, 'error');
       return;
     }
-    if (!confirm(`確認批次入庫 ${selected.length} 筆商品？`)) return;
+    if (!(await confirm(`確認批次入庫 ${selected.length} 筆商品？`, { title: '入庫確認', danger: false }))) return;
     setBatchConfirming(true);
     let ok = 0;
     let fail = 0;

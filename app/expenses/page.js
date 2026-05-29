@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 
 // 進銷存每月費用已移至 /purchasing 小分頁
@@ -47,6 +48,7 @@ function ExpensesPageInner() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [mainTab, setMainTab] = useState('fixed');
   const [subTab, setSubTab] = useState(() => searchParams.get('subTab') || 'templates');
@@ -517,7 +519,7 @@ function ExpensesPageInner() {
   }
 
   async function handleDeleteTemplate(id) {
-    if (!confirm('確定要刪除此範本嗎？')) return;
+    if (!(await confirm('確定要刪除此範本嗎？', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/expense-templates/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -553,7 +555,7 @@ function ExpensesPageInner() {
 
   // ====== Record Actions ======
   async function handleConfirmRecord(id) {
-    if (!confirm('確定要確認此記錄嗎？')) return;
+    if (!(await confirm('確定要確認此記錄嗎？', { title: '確認操作', danger: false }))) return;
     try {
       const res = await fetch(`/api/expense-records/${id}`, {
         method: 'PUT',
@@ -600,7 +602,7 @@ function ExpensesPageInner() {
   }
 
   async function handleDeleteRecord(id) {
-    if (!confirm('確定要刪除此記錄及關聯的付款單嗎？此操作無法復原。')) return;
+    if (!(await confirm('確定要刪除此記錄及關聯的付款單嗎？此操作無法復原。', { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/expense-records/${id}`, { method: 'DELETE' });
       if (res.ok) fetchRecords();

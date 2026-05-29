@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
 
 /**
  * 每日匯入總覽（overview）分頁：資料、館別初始化、Excel 帶入 Modal、刪除批次。
@@ -27,6 +28,7 @@ export function usePmsIncomeOverview({
   setUploadRecords,
   setShowUploadModal,
 }) {
+  const confirm = useConfirm();
   const [overviewYear, setOverviewYear] = useState(() => new Date().getFullYear());
   const [overviewMonth, setOverviewMonth] = useState(() => new Date().getMonth() + 1);
   const [batches, setBatches] = useState([]);
@@ -168,7 +170,7 @@ export function usePmsIncomeOverview({
 
   const handleDeleteBatch = useCallback(
     async (batchId, batchNo) => {
-      if (!confirm(`確定要刪除批次 ${batchNo} 及所有相關記錄嗎？`)) return;
+      if (!(await confirm(`確定要刪除批次 ${batchNo} 及所有相關記錄嗎？`, { title: '刪除批次', danger: true }))) return;
       try {
         const res = await fetch(`/api/pms-income/batches/${batchId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('刪除失敗');
@@ -178,7 +180,7 @@ export function usePmsIncomeOverview({
         setError(err.message);
       }
     },
-    [fetchOverviewData, setError, setSuccess]
+    [confirm, fetchOverviewData, setError, setSuccess]
   );
 
   return {

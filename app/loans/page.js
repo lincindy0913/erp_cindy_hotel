@@ -7,6 +7,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
@@ -51,6 +52,7 @@ function formatDate(d) {
 export default function LoansPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -329,7 +331,7 @@ export default function LoansPage() {
   }
 
   async function deleteLoan(loan) {
-    if (!confirm(`確定要刪除「${loan.loanName}」嗎？`)) return;
+    if (!(await confirm(`確定要刪除「${loan.loanName}」嗎？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/loans/${loan.id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -389,7 +391,7 @@ export default function LoansPage() {
 
   async function deleteRecord(record) {
     const label = record.status === '已核實' ? '此操作將同時刪除相關現金交易並回沖餘額，' : '';
-    if (!confirm(`${label}確定要刪除此還款記錄嗎？`)) return;
+    if (!(await confirm(`${label}確定要刪除此還款記錄嗎？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/loans/records/${record.id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -530,7 +532,7 @@ export default function LoansPage() {
       showToast('找不到扣款帳戶', 'error');
       return;
     }
-    if (!confirm(`確定推送「${loan.loanName}」(預估 ${formatCurrency(record.estimatedTotal)}) 至出納？`)) return;
+    if (!(await confirm(`確定推送「${loan.loanName}」(預估 ${formatCurrency(record.estimatedTotal)}) 至出納？`, { title: '推送確認', danger: false }))) return;
 
     try {
       // 1. Create PaymentOrder so cashier can see it
@@ -583,7 +585,7 @@ export default function LoansPage() {
       showToast('目前沒有7天內到期且未推送的記錄', 'info');
       return;
     }
-    if (!confirm(`共 ${dueRecords.length} 筆即將到期，確定全部推送出納？\n將為每筆建立付款單。`)) return;
+    if (!(await confirm(`共 ${dueRecords.length} 筆即將到期，確定全部推送出納？\n將為每筆建立付款單。`, { title: '批次推送確認', danger: false }))) return;
     let pushed = 0;
     let failed = 0;
     for (const rec of dueRecords) {

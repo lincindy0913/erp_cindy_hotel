@@ -6,6 +6,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const CHECK_SORT_ACCESSORS = {
@@ -95,6 +96,7 @@ function Modal({ isOpen, onClose, title, children, width = 'max-w-lg' }) {
 // ============== Main Page ==============
 export default function ChecksPage() {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState('pending');
   const [checks, setChecks] = useState([]);
   const [checksHasMore, setChecksHasMore] = useState(false);
@@ -397,7 +399,7 @@ export default function ChecksPage() {
   };
 
   const handleDelete = async (check) => {
-    if (!confirm(`確定要刪除支票 ${check.checkNumber}？`)) return;
+    if (!(await confirm(`確定要刪除支票 ${check.checkNumber}？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch(`/api/checks/${check.id}`, { method: 'DELETE' });
       if (!res.ok) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import { useToast } from '@/context/ToastContext';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 
@@ -70,6 +71,7 @@ function defaultAuditDateFrom() {
 
 export default function AuditLogPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
@@ -172,7 +174,7 @@ export default function AuditLogPage() {
       const data = await res.json();
       setCleanupPreview(data);
     } catch {
-      alert('預覽失敗，請稍後再試');
+      showToast('預覽失敗，請稍後再試', 'error');
     }
     setCleanupLoading(false);
   }
@@ -193,7 +195,7 @@ export default function AuditLogPage() {
       fetchLogs(1);
       fetchSummary();
     } catch {
-      alert('清理失敗，請稍後再試');
+      showToast('清理失敗，請稍後再試', 'error');
     }
     setCleanupLoading(false);
   }

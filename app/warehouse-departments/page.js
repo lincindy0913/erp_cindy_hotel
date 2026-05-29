@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function WarehouseDepartmentsPage() {
+  const confirm = useConfirm();
   const [data, setData] = useState({ list: [], byName: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -75,7 +77,7 @@ export default function WarehouseDepartmentsPage() {
   }
 
   async function deleteBuilding(name) {
-    if (!confirm(`確定刪除館別「${name}」？其下所有部門和倉庫也會一併刪除。`)) return;
+    if (!(await confirm(`確定刪除館別「${name}」？其下所有部門和倉庫也會一併刪除。`, { title: '刪除確認', danger: true }))) return;
     setSaving(true);
     try {
       const res = await fetch('/api/warehouse-departments', {
@@ -118,7 +120,7 @@ export default function WarehouseDepartmentsPage() {
   }
 
   async function deleteDepartment(warehouse, deptName) {
-    if (!confirm(`確定刪除部門「${deptName}」？`)) return;
+    if (!(await confirm(`確定刪除部門「${deptName}」？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'DELETE',
@@ -159,7 +161,7 @@ export default function WarehouseDepartmentsPage() {
   }
 
   async function deleteStorageLocation(id, name) {
-    if (!confirm(`確定刪除倉庫「${name}」？`)) return;
+    if (!(await confirm(`確定刪除倉庫「${name}」？`, { title: '刪除確認', danger: true }))) return;
     try {
       const res = await fetch('/api/warehouse-departments', {
         method: 'DELETE',

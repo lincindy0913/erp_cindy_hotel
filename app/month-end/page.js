@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
@@ -27,6 +28,7 @@ function formatNumber(num) {
 export default function MonthEndPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isAdmin = session?.user?.role === 'admin';
   const userName = session?.user?.name || '';
 
@@ -132,7 +134,7 @@ export default function MonthEndPage() {
 
   // Lock a month-end
   async function handleLock(statusId) {
-    if (!confirm('確定要鎖定此月份？鎖定後需要管理員才能解鎖。')) return;
+    if (!(await confirm('確定要鎖定此月份？鎖定後需要管理員才能解鎖。', { title: '月結鎖定確認', danger: false }))) return;
     setLockLoading(true);
     try {
       const res = await fetch(`/api/month-end/${statusId}`, {

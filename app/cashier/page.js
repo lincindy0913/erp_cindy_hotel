@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 // Determine the correct display order number based on source
@@ -35,6 +36,7 @@ function defaultCashierDateRange() {
 export default function CashierPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState('pending');
   const [orders, setOrders] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -271,7 +273,7 @@ export default function CashierPage() {
     }).join('\n');
 
     const confirmMsg = `確定要批次執行 ${selectedOrderIds.size} 筆付款單？\n總金額：NT$ ${selectedTotal.toLocaleString()}\n\n資金來源：\n${accountSummary}`;
-    if (!confirm(confirmMsg)) return;
+    if (!(await confirm(confirmMsg, { title: '批次執行確認', danger: false }))) return;
 
     // Validate employee advance fields
     if (batchIsEmployeeAdvance && !batchAdvancedBy.trim()) {

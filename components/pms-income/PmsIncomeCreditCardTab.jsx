@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
 const fmtPct = (a, b) => (b ? ((a / b) * 100).toFixed(2) + '%' : '—');
@@ -20,6 +22,8 @@ const EMPTY_FORM = {
 };
 
 export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
+  const confirm = useConfirm();
+  const { showToast } = useToast();
   const [warehouse, setWarehouse]   = useState(WAREHOUSES?.[0] || '');
   const [yearMonth, setYearMonth]   = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -151,7 +155,7 @@ export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
   }
 
   async function book(id) {
-    if (!confirm('確定建立現金流分錄？\n系統將建立：\n① 收入（撥款淨額→銀行帳戶）\n② 支出（手續費）')) return;
+    if (!(await confirm('確定建立現金流分錄？\n系統將建立：\n① 收入（撥款淨額→銀行帳戶）\n② 支出（手續費）', { title: '建立現金流分錄', danger: false }))) return;
     setError(''); setSuccess('');
     const res = await fetch(`/api/pms-income/credit-card-statements/${id}/book`, { method: 'POST' });
     const data = await res.json();
@@ -160,7 +164,7 @@ export default function PmsIncomeCreditCardTab({ WAREHOUSES }) {
   }
 
   async function del(id) {
-    if (!confirm('確定刪除此對帳單？')) return;
+    if (!(await confirm('確定刪除此對帳單？', { title: '刪除對帳單', danger: true }))) return;
     const res = await fetch(`/api/pms-income/credit-card-statements/${id}`, { method: 'DELETE' });
     if (res.ok) { setSuccess('已刪除'); load(); }
     else { const d = await res.json(); setError(d.error?.message || '刪除失敗'); }

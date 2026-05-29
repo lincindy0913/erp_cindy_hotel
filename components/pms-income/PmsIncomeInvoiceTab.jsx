@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from '@/context/ToastContext';
 
 function downloadCsv(rows) {
   const cols = ['日期', '館別', '住客', '公司', '來源', '住宿金額', '發票號碼'];
@@ -23,9 +24,9 @@ function downloadCsv(rows) {
   URL.revokeObjectURL(url);
 }
 
-function downloadTaxReport(rows, yearMonth) {
+function downloadTaxReport(rows, yearMonth, showToast) {
   const invoiced = rows.filter(r => r.invoiceNo);
-  if (invoiced.length === 0) { alert('尚無已開發票資料可申報'); return; }
+  if (invoiced.length === 0) { showToast('尚無已開發票資料可申報', 'info'); return; }
 
   // Group by 字軌 (first 2 chars of invoice number)
   const byPrefix = {};
@@ -62,6 +63,7 @@ function downloadTaxReport(rows, yearMonth) {
 }
 
 export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
+  const { showToast } = useToast();
   const now = new Date();
   const [warehouse, setWarehouse] = useState('全館');
   const [year, setYear] = useState(now.getFullYear());
@@ -177,7 +179,7 @@ export default function PmsIncomeInvoiceTab({ WAREHOUSES }) {
           className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
           匯出明細 CSV
         </button>
-        <button onClick={() => downloadTaxReport(filtered, monthStr)}
+        <button onClick={() => downloadTaxReport(filtered, monthStr, showToast)}
           className="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
           title="依字軌彙總，含起訖號碼、應稅/稅額，符合國稅局申報格式">
           申報格式 CSV

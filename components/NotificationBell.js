@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const REFRESH_INTERVAL = 300000; // 5 minutes
 
@@ -47,6 +48,7 @@ const LEVEL_CONFIG = {
 
 export default function NotificationBell() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [notifications, setNotifications] = useState([]);
   const [summary, setSummary] = useState({ total: 0, critical: 0, urgent: 0, warning: 0 });
   const [isOpen, setIsOpen] = useState(false);
@@ -119,7 +121,7 @@ export default function NotificationBell() {
   };
 
   const handleClearAll = async () => {
-    if (!confirm('確認清除所有通知？下次重新計算時若條件仍存在，通知會再次出現。')) return;
+    if (!(await confirm('確認清除所有通知？下次重新計算時若條件仍存在，通知會再次出現。', { title: '清除通知', danger: false }))) return;
     setClearing(true);
     try {
       await fetch('/api/notifications/clear', { method: 'POST' });

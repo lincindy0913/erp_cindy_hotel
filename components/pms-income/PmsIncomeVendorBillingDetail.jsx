@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const DIRECTION_LABEL = { AR: '應收 AR', AP: '應付 AP' };
 const STATUS_COLOR = {
@@ -19,6 +20,7 @@ function Num({ v, cls = '' }) {
 const EMPTY_ITEM = { description: '', guestName: '', checkInDate: '', checkOutDate: '', roomType: '', quantity: 1, unitPrice: '', notes: '' };
 
 export default function PmsIncomeVendorBillingDetail({ billingId, WAREHOUSES, onBack }) {
+  const confirm = useConfirm();
   const [billing,    setBilling]    = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
@@ -138,7 +140,7 @@ export default function PmsIncomeVendorBillingDetail({ billingId, WAREHOUSES, on
   };
 
   const deleteItem = async (itemId) => {
-    if (!confirm('確定刪除此項目？')) return;
+    if (!(await confirm('確定刪除此項目？', { title: '刪除項目', danger: true }))) return;
     try {
       const res = await fetch(`/api/pms-income/vendor-billing/${billingId}/items/${itemId}`, { method: 'DELETE' });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error?.message || '刪除失敗'); }
@@ -147,7 +149,7 @@ export default function PmsIncomeVendorBillingDetail({ billingId, WAREHOUSES, on
   };
 
   const deleteBilling = async () => {
-    if (!confirm('確定刪除此帳單及所有項目？')) return;
+    if (!(await confirm('確定刪除此帳單及所有項目？', { title: '刪除帳單', danger: true }))) return;
     try {
       const res = await fetch(`/api/pms-income/vendor-billing/${billingId}`, { method: 'DELETE' });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error?.message || '刪除失敗'); }

@@ -5,10 +5,12 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 
 export default function SuppliersPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const isLoggedIn = !!session;
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -346,7 +348,7 @@ export default function SuppliersPage() {
   }
 
   async function handleDelete(supplierId) {
-    if (!confirm('確定要刪除這個廠商嗎？')) return;
+    if (!(await confirm('確定要刪除這個廠商嗎？', { title: '刪除確認', danger: true }))) return;
 
     try {
       const response = await fetch(`/api/suppliers/${supplierId}`, {
@@ -411,7 +413,7 @@ export default function SuppliersPage() {
   }
 
   async function handleDeleteContract(contractId) {
-    if (!confirm('確定要刪除這份合約嗎？')) return;
+    if (!(await confirm('確定要刪除這份合約嗎？', { title: '刪除確認', danger: true }))) return;
 
     try {
       const response = await fetch(`/api/suppliers/${editingSupplier.id}/contracts/${contractId}`, {

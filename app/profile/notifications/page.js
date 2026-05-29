@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const PRIORITY_COLORS = {
   high: 'text-red-600',
@@ -17,6 +18,7 @@ const PRIORITY_ICONS = {
 };
 
 export default function ProfileNotificationsPage() {
+  const confirm = useConfirm();
   const [channels, setChannels] = useState([]);
   const [user, setUser] = useState(null);
   const [sysReady, setSysReady] = useState({ email: false, line: false });
@@ -124,7 +126,7 @@ export default function ProfileNotificationsPage() {
   }
 
   async function unlinkLine() {
-    if (!confirm('確定要解除 LINE 帳號綁定？')) return;
+    if (!(await confirm('確定要解除 LINE 帳號綁定？', { title: '解除綁定確認', danger: true }))) return;
     setUnbindingLine(true);
     try {
       const res = await fetch('/api/notification-channels/line-binding', {
