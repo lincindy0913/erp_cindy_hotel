@@ -1,14 +1,23 @@
-'use client';
+﻿'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import ExportButtons from '@/components/ExportButtons';
+import PaymentModal from './_components/PaymentModal';
+import BookingFormModal from './_components/BookingFormModal';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const DEFAULT_WAREHOUSE = '民宿';
+const parseAmount = (v) => {
+  if (v == null || v === '') return 0;
+  const n = parseFloat(String(v).replace(/,/g, '').trim());
+  return isNaN(n) ? 0 : Math.abs(n);
+};
 
 // ── 匯出欄位定義 ──────────────────────────────────────────────────
 const BOOKING_EXPORT_COLS = [
@@ -85,11 +94,12 @@ function openPrintWindow(title, headers, rows) {
 <p class="footer">自在海民宿 ERP 系統</p>
 </body></html>`;
   const w = window.open('', '_blank', 'width=1100,height=700');
-  if (!w) { alert('請允許彈出視窗以進行列印'); return; }
+  if (!w) return false;
   w.document.write(html);
   w.document.close();
   w.focus();
-  setTimeout(() => { w.print(); }, 400);
+  w.addEventListener('load', () => w.print());
+  return true;
 }
 const TABS = [
   { key: 'records',      label: '訂房明細' },
@@ -131,383 +141,15 @@ const SOURCE_COLORS = {
   '其他':    'bg-gray-100 text-gray-600',
 };
 
-// ── 子元件：付款編輯 Modal ────────────────────────────────────────
-function PaymentModal({ record, onClose, onSaved }) {
-  const { showToast } = useToast();
-
-  // 預設刷卡入帳日 = 退房日 + 1 天
-  const defaultCardSettlement = (() => {
-    if (record.cardSettlementDate) return record.cardSettlementDate;
-    if (record.checkOutDate) {
-      const d = new Date(record.checkOutDate);
-      d.setDate(d.getDate() + 1);
-      return d.toISOString().split('T')[0];
-    }
-    return '';
-  })();
-
-  const [form, setForm] = useState({
-    payDeposit:         record.payDeposit         || 0,
-    depositDate:        record.depositDate         || '',
-    depositLast5:       record.depositLast5        || '',
-    payTransfer:        record.payTransfer         || 0,
-    transferDate:       record.transferDate        || '',
-    transferLast5:      record.transferLast5       || '',
-    payCard:            record.payCard             || 0,
-    cardSettlementDate: defaultCardSettlement,
-    payCash:            record.payCash             || 0,
-    cashDestination:    record.cashDestination     || '',
-    cashDepositDate:    record.cashDepositDate      || '',
-    bossWithdrawNote:   record.bossWithdrawNote     || '',
-    payVoucher:         record.payVoucher           || 0,
-    cardFeeRate:        record.cardFeeRate          || 0.0165,
-    note:               record.note                || '',
-  });
-  const [saving, setSaving] = useState(false);
-  const cardFee    = (Number(form.payCard) * Number(form.cardFeeRate)).toFixed(0);
-  const total      = Number(form.payDeposit) + Number(form.payTransfer) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);
-  const hasDeposit  = Number(form.payDeposit)  > 0;
-  const hasTransfer = Number(form.payTransfer) > 0;
-  const hasCard     = Number(form.payCard)     > 0;
-  const hasCash     = Number(form.payCash)     > 0;
-
-  async function handleSave() {
-    const expected = Number(record.roomCharge) + Number(record.otherCharge);
-    if (total > 0 && Math.abs(total - expected) > 0.01) {
-      if (!confirm(`收款合計 NT$${total.toLocaleString()} 與房費+消費 NT$${expected.toLocaleString()} 不符（差額 ${(total - expected) > 0 ? '+' : ''}${(total - expected).toLocaleString()}），確定要儲存嗎？`)) return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/bnb/${record.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          cardFeeRate: parseFloat(form.cardFeeRate),
-          // 僅在現金去向為存帳時傳 cashDepositDate
-          cashDepositDate:  form.cashDestination === '存帳'    ? form.cashDepositDate  : null,
-          bossWithdrawNote: form.cashDestination === '老闆收取' ? form.bossWithdrawNote : null,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.error || '儲存失敗', 'error');
-        return;
-      }
-      showToast('付款明細已儲存', 'success');
-      onSaved();
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="p-5 border-b">
-          <h3 className="font-semibold text-gray-800">付款明細 — {record.guestName}</h3>
-          <p className="text-xs text-gray-400 mt-0.5">{record.checkInDate} ～ {record.checkOutDate}　{record.roomNo || ''}</p>
-        </div>
-        <div className="p-5 space-y-3 max-h-[72vh] overflow-y-auto">
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">訂金匯款</label>
-            <input type="number" min="0" value={form.payDeposit}
-              onChange={e => setForm(p => ({ ...p, payDeposit: e.target.value }))}
-              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-          </div>
-          {hasDeposit && (
-            <div className="ml-2 pl-4 border-l-2 border-blue-200 space-y-2">
-              <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-blue-600 shrink-0">匯款日期</label>
-                <input type="date" value={form.depositDate}
-                  onChange={e => setForm(p => ({ ...p, depositDate: e.target.value }))}
-                  className="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-300 outline-none" />
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-blue-600 shrink-0">帳號後五碼</label>
-                <input type="text" maxLength={5} placeholder="例：12345" value={form.depositLast5}
-                  onChange={e => setForm(p => ({ ...p, depositLast5: e.target.value.replace(/[^0-9]/g, '').slice(0, 5) }))}
-                  className="w-28 border border-blue-200 rounded-lg px-3 py-1.5 text-sm tracking-widest focus:ring-2 focus:ring-blue-300 outline-none" />
-              </div>
-            </div>
-          )}
-          {/* 當天匯款 */}
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">當天匯款</label>
-            <input type="number" min="0" value={form.payTransfer}
-              onChange={e => setForm(p => ({ ...p, payTransfer: e.target.value }))}
-              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-          </div>
-          {hasTransfer && (
-            <div className="ml-2 pl-4 border-l-2 border-teal-200 space-y-2">
-              <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-teal-600 shrink-0">匯款日期</label>
-                <input type="date" value={form.transferDate}
-                  onChange={e => setForm(p => ({ ...p, transferDate: e.target.value }))}
-                  className="flex-1 border border-teal-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-teal-600 shrink-0">帳號後五碼</label>
-                <input type="text" maxLength={5} placeholder="例：12345" value={form.transferLast5}
-                  onChange={e => setForm(p => ({ ...p, transferLast5: e.target.value.replace(/[^0-9]/g, '').slice(0, 5) }))}
-                  className="w-28 border border-teal-200 rounded-lg px-3 py-1.5 text-sm tracking-widest focus:ring-2 focus:ring-teal-300 outline-none" />
-              </div>
-            </div>
-          )}
-
-          {/* 刷卡金額 */}
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">刷卡金額</label>
-            <input type="number" min="0" value={form.payCard}
-              onChange={e => setForm(p => ({ ...p, payCard: e.target.value }))}
-              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-          </div>
-          {hasCard && (
-            <div className="ml-2 pl-4 border-l-2 border-purple-200 space-y-2">
-              <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-purple-600 shrink-0">刷卡入帳日</label>
-                <input type="date" value={form.cardSettlementDate}
-                  onChange={e => setForm(p => ({ ...p, cardSettlementDate: e.target.value }))}
-                  className="flex-1 border border-purple-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
-                <span className="text-xs text-purple-400 whitespace-nowrap">刷卡後1-2天入帳</span>
-              </div>
-            </div>
-          )}
-
-          {/* 現金 */}
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">現金</label>
-            <input type="number" min="0" value={form.payCash}
-              onChange={e => setForm(p => ({ ...p, payCash: e.target.value }))}
-              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-          </div>
-          {hasCash && (
-            <div className="ml-2 pl-4 border-l-2 border-green-200 space-y-2">
-              <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-green-600 shrink-0">現金去向</label>
-                <div className="flex gap-4">
-                  {[['存帳','存入土銀'],['老闆收取','老闆收取']].map(([val, label]) => (
-                    <label key={val} className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="cashDestination" value={val}
-                        checked={form.cashDestination === val}
-                        onChange={() => setForm(p => ({ ...p, cashDestination: val }))}
-                        className="accent-green-600" />
-                      <span className="text-sm text-gray-700">{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {form.cashDestination === '存帳' && (
-                <div className="flex items-center gap-3">
-                  <label className="w-20 text-xs text-green-600 shrink-0">存款日期</label>
-                  <input type="date" value={form.cashDepositDate}
-                    onChange={e => setForm(p => ({ ...p, cashDepositDate: e.target.value }))}
-                    className="flex-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-300 outline-none" />
-                </div>
-              )}
-              {form.cashDestination === '老闆收取' && (
-                <div className="flex items-center gap-3">
-                  <label className="w-20 text-xs text-green-600 shrink-0">收取備註</label>
-                  <input type="text" value={form.bossWithdrawNote}
-                    onChange={e => setForm(p => ({ ...p, bossWithdrawNote: e.target.value }))}
-                    placeholder="選填，例：老闆 4/15 收"
-                    className="flex-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-300 outline-none" />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 住宿券 */}
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">住宿卷</label>
-            <input type="number" min="0" value={form.payVoucher}
-              onChange={e => setForm(p => ({ ...p, payVoucher: e.target.value }))}
-              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">手續費率</label>
-            <input type="number" step="0.0001" min="0" max="1" value={form.cardFeeRate}
-              onChange={e => setForm(p => ({ ...p, cardFeeRate: e.target.value }))}
-              className="w-28 border rounded-lg px-3 py-1.5 text-sm" />
-            <span className="text-xs text-gray-400">手續費 NT${Number(cardFee).toLocaleString()}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">備註</label>
-            <input type="text" value={form.note}
-              onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
-              className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
-          </div>
-          <div className="pt-2 border-t flex justify-between items-center text-sm">
-            <span className="text-gray-500">合計收款</span>
-            <span className="font-bold text-gray-800">NT${Number(total).toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between items-center text-xs text-gray-400">
-            <span>房費</span><span>NT${Number(record.roomCharge).toLocaleString()}</span>
-          </div>
-          {total > 0 && Math.abs(total - (Number(record.roomCharge) + Number(record.otherCharge))) > 0.01 && (
-            <p className="text-xs text-red-600 font-medium">⚠ 收款合計與房費+消費（NT${(Number(record.roomCharge)+Number(record.otherCharge)).toLocaleString()}）不符，差額 {(total - Number(record.roomCharge) - Number(record.otherCharge)) > 0 ? '+' : ''}NT${(total - Number(record.roomCharge) - Number(record.otherCharge)).toLocaleString()}</p>
-          )}
-        </div>
-        <div className="p-4 flex gap-2 justify-end border-t">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">取消</button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-            {saving ? '儲存中…' : '儲存'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // 民宿快速館別按鈕（點同館別再次點擊可取消選取回到全部）
-const BNB_QUICK_WH = ['自在海', '花語'];
-function WhQuickBtns({ value, onChange }) {
-  return BNB_QUICK_WH.map(wh => (
+function WhQuickBtns({ list = [], value, onChange }) {
+  return list.map(wh => (
     <button key={wh} type="button"
       onClick={() => onChange(value === wh ? '' : wh)}
       className={`text-xs px-2 py-1 rounded border transition-colors whitespace-nowrap ${value === wh ? 'bg-indigo-600 border-indigo-600 text-white font-medium' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700'}`}>
       {wh}
     </button>
   ));
-}
-
-// ── 訂房新增 / 編輯 Modal ────────────────────────────────────────
-function BookingFormModal({ record, onClose, onSaved, warehouseList }) {
-  const { showToast } = useToast();
-  const isEdit = !!(record?.id);
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  const [form, setForm] = useState({
-    importMonth:  record?.importMonth  || todayStr.substring(0, 7),
-    warehouse:    record?.warehouse    || '民宿',
-    source:       record?.source       || '電話',
-    guestName:    record?.guestName    || '',
-    roomNo:       record?.roomNo       || '',
-    checkInDate:  record?.checkInDate  || '',
-    checkOutDate: record?.checkOutDate || '',
-    roomCharge:   record?.roomCharge   > 0 ? String(record.roomCharge) : '',
-    otherCharge:  record?.otherCharge  > 0 ? String(record.otherCharge) : '',
-    status:       record?.status       || '已入住',
-    note:         record?.note         || '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  function handleCheckIn(val) {
-    setForm(p => ({ ...p, checkInDate: val, importMonth: val ? val.substring(0, 7) : p.importMonth }));
-  }
-
-  async function handleSave() {
-    if (!form.guestName.trim()) { showToast('請填寫姓名', 'error'); return; }
-    if (!form.checkInDate || !form.checkOutDate) { showToast('請填寫入住/退房日期', 'error'); return; }
-    if (form.checkInDate >= form.checkOutDate) { showToast('退房日需晚於入住日', 'error'); return; }
-    setSaving(true);
-    try {
-      const url    = isEdit ? `/api/bnb/${record.id}` : '/api/bnb';
-      const method = isEdit ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          roomCharge:  parseFloat(form.roomCharge)  || 0,
-          otherCharge: parseFloat(form.otherCharge) || 0,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.message || err.error || '儲存失敗', 'error');
-        return;
-      }
-      showToast(isEdit ? '訂房已更新' : '訂房已新增', 'success');
-      onSaved();
-    } finally { setSaving(false); }
-  }
-
-  const inp = 'w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-300 outline-none';
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
-        <div className="p-5 border-b flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800">
-            {isEdit ? `編輯訂房 — ${record.guestName}` : '新增訂房'}
-          </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
-        </div>
-        <div className="p-5 space-y-3 max-h-[72vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">館別</label>
-              <select value={form.warehouse} onChange={e => setForm(p => ({ ...p, warehouse: e.target.value }))} className={inp}>
-                {(warehouseList?.length ? warehouseList : ['民宿']).map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">來源</label>
-              <select value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))} className={inp}>
-                <option value="電話">電話</option>
-                <option value="Booking">Booking</option>
-                <option value="其他">其他</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">姓名 <span className="text-red-400">*</span></label>
-              <input type="text" value={form.guestName} onChange={e => setForm(p => ({ ...p, guestName: e.target.value }))} className={inp} placeholder="房客姓名" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">房間號碼</label>
-              <input type="text" value={form.roomNo} onChange={e => setForm(p => ({ ...p, roomNo: e.target.value }))} className={inp} placeholder="例：101" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">入住日期 <span className="text-red-400">*</span></label>
-              <input type="date" value={form.checkInDate} onChange={e => handleCheckIn(e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">退房日期 <span className="text-red-400">*</span></label>
-              <input type="date" value={form.checkOutDate} onChange={e => setForm(p => ({ ...p, checkOutDate: e.target.value }))} className={inp} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">房費</label>
-              <input type="number" min="0" value={form.roomCharge} onChange={e => setForm(p => ({ ...p, roomCharge: e.target.value }))} className={inp} placeholder="0" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">其他消費</label>
-              <input type="number" min="0" value={form.otherCharge} onChange={e => setForm(p => ({ ...p, otherCharge: e.target.value }))} className={inp} placeholder="0" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">狀態</label>
-              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} className={inp}>
-                <option value="已預訂">已預訂</option>
-                <option value="已入住">已入住</option>
-                <option value="已退房">已退房</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
-              <input type="month" value={form.importMonth} onChange={e => setForm(p => ({ ...p, importMonth: e.target.value }))} className={inp} />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">備註</label>
-            <input type="text" value={form.note} onChange={e => setForm(p => ({ ...p, note: e.target.value }))} className={inp} placeholder="選填" />
-          </div>
-        </div>
-        <div className="p-4 flex gap-2 justify-end border-t">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">取消</button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-            {saving ? '儲存中…' : isEdit ? '更新' : '新增'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ── 主頁面 ────────────────────────────────────────────────────────
@@ -517,9 +159,15 @@ const PAY_FIELDS = ['payDeposit', 'depositDate', 'depositLast5', 'payTransfer', 
 export default function BnbPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState('records');
+  const confirm = useConfirm();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const doPrint = useCallback((title, headers, rows) => {
+    if (!doPrint(title, headers, rows)) showToast('請允許彈出視窗以進行列印', 'error');
+  }, [showToast]);
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'records');
   /** 分析分頁內子分頁 */
-  const [analyticsSub, setAnalyticsSub] = useState('dailyRev');
+  const [analyticsSub, setAnalyticsSub] = useState(() => searchParams.get('sub') || 'dailyRev');
 
   // 是否有鎖帳權限
   const canLock = session?.user?.role === 'admin'
@@ -529,6 +177,10 @@ export default function BnbPage() {
   // ── 訂房明細 state ────────────────────────────────────────────
   const [records, setRecords]       = useState([]);
   const [recLoading, setRecLoading] = useState(false);
+  const roomNoList = useMemo(
+    () => [...new Set(records.map(r => r.roomNo).filter(Boolean))].sort(),
+    [records]
+  );
   const [recPage,  setRecPage]  = useState(1);
   const [recTotal, setRecTotal] = useState(0);
   const REC_PAGE_SIZE = 200;
@@ -784,7 +436,7 @@ export default function BnbPage() {
     const { month, warehouse } = getActiveLockContext();
     const isLocked = lockStatus?.locked;
     const action = isLocked ? '解鎖' : '鎖帳';
-    if (!confirm(`確定要${action}「${month}（${warehouse}）」的民宿帳嗎？${isLocked ? '' : '\n鎖帳後所有訂房資料、付款明細、匯入、申報都將無法修改。'}`)) return;
+    if (!(await confirm(`確定要${action}「${month}（${warehouse}）」的民宿帳嗎？${isLocked ? '' : '\n鎖帳後所有訂房資料、付款明細、匯入、申報都將無法修改。'}`, { title: `${action}確認`, danger: !isLocked }))) return;
     setLockLoading(true);
     try {
       const p = new URLSearchParams({ month, warehouse });
@@ -833,11 +485,6 @@ export default function BnbPage() {
     const parsed = [];
 
     try {
-      const parseAmount = (v) => {
-        if (v == null || v === '') return 0;
-        const n = parseFloat(String(v).replace(/,/g, '').trim());
-        return isNaN(n) ? 0 : Math.abs(n);
-      };
       const parseRocDate = (v) => {
         if (!v) return '';
         const s = String(v).replace(/\//g, '-').trim();
@@ -1084,7 +731,8 @@ export default function BnbPage() {
     const suggestions = dmData?.suggestions || [];
     if (!suggestions.length) { showToast('目前沒有可自動配對的項目', 'info'); return; }
     setDmMatching(true);
-    let count = 0;
+    let succeeded = 0;
+    let failed = 0;
     try {
       for (const s of suggestions) {
         const res = await fetch('/api/bnb/deposit-match', {
@@ -1092,15 +740,19 @@ export default function BnbPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ bnbId: s.bnbId, bankLineId: s.bankLineId, paymentType: dmPayType }),
         });
-        if (res.ok) count++;
+        if (res.ok) succeeded++; else failed++;
       }
-      const totalUnmatched = (dmData?.summary?.unmatchedBnbCount ?? 0) - count;
-      showToast(`已配對 ${count} 筆${totalUnmatched > 0 ? `，仍有 ${totalUnmatched} 筆待處理` : '，全部配對完成！'}`, count > 0 ? 'success' : 'info');
       await fetchDepositMatch();
-      if (totalUnmatched > 0) {
-        setTimeout(() => {
-          document.querySelector('[data-first-unmatched]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
+      if (failed > 0) {
+        showToast(`配對完成：${succeeded} 筆成功，${failed} 筆失敗`, 'error');
+      } else {
+        const totalUnmatched = (dmData?.summary?.unmatchedBnbCount ?? 0) - succeeded;
+        showToast(`已配對 ${succeeded} 筆${totalUnmatched > 0 ? `，仍有 ${totalUnmatched} 筆待處理` : '，全部配對完成！'}`, succeeded > 0 ? 'success' : 'info');
+        if (totalUnmatched > 0) {
+          setTimeout(() => {
+            document.querySelector('[data-first-unmatched]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 300);
+        }
       }
     } catch { showToast('自動配對發生錯誤', 'error'); }
     finally { setDmMatching(false); }
@@ -1313,7 +965,7 @@ export default function BnbPage() {
 
   // OTA 傭金：確認送出出納（草稿 → 待出納，建立 PaymentOrder）
   const confirmCommission = useCallback(async (id) => {
-    if (!confirm('確認後將建立付款單並送出出納，確定嗎？')) return;
+    if (!(await confirm('確認後將建立付款單並送出出納，確定嗎？', { title: '確認送出出納', danger: false }))) return;
     try {
       const res = await fetch(`/api/bnb/ota-commission?id=${id}`, {
         method: 'PATCH',
@@ -1329,7 +981,7 @@ export default function BnbPage() {
 
   // OTA 傭金：取消
   const cancelCommission = useCallback(async (id) => {
-    if (!confirm('確定要取消此傭金應付款嗎？出納端的待付款單也會一同取消。')) return;
+    if (!(await confirm('確定要取消此傭金應付款嗎？出納端的待付款單也會一同取消。', { title: '取消傭金應付款', danger: true }))) return;
     try {
       const res = await fetch(`/api/bnb/ota-commission?id=${id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
@@ -1426,7 +1078,7 @@ export default function BnbPage() {
 
   // OTA比對：刪除系統記錄
   const deleteOtaBnb = useCallback(async (bnbId) => {
-    if (!confirm('確定要刪除此筆系統訂房記錄嗎？')) return;
+    if (!(await confirm('確定要刪除此筆系統訂房記錄嗎？', { title: '刪除系統記錄', danger: true }))) return;
     try {
       const res = await fetch(`/api/bnb/${bnbId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
@@ -1728,14 +1380,20 @@ export default function BnbPage() {
     }
     setBatchApplying(true);
     try {
-      await Promise.all([...selectedIds].map(id =>
+      const results = await Promise.all([...selectedIds].map(id =>
         fetch(`/api/bnb/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: batchValue }),
         })
       ));
-      showToast(`已套用 ${selectedIds.size} 筆`, 'success');
+      const failed = results.filter(r => !r.ok).length;
+      const succeeded = results.length - failed;
+      if (failed > 0) {
+        showToast(`${succeeded} 筆成功，${failed} 筆失敗`, 'error');
+      } else {
+        showToast(`已套用 ${succeeded} 筆`, 'success');
+      }
       setSelectedIds(new Set());
       setBatchValue('');
       fetchRecords();
@@ -1880,9 +1538,9 @@ export default function BnbPage() {
     if (mismatchList.length > 0) {
       const names = mismatchList.slice(0, 5).map(r => r.guestName).join('、');
       const extra = mismatchList.length > 5 ? `…等 ${mismatchList.length} 筆` : '';
-      if (!confirm(`以下 ${mismatchList.length} 筆收款金額與房費+消費不符：\n${names}${extra}\n\n是否仍要繼續鎖帳？`)) return;
+      if (!(await confirm(`以下 ${mismatchList.length} 筆收款金額與房費+消費不符：\n${names}${extra}\n\n是否仍要繼續鎖帳？`, { title: '金額不符警告', danger: false }))) return;
     }
-    if (!confirm(`確定要鎖定本月 ${eligible.length} 筆已填付款記錄嗎？鎖定後僅有鎖帳權限者可修改付款資料。`)) return;
+    if (!(await confirm(`確定要鎖定本月 ${eligible.length} 筆已填付款記錄嗎？鎖定後僅有鎖帳權限者可修改付款資料。`, { title: '批次鎖帳確認', danger: true }))) return;
     setLocking(true);
     try {
       const res = await fetch('/api/bnb/batch', {
@@ -1900,7 +1558,7 @@ export default function BnbPage() {
 
   // ── 逐筆解鎖 ─────────────────────────────────────────────────
   async function handleUnlockRow(id, name) {
-    if (!confirm(`確定解鎖「${name}」的付款鎖定？解鎖後可重新編輯付款資料。`)) return;
+    if (!(await confirm(`確定解鎖「${name}」的付款鎖定？解鎖後可重新編輯付款資料。`, { title: '解鎖付款', danger: false }))) return;
     const res = await fetch(`/api/bnb/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1917,7 +1575,7 @@ export default function BnbPage() {
 
   // ── 刪除記錄（軟刪除：將狀態改為「已刪除」）──────────────────
   async function handleDelete(id, name) {
-    if (!confirm(`確定刪除「${name}」的訂房記錄？刪除後可點擊「還原」恢復。`)) return;
+    if (!(await confirm(`確定刪除「${name}」的訂房記錄？刪除後可點擊「還原」恢復。`, { title: '刪除訂房記錄', danger: true }))) return;
     const res = await fetch(`/api/bnb/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1934,7 +1592,7 @@ export default function BnbPage() {
 
   // ── 還原已刪除記錄 ──────────────────────────────────────────
   async function handleRestore(id, name) {
-    if (!confirm(`確定還原「${name}」的訂房記錄？`)) return;
+    if (!(await confirm(`確定還原「${name}」的訂房記錄？`, { title: '還原訂房記錄', danger: false }))) return;
     const res = await fetch(`/api/bnb/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -2031,7 +1689,11 @@ export default function BnbPage() {
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
+            <button key={t.key} onClick={() => {
+              setActiveTab(t.key);
+              const url = t.key === 'analytics' ? `?tab=analytics&sub=${analyticsSub}` : `?tab=${t.key}`;
+              router.replace(url, { scroll: false });
+            }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === t.key ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'
               }`}>
@@ -2064,7 +1726,7 @@ export default function BnbPage() {
               <button
                 key={st.key}
                 type="button"
-                onClick={() => setAnalyticsSub(st.key)}
+                onClick={() => { setAnalyticsSub(st.key); router.replace(`?tab=analytics&sub=${st.key}`, { scroll: false }); }}
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   analyticsSub === st.key ? 'bg-indigo-700 text-white shadow-sm' : 'text-indigo-900/80 hover:bg-white/80'
                 }`}
@@ -2097,10 +1759,9 @@ export default function BnbPage() {
                 <label className="block text-xs text-gray-500 mb-1">狀態</label>
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={inputCls}>
                   <option value="">全部</option>
-                  <option value="已入住">已入住</option>
-                  <option value="已退房">已退房</option>
-                  <option value="已預訂">已預訂</option>
-                  <option value="已刪除">已刪除</option>
+                  {Object.keys(STATUS_COLORS).map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -2109,7 +1770,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={filterWarehouse} onChange={setFilterWarehouse} />
+                <WhQuickBtns list={warehouseList} value={filterWarehouse} onChange={setFilterWarehouse} />
               </div>
               <button onClick={fetchRecords} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <button onClick={() => setAddBookingOpen(true)}
@@ -2156,7 +1817,7 @@ export default function BnbPage() {
                   title={`訂房明細 ${filterMonth}`}
                 />
                 <button
-                  onClick={() => openPrintWindow(
+                  onClick={() => doPrint(
                     `訂房明細 ${filterMonth}`,
                     BOOKING_EXPORT_COLS.map(c => c.header),
                     records.map(r => BOOKING_EXPORT_COLS.map(c => r[c.key] ?? ''))
@@ -2864,7 +2525,7 @@ export default function BnbPage() {
                 <select value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
                   {(warehouseList.length ? warehouseList : [drWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={drWarehouse} onChange={setDrWarehouse} />
+                <WhQuickBtns list={warehouseList} value={drWarehouse} onChange={setDrWarehouse} />
               </div>
               <button onClick={fetchDailyRevenue} disabled={drLoading}
                 className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
@@ -2920,7 +2581,7 @@ export default function BnbPage() {
                           t.payCash.toLocaleString(), t.payVoucher.toLocaleString(),
                           t.cardFee.toLocaleString(),
                         ]);
-                        openPrintWindow(`每日收入 ${drMonth}（${drWarehouse}）`, cols, rows);
+                        doPrint(`每日收入 ${drMonth}（${drWarehouse}）`, cols, rows);
                       }}
                       className={`${btnCls} text-gray-600`}
                     >列印</button>
@@ -3049,7 +2710,7 @@ export default function BnbPage() {
                 <option value="">全部</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
-              <WhQuickBtns value={summaryWarehouse} onChange={setSummaryWarehouse} />
+              <WhQuickBtns list={warehouseList} value={summaryWarehouse} onChange={setSummaryWarehouse} />
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
               <div className="ml-auto flex gap-2">
                 <ExportButtons
@@ -3059,7 +2720,7 @@ export default function BnbPage() {
                   title={`月收入總表 ${summaryYear}`}
                 />
                 <button
-                  onClick={() => openPrintWindow(
+                  onClick={() => doPrint(
                     `月收入總表 ${summaryYear}`,
                     MONTHLY_EXPORT_COLS.map(c => c.header),
                     summaryRows.map(r => MONTHLY_EXPORT_COLS.map(c => r[c.key] ?? ''))
@@ -3178,7 +2839,7 @@ export default function BnbPage() {
                 <option value="">全部</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
-              <WhQuickBtns value={summaryWarehouse} onChange={setSummaryWarehouse} />
+              <WhQuickBtns list={warehouseList} value={summaryWarehouse} onChange={setSummaryWarehouse} />
               <button onClick={fetchSummary} className={`${btnCls} bg-indigo-50 text-indigo-700`}>重新整理</button>
               <div className="ml-auto flex gap-2">
                 {(() => {
@@ -3200,7 +2861,7 @@ export default function BnbPage() {
                         title={title}
                       />
                       <button
-                        onClick={() => openPrintWindow(
+                        onClick={() => doPrint(
                           title,
                           PNL_EXPORT_COLS.map(c => c.header),
                           pnlData.map(r => PNL_EXPORT_COLS.map(c => r[c.key] ?? ''))
@@ -3353,7 +3014,7 @@ export default function BnbPage() {
                 <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
                   {(warehouseList.length ? warehouseList : [declWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={declWarehouse} onChange={setDeclWarehouse} />
+                <WhQuickBtns list={warehouseList} value={declWarehouse} onChange={setDeclWarehouse} />
               </div>
               <button onClick={fetchDecl} disabled={declLoading}
                 className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
@@ -3480,7 +3141,7 @@ export default function BnbPage() {
                       <button onClick={() => {
                         const d = declForm;
                         const fmtN = v => v != null && v !== '' ? Number(v).toLocaleString() : '—';
-                        openPrintWindow(
+                        doPrint(
                           `旅宿網申報 ${declMonth}（${declWarehouse}）`,
                           ['項目', '申報數值'],
                           [
@@ -3525,7 +3186,7 @@ export default function BnbPage() {
               <select value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
                 {(warehouseList.length ? warehouseList : [dlWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
               </select>
-              <WhQuickBtns value={dlWarehouse} onChange={setDlWarehouse} />
+              <WhQuickBtns list={warehouseList} value={dlWarehouse} onChange={setDlWarehouse} />
               <button onClick={fetchDeclList} className={`${btnCls} bg-indigo-50 text-indigo-700`}>查詢</button>
               <ExportButtons
                 data={dlRows}
@@ -3569,7 +3230,7 @@ export default function BnbPage() {
                     r.otherIncomeNote || '',
                     r.note || '',
                   ]);
-                  openPrintWindow(`旅宿網申報 ${dlYear}年（${dlWarehouse}）`, cols, rows);
+                  doPrint(`旅宿網申報 ${dlYear}年（${dlWarehouse}）`, cols, rows);
                 }}
                 className={`${btnCls} text-gray-600`}
               >列印</button>
@@ -3712,7 +3373,7 @@ export default function BnbPage() {
                     <option value="">全部</option>
                     {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
-                  <WhQuickBtns value={dmWarehouse} onChange={setDmWarehouse} />
+                  <WhQuickBtns list={warehouseList} value={dmWarehouse} onChange={setDmWarehouse} />
                 </div>
                 {dmPayType !== 'all' && dmPayType !== 'combined' && (
                   <div>
@@ -3786,7 +3447,7 @@ export default function BnbPage() {
                         <option value="">全部</option>
                         {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                       </select>
-                      <WhQuickBtns value={ledgerWarehouse} onChange={setLedgerWarehouse} />
+                      <WhQuickBtns list={warehouseList} value={ledgerWarehouse} onChange={setLedgerWarehouse} />
                     </div>
                     <button onClick={fetchLedger} disabled={ledgerLoading}
                       className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
@@ -4329,7 +3990,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={otaWarehouse} onChange={setOtaWarehouse} />
+                <WhQuickBtns list={warehouseList} value={otaWarehouse} onChange={setOtaWarehouse} />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">上傳對帳單</label>
@@ -4772,7 +4433,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={otaWarehouse} onChange={setOtaWarehouse} />
+                <WhQuickBtns list={warehouseList} value={otaWarehouse} onChange={setOtaWarehouse} />
               </div>
               <button onClick={fetchCommHistory} disabled={commHistLoading}
                 className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
@@ -5031,7 +4692,7 @@ export default function BnbPage() {
                       <option value="">全部</option>
                       {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                     </select>
-                    <WhQuickBtns value={bwWarehouse} onChange={setBwWarehouse} />
+                    <WhQuickBtns list={warehouseList} value={bwWarehouse} onChange={setBwWarehouse} />
                   </div>
                   <button onClick={fetchBossWithdraw}
                     className="px-4 py-1.5 text-sm rounded-lg bg-orange-600 text-white hover:bg-orange-700">
@@ -5103,7 +4764,7 @@ export default function BnbPage() {
                       <option value="">全部</option>
                       {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                     </select>
-                    <WhQuickBtns value={bwWarehouse} onChange={setBwWarehouse} />
+                    <WhQuickBtns list={warehouseList} value={bwWarehouse} onChange={setBwWarehouse} />
                   </div>
                   <button onClick={fetchBossWithdrawSummary}
                     className="px-4 py-1.5 text-sm rounded-lg bg-orange-600 text-white hover:bg-orange-700">
@@ -5183,7 +4844,7 @@ export default function BnbPage() {
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={oiWarehouse} onChange={setOiWarehouse} />
+                <WhQuickBtns list={warehouseList} value={oiWarehouse} onChange={setOiWarehouse} />
               </div>
               <button onClick={fetchOtherIncome} disabled={oiLoading}
                 className={`${btnCls} bg-indigo-50 text-indigo-700 disabled:opacity-40`}>
@@ -5251,7 +4912,7 @@ export default function BnbPage() {
                         <td className="px-3 py-2 text-center whitespace-nowrap">
                           <button onClick={() => openOiModal(r)}
                             className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 mr-1">編輯</button>
-                          <button onClick={() => { if (confirm(`確定刪除「${r.description}」？`)) deleteOtherIncome(r.id); }}
+                          <button onClick={() => confirm(`確定刪除「${r.description}」？`, () => deleteOtherIncome(r.id), '刪除')}
                             className="text-xs px-2 py-1 rounded border border-red-200 text-red-400 hover:bg-red-50">刪除</button>
                         </td>
                       </tr>
@@ -5358,7 +5019,7 @@ export default function BnbPage() {
                   <option value="">全館</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={calWarehouse} onChange={setCalWarehouse} />
+                <WhQuickBtns list={warehouseList} value={calWarehouse} onChange={setCalWarehouse} />
                 {calLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
               </div>
               {/* calendar grid */}
@@ -5374,14 +5035,24 @@ export default function BnbPage() {
                     const bookings = dayMap[day] || [];
                     const isToday = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(day).padStart(2,'0')}` === new Date().toISOString().slice(0,10);
                     const dow = (firstDay + day - 1) % 7;
+                    const hasUnfilled = bookings.some(b => !b.paymentFilled && !b.paymentLocked);
                     return (
-                      <div key={day} className={`border-b border-r border-gray-100 p-1.5 ${isToday ? 'bg-indigo-50' : bookings.length > 0 ? 'bg-green-50/40' : ''}`}>
+                      <div key={day} className={`border-b border-r border-gray-100 p-1.5 ${isToday ? 'bg-indigo-50' : hasUnfilled ? 'bg-red-50/40' : bookings.length > 0 ? 'bg-green-50/40' : ''}`}>
                         <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-indigo-600' : dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500'}`}>{day}</div>
-                        {bookings.slice(0, 3).map(b => (
-                          <div key={b.id} className="text-[10px] leading-4 px-1 rounded truncate bg-green-100 text-green-700 mb-0.5" title={`${b.guestName} ${b.checkInDate}~${b.checkOutDate}`}>
-                            {b.roomNo ? `${b.roomNo} ` : ''}{b.guestName}
-                          </div>
-                        ))}
+                        {bookings.slice(0, 3).map(b => {
+                          const chipCls = b.paymentLocked
+                            ? 'bg-gray-100 text-gray-500'
+                            : !b.paymentFilled
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-green-100 text-green-700';
+                          const prefix = b.paymentLocked ? '🔒 ' : '';
+                          return (
+                            <div key={b.id} className={`text-[10px] leading-4 px-1 rounded truncate mb-0.5 ${chipCls}`}
+                              title={`${b.guestName} ${b.checkInDate}~${b.checkOutDate}${b.paymentLocked ? ' [已鎖帳]' : !b.paymentFilled ? ' [未付款]' : ''}`}>
+                              {prefix}{b.roomNo ? `${b.roomNo} ` : ''}{b.guestName}
+                            </div>
+                          );
+                        })}
                         {bookings.length > 3 && <div className="text-[10px] text-gray-400">+{bookings.length - 3}</div>}
                       </div>
                     );
@@ -5389,8 +5060,10 @@ export default function BnbPage() {
                 </div>
               </div>
               {/* legend */}
-              <div className="text-xs text-gray-400 flex gap-4">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" />有訂房</span>
+              <div className="text-xs text-gray-400 flex flex-wrap gap-4">
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" />已付款</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-100 inline-block" />未付款</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 inline-block" />已鎖帳</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-50 inline-block" />今日</span>
                 <span>共 {calData.filter(r => r.status !== '已刪除').length} 筆訂房</span>
               </div>
@@ -5409,7 +5082,7 @@ export default function BnbPage() {
                 <option value="">全館</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
-              <WhQuickBtns value={occWarehouse} onChange={setOccWarehouse} />
+              <WhQuickBtns list={warehouseList} value={occWarehouse} onChange={setOccWarehouse} />
               <button onClick={fetchOccupancy} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
               {occLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
             </div>
@@ -5499,7 +5172,7 @@ export default function BnbPage() {
                   <option value="">全館</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-                <WhQuickBtns value={auditWarehouse} onChange={setAuditWarehouse} />
+                <WhQuickBtns list={warehouseList} value={auditWarehouse} onChange={setAuditWarehouse} />
                 <button onClick={fetchAudit} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
                 {auditLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
               </div>
@@ -5587,7 +5260,7 @@ export default function BnbPage() {
                 <option value="">全館</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
-              <WhQuickBtns value={saWarehouse} onChange={setSaWarehouse} />
+              <WhQuickBtns list={warehouseList} value={saWarehouse} onChange={setSaWarehouse} />
               <button onClick={fetchSourceAnalysis} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
               {saLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
             </div>
@@ -5678,7 +5351,7 @@ export default function BnbPage() {
                 <option value="">全館</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
-              <WhQuickBtns value={oaWarehouse} onChange={setOaWarehouse} />
+              <WhQuickBtns list={warehouseList} value={oaWarehouse} onChange={setOaWarehouse} />
               <button onClick={fetchOtaAnalytics} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
               {oaLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
             </div>
@@ -5892,6 +5565,7 @@ export default function BnbPage() {
       {/* 付款明細 Modal */}
       {editRecord && (
         <PaymentModal
+          key={editRecord.id}
           record={editRecord}
           onClose={() => setEditRecord(null)}
           onSaved={() => { setEditRecord(null); fetchRecords(); }}
@@ -5903,6 +5577,8 @@ export default function BnbPage() {
         <BookingFormModal
           record={editBooking}
           warehouseList={warehouseList}
+          roomNoList={roomNoList}
+          existingRecords={records}
           onClose={() => setEditBooking(null)}
           onSaved={() => {
             setEditBooking(null);
@@ -5917,6 +5593,8 @@ export default function BnbPage() {
         <BookingFormModal
           record={null}
           warehouseList={warehouseList}
+          roomNoList={roomNoList}
+          existingRecords={records}
           onClose={() => setAddBookingOpen(false)}
           onSaved={() => { setAddBookingOpen(false); fetchRecords(); }}
         />

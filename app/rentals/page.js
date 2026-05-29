@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 
 const TABS = [
@@ -112,6 +113,7 @@ function RentalsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const tabParam = searchParams.get('tab') || 'overview';
   const [activeTab, setActiveTab] = useState(() => resolveRentalsMainTab(tabParam));
   const [analyticsSub, setAnalyticsSub] = useState(() => resolveRentalsAnalyticsSub(tabParam, searchParams));
@@ -327,9 +329,6 @@ function RentalsPage() {
   const [quickPayIncome, setQuickPayIncome] = useState(null);
   const [quickPayForm, setQuickPayForm] = useState({ actualAmount: '', actualDate: '', accountId: '', paymentMethod: '匯款' });
   const [quickPaySaving, setQuickPaySaving] = useState(false);
-
-  // Confirm dialog (replaces window.confirm)
-  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', message: '', onConfirm: null, danger: true });
 
   // Per-payment editing
   const [editingPaymentId, setEditingPaymentId] = useState(null);
@@ -626,7 +625,7 @@ function RentalsPage() {
   }
 
   function deleteRentFilingRow(row) {
-    askConfirm('確定刪除此筆申報列？', async () => {
+    confirm('確定刪除此筆申報列？', async () => {
       try {
         const res = await fetch(`/api/rentals/rent-filing/${row.id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -818,10 +817,6 @@ function RentalsPage() {
       setPaymentRecordsPagination(data.pagination || { page: 1, totalCount: 0, totalPages: 1 });
     } catch { setPaymentRecords([]); }
     finally { setPaymentLoading(false); }
-  }
-
-  function askConfirm(message, onConfirm, title = '確認操作', danger = true) {
-    setConfirmDialog({ open: true, title, message, onConfirm, danger });
   }
 
   function openPaymentEdit(payment) {
@@ -1105,7 +1100,7 @@ function RentalsPage() {
   }
 
   function deleteUtility(id) {
-    askConfirm('確定刪除此筆水電收入？相關現金流紀錄也會一併刪除。', async () => {
+    confirm('確定刪除此筆水電收入？相關現金流紀錄也會一併刪除。', async () => {
       try {
         const res = await fetch(`/api/rentals/utility-income/${id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -1279,7 +1274,7 @@ function RentalsPage() {
   }
 
   function deleteTenant(id) {
-    askConfirm('確定要刪除此租客？', async () => {
+    confirm('確定要刪除此租客？', async () => {
       try {
         const res = await fetch(`/api/rentals/tenants/${id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -1477,7 +1472,7 @@ function RentalsPage() {
   }
 
   function deleteContract(id) {
-    askConfirm('確定要刪除此合約？', async () => {
+    confirm('確定要刪除此合約？', async () => {
       try {
         const res = await fetch(`/api/rentals/contracts/${id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -1489,7 +1484,7 @@ function RentalsPage() {
 
   function handleDepositAction(contractId, action) {
     const msg = action === 'depositReceive' ? '確定收取押金？收款後將建立金流紀錄。' : '確定退還押金？退還後將建立支出金流。';
-    askConfirm(msg, async () => {
+    confirm(msg, async () => {
     try {
       const res = await fetch(`/api/rentals/contracts/${contractId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -1536,7 +1531,7 @@ function RentalsPage() {
     const msg = existing.length > 0
       ? `⚠️ ${genYear}/${genMonth} 已有 ${existing.length} 筆租金紀錄。\n重複產生可能造成多計，確定繼續？`
       : `確定產生 ${genYear}/${genMonth} 月份租金紀錄？`;
-    askConfirm(msg, async () => {
+    confirm(msg, async () => {
       try {
         const res = await fetch('/api/rentals/income', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1639,7 +1634,7 @@ function RentalsPage() {
   }
 
   function voidIncomePayment(incomeId) {
-    askConfirm('確定要作廢此筆收款？金流將沖銷，收租紀錄恢復為待收。', async () => {
+    confirm('確定要作廢此筆收款？金流將沖銷，收租紀錄恢復為待收。', async () => {
       try {
         const res = await fetch(`/api/rentals/income/${incomeId}`, { method: 'DELETE' });
         const data = await res.json();
@@ -1721,7 +1716,7 @@ function RentalsPage() {
       showToast('已付款的稅款不可刪除', 'error');
       return;
     }
-    askConfirm(`確定要刪除此筆稅款（${tax.property?.name} ${tax.taxYear} ${tax.taxType}）？`, async () => {
+    confirm(`確定要刪除此筆稅款（${tax.property?.name} ${tax.taxYear} ${tax.taxType}）？`, async () => {
       try {
         const res = await fetch(`/api/rentals/taxes/${tax.id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -1787,7 +1782,7 @@ function RentalsPage() {
       showToast('已付款的維護費不可刪除', 'error');
       return;
     }
-    askConfirm('確定要刪除此筆維護紀錄嗎？', async () => {
+    confirm('確定要刪除此筆維護紀錄嗎？', async () => {
       try {
         const res = await fetch(`/api/rentals/maintenance/${m.id}`, { method: 'DELETE' });
         if (!res.ok) {
@@ -2131,7 +2126,7 @@ function RentalsPage() {
                         const unlocked = incomes.filter(i => !i.isLocked);
                         if (unlocked.length === 0) return showToast('沒有可鎖帳的紀錄', 'error');
                         setSelectedIncomeIds(new Set(unlocked.map(i => i.id)));
-                        askConfirm(`確定批次鎖帳 ${unlocked.length} 筆未鎖帳收租紀錄？鎖帳後無法編輯或刪除收款。`, batchLockIncomes, '批次鎖帳確認', false);
+                        confirm(`確定批次鎖帳 ${unlocked.length} 筆未鎖帳收租紀錄？鎖帳後無法編輯或刪除收款。`, batchLockIncomes, '批次鎖帳確認', false);
                       }}
                       disabled={batchLockSaving}
                       className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700 disabled:opacity-50">
@@ -2165,7 +2160,7 @@ function RentalsPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => askConfirm(`確定批次鎖帳 ${selectedIncomeIds.size} 筆收租紀錄？鎖帳後無法編輯或刪除收款。`, batchLockIncomes, '批次鎖帳確認', false)}
+                      onClick={() => confirm(`確定批次鎖帳 ${selectedIncomeIds.size} 筆收租紀錄？鎖帳後無法編輯或刪除收款。`, batchLockIncomes, '批次鎖帳確認', false)}
                       disabled={batchLockSaving}
                       className="bg-amber-600 text-white px-3 py-1 rounded text-sm hover:bg-amber-700 disabled:opacity-50">
                       {batchLockSaving ? '鎖帳中…' : `🔒 批次鎖帳 (${selectedIncomeIds.size} 筆)`}
@@ -2363,7 +2358,7 @@ function RentalsPage() {
                             <td className="px-3 py-2 text-center whitespace-nowrap">
                               {income.isLocked ? (
                                 <button
-                                  onClick={() => askConfirm(
+                                  onClick={() => confirm(
                                     `確定要解鎖此紀錄？\n${income.propertyName} ${income.incomeYear}/${String(income.incomeMonth).padStart(2,'0')}`,
                                     () => toggleIncomeLock(income.id, true), '解鎖確認', false
                                   )}
@@ -2383,7 +2378,7 @@ function RentalsPage() {
                                     <button onClick={() => voidIncomePayment(income.id)} className="text-red-600 hover:text-red-800 text-xs font-medium mr-1">作廢</button>
                                   )}
                                   <button
-                                    onClick={() => askConfirm(
+                                    onClick={() => confirm(
                                       `確定鎖帳此紀錄？鎖帳後無法編輯或刪除收款。\n${income.propertyName} ${income.incomeYear}/${String(income.incomeMonth).padStart(2,'0')}`,
                                       () => toggleIncomeLock(income.id, false), '鎖帳確認', false
                                     )}
@@ -4246,7 +4241,7 @@ function RentalsPage() {
                               <>
                                 <button onClick={() => openPaymentEdit(p)}
                                   className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 mr-1">編輯</button>
-                                <button onClick={() => askConfirm(
+                                <button onClick={() => confirm(
                                   `確定刪除此收款紀錄？\n${p.propertyName} ${p.incomeYear}/${String(p.incomeMonth).padStart(2,'0')} 第${p.sequenceNo}次 $${fmt(p.amount)}`,
                                   () => deletePaymentRecord(p.id), '刪除收款記錄', true
                                 )}
@@ -4407,28 +4402,6 @@ function RentalsPage() {
         )}
       </div>
 
-      {/* ==================== CONFIRM DIALOG ==================== */}
-      {confirmDialog.open && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70]" onClick={() => setConfirmDialog(d => ({ ...d, open: false }))}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-800 mb-2">{confirmDialog.title}</h3>
-            <p className="text-sm text-gray-600 mb-6 whitespace-pre-line">{confirmDialog.message}</p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setConfirmDialog(d => ({ ...d, open: false }))}
-                className="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
-              >取消</button>
-              <button
-                onClick={() => {
-                  setConfirmDialog(d => ({ ...d, open: false }));
-                  confirmDialog.onConfirm?.();
-                }}
-                className={`px-4 py-2 text-sm text-white rounded-lg ${confirmDialog.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'}`}
-              >確定</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ==================== MODAL: 退租確認 ==================== */}
       {terminateModal && (
@@ -5136,7 +5109,7 @@ function RentalsPage() {
                       type="button"
                       onClick={() => {
                         const id = editingProperty.id;
-                        askConfirm('確定要刪除此物業？此操作無法復原。', async () => {
+                        confirm('確定要刪除此物業？此操作無法復原。', async () => {
                           try {
                             const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
                             const data = await res.json();
