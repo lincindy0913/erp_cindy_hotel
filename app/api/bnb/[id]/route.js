@@ -292,7 +292,8 @@ export async function PATCH(request, { params }) {
       const crd = updateData.payCard     ?? Number(existing.payCard);
       const csh = updateData.payCash     ?? Number(existing.payCash);
       const vch = updateData.payVoucher  ?? Number(existing.payVoucher);
-      updateData.paymentFilled = (dep + trn + crd + csh + vch) > 0;
+      // 使用者明確儲存付款欄位即視為已填（含 0 元的免費/招待情形）
+      updateData.paymentFilled = true;
     }
 
     const updated = await prisma.bnbBookingRecord.update({

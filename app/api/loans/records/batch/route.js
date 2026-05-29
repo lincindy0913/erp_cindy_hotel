@@ -67,7 +67,7 @@ export async function POST(request) {
     const pushed = [];
     const skipped = [];
 
-    const todayStr = todayStr().replace(/-/g, '');
+    const todayDateStr = todayStr().replace(/-/g, '');
     const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
 
     for (const loan of loans) {
@@ -121,8 +121,8 @@ export async function POST(request) {
 
           // Auto-push to cashier: create PaymentOrder and update status
           if (autoPush && estimatedTotal > 0 && loan.deductAccountId) {
-            const currentSeq = await getOrderSeq(tx, todayStr);
-            const orderNo = `LN-${todayStr}-${String(currentSeq + 1).padStart(4, '0')}`;
+            const currentSeq = await getOrderSeq(tx, todayDateStr);
+            const orderNo = `LN-${todayDateStr}-${String(currentSeq + 1).padStart(4, '0')}`;
 
             const paymentOrder = await tx.paymentOrder.create({
               data: {

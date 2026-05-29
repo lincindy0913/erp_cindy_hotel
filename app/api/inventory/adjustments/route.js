@@ -7,10 +7,6 @@ import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
-function todayStr() {
-  return todayStr();
-}
-
 /**
  * Calculate current system qty for a product+warehouse using v2 full calculation.
  */

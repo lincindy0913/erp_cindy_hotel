@@ -18,10 +18,6 @@ const TABS = [
   { key: 'count', label: '盤點', icon: '📋' },
 ];
 
-function todayStr() {
-  return todayStr();
-}
-
 // Combobox: text input with styled suggestion dropdown
 function ComboInput({ value, onChange, options, placeholder, className }) {
   const [open, setOpen] = useState(false);

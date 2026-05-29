@@ -85,13 +85,9 @@ export async function PATCH(request) {
           updateData.cardFee = updateData.payCard * rate;
         }
 
-        // 自動標記付款已填
-        const dep = updateData.payDeposit  ?? 0;
-        const trn = updateData.payTransfer ?? 0;
-        const crd = updateData.payCard     ?? 0;
-        const csh = updateData.payCash     ?? 0;
-        const vch = updateData.payVoucher  ?? 0;
-        updateData.paymentFilled = (dep + trn + crd + csh + vch) > 0;
+        // 自動標記付款已填：Excel 模式儲存代表使用者已明確審核付款
+        // 含 0 元（如免費、招待）仍視為已填，不強求金額大於 0
+        updateData.paymentFilled = true;
 
         await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
 

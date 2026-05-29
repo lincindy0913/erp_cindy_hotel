@@ -125,6 +125,9 @@ export function useBnbRecords() {
   // ── Excel 模式：進入 ──────────────────────────────────────────
   function enterEditMode() {
     const map = {};
+    // 未填付款的記錄預設加入 dirtyIds，讓使用者直接點「儲存全部」
+    // 即可將 0 元付款（免費/招待）標記為已填，不需要手動輸入 0
+    const initialDirty = new Set();
     for (const r of records) {
       if (r.status === '已刪除' || r.paymentLocked) continue;
       map[r.id] = {
@@ -138,9 +141,10 @@ export function useBnbRecords() {
         cashDestination: r.cashDestination || '',
         payVoucher:      String(r.payVoucher   > 0 ? r.payVoucher   : ''),
       };
+      if (!r.paymentFilled) initialDirty.add(r.id);
     }
     setEditMap(map);
-    setDirtyIds(new Set());
+    setDirtyIds(initialDirty);
     setEditMode(true);
     setInlineEdit(null);
   }
