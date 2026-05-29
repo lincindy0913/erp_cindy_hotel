@@ -5,6 +5,7 @@ import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { renderVoucherTablePage } from '@/lib/voucher-pdf-renderer';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -166,9 +167,9 @@ export async function GET(request, { params }) {
         if (productMap.size > 0 && order.supplierId) {
           const allProductIds = [...productMap.keys()];
           const earliestDate = sortedDates[0] || '';
-          const oneYearAgoDate = new Date((earliestDate || new Date().toISOString().split('T')[0]) + 'T00:00:00Z');
+          const oneYearAgoDate = new Date((earliestDate || todayStr()) + 'T00:00:00Z');
           oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
-          const oneYearAgoStr = oneYearAgoDate.toISOString().split('T')[0];
+          const oneYearAgoStr = localDateStr(oneYearAgoDate);
           const allHistory = await prisma.priceHistory.findMany({
             where: {
               productId: { in: allProductIds },

@@ -21,6 +21,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,7 @@ function parseDate(raw) {
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   if (/^\d+$/.test(s)) {
     const d = new Date((parseInt(s) - 25569) * 86400 * 1000);
-    return d.toISOString().slice(0, 10);
+    return localDateStr(d);
   }
   // YYYY/MM/DD or M/D/YYYY
   const m1 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
@@ -178,7 +179,7 @@ export async function POST(request) {
     const commDiff       = Math.round((pmsCommTotal - otaCommTotal) * 100) / 100;
 
     // ── Per-reservation matching + save PmsOtaReconLog/Lines ──
-    const billingMonth = effectiveFrom ? effectiveFrom.slice(0, 7) : new Date().toISOString().slice(0, 7);
+    const billingMonth = effectiveFrom ? effectiveFrom.slice(0, 7) : todayStr().slice(0, 7);
 
     // Load PMS reservation records for the same date range
     const pmsReservations = warehouse

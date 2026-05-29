@@ -4,6 +4,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +18,9 @@ export async function GET(request) {
     const days = parseInt(searchParams.get('days') || '30');
 
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDateStr(today);
     const endDate = new Date(today.getTime() + days * 86400000);
-    const endDateStr = endDate.toISOString().split('T')[0];
+    const endDateStr = localDateStr(endDate);
 
     // Current cash balance
     const cashAccountWhere = { isActive: true };

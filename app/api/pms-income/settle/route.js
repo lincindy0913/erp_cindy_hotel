@@ -10,6 +10,7 @@ import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -146,7 +147,7 @@ export async function POST(request) {
           if (delayDays > 0) {
             const d = new Date(batch.businessDate);
             d.setDate(d.getDate() + delayDays);
-            txDate = d.toISOString().split('T')[0];
+            txDate = localDateStr(d);
           } else {
             txDate = batch.businessDate;
           }

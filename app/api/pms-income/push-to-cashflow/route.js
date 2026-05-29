@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { createAlert, ALERT_CATEGORIES } from '@/lib/alert';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,7 +119,7 @@ export async function POST(request) {
           const delayDays = config.settlementDelayDays || 0;
           const bd = new Date(rec.businessDate);
           bd.setDate(bd.getDate() + delayDays);
-          const settlementDate = bd.toISOString().split('T')[0];
+          const settlementDate = localDateStr(bd);
 
           // 所有同館別、同撥款日的信用卡記錄（未推送的）
           const groupRecords = records.filter(r =>
@@ -130,7 +131,7 @@ export async function POST(request) {
             (() => {
               const d = new Date(r.businessDate);
               d.setDate(d.getDate() + (configMap[`${r.warehouse ?? ''}|${r.pmsColumnName}`]?.settlementDelayDays || 0));
-              return d.toISOString().split('T')[0] === settlementDate;
+              return localDateStr(d) === settlementDate;
             })()
           );
 

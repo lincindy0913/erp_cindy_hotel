@@ -560,8 +560,8 @@ export default function MonthEndPage() {
               title={`${selectedYear} 年月結作業`}
               sheetName="月結狀態"
             />
-            <label className="text-sm text-gray-600 font-medium">年度:</label>
-            <select
+            <label htmlFor="f" className="text-sm text-gray-600 font-medium">年度:</label>
+            <select id="f"
               value={selectedYear}
               onChange={e => setSelectedYear(parseInt(e.target.value))}
               className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
@@ -1036,10 +1036,10 @@ export default function MonthEndPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="span-classname-text-red-5" className="block text-sm font-medium text-gray-700 mb-1">
                   解鎖原因 <span className="text-red-500">*</span>
                 </label>
-                <textarea
+                <textarea id="span-classname-text-red-5"
                   value={unlockReason}
                   onChange={e => setUnlockReason(e.target.value)}
                   rows={3}

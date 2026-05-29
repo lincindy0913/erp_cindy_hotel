@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,7 +76,7 @@ export async function POST(request) {
     // 全部邏輯都在 $transaction 內，避免 race condition
     const result = await prisma.$transaction(async (tx) => {
       // ── 關帳鎖定檢查 ──
-      const paymentDate = data.paymentDate || new Date().toISOString().split('T')[0];
+      const paymentDate = data.paymentDate || todayStr();
       await assertPeriodOpen(tx, paymentDate);
 
       // ── 冪等檢查：同一組 invoiceIds 是否已有 Payment ──
@@ -117,7 +118,7 @@ export async function POST(request) {
       // 產生付款單號（在 transaction 內，確保序號不重複）
       let paymentNo = data.paymentNo;
       if (!paymentNo || paymentNo.trim() === '') {
-        const paymentDate = data.paymentDate || new Date().toISOString().split('T')[0];
+        const paymentDate = data.paymentDate || todayStr();
         const yearMonth = paymentDate.substring(0, 7).replace(/-/g, '');
 
         const existingPayments = await tx.payment.findMany({

@@ -62,12 +62,12 @@ export default function CashFlowPage() {
         <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-end justify-between">
           <div className="flex gap-3 items-end">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">月份</label>
-              <input type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+              <label htmlFor="f" className="block text-xs text-gray-500 mb-1">月份</label>
+              <input id="f" type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">館別（空白=全部）</label>
-              <select value={warehouse} onChange={e => setWarehouse(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
+              <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">館別（空白=全部）</label>
+              <select id="f-2" value={warehouse} onChange={e => setWarehouse(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
                 <option value="">全部館別</option>
                 {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
               </select>

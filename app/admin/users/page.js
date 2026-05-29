@@ -259,10 +259,10 @@ export default function UserManagementPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">
                     電子郵件
                   </label>
-                  <input
+                  <input id="f"
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -273,10 +273,10 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">
                     密碼 {editingUser && <span className="text-gray-500">(留空則不修改)</span>}
                   </label>
-                  <input
+                  <input id="f-2"
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -286,10 +286,10 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">
                     姓名
                   </label>
-                  <input
+                  <input id="f-3"
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -299,10 +299,10 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">
                     館別限制
                   </label>
-                  <select
+                  <select id="f-4"
                     value={formData.warehouseRestriction}
                     onChange={(e) => setFormData({ ...formData, warehouseRestriction: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"

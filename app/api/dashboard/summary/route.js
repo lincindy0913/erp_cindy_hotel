@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getCached, setCached } from '@/lib/server-cache';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function GET(request) {
   }
 
   try {
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = localDateStr(now);
     const sixMonthsLater = new Date();
     sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
 
@@ -52,7 +53,7 @@ export async function GET(request) {
       }),
       prisma.check.count({ where: { status: 'due', dueDate: { lt: todayStr } } }),
       prisma.loanMaster.count({
-        where: { status: 'active', endDate: { lte: sixMonthsLater.toISOString().split('T')[0] } },
+        where: { status: 'active', endDate: { lte: localDateStr(sixMonthsLater) } },
       }),
       prisma.paymentOrder.count({ where: { status: { in: ['pending', 'pending_cashier'] } } }),
       prisma.inventoryLowStockCache.count().catch(() =>

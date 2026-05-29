@@ -7,6 +7,7 @@ import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-acc
 import { validateWarehouse } from '@/lib/master-data-validator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,7 +121,7 @@ export async function POST(request) {
     const newPurchase = await prisma.$transaction(async (tx) => {
       await assertPeriodOpen(tx, data.purchaseDate, data.warehouse);
 
-      const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const today = todayStr().replace(/-/g, '');
       const todayPrefix = `PUR-${today}-`;
       const existingCount = await tx.purchaseMaster.count({
         where: { purchaseNo: { startsWith: todayPrefix } }

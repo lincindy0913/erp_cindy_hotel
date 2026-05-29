@@ -96,8 +96,9 @@ export default function LoginForm() {
           {step === 'password' ? (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
+                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
                 <input
+                  id="f"
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -108,8 +109,9 @@ export default function LoginForm() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">密碼</label>
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">密碼</label>
                 <input
+                  id="f-2"
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
@@ -122,8 +124,9 @@ export default function LoginForm() {
             </>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">驗證碼</label>
+              <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">驗證碼</label>
               <input
+                id="f-3"
                 ref={totpRef}
                 type="text"
                 inputMode="numeric"

@@ -4,6 +4,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getCached, setCached } from '@/lib/server-cache';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,7 +81,7 @@ export async function GET(request) {
     if (!countsData) {
       const sixMonthsLater = new Date();
       sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = localDateStr(now);
 
       const [
         cashAccounts,
@@ -121,7 +122,7 @@ export async function GET(request) {
         }),
         prisma.check.count({ where: { status: 'due', dueDate: { lt: todayStr } } }),
         prisma.loanMaster.count({
-          where: { status: 'active', endDate: { lte: sixMonthsLater.toISOString().split('T')[0] } },
+          where: { status: 'active', endDate: { lte: localDateStr(sixMonthsLater) } },
         }),
       ]);
 

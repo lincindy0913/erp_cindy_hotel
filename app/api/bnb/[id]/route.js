@@ -9,12 +9,13 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // ── 產生 CF- 交易單號 ───────────────────────────────────────────
 async function generateTxNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (date || todayStr()).replace(/-/g, '');
   const prefix = `CF-${dateStr}-`;
   const existing = await prisma.cashTransaction.findMany({
     where: { transactionNo: { startsWith: prefix } },

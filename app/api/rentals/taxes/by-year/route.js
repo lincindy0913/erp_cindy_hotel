@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,7 +78,7 @@ export async function POST(request) {
 
     await prisma.$transaction(async (tx) => {
       let paySeq = 0;
-      const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const dateStr = todayStr().replace(/-/g, '');
       const prefix = `RENT-${dateStr}-`;
       const existingOrders = await tx.paymentOrder.findMany({
         where: { orderNo: { startsWith: prefix } },

@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { todayStr } from '@/lib/localDate';
 
 export default function PurchaseAllowancesPage() {
   const { data: session } = useSession();
@@ -35,7 +36,7 @@ export default function PurchaseAllowancesPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     allowanceType: '折讓',
-    allowanceDate: new Date().toISOString().split('T')[0],
+    allowanceDate: todayStr(),
     supplierName: '', warehouse: '', purchaseNo: '', invoiceNo: '', paymentOrderNo: '',
     supplierId: null, invoiceId: null, paymentOrderId: null,
     amount: '', tax: '0', totalAmount: '', reason: '', note: '',
@@ -52,7 +53,7 @@ export default function PurchaseAllowancesPage() {
   // Confirm modal
   const [confirmingId, setConfirmingId] = useState(null);
   const [confirmAccountId, setConfirmAccountId] = useState('');
-  const [confirmDate, setConfirmDate] = useState(new Date().toISOString().split('T')[0]);
+  const [confirmDate, setConfirmDate] = useState(todayStr());
 
   // Filter state
   const [filterKeyword, setFilterKeyword] = useState('');
@@ -214,7 +215,7 @@ export default function PurchaseAllowancesPage() {
   function resetForm() {
     setForm({
       allowanceType: formMode,
-      allowanceDate: new Date().toISOString().split('T')[0],
+      allowanceDate: todayStr(),
       supplierName: '', warehouse: '', purchaseNo: '', invoiceNo: '', paymentOrderNo: '',
       supplierId: null, invoiceId: null, paymentOrderId: null,
       creditNoteNo: '',
@@ -436,7 +437,7 @@ export default function PurchaseAllowancesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `進貨退貨_${activeTab === 'draft' ? '草稿' : '已確認'}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `進貨退貨_${activeTab === 'draft' ? '草稿' : '已確認'}_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -648,20 +649,20 @@ export default function PurchaseAllowancesPage() {
             <form onSubmit={handleSave}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
                 <div>
-                  <label style={labelStyle}>退貨日期 *</label>
-                  <input type="date" value={form.allowanceDate} onChange={e => setForm(f => ({ ...f, allowanceDate: e.target.value }))} style={inputStyle} />
+                  <label htmlFor="f" style={labelStyle}>退貨日期 *</label>
+                  <input id="f" type="date" value={form.allowanceDate} onChange={e => setForm(f => ({ ...f, allowanceDate: e.target.value }))} style={inputStyle} />
                 </div>
                 <div>
-                  <label style={labelStyle}>供應商名稱</label>
-                  <select value={form.supplierName} onChange={e => { const s = suppliers.find(s => s.name === e.target.value); setForm(f => ({ ...f, supplierName: e.target.value, supplierId: s?.id || null })); }} style={inputStyle}>
+                  <label htmlFor="f-2" style={labelStyle}>供應商名稱</label>
+                  <select id="f-2" value={form.supplierName} onChange={e => { const s = suppliers.find(s => s.name === e.target.value); setForm(f => ({ ...f, supplierName: e.target.value, supplierId: s?.id || null })); }} style={inputStyle}>
                     <option value="">選擇供應商</option>
                     {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                     {form.supplierName && !suppliers.some(s => s.name === form.supplierName) && <option value={form.supplierName}>{form.supplierName}</option>}
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>館別</label>
-                  <select value={form.warehouse} onChange={e => setForm(f => ({ ...f, warehouse: e.target.value }))} style={inputStyle}>
+                  <label htmlFor="f-10" style={labelStyle}>館別</label>
+                  <select id="f-10" value={form.warehouse} onChange={e => setForm(f => ({ ...f, warehouse: e.target.value }))} style={inputStyle}>
                     <option value="">選擇館別</option>
                     {warehouses.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                   </select>
@@ -806,22 +807,22 @@ export default function PurchaseAllowancesPage() {
                   </div>
                 )}
                 <div>
-                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨金額（未稅）' : '退貨金額（未稅）*'}</label>
-                  <input type="number" value={form.amount}
+                  <label htmlFor="f-3" style={labelStyle}>{formMode === '全額退貨' ? '退貨金額（未稅）' : '退貨金額（未稅）*'}</label>
+                  <input id="f-3" type="number" value={form.amount}
                     onChange={e => updateAmountField('amount', e.target.value)}
                     readOnly={formMode === '全額退貨' && !!selectedPurchase}
                     style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedPurchase ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>稅額</label>
-                  <input type="number" value={form.tax}
+                  <label htmlFor="f-4" style={labelStyle}>稅額</label>
+                  <input id="f-4" type="number" value={form.tax}
                     onChange={e => updateAmountField('tax', e.target.value)}
                     readOnly={formMode === '全額退貨' && !!selectedPurchase}
                     style={{ ...inputStyle, textAlign: 'right', ...(formMode === '全額退貨' && selectedPurchase ? { background: '#f3f4f6', cursor: 'not-allowed' } : {}) }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>{formMode === '全額退貨' ? '退貨總額（含稅）' : '退貨總額（含稅）*'}</label>
-                  <input type="number" value={form.totalAmount}
+                  <label htmlFor="f-5" style={labelStyle}>{formMode === '全額退貨' ? '退貨總額（含稅）' : '退貨總額（含稅）*'}</label>
+                  <input id="f-5" type="number" value={form.totalAmount}
                     onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))}
                     readOnly={formMode === '全額退貨' && !!selectedPurchase}
                     style={{ ...inputStyle, border: `2px solid ${formMode === '全額退貨' ? '#dc2626' : '#f59e0b'}`, fontSize: '1rem', fontWeight: 700, textAlign: 'right',
@@ -832,18 +833,18 @@ export default function PurchaseAllowancesPage() {
               </div>
 
               <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>廠商折讓單號</label>
-                <input value={form.creditNoteNo || ''} onChange={e => setForm(f => ({ ...f, creditNoteNo: e.target.value }))}
+                <label htmlFor="f-6" style={labelStyle}>廠商折讓單號</label>
+                <input id="f-6" value={form.creditNoteNo || ''} onChange={e => setForm(f => ({ ...f, creditNoteNo: e.target.value }))}
                   placeholder="廠商開立的折讓單號碼（選填，申報進項用）" style={inputStyle} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div>
-                  <label style={labelStyle}>退貨原因 *</label>
-                  <textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} placeholder="產品瑕疵 / 數量不符 / 價格錯誤..." style={{ ...inputStyle, resize: 'vertical' }} />
+                  <label htmlFor="f-7" style={labelStyle}>退貨原因 *</label>
+                  <textarea id="f-7" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} rows={2} placeholder="產品瑕疵 / 數量不符 / 價格錯誤..." style={{ ...inputStyle, resize: 'vertical' }} />
                 </div>
                 <div>
-                  <label style={labelStyle}>備註</label>
-                  <textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} rows={2} placeholder="選填" style={{ ...inputStyle, resize: 'vertical' }} />
+                  <label htmlFor="f-8" style={labelStyle}>備註</label>
+                  <textarea id="f-8" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} rows={2} placeholder="選填" style={{ ...inputStyle, resize: 'vertical' }} />
                 </div>
               </div>
 
@@ -1077,15 +1078,15 @@ export default function PurchaseAllowancesPage() {
                   </div>
 
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: '0.875rem', color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款入帳帳戶 *</label>
-                    <select value={confirmAccountId} onChange={e => setConfirmAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem' }}>
+                    <label htmlFor="f-9" style={{ fontSize: '0.875rem', color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款入帳帳戶 *</label>
+                    <select id="f-9" value={confirmAccountId} onChange={e => setConfirmAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem' }}>
                       <option value="">選擇帳戶</option>
                       {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                     </select>
                   </div>
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: '0.875rem', color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款日期</label>
-                    <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem', boxSizing: 'border-box' }} />
+                    <label htmlFor="f-11" style={{ fontSize: '0.875rem', color: '#374151', display: 'block', marginBottom: 4, fontWeight: 600 }}>退款日期</label>
+                    <input id="f-11" type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '1rem', boxSizing: 'border-box' }} />
                   </div>
                 </>
               );

@@ -7,6 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -301,7 +302,7 @@ export async function DELETE(request, { params }) {
     txsToReverse.forEach(t => accountIds.add(t.accountId));
 
     await prisma.$transaction(async (tx) => {
-      const revDate = new Date().toISOString().split('T')[0];
+      const revDate = todayStr();
       for (const cashTx of txsToReverse) {
         // 冪等：re-read in transaction 確認尚未被沖銷
         const fresh = await tx.cashTransaction.findUnique({ where: { id: cashTx.id }, select: TX_SELECT });

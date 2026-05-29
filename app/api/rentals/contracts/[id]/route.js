@@ -7,6 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +67,7 @@ export async function PUT(request, { params }) {
     // Handle deposit receive action
     if (body.action === 'depositReceive') {
       const accountId = existing.depositAccountId || existing.rentAccountId;
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
       const transactionNo = await nextCashTransactionNo(prisma, today);
 
       const depositInCatId = await getCategoryId(prisma, 'rental_deposit_in');
@@ -102,7 +103,7 @@ export async function PUT(request, { params }) {
     // Handle deposit refund action — create PaymentOrder for cashier to execute
     if (body.action === 'depositRefund') {
       const amt = Number(existing.depositAmount);
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
       const dateStr = today.replace(/-/g, '');
       const prefix = `RENT-${dateStr}-`;
 

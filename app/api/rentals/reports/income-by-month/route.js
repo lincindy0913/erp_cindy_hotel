@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,7 +77,7 @@ export async function GET(request) {
     };
     const utilityWhere = { ...incomeWhere };
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const [incomes, utilityIncomes] = await Promise.all([
       prisma.rentalIncome.findMany({
         where: incomeWhere,

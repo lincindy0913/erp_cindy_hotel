@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function GET(request) {
       // endDate is inclusive, so add one day for lt comparison
       const ed = new Date(endDate);
       ed.setDate(ed.getDate() + 1);
-      dateLt = ed.toISOString().slice(0, 10);
+      dateLt = localDateStr(ed);
     } else if (month) {
       dateGte = `${month}-01`;
       const [year, mon] = month.split('-');

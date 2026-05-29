@@ -555,8 +555,8 @@ export default function YearEndPage() {
             <p className="text-sm text-gray-500 mt-1">年末結帳、庫存結轉、現金餘額結轉及財務報表產生</p>
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600 font-medium">年度:</label>
-            <select
+            <label htmlFor="f" className="text-sm text-gray-600 font-medium">年度:</label>
+            <select id="f"
               value={selectedYear}
               onChange={e => {
                 setSelectedYear(parseInt(e.target.value));
@@ -1099,10 +1099,10 @@ export default function YearEndPage() {
 
                       {/* Confirmation text input */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="span-classname-text-viole" className="block text-sm font-medium text-gray-700 mb-2">
                           請輸入「<span className="text-violet-600 font-bold">{expectedConfirmText}</span>」以確認執行
                         </label>
-                        <input
+                        <input id="span-classname-text-viole"
                           type="text"
                           value={confirmText}
                           onChange={e => setConfirmText(e.target.value)}

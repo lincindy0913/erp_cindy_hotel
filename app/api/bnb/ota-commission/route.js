@@ -22,12 +22,13 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 /** 產生付款單號 PAY-YYYYMMDD-NNN */
 async function generatePaymentOrderNo(tx) {
-  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const today = todayStr().replace(/-/g, '');
   const prefix = `PAY-${today}-`;
   const existing = await tx.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },

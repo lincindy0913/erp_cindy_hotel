@@ -3,11 +3,12 @@ import prisma from '@/lib/prisma';
 import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return todayStr();
 }
 
 /**

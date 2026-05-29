@@ -7,12 +7,13 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getAllowedAccountIds } from '@/lib/warehouse-access';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Generate count number: CC-YYYYMMDD-XXXX
 async function generateCountNo(countDate) {
-  const dateStr = (countDate || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (countDate || todayStr()).replace(/-/g, '');
   const prefix = `CC-${dateStr}-`;
 
   const existing = await prisma.cashCount.findMany({
@@ -262,7 +263,7 @@ export async function POST(request) {
 
       if (status === 'confirmed' && differenceType !== 'balanced') {
         // Generate transaction number
-        const txDateStr = (data.countDate || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+        const txDateStr = (data.countDate || todayStr()).replace(/-/g, '');
         const txPrefix = `CF-${txDateStr}-`;
         const existingTxs = await tx.cashTransaction.findMany({
           where: { transactionNo: { startsWith: txPrefix } },

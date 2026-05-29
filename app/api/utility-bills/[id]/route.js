@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import { todayStr } from '@/lib/localDate';
 
 // ── 從 summaryJson 計算合計金額 ────────────────────────────────
 function calcTotal(summaryJson, billType) {
@@ -22,7 +23,7 @@ function calcTotal(summaryJson, billType) {
 
 // ── 產生 PAY-YYYYMMDD-NNN 單號 ────────────────────────────────
 async function genOrderNo() {
-  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const today = todayStr().replace(/-/g, '');
   const prefix = `PAY-${today}-`;
   const existing = await prisma.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },

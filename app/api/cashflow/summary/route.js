@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +39,8 @@ export async function GET(request) {
     const today = new Date();
     const startDate = new Date(today);
     startDate.setDate(startDate.getDate() - days);
-    const startDateStr = startDate.toISOString().split('T')[0];
-    const todayStr = today.toISOString().split('T')[0];
+    const startDateStr = localDateStr(startDate);
+    const todayStr = localDateStr(today);
 
     const txWhere = {
       transactionDate: { gte: startDateStr, lte: todayStr }
@@ -94,7 +95,7 @@ export async function GET(request) {
       forecastDate.setDate(forecastDate.getDate() + i);
       projectedBalance += avgDailyNet;
       forecast.push({
-        date: forecastDate.toISOString().split('T')[0],
+        date: localDateStr(forecastDate),
         projectedBalance: Math.round(projectedBalance * 100) / 100
       });
     }

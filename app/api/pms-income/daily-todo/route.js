@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse') || '';
-    const today     = new Date().toISOString().slice(0, 10);
+    const today     = todayStr();
     const thisMonth = today.slice(0, 7);
 
     const baseWhere  = warehouse ? { warehouse } : {};

@@ -188,8 +188,8 @@ export default function AccountingSubjectsPage() {
             )}
             <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
-                <select
+                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+                <select id="f"
                   value={formData.category}
                   onChange={(e) => handleCategorySelect(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -213,8 +213,8 @@ export default function AccountingSubjectsPage() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">類別</label>
-                <select
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">類別</label>
+                <select id="f-2"
                   value={formData.subcategory}
                   onChange={(e) => setFormData(prev => ({ ...prev, subcategory: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -238,8 +238,8 @@ export default function AccountingSubjectsPage() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">代碼</label>
-                <input
+                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">代碼</label>
+                <input id="f-3"
                   type="text"
                   value={formData.code}
                   onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}

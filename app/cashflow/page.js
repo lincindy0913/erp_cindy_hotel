@@ -10,7 +10,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
-import { todayStr } from '@/lib/localDate';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 const TX_TYPES = ['收入', '支出', '移轉'];
@@ -177,7 +177,7 @@ export default function CashFlowPage() {
     try {
       const now = new Date();
       const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const endDate = now.toISOString().split('T')[0];
+      const endDate = localDateStr(now);
       const res = await fetch(`/api/cashflow/report?startDate=${startDate}&endDate=${endDate}`);
       if (!res.ok) { showToast('載入失敗', 'error'); return; }
       const data = await res.json();
@@ -188,7 +188,7 @@ export default function CashFlowPage() {
   async function fetchPmsDashboard() {
     try {
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      const today = localDateStr(now);
       const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       // 取本月訂房資料（最多500筆）
       const res = await fetch(`/api/pms-income/reservations?take=500&month=${yearMonth}`);
@@ -797,8 +797,8 @@ export default function CashFlowPage() {
                 <form onSubmit={handleCreateAccount}>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">帳戶名稱 *</label>
-                      <input
+                      <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">帳戶名稱 *</label>
+                      <input id="f"
                         type="text"
                         required
                         value={accountForm.name}
@@ -808,8 +808,8 @@ export default function CashFlowPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">帳戶類型 *</label>
-                      <select
+                      <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">帳戶類型 *</label>
+                      <select id="f-2"
                         value={accountForm.type}
                         onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -818,8 +818,8 @@ export default function CashFlowPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
-                      <select
+                      <label htmlFor="f-35" className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
+                      <select id="f-35"
                         required
                         value={accountForm.warehouse}
                         onChange={(e) => setAccountForm({ ...accountForm, warehouse: e.target.value })}
@@ -830,8 +830,8 @@ export default function CashFlowPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">起始金額</label>
-                      <input
+                      <label htmlFor="f-36" className="block text-sm font-medium text-gray-700 mb-1">起始金額</label>
+                      <input id="f-36"
                         type="number"
                         step="0.01"
                         value={accountForm.openingBalance}
@@ -927,8 +927,8 @@ export default function CashFlowPage() {
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
-                  <input
+                  <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
+                  <input id="f-3"
                     type="date"
                     value={txFilter.startDate}
                     onChange={(e) => setTxFilter({ ...txFilter, startDate: e.target.value })}
@@ -936,8 +936,8 @@ export default function CashFlowPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
-                  <input
+                  <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+                  <input id="f-4"
                     type="date"
                     value={txFilter.endDate}
                     onChange={(e) => setTxFilter({ ...txFilter, endDate: e.target.value })}
@@ -945,8 +945,8 @@ export default function CashFlowPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select
+                  <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select id="f-5"
                     value={txFilter.warehouse}
                     onChange={(e) => setTxFilter({ ...txFilter, warehouse: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -956,8 +956,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">交易類別</label>
-                  <select
+                  <label htmlFor="f-37" className="block text-sm font-medium text-gray-700 mb-1">交易類別</label>
+                  <select id="f-37"
                     value={txFilter.type}
                     onChange={(e) => setTxFilter({ ...txFilter, type: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -968,8 +968,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">帳戶</label>
-                  <select
+                  <label htmlFor="f-38" className="block text-sm font-medium text-gray-700 mb-1">帳戶</label>
+                  <select id="f-38"
                     value={txFilter.accountId}
                     onChange={(e) => setTxFilter({ ...txFilter, accountId: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -979,8 +979,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">來源</label>
-                  <select
+                  <label htmlFor="f-39" className="block text-sm font-medium text-gray-700 mb-1">來源</label>
+                  <select id="f-39"
                     value={txFilter.sourceType}
                     onChange={(e) => setTxFilter({ ...txFilter, sourceType: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1003,8 +1003,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
-                  <select
+                  <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                  <select id="f-6"
                     value={txFilter.accountingSubject}
                     onChange={(e) => setTxFilter({ ...txFilter, accountingSubject: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
@@ -1060,8 +1060,8 @@ export default function CashFlowPage() {
                 <form onSubmit={handleCreateTransaction}>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">交易日期 *</label>
-                      <input
+                      <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">交易日期 *</label>
+                      <input id="f-7"
                         type="date"
                         required
                         value={txForm.transactionDate}
@@ -1070,8 +1070,8 @@ export default function CashFlowPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">類別 *</label>
-                      <select
+                      <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">類別 *</label>
+                      <select id="f-8"
                         required
                         value={txForm.type}
                         onChange={(e) => setTxForm({ ...txForm, type: e.target.value, categoryId: '', transferAccountId: '' })}
@@ -1081,10 +1081,10 @@ export default function CashFlowPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="f-54" className="block text-sm font-medium text-gray-700 mb-1">
                         館別{txForm.type !== '移轉' ? ' *' : ''}
                       </label>
-                      <select
+                      <select id="f-54"
                         value={txForm.warehouse}
                         onChange={(e) => setTxForm({ ...txForm, warehouse: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1094,10 +1094,10 @@ export default function CashFlowPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="f-55" className="block text-sm font-medium text-gray-700 mb-1">
                         {txForm.type === '移轉' ? '來源帳戶' : '帳戶'} *
                       </label>
-                      <select
+                      <select id="f-55"
                         required
                         value={txForm.accountId}
                         onChange={(e) => setTxForm({ ...txForm, accountId: e.target.value })}
@@ -1112,8 +1112,8 @@ export default function CashFlowPage() {
 
                     {txForm.type === '移轉' && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">目的帳戶 *</label>
-                        <select
+                        <label htmlFor="f-40" className="block text-sm font-medium text-gray-700 mb-1">目的帳戶 *</label>
+                        <select id="f-40"
                           required
                           value={txForm.transferAccountId}
                           onChange={(e) => setTxForm({ ...txForm, transferAccountId: e.target.value })}
@@ -1129,8 +1129,8 @@ export default function CashFlowPage() {
 
                     {txForm.type !== '移轉' && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
-                        <select
+                        <label htmlFor="f-41" className="block text-sm font-medium text-gray-700 mb-1">資金類別</label>
+                        <select id="f-41"
                           value={txForm.categoryId}
                           onChange={(e) => setTxForm({ ...txForm, categoryId: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1145,8 +1145,8 @@ export default function CashFlowPage() {
 
                     {txForm.type !== '移轉' && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
-                      <select
+                      <label htmlFor="f-42" className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
+                      <select id="f-42"
                         value={txForm.supplierId}
                         onChange={(e) => setTxForm({ ...txForm, supplierId: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1158,8 +1158,8 @@ export default function CashFlowPage() {
                     )}
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">金額 *</label>
-                      <input
+                      <label htmlFor="f-43" className="block text-sm font-medium text-gray-700 mb-1">金額 *</label>
+                      <input id="f-43"
                         type="number"
                         step="0.01"
                         min="0.01"
@@ -1172,8 +1172,8 @@ export default function CashFlowPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">付款單號</label>
-                      <input
+                      <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">付款單號</label>
+                      <input id="f-9"
                         type="text"
                         value={txForm.paymentNo}
                         onChange={(e) => setTxForm({ ...txForm, paymentNo: e.target.value })}
@@ -1183,8 +1183,8 @@ export default function CashFlowPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">付款條件</label>
-                      <select
+                      <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">付款條件</label>
+                      <select id="f-10"
                         value={txForm.paymentTerms}
                         onChange={(e) => setTxForm({ ...txForm, paymentTerms: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1200,10 +1200,10 @@ export default function CashFlowPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="f-56" className="block text-sm font-medium text-gray-700 mb-1">
                         會計科目{txForm.type !== '移轉' ? ' *' : ''}
                       </label>
-                      <input
+                      <input id="f-56"
                         type="text"
                         value={txForm.accountingSubject}
                         onChange={(e) => setTxForm({ ...txForm, accountingSubject: e.target.value })}
@@ -1239,8 +1239,8 @@ export default function CashFlowPage() {
                     </div>
 
                     <div className="col-span-2 md:col-span-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                      <input
+                      <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                      <input id="f-11"
                         type="text"
                         value={txForm.description}
                         onChange={(e) => setTxForm({ ...txForm, description: e.target.value })}
@@ -1256,8 +1256,8 @@ export default function CashFlowPage() {
                       <h4 className="text-sm font-semibold text-gray-700 mb-3">發票資訊（必填）</h4>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票號碼 *</label>
-                          <input
+                          <label htmlFor="f-12" className="block text-sm font-medium text-gray-700 mb-1">發票號碼 *</label>
+                          <input id="f-12"
                             type="text"
                             value={txForm.invoiceNo}
                             onChange={(e) => setTxForm({ ...txForm, invoiceNo: e.target.value })}
@@ -1266,8 +1266,8 @@ export default function CashFlowPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票金額 *</label>
-                          <input
+                          <label htmlFor="f-13" className="block text-sm font-medium text-gray-700 mb-1">發票金額 *</label>
+                          <input id="f-13"
                             type="number"
                             step="0.01"
                             min="0"
@@ -1278,8 +1278,8 @@ export default function CashFlowPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票日期 *</label>
-                          <input
+                          <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">發票日期 *</label>
+                          <input id="f-14"
                             type="date"
                             value={txForm.invoiceDate}
                             onChange={(e) => setTxForm({ ...txForm, invoiceDate: e.target.value })}
@@ -1287,8 +1287,8 @@ export default function CashFlowPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票稅項 *</label>
-                          <select
+                          <label htmlFor="f-15" className="block text-sm font-medium text-gray-700 mb-1">發票稅項 *</label>
+                          <select id="f-15"
                             value={txForm.taxType}
                             onChange={(e) => setTxForm({ ...txForm, taxType: e.target.value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1300,8 +1300,8 @@ export default function CashFlowPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票稅金 *</label>
-                          <input
+                          <label htmlFor="f-16" className="block text-sm font-medium text-gray-700 mb-1">發票稅金 *</label>
+                          <input id="f-16"
                             type="number"
                             step="0.01"
                             min="0"
@@ -1497,8 +1497,8 @@ export default function CashFlowPage() {
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
-                  <input
+                  <label htmlFor="f-17" className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
+                  <input id="f-17"
                     type="date"
                     value={subjectFilter.startDate}
                     onChange={(e) => setSubjectFilter({ ...subjectFilter, startDate: e.target.value })}
@@ -1506,8 +1506,8 @@ export default function CashFlowPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
-                  <input
+                  <label htmlFor="f-18" className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+                  <input id="f-18"
                     type="date"
                     value={subjectFilter.endDate}
                     onChange={(e) => setSubjectFilter({ ...subjectFilter, endDate: e.target.value })}
@@ -1515,8 +1515,8 @@ export default function CashFlowPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select
+                  <label htmlFor="f-19" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select id="f-19"
                     value={subjectFilter.warehouse}
                     onChange={(e) => setSubjectFilter({ ...subjectFilter, warehouse: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1526,8 +1526,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
-                  <select
+                  <label htmlFor="f-44" className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                  <select id="f-44"
                     value={subjectFilter.accountingSubject}
                     onChange={(e) => setSubjectFilter({ ...subjectFilter, accountingSubject: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
@@ -1655,8 +1655,8 @@ export default function CashFlowPage() {
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">起始日期 *</label>
-                  <input
+                  <label htmlFor="f-20" className="block text-sm font-medium text-gray-700 mb-1">起始日期 *</label>
+                  <input id="f-20"
                     type="date"
                     value={reportFilter.startDate}
                     onChange={(e) => setReportFilter({ ...reportFilter, startDate: e.target.value })}
@@ -1664,8 +1664,8 @@ export default function CashFlowPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">結束日期 *</label>
-                  <input
+                  <label htmlFor="f-21" className="block text-sm font-medium text-gray-700 mb-1">結束日期 *</label>
+                  <input id="f-21"
                     type="date"
                     value={reportFilter.endDate}
                     onChange={(e) => setReportFilter({ ...reportFilter, endDate: e.target.value })}
@@ -1673,8 +1673,8 @@ export default function CashFlowPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select
+                  <label htmlFor="f-22" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select id="f-22"
                     value={reportFilter.warehouse}
                     onChange={(e) => setReportFilter({ ...reportFilter, warehouse: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1684,8 +1684,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
-                  <select
+                  <label htmlFor="f-45" className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
+                  <select id="f-45"
                     value={reportFilter.supplierId}
                     onChange={(e) => setReportFilter({ ...reportFilter, supplierId: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1695,8 +1695,8 @@ export default function CashFlowPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
-                  <input
+                  <label htmlFor="f-46" className="block text-sm font-medium text-gray-700 mb-1">會計科目</label>
+                  <input id="f-46"
                     type="text"
                     value={reportFilter.accountingSubject}
                     onChange={(e) => setReportFilter({ ...reportFilter, accountingSubject: e.target.value })}
@@ -1857,8 +1857,8 @@ export default function CashFlowPage() {
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="flex gap-4 items-end">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select
+                  <label htmlFor="f-23" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select id="f-23"
                     value={forecastWarehouse}
                     onChange={(e) => setForecastWarehouse(e.target.value)}
                     className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -2041,8 +2041,8 @@ export default function CashFlowPage() {
                 <h3 className="text-sm font-semibold text-amber-800 mb-3">批量補充損益科目</h3>
                 <form onSubmit={handleBatchCategorize} className="flex flex-wrap gap-3 items-end">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">交易類別</label>
-                    <select value={batchCatForm.type} onChange={e => setBatchCatForm(p => ({ ...p, type: e.target.value }))}
+                    <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">交易類別</label>
+                    <select id="f-24" value={batchCatForm.type} onChange={e => setBatchCatForm(p => ({ ...p, type: e.target.value }))}
                       className="border rounded-lg px-3 py-1.5 text-sm">
                       <option value="">全部類別</option>
                       <option value="收入">收入</option>
@@ -2050,8 +2050,8 @@ export default function CashFlowPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">來源類型</label>
-                    <select value={batchCatForm.sourceType} onChange={e => setBatchCatForm(p => ({ ...p, sourceType: e.target.value }))}
+                    <label htmlFor="f-25" className="block text-xs text-gray-500 mb-1">來源類型</label>
+                    <select id="f-25" value={batchCatForm.sourceType} onChange={e => setBatchCatForm(p => ({ ...p, sourceType: e.target.value }))}
                       className="border rounded-lg px-3 py-1.5 text-sm">
                       <option value="">全部來源</option>
                       <option value="pms_income_settlement">PMS結算</option>
@@ -2068,18 +2068,18 @@ export default function CashFlowPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                    <input type="date" value={batchCatForm.startDate} onChange={e => setBatchCatForm(p => ({ ...p, startDate: e.target.value }))}
+                    <label htmlFor="f-26" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                    <input id="f-26" type="date" value={batchCatForm.startDate} onChange={e => setBatchCatForm(p => ({ ...p, startDate: e.target.value }))}
                       className="border rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                    <input type="date" value={batchCatForm.endDate} onChange={e => setBatchCatForm(p => ({ ...p, endDate: e.target.value }))}
+                    <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                    <input id="f-27" type="date" value={batchCatForm.endDate} onChange={e => setBatchCatForm(p => ({ ...p, endDate: e.target.value }))}
                       className="border rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">套用至科目 *</label>
-                    <select value={batchCatForm.categoryId} onChange={e => setBatchCatForm(p => ({ ...p, categoryId: e.target.value }))}
+                    <label htmlFor="f-28" className="block text-xs text-gray-500 mb-1">套用至科目 *</label>
+                    <select id="f-28" value={batchCatForm.categoryId} onChange={e => setBatchCatForm(p => ({ ...p, categoryId: e.target.value }))}
                       className="border rounded-lg px-3 py-1.5 text-sm" required>
                       <option value="">選擇損益科目…</option>
                       {['收入', '支出'].map(t => {
@@ -2138,37 +2138,37 @@ export default function CashFlowPage() {
                 <div className="p-4 border-b bg-emerald-50">
                   <form onSubmit={handleCreateCategory} className="flex flex-wrap gap-3 items-end">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">科目名稱 *</label>
-                      <input value={categoryForm.name} onChange={e => setCategoryForm(p => ({ ...p, name: e.target.value }))}
+                      <label htmlFor="f-29" className="block text-xs text-gray-500 mb-1">科目名稱 *</label>
+                      <input id="f-29" value={categoryForm.name} onChange={e => setCategoryForm(p => ({ ...p, name: e.target.value }))}
                         className="border rounded-lg px-3 py-1.5 text-sm w-36" placeholder="科目名稱" required />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">類型 *</label>
-                      <select value={categoryForm.type} onChange={e => setCategoryForm(p => ({ ...p, type: e.target.value }))}
+                      <label htmlFor="f-30" className="block text-xs text-gray-500 mb-1">類型 *</label>
+                      <select id="f-30" value={categoryForm.type} onChange={e => setCategoryForm(p => ({ ...p, type: e.target.value }))}
                         className="border rounded-lg px-3 py-1.5 text-sm">
                         <option value="收入">收入</option>
                         <option value="支出">支出</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">損益分類</label>
-                      <select value={categoryForm.level1} onChange={e => setCategoryForm(p => ({ ...p, level1: e.target.value }))}
+                      <label htmlFor="f-31" className="block text-xs text-gray-500 mb-1">損益分類</label>
+                      <select id="f-31" value={categoryForm.level1} onChange={e => setCategoryForm(p => ({ ...p, level1: e.target.value }))}
                         className="border rounded-lg px-3 py-1.5 text-sm">
                         <option value="">不設定</option>
                         {PL_LEVEL1_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">損益群組</label>
-                      <input value={categoryForm.plGroup} onChange={e => setCategoryForm(p => ({ ...p, plGroup: e.target.value }))}
+                      <label htmlFor="f-47" className="block text-xs text-gray-500 mb-1">損益群組</label>
+                      <input id="f-47" value={categoryForm.plGroup} onChange={e => setCategoryForm(p => ({ ...p, plGroup: e.target.value }))}
                         list="pl-group-list" className="border rounded-lg px-3 py-1.5 text-sm w-32" placeholder="例：住宿收入" />
                       <datalist id="pl-group-list">
                         {Object.values(PL_GROUP_SUGGESTIONS).flat().map(g => <option key={g} value={g} />)}
                       </datalist>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">排序</label>
-                      <input type="number" value={categoryForm.plOrder} onChange={e => setCategoryForm(p => ({ ...p, plOrder: e.target.value }))}
+                      <label htmlFor="f-48" className="block text-xs text-gray-500 mb-1">排序</label>
+                      <input id="f-48" type="number" value={categoryForm.plOrder} onChange={e => setCategoryForm(p => ({ ...p, plOrder: e.target.value }))}
                         className="border rounded-lg px-3 py-1.5 text-sm w-20" placeholder="10" min="1" />
                     </div>
                     <div className="flex gap-2">
@@ -2202,37 +2202,37 @@ export default function CashFlowPage() {
                         <td className="px-3 py-2" colSpan={7}>
                           <form onSubmit={handleUpdateCategory} className="flex flex-wrap gap-2 items-end">
                             <div>
-                              <label className="block text-xs text-gray-500 mb-0.5">科目名稱</label>
-                              <input value={editCatForm.name || ''} onChange={e => setEditCatForm(p => ({ ...p, name: e.target.value }))}
+                              <label htmlFor="f-49" className="block text-xs text-gray-500 mb-0.5">科目名稱</label>
+                              <input id="f-49" value={editCatForm.name || ''} onChange={e => setEditCatForm(p => ({ ...p, name: e.target.value }))}
                                 className="border rounded px-2 py-1 text-sm w-32" required />
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500 mb-0.5">類型</label>
-                              <select value={editCatForm.type || ''} onChange={e => setEditCatForm(p => ({ ...p, type: e.target.value }))}
+                              <label htmlFor="f-50" className="block text-xs text-gray-500 mb-0.5">類型</label>
+                              <select id="f-50" value={editCatForm.type || ''} onChange={e => setEditCatForm(p => ({ ...p, type: e.target.value }))}
                                 className="border rounded px-2 py-1 text-sm">
                                 <option value="收入">收入</option>
                                 <option value="支出">支出</option>
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500 mb-0.5">損益分類</label>
-                              <select value={editCatForm.level1 || ''} onChange={e => setEditCatForm(p => ({ ...p, level1: e.target.value }))}
+                              <label htmlFor="f-32" className="block text-xs text-gray-500 mb-0.5">損益分類</label>
+                              <select id="f-32" value={editCatForm.level1 || ''} onChange={e => setEditCatForm(p => ({ ...p, level1: e.target.value }))}
                                 className="border rounded px-2 py-1 text-sm">
                                 <option value="">不設定</option>
                                 {PL_LEVEL1_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500 mb-0.5">損益群組</label>
-                              <input value={editCatForm.plGroup || ''} onChange={e => setEditCatForm(p => ({ ...p, plGroup: e.target.value }))}
+                              <label htmlFor="f-51" className="block text-xs text-gray-500 mb-0.5">損益群組</label>
+                              <input id="f-51" value={editCatForm.plGroup || ''} onChange={e => setEditCatForm(p => ({ ...p, plGroup: e.target.value }))}
                                 list="pl-group-list-edit" className="border rounded px-2 py-1 text-sm w-28" placeholder="住宿收入" />
                               <datalist id="pl-group-list-edit">
                                 {Object.values(PL_GROUP_SUGGESTIONS).flat().map(g => <option key={g} value={g} />)}
                               </datalist>
                             </div>
                             <div>
-                              <label className="block text-xs text-gray-500 mb-0.5">排序</label>
-                              <input type="number" value={editCatForm.plOrder || ''} onChange={e => setEditCatForm(p => ({ ...p, plOrder: e.target.value }))}
+                              <label htmlFor="f-52" className="block text-xs text-gray-500 mb-0.5">排序</label>
+                              <input id="f-52" type="number" value={editCatForm.plOrder || ''} onChange={e => setEditCatForm(p => ({ ...p, plOrder: e.target.value }))}
                                 className="border rounded px-2 py-1 text-sm w-16" min="1" />
                             </div>
                             <div className="flex gap-1">
@@ -2414,15 +2414,15 @@ function CashCountTab({ accounts, warehouses }) {
           <h4 className="font-semibold mb-4">新增現金盤點</h4>
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">帳戶</label>
-              <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" required>
+              <label htmlFor="f-33" className="block text-sm text-gray-600 mb-1">帳戶</label>
+              <select id="f-33" value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" required>
                 <option value="">選擇帳戶</option>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.warehouse})</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">盤點日期</label>
-              <input type="date" value={countDate} onChange={e => setCountDate(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" required />
+              <label htmlFor="f-53" className="block text-sm text-gray-600 mb-1">盤點日期</label>
+              <input id="f-53" type="date" value={countDate} onChange={e => setCountDate(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" required />
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">系統餘額</label>
@@ -2466,8 +2466,8 @@ function CashCountTab({ accounts, warehouses }) {
               </div>
             </div>
             <div>
-              <label className="block text-sm text-gray-500 mb-1">備註</label>
-              <input type="text" value={countNote} onChange={e => setCountNote(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" placeholder="盤點說明..." />
+              <label htmlFor="f-34" className="block text-sm text-gray-500 mb-1">備註</label>
+              <input id="f-34" type="text" value={countNote} onChange={e => setCountNote(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" placeholder="盤點說明..." />
             </div>
           </div>
 

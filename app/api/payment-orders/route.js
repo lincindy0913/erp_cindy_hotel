@@ -11,6 +11,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { checkIdempotency, saveIdempotency } from '@/lib/idempotency';
 import { requireMoney } from '@/lib/safe-parse';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,7 +172,7 @@ export async function POST(request) {
 
     const result = await prisma.$transaction(async (tx) => {
       // ── 關帳鎖定檢查：禁止在已關帳月份建立付款單 ──
-      const lockDate = data.dueDate || now.toISOString().split('T')[0];
+      const lockDate = data.dueDate || localDateStr(now);
       await assertPeriodOpen(tx, lockDate, data.warehouse || null);
 
       // ── 冪等檢查：同一 sourceType + sourceRecordId 不可重複建立 ──
@@ -189,7 +190,7 @@ export async function POST(request) {
       }
 
       // Auto-generate orderNo 在 transaction 內，避免序號衝突
-      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+      const dateStr = localDateStr(now).replace(/-/g, '');
       const prefix = `PAY-${dateStr}-`;
       const existing = await tx.paymentOrder.findMany({
         where: { orderNo: { startsWith: prefix } },
@@ -231,7 +232,7 @@ export async function POST(request) {
       // 支票付款：自動建立 Check 記錄（開票帳戶連動資金帳戶 → sourceAccountId）
       let check = null;
       if (isCheck) {
-        const chkDateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+        const chkDateStr = localDateStr(now).replace(/-/g, '');
         const chkPrefix = `CHK-${chkDateStr}-`;
         const existingChecks = await tx.check.findMany({
           where: { checkNo: { startsWith: chkPrefix } },
@@ -244,7 +245,7 @@ export async function POST(request) {
         }
         const checkNo = `${chkPrefix}${String(maxChkSeq + 1).padStart(4, '0')}`;
         const checkNumber = (data.checkNo && String(data.checkNo).trim()) || `PAY-${orderNo}`;
-        const dueDate = data.checkDueDate || data.checkDate || now.toISOString().split('T')[0];
+        const dueDate = data.checkDueDate || data.checkDate || localDateStr(now);
 
         check = await tx.check.create({
           data: {
@@ -252,7 +253,7 @@ export async function POST(request) {
             checkType: 'payable',
             checkNumber,
             amount: data.netAmount,
-            issueDate: data.checkIssueDate || now.toISOString().split('T')[0],
+            issueDate: data.checkIssueDate || localDateStr(now),
             dueDate,
             status: 'pending',
             drawerType: 'company',
@@ -278,7 +279,7 @@ export async function POST(request) {
       // 員工代墊款：自動建立 EmployeeAdvance 記錄
       let advance = null;
       if (data.isEmployeeAdvance && data.advancedBy) {
-        const advDateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+        const advDateStr = localDateStr(now).replace(/-/g, '');
         const advPrefix = `ADV-${advDateStr}-`;
         const existingAdv = await tx.employeeAdvance.findMany({
           where: { advanceNo: { startsWith: advPrefix } },

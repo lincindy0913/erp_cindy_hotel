@@ -8,6 +8,7 @@ import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function PUT(request, { params }) {
       const actualPrincipal = parseFloat(data.actualPrincipal);
       const actualInterest = parseFloat(data.actualInterest);
       const actualTotal = actualPrincipal + actualInterest;
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
       const accountId = existing.deductAccountId || existing.loan.deductAccountId;
 
       const result = await prisma.$transaction(async (tx) => {

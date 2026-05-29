@@ -8,6 +8,7 @@ import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../auth/[...nextauth]/route';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +69,7 @@ export async function POST(request) {
     let reversedCount = 0;
 
     if (settleTxs.length > 0) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
 
       await prisma.$transaction(async (tx) => {
         const affectedAccountIds = new Set();

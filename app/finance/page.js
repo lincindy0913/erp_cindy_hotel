@@ -8,6 +8,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
@@ -840,7 +841,7 @@ export default function PaymentPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `付款單_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `付款單_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -987,8 +988,8 @@ export default function PaymentPage() {
                 <h4 className="text-md font-semibold mb-3">篩選未付款的發票</h4>
                 <div className="grid grid-cols-4 gap-4 mb-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">銷帳年月</label>
-                    <input
+                    <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">銷帳年月</label>
+                    <input id="f"
                       type="month"
                       value={filterData.yearMonth}
                       onChange={(e) => setFilterData({ ...filterData, yearMonth: e.target.value })}
@@ -996,8 +997,8 @@ export default function PaymentPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
-                    <select
+                    <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
+                    <select id="f-2"
                       value={filterData.supplierId}
                       onChange={(e) => setFilterData({ ...filterData, supplierId: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1009,8 +1010,8 @@ export default function PaymentPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">管別</label>
-                    <select
+                    <label htmlFor="f-30" className="block text-sm font-medium text-gray-700 mb-1">管別</label>
+                    <select id="f-30"
                       value={filterData.warehouse}
                       onChange={(e) => setFilterData({ ...filterData, warehouse: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1205,16 +1206,16 @@ export default function PaymentPage() {
               {/* 付款資訊 */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">付款單號</label>
-                  <input type="text" value="自動產生" readOnly disabled className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed" />
+                  <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">付款單號</label>
+                  <input id="f-3" type="text" value="自動產生" readOnly disabled className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed" />
                   <p className="text-xs text-gray-500 mt-1">系統自動產生 PAY-YYYYMMDD-XXXX</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="button-type-button-onclic" className="block text-sm font-medium text-gray-700 mb-1">
                     付款方式 *
                     <button type="button" onClick={() => setShowMethodManager(!showMethodManager)} className="ml-2 text-indigo-600 hover:text-indigo-800 text-xs">管理選項</button>
                   </label>
-                  <select
+                  <select id="button-type-button-onclic"
                     required
                     value={formData.paymentMethod}
                     onChange={(e) => {
@@ -1323,8 +1324,8 @@ export default function PaymentPage() {
                     </p>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">付款(開票)日期 *</label>
-                        <input
+                        <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">付款(開票)日期 *</label>
+                        <input id="f-4"
                           type="date"
                           required
                           value={formData.checkIssueDate}
@@ -1333,8 +1334,8 @@ export default function PaymentPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">支票日期 *</label>
-                        <input
+                        <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">支票日期 *</label>
+                        <input id="f-5"
                           type="date"
                           required
                           value={formData.checkDate}
@@ -1343,8 +1344,8 @@ export default function PaymentPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">支票號碼 *</label>
-                        <input
+                        <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">支票號碼 *</label>
+                        <input id="f-6"
                           type="text"
                           required
                           value={formData.checkNo}
@@ -1354,8 +1355,8 @@ export default function PaymentPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">開票帳戶 *</label>
-                        <select
+                        <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">開票帳戶 *</label>
+                        <select id="f-7"
                           required
                           value={formData.checkAccountId}
                           onChange={(e) => setFormData({ ...formData, checkAccountId: e.target.value })}
@@ -1371,8 +1372,8 @@ export default function PaymentPage() {
                         <p className="text-xs text-gray-500 mt-1">連動「資金帳戶管理」設定</p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">支票金額 *</label>
-                        <input
+                        <label htmlFor="f-25" className="block text-sm font-medium text-gray-700 mb-1">支票金額 *</label>
+                        <input id="f-25"
                           type="number"
                           step="0.01"
                           min="0"
@@ -1388,8 +1389,8 @@ export default function PaymentPage() {
                         )}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">會計折讓</label>
-                        <input
+                        <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">會計折讓</label>
+                        <input id="f-8"
                           type="number"
                           step="0.01"
                           min="0"
@@ -1409,8 +1410,8 @@ export default function PaymentPage() {
                         />
                       </div>
                       <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                        <textarea
+                        <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                        <textarea id="f-9"
                           value={formData.note}
                           onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                           placeholder="輸入備註事項..."
@@ -1424,8 +1425,8 @@ export default function PaymentPage() {
                   /* 現金/轉帳/信用卡/員工代墊款/月結：付款日期、付款金額、付款帳戶、會計折讓、備註 */
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">付款日期</label>
-                      <input
+                      <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">付款日期</label>
+                      <input id="f-10"
                         type="date"
                         value={formData.paymentDate}
                         onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
@@ -1433,8 +1434,8 @@ export default function PaymentPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">付款帳戶</label>
-                      <select
+                      <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">付款帳戶</label>
+                      <select id="f-11"
                         value={formData.accountId}
                         onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1448,8 +1449,8 @@ export default function PaymentPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">會計折讓</label>
-                      <input
+                      <label htmlFor="f-26" className="block text-sm font-medium text-gray-700 mb-1">會計折讓</label>
+                      <input id="f-26"
                         type="number"
                         step="0.01"
                         min="0"
@@ -1469,8 +1470,8 @@ export default function PaymentPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">付款金額 *</label>
-                      <input
+                      <label htmlFor="f-12" className="block text-sm font-medium text-gray-700 mb-1">付款金額 *</label>
+                      <input id="f-12"
                         type="number"
                         step="0.01"
                         min="0"
@@ -1492,8 +1493,8 @@ export default function PaymentPage() {
                         <div className="text-sm font-medium text-purple-800 mb-2">員工代墊資訊（存檔後自動連動代墊款管理）</div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
-                            <input
+                            <label htmlFor="f-13" className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
+                            <input id="f-13"
                               type="text"
                               value={formData.advancedBy}
                               onChange={(e) => setFormData({ ...formData, advancedBy: e.target.value })}
@@ -1502,8 +1503,8 @@ export default function PaymentPage() {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
-                            <select
+                            <label htmlFor="f-14" className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
+                            <select id="f-14"
                               value={formData.advancePaymentMethod || formData.paymentMethod}
                               onChange={(e) => setFormData({ ...formData, advancePaymentMethod: e.target.value })}
                               className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm"
@@ -1517,8 +1518,8 @@ export default function PaymentPage() {
                       </div>
                     )}
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                      <textarea
+                      <label htmlFor="f-15" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                      <textarea id="f-15"
                         value={formData.note}
                         onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                         placeholder="輸入備註事項..."
@@ -1566,34 +1567,34 @@ export default function PaymentPage() {
           <h3 className="text-sm font-semibold text-gray-700 mb-3">查詢條件</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">建立日期起</label>
-              <input type="date" value={finSearchDateFrom} onChange={e => setFinSearchDateFrom(e.target.value)}
+              <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">建立日期起</label>
+              <input id="f-16" type="date" value={finSearchDateFrom} onChange={e => setFinSearchDateFrom(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">建立日期迄</label>
-              <input type="date" value={finSearchDateTo} onChange={e => setFinSearchDateTo(e.target.value)}
+              <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">建立日期迄</label>
+              <input id="f-17" type="date" value={finSearchDateTo} onChange={e => setFinSearchDateTo(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">館別</label>
-              <select value={finSearchWarehouse} onChange={e => setFinSearchWarehouse(e.target.value)}
+              <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">館別</label>
+              <select id="f-18" value={finSearchWarehouse} onChange={e => setFinSearchWarehouse(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 <option value="">全部館別</option>
                 {[...new Set(orders.map(o => o.warehouse).filter(Boolean))].sort().map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">廠商</label>
-              <select value={finSearchSupplierId} onChange={e => setFinSearchSupplierId(e.target.value)}
+              <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">廠商</label>
+              <select id="f-27" value={finSearchSupplierId} onChange={e => setFinSearchSupplierId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 <option value="">全部廠商</option>
                 {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">付款方式</label>
-              <select value={finSearchPaymentMethod} onChange={e => setFinSearchPaymentMethod(e.target.value)}
+              <label htmlFor="f-28" className="block text-xs text-gray-500 mb-1">付款方式</label>
+              <select id="f-28" value={finSearchPaymentMethod} onChange={e => setFinSearchPaymentMethod(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                 <option value="">全部方式</option>
                 {paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}
@@ -2100,12 +2101,12 @@ export default function PaymentPage() {
               <p className="text-sm text-gray-600">每月進銷存費用之付款單草稿，可依館別篩選後列印，供飯店會計使用。</p>
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">報表月份</label>
-                  <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                  <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">報表月份</label>
+                  <input id="f-19" type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={reportWarehouse} onChange={e => setReportWarehouse(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[180px]">
+                  <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-20" value={reportWarehouse} onChange={e => setReportWarehouse(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm min-w-[180px]">
                     {warehouseOptionsForReport.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
@@ -2246,27 +2247,27 @@ export default function PaymentPage() {
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">進貨日期起</label>
-                    <input type="date" value={purchaseReportDateFrom} onChange={e => { setPurchaseReportDateFrom(e.target.value); if (e.target.value) setPurchaseReportMonth(''); }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                    <label htmlFor="f-21" className="block text-xs font-medium text-gray-500 mb-1">進貨日期起</label>
+                    <input id="f-21" type="date" value={purchaseReportDateFrom} onChange={e => { setPurchaseReportDateFrom(e.target.value); if (e.target.value) setPurchaseReportMonth(''); }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">進貨日期迄</label>
-                    <input type="date" value={purchaseReportDateTo} onChange={e => { setPurchaseReportDateTo(e.target.value); if (e.target.value) setPurchaseReportMonth(''); }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                    <label htmlFor="f-22" className="block text-xs font-medium text-gray-500 mb-1">進貨日期迄</label>
+                    <input id="f-22" type="date" value={purchaseReportDateTo} onChange={e => { setPurchaseReportDateTo(e.target.value); if (e.target.value) setPurchaseReportMonth(''); }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">或選擇月份</label>
-                    <input type="month" value={purchaseReportMonth} onChange={e => { setPurchaseReportMonth(e.target.value); if (e.target.value) { setPurchaseReportDateFrom(''); setPurchaseReportDateTo(''); } }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                    <label htmlFor="f-23" className="block text-xs font-medium text-gray-500 mb-1">或選擇月份</label>
+                    <input id="f-23" type="month" value={purchaseReportMonth} onChange={e => { setPurchaseReportMonth(e.target.value); if (e.target.value) { setPurchaseReportDateFrom(''); setPurchaseReportDateTo(''); } }} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">進貨館別</label>
-                    <select value={purchaseReportWarehouse} onChange={e => setPurchaseReportWarehouse(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+                    <label htmlFor="f-24" className="block text-xs font-medium text-gray-500 mb-1">進貨館別</label>
+                    <select id="f-24" value={purchaseReportWarehouse} onChange={e => setPurchaseReportWarehouse(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
                       <option value="">全部館別</option>
                       {[...new Set(orders.map(o => o.warehouse).filter(Boolean))].sort().map(w => <option key={w} value={w}>{w}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">廠商</label>
-                    <select value={purchaseReportSupplierId} onChange={e => setPurchaseReportSupplierId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+                    <label htmlFor="f-29" className="block text-xs font-medium text-gray-500 mb-1">廠商</label>
+                    <select id="f-29" value={purchaseReportSupplierId} onChange={e => setPurchaseReportSupplierId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
                       <option value="">全部廠商</option>
                       {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>

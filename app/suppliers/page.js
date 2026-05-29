@@ -593,56 +593,56 @@ export default function SuppliersPage() {
             <h3 className="text-lg font-semibold mb-4">{editingSupplier ? '編輯廠商' : '新增廠商'}</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
-                <input type="text" required value={formData.name}
+                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
+                <input id="f" type="text" required value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">統一編號 *</label>
-                <input type="text" required value={formData.taxId}
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">統一編號 *</label>
+                <input id="f-2" type="text" required value={formData.taxId}
                   onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">聯絡人 *</label>
-                <input type="text" required value={formData.contact}
+                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">聯絡人 *</label>
+                <input id="f-3" type="text" required value={formData.contact}
                   onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">負責人 *</label>
-                <input type="text" required value={formData.personInCharge}
+                <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">負責人 *</label>
+                <input id="f-4" type="text" required value={formData.personInCharge}
                   onChange={(e) => setFormData({ ...formData, personInCharge: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如：王經理" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">聯絡電話 *</label>
-                <input type="text" required value={formData.phone}
+                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">聯絡電話 *</label>
+                <input id="f-5" type="text" required value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如：02-1234-5678" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" value={formData.email}
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input id="email" type="email" value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如：contact@example.com" />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">地址</label>
-                <input type="text" value={formData.address}
+                <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">地址</label>
+                <input id="f-6" type="text" value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如：台北市信義區信義路五段7號" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="link-href-settings-financ" className="block text-sm font-medium text-gray-700 mb-1">
                   付款條件（<Link href="/settings#finance" className="text-blue-600 hover:underline text-xs">設定</Link>）
                 </label>
-                <select value={formData.paymentTerms}
+                <select id="link-href-settings-financ" value={formData.paymentTerms}
                   onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {paymentTermsOptions.map(term => (
@@ -651,8 +651,8 @@ export default function SuppliersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">付款狀態</label>
-                <select value={formData.paymentStatus}
+                <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">付款狀態</label>
+                <select id="f-14" value={formData.paymentStatus}
                   onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="未付款">未付款</option>
@@ -661,14 +661,14 @@ export default function SuppliersPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">合約日期</label>
-                <input type="date" value={formData.contractDate}
+                <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">合約日期</label>
+                <input id="f-7" type="date" value={formData.contractDate}
                   onChange={(e) => setFormData({ ...formData, contractDate: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">合約到期日期</label>
-                <input type="date" value={formData.contractEndDate}
+                <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">合約到期日期</label>
+                <input id="f-8" type="date" value={formData.contractEndDate}
                   onChange={(e) => setFormData({ ...formData, contractEndDate: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
@@ -758,29 +758,29 @@ export default function SuppliersPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">支票抬頭</label>
-                <input type="text" value={formData.checkPayee}
+                <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">支票抬頭</label>
+                <input id="f-9" type="text" value={formData.checkPayee}
                   onChange={(e) => setFormData({ ...formData, checkPayee: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如：統一企業股份有限公司" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">行業類別</label>
-                <input type="text" value={formData.industryCategory}
+                <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">行業類別</label>
+                <input id="f-10" type="text" value={formData.industryCategory}
                   onChange={(e) => setFormData({ ...formData, industryCategory: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="例如：食品、水電、工程" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">顯示順序</label>
-                <input type="number" min="0" value={formData.sortOrder}
+                <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">顯示順序</label>
+                <input id="f-11" type="number" min="0" value={formData.sortOrder}
                   onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="數字越小越前面" />
               </div>
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                <textarea value={formData.remarks}
+                <label htmlFor="f-12" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                <textarea id="f-12" value={formData.remarks}
                   onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows="3" placeholder="輸入備註事項..." />
@@ -842,8 +842,8 @@ export default function SuppliersPage() {
                           </button>
                           <div className="border-t border-gray-200 my-1"></div>
                           <div className="px-4 py-2">
-                            <label className="block text-xs text-gray-600 mb-1">關鍵字篩選</label>
-                            <input type="text" value={filterKeyword}
+                            <label htmlFor="f-13" className="block text-xs text-gray-600 mb-1">關鍵字篩選</label>
+                            <input id="f-13" type="text" value={filterKeyword}
                               onChange={(e) => { handleFilterChange(e.target.value); setSortType('filter'); }}
                               onClick={(e) => e.stopPropagation()} onFocus={(e) => e.stopPropagation()}
                               placeholder="搜尋序號、名稱、聯絡人等..."

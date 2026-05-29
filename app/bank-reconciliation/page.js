@@ -221,15 +221,15 @@ export default function BankReconciliationPage() {
         {/* 篩選 */}
         <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">銀行帳戶</label>
-            <select value={accountId} onChange={e => setAccountId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[200px]">
+            <label htmlFor="f" className="block text-xs text-gray-500 mb-1">銀行帳戶</label>
+            <select id="f" value={accountId} onChange={e => setAccountId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[200px]">
               <option value="">— 請選擇 —</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">月份</label>
-            <input type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+            <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">月份</label>
+            <input id="f-2" type="month" value={yearMonth} onChange={e => setYearMonth(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           <button onClick={openOrCreate} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700">
             開啟 / 建立調節表
@@ -473,8 +473,9 @@ export default function BankReconciliationPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 mb-1">交易說明（可修改）</label>
+                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">交易說明（可修改）</label>
                 <input
+                  id="f-3"
                   type="text"
                   value={buildDesc}
                   onChange={e => setBuildDesc(e.target.value)}
@@ -484,8 +485,9 @@ export default function BankReconciliationPage() {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 mb-1">損益科目（選填）</label>
+                <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">損益科目（選填）</label>
                 <select
+                  id="f-4"
                   value={buildCategoryId}
                   onChange={e => setBuildCategoryId(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm w-full"

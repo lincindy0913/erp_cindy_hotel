@@ -253,8 +253,8 @@ export default function SetupImportPage() {
               <div className="bg-white rounded-lg border border-amber-200 p-4 mb-3">
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">開帳基準日 *</label>
-                    <input
+                    <label htmlFor="f" className="block text-xs font-medium text-gray-600 mb-1">開帳基準日 *</label>
+                    <input id="f"
                       type="date"
                       value={newForm.openingDate}
                       onChange={e => setNewForm(f => ({ ...f, openingDate: e.target.value }))}
@@ -262,8 +262,8 @@ export default function SetupImportPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">備註</label>
-                    <input
+                    <label htmlFor="f-2" className="block text-xs font-medium text-gray-600 mb-1">備註</label>
+                    <input id="f-2"
                       type="text"
                       value={newForm.note}
                       onChange={e => setNewForm(f => ({ ...f, note: e.target.value }))}
@@ -437,8 +437,8 @@ export default function SetupImportPage() {
 
                     {/* File upload */}
                     <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-600 mb-1">上傳 JSON 檔案</label>
-                      <input
+                      <label htmlFor="json" className="block text-sm font-medium text-gray-600 mb-1">上傳 JSON 檔案</label>
+                      <input id="json"
                         type="file"
                         accept=".json"
                         onChange={handleFileChange}

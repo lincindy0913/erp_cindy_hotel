@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,7 @@ export async function POST(request) {
       monthStart = startDate;
       const ed = new Date(endDate);
       ed.setDate(ed.getDate() + 1);
-      nextMonth = ed.toISOString().slice(0, 10);
+      nextMonth = localDateStr(ed);
     } else {
       monthStart = `${month}-01`;
       const [year, mon] = month.split('-');
@@ -269,7 +270,7 @@ export async function POST(request) {
         ? paymentOrders.map(po => {
             const exec = po.executions?.[0];
             return {
-              date: exec?.executionDate || (po.createdAt ? new Date(po.createdAt).toISOString().slice(0, 10) : ''),
+              date: exec?.executionDate || (po.createdAt ? localDateStr(new Date(po.createdAt)) : ''),
               account: po.accountId ? (payAcctMap.get(po.accountId) || '') : '',
               check: po.checkNo || '',
               invoiceAmt: Number(po.amount || 0),

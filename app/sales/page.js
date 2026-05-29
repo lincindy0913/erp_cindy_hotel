@@ -10,6 +10,7 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
+import { todayStr } from '@/lib/localDate';
 
 const SALES_VIEWS = ['list', 'report', 'monthly', 'owner-monthly'];
 
@@ -66,7 +67,7 @@ function InvoicePageInner() {
   const [showPrivateForm, setShowPrivateForm] = useState(false);
   const [editingPrivateId, setEditingPrivateId] = useState(null);
   const [privateForm, setPrivateForm] = useState({
-    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceDate: todayStr(),
     invoiceNo: '',
     invoiceTitle: '',
     totalAmount: '',
@@ -79,7 +80,7 @@ function InvoicePageInner() {
   const [showAddAllowanceForm, setShowAddAllowanceForm] = useState(false);
   const [allowanceSaving, setAllowanceSaving] = useState(false);
   const [allowanceFormData, setAllowanceFormData] = useState({
-    allowanceDate: new Date().toISOString().split('T')[0],
+    allowanceDate: todayStr(),
     warehouse: '',
     supplierName: '',
     invoiceNo: '',
@@ -110,7 +111,7 @@ function InvoicePageInner() {
   // 分頁：發票列表 / 發票私帳 / 報表 / 月度統計（與網址 ?view= 同步）
   const [activeView, setActiveView] = useState('list');
   const [statsStartMonth, setStatsStartMonth] = useState(() => `${new Date().getFullYear()}-01`);
-  const [statsEndMonth,   setStatsEndMonth]   = useState(() => new Date().toISOString().slice(0, 7));
+  const [statsEndMonth,   setStatsEndMonth]   = useState(() => todayStr().slice(0, 7));
   const [statsWarehouse,  setStatsWarehouse]  = useState('');
   const [statsData, setStatsData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -125,7 +126,7 @@ function InvoicePageInner() {
   // 表單資料
   const [formData, setFormData] = useState({
     invoiceNo: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceDate: todayStr(),
     invoiceTitle: '', // 發票抬頭
     invoiceType: '進貨單', // 發票類型
     taxType: '應稅', // 營業稅類型
@@ -325,6 +326,7 @@ function InvoicePageInner() {
       if (searchInvoiceTitle) params.set('invoiceTitle', searchInvoiceTitle);
 
       const response = await fetch(`/api/sales/with-info?${params}`);
+      if (!response.ok) { setInvoices([]); return; }
       const result = await response.json();
       if (result.data && result.pagination) {
         setInvoices(result.data);
@@ -345,6 +347,7 @@ function InvoicePageInner() {
   async function fetchAllowances() {
     try {
       const res = await fetch('/api/purchase-allowances?status=已確認');
+      if (!res.ok) { setAllowances([]); return; }
       const data = await res.json();
       setAllowances(Array.isArray(data) ? data : []);
     } catch { setAllowances([]); }
@@ -394,7 +397,7 @@ function InvoicePageInner() {
       showToast(editingPrivateId ? '已更新' : '已新增業主私帳發票', 'success');
       setShowPrivateForm(false);
       setEditingPrivateId(null);
-      setPrivateForm({ invoiceDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTitle: '', totalAmount: '', note: '', warehouse: '' });
+      setPrivateForm({ invoiceDate: todayStr(), invoiceNo: '', invoiceTitle: '', totalAmount: '', note: '', warehouse: '' });
       fetchPrivateInvoices(reportDateFrom, reportDateTo);
     } catch (err) { showToast('儲存失敗: ' + err.message, 'error'); }
     finally { setPrivateSaving(false); }
@@ -414,7 +417,7 @@ function InvoicePageInner() {
   function openEditPrivate(inv) {
     setEditingPrivateId(inv.id);
     setPrivateForm({
-      invoiceDate:  inv.invoiceDate || new Date().toISOString().split('T')[0],
+      invoiceDate:  inv.invoiceDate || todayStr(),
       invoiceNo:    inv.invoiceNo || '',
       invoiceTitle: inv.invoiceTitle || '',
       totalAmount:  String(inv.totalAmount || ''),
@@ -447,7 +450,7 @@ function InvoicePageInner() {
       if (res.ok) {
         showToast('折讓發票已儲存', 'success');
         setShowAddAllowanceForm(false);
-        setAllowanceFormData({ allowanceDate: new Date().toISOString().split('T')[0], warehouse: '', supplierName: '', invoiceNo: '', amount: '', tax: '0', totalAmount: '', reason: '', note: '' });
+        setAllowanceFormData({ allowanceDate: todayStr(), warehouse: '', supplierName: '', invoiceNo: '', amount: '', tax: '0', totalAmount: '', reason: '', note: '' });
         fetchAllowances();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -460,6 +463,7 @@ function InvoicePageInner() {
   async function fetchProducts() {
     try {
       const response = await fetch('/api/products?all=true');
+      if (!response.ok) { setProducts([]); return; }
       const data = await response.json();
       setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -471,6 +475,7 @@ function InvoicePageInner() {
   async function fetchSuppliers() {
     try {
       const response = await fetch('/api/suppliers?all=true');
+      if (!response.ok) { setSuppliers([]); return; }
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -753,7 +758,7 @@ function InvoicePageInner() {
         });
         setFormData({
           invoiceNo: '',
-          invoiceDate: new Date().toISOString().split('T')[0],
+          invoiceDate: todayStr(),
           invoiceTitle: '',
           invoiceType: '進貨單',
           taxType: '應稅',
@@ -795,7 +800,7 @@ function InvoicePageInner() {
     setEditingInvoice(invoice);
     setFormData({
       invoiceNo: invoice.invoiceNo || '',
-      invoiceDate: invoice.invoiceDate || new Date().toISOString().split('T')[0],
+      invoiceDate: invoice.invoiceDate || todayStr(),
       invoiceTitle: invoice.invoiceTitle || '',
       invoiceType: invoice.invoiceType || '進貨單',
       taxType: invoice.taxType || '應稅',
@@ -984,7 +989,7 @@ function InvoicePageInner() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `發票清單_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `發票清單_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1044,14 +1049,14 @@ function InvoicePageInner() {
             <form onSubmit={saveAllowance}>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">折讓日期 *</label>
-                  <input type="date" required value={allowanceFormData.allowanceDate}
+                  <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">折讓日期 *</label>
+                  <input id="f" type="date" required value={allowanceFormData.allowanceDate}
                     onChange={e => setAllowanceFormData({ ...allowanceFormData, allowanceDate: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select value={allowanceFormData.warehouse}
+                  <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select id="f-2" value={allowanceFormData.warehouse}
                     onChange={e => setAllowanceFormData({ ...allowanceFormData, warehouse: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm">
                     <option value="">請選擇</option>
@@ -1061,29 +1066,29 @@ function InvoicePageInner() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
-                  <input type="text" required value={allowanceFormData.supplierName}
+                  <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
+                  <input id="f-3" type="text" required value={allowanceFormData.supplierName}
                     onChange={e => setAllowanceFormData({ ...allowanceFormData, supplierName: e.target.value })}
                     placeholder="廠商名稱"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">原發票號</label>
-                  <input type="text" value={allowanceFormData.invoiceNo}
+                  <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">原發票號</label>
+                  <input id="f-4" type="text" value={allowanceFormData.invoiceNo}
                     onChange={e => setAllowanceFormData({ ...allowanceFormData, invoiceNo: e.target.value })}
                     placeholder="原始發票號碼"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">折讓金額（含稅）*</label>
-                  <input type="number" required min="0.01" step="0.01" value={allowanceFormData.totalAmount}
+                  <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">折讓金額（含稅）*</label>
+                  <input id="f-5" type="number" required min="0.01" step="0.01" value={allowanceFormData.totalAmount}
                     onChange={e => setAllowanceFormData({ ...allowanceFormData, totalAmount: e.target.value, amount: e.target.value })}
                     placeholder="0.00"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">折讓原因</label>
-                  <input type="text" value={allowanceFormData.reason}
+                  <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">折讓原因</label>
+                  <input id="f-6" type="text" value={allowanceFormData.reason}
                     onChange={e => setAllowanceFormData({ ...allowanceFormData, reason: e.target.value })}
                     placeholder="折讓原因"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" />
@@ -1113,10 +1118,10 @@ function InvoicePageInner() {
                 <h4 className="text-md font-semibold mb-3">篩選未核銷的進貨單品項</h4>
                 <div className="grid grid-cols-3 gap-4 mb-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="f-21" className="block text-sm font-medium text-gray-700 mb-1">
                       進貨年月
                     </label>
-                    <input
+                    <input id="f-21"
                       type="month"
                       value={filterData.yearMonth}
                       onChange={(e) => setFilterData({ ...filterData, yearMonth: e.target.value })}
@@ -1124,10 +1129,10 @@ function InvoicePageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="f-22" className="block text-sm font-medium text-gray-700 mb-1">
                       廠商
                     </label>
-                    <select
+                    <select id="f-22"
                       value={filterData.supplierId}
                       onChange={(e) => setFilterData({ ...filterData, supplierId: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1139,10 +1144,10 @@ function InvoicePageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="f-30" className="block text-sm font-medium text-gray-700 mb-1">
                       館別
                     </label>
-                    <select
+                    <select id="f-30"
                       value={filterData.warehouse}
                       onChange={(e) => setFilterData({ ...filterData, warehouse: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1317,10 +1322,10 @@ function InvoicePageInner() {
               {/* 發票資訊 */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-23" className="block text-sm font-medium text-gray-700 mb-1">
                     發票號碼 *
                   </label>
-                  <input
+                  <input id="f-23"
                     type="text"
                     required
                     value={formData.invoiceNo}
@@ -1330,10 +1335,10 @@ function InvoicePageInner() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-24" className="block text-sm font-medium text-gray-700 mb-1">
                     發票日期 *
                   </label>
-                  <input
+                  <input id="f-24"
                     type="date"
                     required
                     value={formData.invoiceDate}
@@ -1418,10 +1423,10 @@ function InvoicePageInner() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-25" className="block text-sm font-medium text-gray-700 mb-1">
                     發票類型 *
                   </label>
-                  <select
+                  <select id="f-25"
                     required
                     value={formData.invoiceType}
                     onChange={(e) => setFormData({ ...formData, invoiceType: e.target.value })}
@@ -1433,10 +1438,10 @@ function InvoicePageInner() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-26" className="block text-sm font-medium text-gray-700 mb-1">
                     發票金額（手動輸入） *
                   </label>
-                  <input
+                  <input id="f-26"
                     type="number"
                     step="0.01"
                     required
@@ -1447,10 +1452,10 @@ function InvoicePageInner() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-27" className="block text-sm font-medium text-gray-700 mb-1">
                     營業稅類型 *
                   </label>
-                  <select
+                  <select id="f-27"
                     required
                     value={formData.taxType}
                     onChange={(e) => setFormData({ ...formData, taxType: e.target.value })}
@@ -1462,10 +1467,10 @@ function InvoicePageInner() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-28" className="block text-sm font-medium text-gray-700 mb-1">
                     營業稅金額（自動計算）
                   </label>
-                  <input
+                  <input id="f-28"
                     type="text"
                     readOnly
                     value={`NT$ ${taxAmount.toFixed(2)}`}
@@ -1473,10 +1478,10 @@ function InvoicePageInner() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-29" className="block text-sm font-medium text-gray-700 mb-1">
                     廠商折讓金額 *
                   </label>
-                  <input
+                  <input id="f-29"
                     type="number"
                     step="0.01"
                     required
@@ -1539,7 +1544,7 @@ function InvoicePageInner() {
                     });
                     setFormData({
                       invoiceNo: '',
-                      invoiceDate: new Date().toISOString().split('T')[0],
+                      invoiceDate: todayStr(),
                       invoiceTitle: '',
                       invoiceType: '進貨單',
                       taxType: '應稅',
@@ -1676,13 +1681,13 @@ function InvoicePageInner() {
                 {/* 篩選列 + 新增按鈕 */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                    <input type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)}
+                    <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                    <input id="f-17" type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)}
                       className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                    <input type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)}
+                    <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                    <input id="f-7" type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)}
                       className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
                   </div>
                   <button type="button" onClick={() => fetchPrivateInvoices(reportDateFrom, reportDateTo)}
@@ -1692,7 +1697,7 @@ function InvoicePageInner() {
                   <div className="ml-auto flex items-center gap-3">
                     <span className="text-sm text-gray-500">{privateDateFiltered.length} 筆 · 合計 <span className="font-bold text-orange-700">NT$ {privateTotal.toLocaleString()}</span></span>
                     <button type="button"
-                      onClick={() => { setShowPrivateForm(true); setEditingPrivateId(null); setPrivateForm({ invoiceDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTitle: '', totalAmount: '', note: '', warehouse: '' }); }}
+                      onClick={() => { setShowPrivateForm(true); setEditingPrivateId(null); setPrivateForm({ invoiceDate: todayStr(), invoiceNo: '', invoiceTitle: '', totalAmount: '', note: '', warehouse: '' }); }}
                       className="px-4 py-1.5 text-sm rounded-lg bg-orange-500 text-white hover:bg-orange-600 font-medium">
                       + 新增業主私帳
                     </button>
@@ -1732,8 +1737,8 @@ function InvoicePageInner() {
                           className="w-full border rounded-lg px-3 py-1.5 text-sm text-right focus:ring-2 focus:ring-orange-400 outline-none" />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-600 mb-1">館別</label>
-                        <select value={privateForm.warehouse}
+                        <label htmlFor="f-18" className="block text-xs text-gray-600 mb-1">館別</label>
+                        <select id="f-18" value={privateForm.warehouse}
                           onChange={e => setPrivateForm(p => ({ ...p, warehouse: e.target.value }))}
                           className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none">
                           <option value="">— 不限 —</option>
@@ -1743,8 +1748,8 @@ function InvoicePageInner() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-600 mb-1">備註</label>
-                        <input type="text" value={privateForm.note} placeholder="備註（選填）"
+                        <label htmlFor="f-8" className="block text-xs text-gray-600 mb-1">備註</label>
+                        <input id="f-8" type="text" value={privateForm.note} placeholder="備註（選填）"
                           onChange={e => setPrivateForm(p => ({ ...p, note: e.target.value }))}
                           className="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 outline-none" />
                       </div>
@@ -1868,26 +1873,26 @@ function InvoicePageInner() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)}
+                  <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f-9" type="date" value={reportDateFrom} onChange={e => setReportDateFrom(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)}
+                  <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-10" type="date" value={reportDateTo} onChange={e => setReportDateTo(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票抬頭</label>
-                  <select value={reportTitle} onChange={e => setReportTitle(e.target.value)}
+                  <label htmlFor="f-11" className="block text-xs text-gray-500 mb-1">發票抬頭</label>
+                  <select id="f-11" value={reportTitle} onChange={e => setReportTitle(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
                     <option value="">全部抬頭</option>
                     {invoiceTitles.map(t => <option key={t.id} value={t.title}>{t.title}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">來源</label>
-                  <select value={reportType} onChange={e => setReportType(e.target.value)}
+                  <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">來源</label>
+                  <select id="f-19" value={reportType} onChange={e => setReportType(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
                     <option value="">全部來源</option>
                     {INVOICE_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1895,8 +1900,8 @@ function InvoicePageInner() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={reportWarehouse} onChange={e => setReportWarehouse(e.target.value)}
+                  <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-20" value={reportWarehouse} onChange={e => setReportWarehouse(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
                     <option value="">全部館別</option>
                     <option value="麗格">麗格</option>
@@ -2185,18 +2190,18 @@ function InvoicePageInner() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始月份</label>
-                  <input type="month" value={statsStartMonth} onChange={e => setStatsStartMonth(e.target.value)}
+                  <label htmlFor="f-12" className="block text-xs text-gray-500 mb-1">起始月份</label>
+                  <input id="f-12" type="month" value={statsStartMonth} onChange={e => setStatsStartMonth(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束月份</label>
-                  <input type="month" value={statsEndMonth} onChange={e => setStatsEndMonth(e.target.value)}
+                  <label htmlFor="f-13" className="block text-xs text-gray-500 mb-1">結束月份</label>
+                  <input id="f-13" type="month" value={statsEndMonth} onChange={e => setStatsEndMonth(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={statsWarehouse} onChange={e => setStatsWarehouse(e.target.value)}
+                  <label htmlFor="f-14" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-14" value={statsWarehouse} onChange={e => setStatsWarehouse(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-400 outline-none">
                     <option value="">全部館別</option>
                     {(statsData?.warehouses || []).map(wh => (
@@ -2467,8 +2472,8 @@ function InvoicePageInner() {
               <option value="折讓">折讓</option>
             </select>
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">起始日期</label>
-              <input
+              <label htmlFor="f-15" className="text-sm text-gray-600">起始日期</label>
+              <input id="f-15"
                 type="date"
                 value={searchDateFrom}
                 onChange={(e) => setSearchDateFrom(e.target.value)}
@@ -2476,8 +2481,8 @@ function InvoicePageInner() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">結束日期</label>
-              <input
+              <label htmlFor="f-16" className="text-sm text-gray-600">結束日期</label>
+              <input id="f-16"
                 type="date"
                 value={searchDateTo}
                 onChange={(e) => setSearchDateTo(e.target.value)}

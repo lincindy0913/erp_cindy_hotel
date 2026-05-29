@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,7 @@ export async function GET(request) {
         monthRented.push(isRented);
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
       const displayYear = String(year);
       // Only count months that have already occurred (or current month) for vacancy rate
       const passedMonths = monthRented.filter((_, i) => {

@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export async function GET(request) {
     const defaultFrom = (() => {
       const d = new Date();
       d.setFullYear(d.getFullYear() - 1);
-      return d.toISOString().split('T')[0];
+      return localDateStr(d);
     })();
 
     const where = {

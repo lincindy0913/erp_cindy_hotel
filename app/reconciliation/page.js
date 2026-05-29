@@ -280,18 +280,18 @@ function ReconciliationPageInner() {
           <div className="bg-white rounded-xl shadow-sm border p-4">
             <div className="flex flex-wrap items-end gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">開始日期</label>
-                <input type="date" value={ccPmsStartDate} onChange={e => setCcPmsStartDate(e.target.value)}
+                <label htmlFor="f" className="block text-xs text-gray-500 mb-1">開始日期</label>
+                <input id="f" type="date" value={ccPmsStartDate} onChange={e => setCcPmsStartDate(e.target.value)}
                   className="border rounded-lg px-3 py-1.5 text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                <input type="date" value={ccPmsEndDate} onChange={e => setCcPmsEndDate(e.target.value)}
+                <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                <input id="f-2" type="date" value={ccPmsEndDate} onChange={e => setCcPmsEndDate(e.target.value)}
                   className="border rounded-lg px-3 py-1.5 text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={ccPmsWarehouse} onChange={e => setCcPmsWarehouse(e.target.value)}
+                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-3" value={ccPmsWarehouse} onChange={e => setCcPmsWarehouse(e.target.value)}
                   className="border rounded-lg px-3 py-1.5 text-sm">
                   <option value="">全部</option>
                   {ccBuildings.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
@@ -427,21 +427,21 @@ function ReconciliationPageInner() {
       <div className="bg-white rounded-xl shadow-sm border p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">月份</label>
-            <input type="month" value={ccMonth} onChange={e => setCcMonth(e.target.value)}
+            <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">月份</label>
+            <input id="f-4" type="month" value={ccMonth} onChange={e => setCcMonth(e.target.value)}
               className="border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">館別</label>
-            <select value={ccWarehouseFilter} onChange={e => setCcWarehouseFilter(e.target.value)}
+            <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">館別</label>
+            <select id="f-5" value={ccWarehouseFilter} onChange={e => setCcWarehouseFilter(e.target.value)}
               className="border rounded-lg px-3 py-1.5 text-sm">
               <option value="">全部</option>
               {ccBuildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">狀態</label>
-            <select value={ccStatusFilter} onChange={e => setCcStatusFilter(e.target.value)}
+            <label htmlFor="f-30" className="block text-xs text-gray-500 mb-1">狀態</label>
+            <select id="f-30" value={ccStatusFilter} onChange={e => setCcStatusFilter(e.target.value)}
               className="border rounded-lg px-3 py-1.5 text-sm">
               <option value="all">全部</option>
               <option value="pending">待對帳</option>
@@ -776,16 +776,16 @@ function ReconciliationPageInner() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">上傳信用卡對帳單 PDF</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
-                <select value={ccUploadWarehouse} onChange={e => setCcUploadWarehouse(e.target.value)}
+                <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
+                <select id="f-6" value={ccUploadWarehouse} onChange={e => setCcUploadWarehouse(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm">
                   <option value="">選擇館別</option>
                   {ccBuildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">銀行 *</label>
-                <select value={ccBankType} onChange={e => { setCcBankType(e.target.value); setCcParsedData(null); }}
+                <label htmlFor="f-31" className="block text-sm font-medium text-gray-700 mb-1">銀行 *</label>
+                <select id="f-31" value={ccBankType} onChange={e => { setCcBankType(e.target.value); setCcParsedData(null); }}
                   className="w-full border rounded-lg px-3 py-2 text-sm">
                   <option value="國泰世華">國泰世華</option>
                   <option value="玉山">玉山銀行</option>
@@ -799,8 +799,8 @@ function ReconciliationPageInner() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">選擇 PDF 檔案</label>
-                <input type="file" accept=".pdf,.txt" onChange={handleCcPdfUpload}
+                <label htmlFor="pdf" className="block text-sm font-medium text-gray-700 mb-1">選擇 PDF 檔案</label>
+                <input id="pdf" type="file" accept=".pdf,.txt" onChange={handleCcPdfUpload}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
                 <p className="text-xs text-gray-400 mt-1">
                   {ccBankType === '國泰世華' ? '支援國泰世華信用卡特約商店撥款對帳單 PDF' : `支援 ${ccBankType} 信用卡特約商店對帳單 PDF（通用解析）`}
@@ -876,52 +876,52 @@ function ReconciliationPageInner() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別 *</label>
-                  <select value={ccConfigForm.warehouseId} onChange={e => setCcConfigForm({...ccConfigForm, warehouseId: e.target.value})}
+                  <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">館別 *</label>
+                  <select id="f-7" value={ccConfigForm.warehouseId} onChange={e => setCcConfigForm({...ccConfigForm, warehouseId: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm">
                     <option value="">選擇</option>
                     {ccBuildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">銀行名稱 *</label>
-                  <input type="text" value={ccConfigForm.bankName} onChange={e => setCcConfigForm({...ccConfigForm, bankName: e.target.value})}
+                  <label htmlFor="f-32" className="block text-xs text-gray-500 mb-1">銀行名稱 *</label>
+                  <input id="f-32" type="text" value={ccConfigForm.bankName} onChange={e => setCcConfigForm({...ccConfigForm, bankName: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">特店代號 *</label>
-                  <input type="text" value={ccConfigForm.merchantId} onChange={e => setCcConfigForm({...ccConfigForm, merchantId: e.target.value})}
+                  <label htmlFor="f-33" className="block text-xs text-gray-500 mb-1">特店代號 *</label>
+                  <input id="f-33" type="text" value={ccConfigForm.merchantId} onChange={e => setCcConfigForm({...ccConfigForm, merchantId: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" placeholder="例: 310800073" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">特店名稱</label>
-                  <input type="text" value={ccConfigForm.merchantName} onChange={e => setCcConfigForm({...ccConfigForm, merchantName: e.target.value})}
+                  <label htmlFor="f-8" className="block text-xs text-gray-500 mb-1">特店名稱</label>
+                  <input id="f-8" type="text" value={ccConfigForm.merchantName} onChange={e => setCcConfigForm({...ccConfigForm, merchantName: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">入帳帳號</label>
-                <input type="text" value={ccConfigForm.accountNo} onChange={e => setCcConfigForm({...ccConfigForm, accountNo: e.target.value})}
+                <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">入帳帳號</label>
+                <input id="f-9" type="text" value={ccConfigForm.accountNo} onChange={e => setCcConfigForm({...ccConfigForm, accountNo: e.target.value})}
                   className="w-full border rounded-lg px-3 py-1.5 text-sm" />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">國內手續費率%</label>
-                  <input type="number" step="0.01" value={ccConfigForm.domesticFeeRate}
+                  <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">國內手續費率%</label>
+                  <input id="f-10" type="number" step="0.01" value={ccConfigForm.domesticFeeRate}
                     onChange={e => setCcConfigForm({...ccConfigForm, domesticFeeRate: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">國外手續費率%</label>
-                  <input type="number" step="0.01" value={ccConfigForm.foreignFeeRate}
+                  <label htmlFor="f-11" className="block text-xs text-gray-500 mb-1">國外手續費率%</label>
+                  <input id="f-11" type="number" step="0.01" value={ccConfigForm.foreignFeeRate}
                     onChange={e => setCcConfigForm({...ccConfigForm, foreignFeeRate: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">自行卡費率%</label>
-                  <input type="number" step="0.01" value={ccConfigForm.selfFeeRate}
+                  <label htmlFor="f-12" className="block text-xs text-gray-500 mb-1">自行卡費率%</label>
+                  <input id="f-12" type="number" step="0.01" value={ccConfigForm.selfFeeRate}
                     onChange={e => setCcConfigForm({...ccConfigForm, selfFeeRate: e.target.value})}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                 </div>
@@ -1015,8 +1015,8 @@ function ReconciliationPageInner() {
             <div className="bg-white rounded-xl shadow-sm border p-4 mb-6">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-600">年份</label>
-                  <select
+                  <label htmlFor="f-13" className="text-sm font-medium text-gray-600">年份</label>
+                  <select id="f-13"
                     value={dashYear}
                     onChange={e => setDashYear(parseInt(e.target.value))}
                     className="border rounded-lg px-3 py-1.5 text-sm"
@@ -1027,8 +1027,8 @@ function ReconciliationPageInner() {
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-600">月份</label>
-                  <select
+                  <label htmlFor="f-38" className="text-sm font-medium text-gray-600">月份</label>
+                  <select id="f-38"
                     value={dashMonth}
                     onChange={e => setDashMonth(parseInt(e.target.value))}
                     className="border rounded-lg px-3 py-1.5 text-sm"
@@ -1039,8 +1039,8 @@ function ReconciliationPageInner() {
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-600">狀態</label>
-                  <select
+                  <label htmlFor="f-39" className="text-sm font-medium text-gray-600">狀態</label>
+                  <select id="f-39"
                     value={dashFilter}
                     onChange={e => setDashFilter(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm"
@@ -1184,8 +1184,8 @@ function ReconciliationPageInner() {
             <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-600">帳戶</label>
-                  <select
+                  <label htmlFor="f-14" className="text-sm font-medium text-gray-600">帳戶</label>
+                  <select id="f-14"
                     value={selectedAccountId}
                     onChange={e => setSelectedAccountId(e.target.value)}
                     className="border rounded-lg px-3 py-1.5 text-sm min-w-[200px]"
@@ -1197,14 +1197,14 @@ function ReconciliationPageInner() {
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-600">年份</label>
-                  <select value={acctYear} onChange={e => setAcctYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-1.5 text-sm">
+                  <label htmlFor="f-40" className="text-sm font-medium text-gray-600">年份</label>
+                  <select id="f-40" value={acctYear} onChange={e => setAcctYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-1.5 text-sm">
                     {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-600">月份</label>
-                  <select value={acctMonth} onChange={e => setAcctMonth(parseInt(e.target.value))} className="border rounded-lg px-3 py-1.5 text-sm">
+                  <label htmlFor="f-34" className="text-sm font-medium text-gray-600">月份</label>
+                  <select id="f-34" value={acctMonth} onChange={e => setAcctMonth(parseInt(e.target.value))} className="border rounded-lg px-3 py-1.5 text-sm">
                     {Array.from({ length: 12 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m} 月</option>)}
                   </select>
                 </div>
@@ -1274,8 +1274,8 @@ function ReconciliationPageInner() {
                 <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
                   <div className="flex flex-wrap items-end gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">銀行存簿期末餘額</label>
-                      <input
+                      <label htmlFor="f-15" className="block text-sm font-medium text-gray-600 mb-1">銀行存簿期末餘額</label>
+                      <input id="f-15"
                         type="number"
                         value={bankBalanceInput}
                         onChange={e => setBankBalanceInput(e.target.value)}
@@ -1583,8 +1583,8 @@ function ReconciliationPageInner() {
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">新增自訂銀行格式</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">銀行名稱 *</label>
-                    <input
+                    <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">銀行名稱 *</label>
+                    <input id="f-16"
                       type="text"
                       value={formatForm.bankName}
                       onChange={e => setFormatForm({ ...formatForm, bankName: e.target.value })}
@@ -1593,8 +1593,8 @@ function ReconciliationPageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">銀行代碼</label>
-                    <input
+                    <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">銀行代碼</label>
+                    <input id="f-17"
                       type="text"
                       value={formatForm.bankCode}
                       onChange={e => setFormatForm({ ...formatForm, bankCode: e.target.value })}
@@ -1603,8 +1603,8 @@ function ReconciliationPageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">檔案編碼</label>
-                    <select
+                    <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">檔案編碼</label>
+                    <select id="f-18"
                       value={formatForm.fileEncoding}
                       onChange={e => setFormatForm({ ...formatForm, fileEncoding: e.target.value })}
                       className="w-full border rounded-lg px-3 py-1.5 text-sm"
@@ -1615,8 +1615,8 @@ function ReconciliationPageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">日期欄位名稱</label>
-                    <input
+                    <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">日期欄位名稱</label>
+                    <input id="f-19"
                       type="text"
                       value={formatForm.dateColumn}
                       onChange={e => setFormatForm({ ...formatForm, dateColumn: e.target.value })}
@@ -1625,8 +1625,8 @@ function ReconciliationPageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">日期格式</label>
-                    <select
+                    <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">日期格式</label>
+                    <select id="f-20"
                       value={formatForm.dateFormat}
                       onChange={e => setFormatForm({ ...formatForm, dateFormat: e.target.value })}
                       className="w-full border rounded-lg px-3 py-1.5 text-sm"
@@ -1638,8 +1638,8 @@ function ReconciliationPageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">說明欄位名稱</label>
-                    <input
+                    <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">說明欄位名稱</label>
+                    <input id="f-21"
                       type="text"
                       value={formatForm.descriptionColumn}
                       onChange={e => setFormatForm({ ...formatForm, descriptionColumn: e.target.value })}
@@ -1648,8 +1648,8 @@ function ReconciliationPageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">提款欄位名稱</label>
-                    <input
+                    <label htmlFor="f-22" className="block text-xs text-gray-500 mb-1">提款欄位名稱</label>
+                    <input id="f-22"
                       type="text"
                       value={formatForm.debitColumn}
                       onChange={e => setFormatForm({ ...formatForm, debitColumn: e.target.value })}
@@ -1658,8 +1658,8 @@ function ReconciliationPageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">存入欄位名稱</label>
-                    <input
+                    <label htmlFor="f-23" className="block text-xs text-gray-500 mb-1">存入欄位名稱</label>
+                    <input id="f-23"
                       type="text"
                       value={formatForm.creditColumn}
                       onChange={e => setFormatForm({ ...formatForm, creditColumn: e.target.value })}
@@ -1668,8 +1668,8 @@ function ReconciliationPageInner() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">餘額欄位名稱</label>
-                    <input
+                    <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">餘額欄位名稱</label>
+                    <input id="f-24"
                       type="text"
                       value={formatForm.balanceColumn}
                       onChange={e => setFormatForm({ ...formatForm, balanceColumn: e.target.value })}
@@ -1766,13 +1766,13 @@ function ReconciliationPageInner() {
               <div className="bg-white rounded-xl shadow-sm border p-4 mb-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-600">年份</label>
-                    <input type="number" value={rentalReconYear} onChange={e => setRentalReconYear(Number(e.target.value))}
+                    <label htmlFor="f-35" className="text-sm font-medium text-gray-600">年份</label>
+                    <input id="f-35" type="number" value={rentalReconYear} onChange={e => setRentalReconYear(Number(e.target.value))}
                       className="border rounded px-2 py-1 w-20 text-sm" />
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-600">月份</label>
-                    <select value={rentalReconMonth} onChange={e => setRentalReconMonth(e.target.value)}
+                    <label htmlFor="f-36" className="text-sm font-medium text-gray-600">月份</label>
+                    <select id="f-36" value={rentalReconMonth} onChange={e => setRentalReconMonth(e.target.value)}
                       className="border rounded px-2 py-1 text-sm">
                       <option value="">全部</option>
                       {Array.from({ length: 12 }, (_, i) => (
@@ -1781,8 +1781,8 @@ function ReconciliationPageInner() {
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-600">收款帳戶</label>
-                    <select value={rentalReconAccountId} onChange={e => setRentalReconAccountId(e.target.value)}
+                    <label htmlFor="f-25" className="text-sm font-medium text-gray-600">收款帳戶</label>
+                    <select id="f-25" value={rentalReconAccountId} onChange={e => setRentalReconAccountId(e.target.value)}
                       className="border rounded px-2 py-1 text-sm min-w-[180px]">
                       <option value="">全部收款帳戶</option>
                       {accounts.map(a => (
@@ -1793,8 +1793,8 @@ function ReconciliationPageInner() {
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-600">付款方式</label>
-                    <select value={rentalReconMethodFilter} onChange={e => setRentalReconMethodFilter(e.target.value)}
+                    <label htmlFor="f-37" className="text-sm font-medium text-gray-600">付款方式</label>
+                    <select id="f-37" value={rentalReconMethodFilter} onChange={e => setRentalReconMethodFilter(e.target.value)}
                       className="border rounded px-2 py-1 text-sm">
                       <option value="">全部</option>
                       <option value="transfer">轉帳</option>
@@ -1898,8 +1898,8 @@ function ReconciliationPageInner() {
               <h3 className="text-lg font-semibold text-gray-800 mb-4">匯入銀行對帳單 (CSV / Excel / PDF)</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">銀行格式</label>
-                  <select
+                  <label htmlFor="f-26" className="block text-sm text-gray-600 mb-1">銀行格式</label>
+                  <select id="f-26"
                     value={selectedFormatId}
                     onChange={e => setSelectedFormatId(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -1985,8 +1985,8 @@ function ReconciliationPageInner() {
               <h3 className="text-lg font-semibold text-gray-800 mb-4">補建調整交易</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">金額</label>
-                  <input
+                  <label htmlFor="f-27" className="block text-sm text-gray-600 mb-1">金額</label>
+                  <input id="f-27"
                     type="number"
                     value={adjustForm.amount}
                     onChange={e => setAdjustForm({ ...adjustForm, amount: e.target.value })}
@@ -1995,8 +1995,8 @@ function ReconciliationPageInner() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">說明 *</label>
-                  <input
+                  <label htmlFor="f-28" className="block text-sm text-gray-600 mb-1">說明 *</label>
+                  <input id="f-28"
                     type="text"
                     value={adjustForm.description}
                     onChange={e => setAdjustForm({ ...adjustForm, description: e.target.value })}
@@ -2005,8 +2005,8 @@ function ReconciliationPageInner() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">交易日期</label>
-                  <input
+                  <label htmlFor="f-29" className="block text-sm text-gray-600 mb-1">交易日期</label>
+                  <input id="f-29"
                     type="date"
                     value={adjustForm.transactionDate}
                     onChange={e => setAdjustForm({ ...adjustForm, transactionDate: e.target.value })}

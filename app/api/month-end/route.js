@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, getAllowedWarehouse } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -248,7 +249,7 @@ export async function POST(request) {
     // Check purchases with status='待入庫' older than 30 days
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    const thirtyDaysAgoStr = localDateStr(thirtyDaysAgo);
 
     const pendingPurchaseWhere = {
       status: '待入庫',
@@ -269,7 +270,7 @@ export async function POST(request) {
     // Check invoices with status='待核銷' older than 60 days
     const sixtyDaysAgo = new Date(now);
     sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+    const sixtyDaysAgoStr = localDateStr(sixtyDaysAgo);
 
     const pendingInvoices = await prisma.salesMaster.count({
       where: {
@@ -387,7 +388,7 @@ export async function POST(request) {
     // spec26: Check cash count completion for the last day of the month
     try {
       const lastDayOfMonth = new Date(year, month, 0); // last day of given month
-      const lastDayStr = lastDayOfMonth.toISOString().split('T')[0];
+      const lastDayStr = localDateStr(lastDayOfMonth);
 
       const cashAccountsAll = await prisma.cashAccount.findMany({
         where: {

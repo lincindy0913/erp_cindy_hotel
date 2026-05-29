@@ -21,6 +21,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { localDateStr, todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,7 @@ function parseDate(raw) {
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   if (/^\d+$/.test(s)) {
     const d = new Date((parseInt(s) - 25569) * 86400 * 1000);
-    return d.toISOString().slice(0, 10);
+    return localDateStr(d);
   }
   return s.slice(0, 10);
 }
@@ -305,7 +306,7 @@ export async function POST(request) {
     };
 
     // 非同步儲存比對記錄（失敗不影響回傳）
-    const reconcileMonth = (dateFrom || minDate || '').substring(0, 7) || new Date().toISOString().substring(0, 7);
+    const reconcileMonth = (dateFrom || minDate || '').substring(0, 7) || todayStr().slice(0, 7);
     const userName = auth.session?.user?.name || auth.session?.user?.email || null;
     prisma.bnbOtaReconcileLog.create({
       data: {

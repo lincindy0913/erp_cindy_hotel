@@ -563,14 +563,14 @@ function CompanyExpensesPageInner() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-600">日期 *</label>
-                      <input type="date" value={expenseForm.expenseDate}
+                      <label htmlFor="f" className="text-xs text-gray-600">日期 *</label>
+                      <input id="f" type="date" value={expenseForm.expenseDate}
                         onChange={e => setExpenseForm(f => ({ ...f, expenseDate: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">期間</label>
-                      <select value={expenseForm.period}
+                      <label htmlFor="f-2" className="text-xs text-gray-600">期間</label>
+                      <select id="f-2" value={expenseForm.period}
                         onChange={e => setExpenseForm(f => ({ ...f, period: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm">
                         <option value="">—</option>
@@ -580,59 +580,59 @@ function CompanyExpensesPageInner() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-600">發票號碼</label>
-                      <input value={expenseForm.invoiceNo}
+                      <label htmlFor="f-18" className="text-xs text-gray-600">發票號碼</label>
+                      <input id="f-18" value={expenseForm.invoiceNo}
                         onChange={e => setExpenseForm(f => ({ ...f, invoiceNo: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">廠商統編</label>
-                      <input value={expenseForm.vendorTaxId}
+                      <label htmlFor="f-19" className="text-xs text-gray-600">廠商統編</label>
+                      <input id="f-19" value={expenseForm.vendorTaxId}
                         onChange={e => setExpenseForm(f => ({ ...f, vendorTaxId: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">廠商名稱</label>
-                    <input value={expenseForm.vendorName}
+                    <label htmlFor="f-3" className="text-xs text-gray-600">廠商名稱</label>
+                    <input id="f-3" value={expenseForm.vendorName}
                       onChange={e => setExpenseForm(f => ({ ...f, vendorName: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">品名</label>
-                    <input value={expenseForm.itemName}
+                    <label htmlFor="f-4" className="text-xs text-gray-600">品名</label>
+                    <input id="f-4" value={expenseForm.itemName}
                       onChange={e => setExpenseForm(f => ({ ...f, itemName: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>
                   <div className="grid grid-cols-4 gap-2">
                     <div>
-                      <label className="text-xs text-gray-600">銷售額</label>
-                      <input type="number" value={expenseForm.amount}
+                      <label htmlFor="f-5" className="text-xs text-gray-600">銷售額</label>
+                      <input id="f-5" type="number" value={expenseForm.amount}
                         onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">稅額</label>
-                      <input type="number" value={expenseForm.taxAmount}
+                      <label htmlFor="f-6" className="text-xs text-gray-600">稅額</label>
+                      <input id="f-6" type="number" value={expenseForm.taxAmount}
                         onChange={e => setExpenseForm(f => ({ ...f, taxAmount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">其他費用</label>
-                      <input type="number" value={expenseForm.otherAmount}
+                      <label htmlFor="f-7" className="text-xs text-gray-600">其他費用</label>
+                      <input id="f-7" type="number" value={expenseForm.otherAmount}
                         onChange={e => setExpenseForm(f => ({ ...f, otherAmount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">總計</label>
-                      <input type="number" value={expenseForm.totalAmount}
+                      <label htmlFor="f-8" className="text-xs text-gray-600">總計</label>
+                      <input id="f-8" type="number" value={expenseForm.totalAmount}
                         onChange={e => setExpenseForm(f => ({ ...f, totalAmount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">備註</label>
-                    <input value={expenseForm.note}
+                    <label htmlFor="f-9" className="text-xs text-gray-600">備註</label>
+                    <input id="f-9" value={expenseForm.note}
                       onChange={e => setExpenseForm(f => ({ ...f, note: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>
@@ -641,14 +641,14 @@ function CompanyExpensesPageInner() {
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-600">日期 *</label>
-                      <input type="date" value={invoiceForm.invoiceDate}
+                      <label htmlFor="f-10" className="text-xs text-gray-600">日期 *</label>
+                      <input id="f-10" type="date" value={invoiceForm.invoiceDate}
                         onChange={e => setInvoiceForm(f => ({ ...f, invoiceDate: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">期間</label>
-                      <select value={invoiceForm.period}
+                      <label htmlFor="f-11" className="text-xs text-gray-600">期間</label>
+                      <select id="f-11" value={invoiceForm.period}
                         onChange={e => setInvoiceForm(f => ({ ...f, period: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm">
                         <option value="">—</option>
@@ -658,28 +658,28 @@ function CompanyExpensesPageInner() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-600">發票號碼</label>
-                      <input value={invoiceForm.invoiceNo}
+                      <label htmlFor="f-20" className="text-xs text-gray-600">發票號碼</label>
+                      <input id="f-20" value={invoiceForm.invoiceNo}
                         onChange={e => setInvoiceForm(f => ({ ...f, invoiceNo: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">廠商統編</label>
-                      <input value={invoiceForm.vendorTaxId}
+                      <label htmlFor="f-21" className="text-xs text-gray-600">廠商統編</label>
+                      <input id="f-21" value={invoiceForm.vendorTaxId}
                         onChange={e => setInvoiceForm(f => ({ ...f, vendorTaxId: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">廠商名稱</label>
-                    <input value={invoiceForm.vendorName}
+                    <label htmlFor="f-12" className="text-xs text-gray-600">廠商名稱</label>
+                    <input id="f-12" value={invoiceForm.vendorName}
                       onChange={e => setInvoiceForm(f => ({ ...f, vendorName: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-600">材料別</label>
-                      <select value={invoiceForm.materialType}
+                      <label htmlFor="f-13" className="text-xs text-gray-600">材料別</label>
+                      <select id="f-13" value={invoiceForm.materialType}
                         onChange={e => setInvoiceForm(f => ({ ...f, materialType: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm">
                         <option value="">—</option>
@@ -687,8 +687,8 @@ function CompanyExpensesPageInner() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">工程案</label>
-                      <select value={invoiceForm.projectId}
+                      <label htmlFor="f-22" className="text-xs text-gray-600">工程案</label>
+                      <select id="f-22" value={invoiceForm.projectId}
                         onChange={e => setInvoiceForm(f => ({ ...f, projectId: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm">
                         <option value="">—</option>
@@ -697,40 +697,40 @@ function CompanyExpensesPageInner() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">材料名稱</label>
-                    <input value={invoiceForm.itemName}
+                    <label htmlFor="f-23" className="text-xs text-gray-600">材料名稱</label>
+                    <input id="f-23" value={invoiceForm.itemName}
                       onChange={e => setInvoiceForm(f => ({ ...f, itemName: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="text-xs text-gray-600">金額</label>
-                      <input type="number" value={invoiceForm.amount}
+                      <label htmlFor="f-24" className="text-xs text-gray-600">金額</label>
+                      <input id="f-24" type="number" value={invoiceForm.amount}
                         onChange={e => setInvoiceForm(f => ({ ...f, amount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">稅金</label>
-                      <input type="number" value={invoiceForm.taxAmount}
+                      <label htmlFor="f-14" className="text-xs text-gray-600">稅金</label>
+                      <input id="f-14" type="number" value={invoiceForm.taxAmount}
                         onChange={e => setInvoiceForm(f => ({ ...f, taxAmount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">總金額</label>
-                      <input type="number" value={invoiceForm.totalAmount}
+                      <label htmlFor="f-15" className="text-xs text-gray-600">總金額</label>
+                      <input id="f-15" type="number" value={invoiceForm.totalAmount}
                         onChange={e => setInvoiceForm(f => ({ ...f, totalAmount: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">地點</label>
-                    <input value={invoiceForm.location}
+                    <label htmlFor="f-16" className="text-xs text-gray-600">地點</label>
+                    <input id="f-16" value={invoiceForm.location}
                       onChange={e => setInvoiceForm(f => ({ ...f, location: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">備註</label>
-                    <input value={invoiceForm.note}
+                    <label htmlFor="f-17" className="text-xs text-gray-600">備註</label>
+                    <input id="f-17" value={invoiceForm.note}
                       onChange={e => setInvoiceForm(f => ({ ...f, note: e.target.value }))}
                       className="w-full border rounded px-2 py-1.5 text-sm" />
                   </div>

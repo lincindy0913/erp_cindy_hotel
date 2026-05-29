@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { validateWarehouse } from '@/lib/master-data-validator';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,7 +55,7 @@ export async function POST(request) {
 
     // Generate advanceNo: ADV-YYYYMMDD-XXXX
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+    const dateStr = localDateStr(now).replace(/-/g, '');
     const prefix = `ADV-${dateStr}-`;
     const existing = await prisma.employeeAdvance.findMany({
       where: { advanceNo: { startsWith: prefix } },

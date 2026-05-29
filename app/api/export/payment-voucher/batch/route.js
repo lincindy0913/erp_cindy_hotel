@@ -5,6 +5,7 @@ import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { renderVoucherTablePage } from '@/lib/voucher-pdf-renderer';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -212,9 +213,9 @@ export async function POST(request) {
           // Price notes for this order (1-year window, all products)
           if (productMapForOrder.size > 0 && order.supplierId) {
             const earliestDate = sortedDatesForOrder[0] || '';
-            const oneYearAgoDate = new Date((earliestDate || new Date().toISOString().split('T')[0]) + 'T00:00:00Z');
+            const oneYearAgoDate = new Date((earliestDate || todayStr()) + 'T00:00:00Z');
             oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
-            const oneYearAgoStr = oneYearAgoDate.toISOString().split('T')[0];
+            const oneYearAgoStr = localDateStr(oneYearAgoDate);
             const relevantHistory = allPriceHistory.filter(h =>
               h.supplierId === order.supplierId &&
               h.purchaseDate < earliestDate &&

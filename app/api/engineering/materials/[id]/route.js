@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +63,7 @@ export async function PUT(request, { params }) {
             });
           } else if (diff > 0) {
             // Create new requisition for additional quantity
-            const date = data.usedAt || oldMaterial.usedAt || new Date().toISOString().slice(0, 10);
+            const date = data.usedAt || oldMaterial.usedAt || todayStr();
             const prefix = `REQ-${date.replace(/-/g, '')}`;
             const last = await prisma.inventoryRequisition.findFirst({
               where: { requisitionNo: { startsWith: prefix } },

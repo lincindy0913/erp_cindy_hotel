@@ -4,6 +4,7 @@ import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS, ROLE_CODES } from '@/lib/permissions';
 import { auditFromSession } from '@/lib/audit';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,10 +60,10 @@ export async function POST(request) {
           total:     opCount + attCount + finCount + admCount,
         },
         cutoffs: {
-          operation: cutoffs.operation.toISOString().split('T')[0],
-          attempt:   cutoffs.attempt.toISOString().split('T')[0],
-          finance:   cutoffs.finance.toISOString().split('T')[0],
-          admin:     cutoffs.admin.toISOString().split('T')[0],
+          operation: localDateStr(cutoffs.operation),
+          attempt:   localDateStr(cutoffs.attempt),
+          finance:   localDateStr(cutoffs.finance),
+          admin:     localDateStr(cutoffs.admin),
         },
         retentionDays,
       });

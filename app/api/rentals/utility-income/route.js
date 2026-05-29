@@ -4,11 +4,12 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getCategoryId } from '@/lib/cash-category-helper';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 async function generateTxNo(prismaClient, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (date || todayStr()).replace(/-/g, '');
   const prefix = `CF-${dateStr}-`;
   const existing = await prismaClient.cashTransaction.findMany({
     where: { transactionNo: { startsWith: prefix } },
@@ -41,7 +42,7 @@ async function ensureUtilityIncomeCashTx(prismaClient, record) {
   const tx = await prismaClient.cashTransaction.create({
     data: {
       transactionNo: txNo,
-      transactionDate: record.actualDate || new Date().toISOString().split('T')[0],
+      transactionDate: record.actualDate || todayStr(),
       type: '收入',
       accountId: acctId,
       categoryId,

@@ -4,6 +4,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getCached, setCached } from '@/lib/server-cache';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,7 @@ export async function POST(request) {
 
     const notifications = [];
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDateStr(today);
 
     // ==============================
     // N01: PMS 報表未匯入 - No PMS import in last 3 days for any warehouse
@@ -55,7 +56,7 @@ export async function POST(request) {
     try {
       const threeDaysAgo = new Date(today);
       threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-      const threeDaysAgoStr = threeDaysAgo.toISOString().split('T')[0];
+      const threeDaysAgoStr = localDateStr(threeDaysAgo);
 
       // Get all active warehouses
       const warehouses = await prisma.warehouse.findMany({
@@ -148,7 +149,7 @@ export async function POST(request) {
     try {
       const threeDaysLater = new Date(today);
       threeDaysLater.setDate(threeDaysLater.getDate() + 3);
-      const threeDaysLaterStr = threeDaysLater.toISOString().split('T')[0];
+      const threeDaysLaterStr = localDateStr(threeDaysLater);
 
       const dueSoonChecks = await prisma.check.findMany({
         where: {
@@ -267,7 +268,7 @@ export async function POST(request) {
     try {
       const sixMonthsLater = new Date(today);
       sixMonthsLater.setDate(sixMonthsLater.getDate() + 180);
-      const sixMonthsLaterStr = sixMonthsLater.toISOString().split('T')[0];
+      const sixMonthsLaterStr = localDateStr(sixMonthsLater);
 
       const expiringLoans = await prisma.loanMaster.findMany({
         where: {
@@ -452,7 +453,7 @@ export async function POST(request) {
     try {
       const threeDaysLater = new Date(today);
       threeDaysLater.setDate(threeDaysLater.getDate() + 3);
-      const threeDaysLaterStr = threeDaysLater.toISOString().split('T')[0];
+      const threeDaysLaterStr = localDateStr(threeDaysLater);
 
       const dueCreditCards = await prisma.creditCardStatement.findMany({
         where: {

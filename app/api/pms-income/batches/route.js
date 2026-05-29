@@ -5,12 +5,13 @@ import { requirePermission, requireAnyPermission, requireSession } from '@/lib/a
 import { PERMISSIONS } from '@/lib/permissions';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { classifySource as _classifySource } from '@/lib/pms-classify';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Generate batch number: PMI-YYYYMMDD-XXX
 async function generateBatchNo(businessDate) {
-  const dateStr = (businessDate || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (businessDate || todayStr()).replace(/-/g, '');
   const prefix = `PMI-${dateStr}-`;
 
   // 取序號最大的一筆，避免載入所有批次再 loop

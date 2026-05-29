@@ -746,8 +746,8 @@ export default function UtilityBillsPage() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                <select
+                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                <select id="f"
                   value={meta.warehouse}
                   onChange={e => setMeta(m => ({ ...m, warehouse: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -758,8 +758,8 @@ export default function UtilityBillsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">年度</label>
-                <input
+                <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">年度</label>
+                <input id="f-11"
                   type="text"
                   value={meta.year}
                   onChange={e => setMeta(m => ({ ...m, year: e.target.value }))}
@@ -768,8 +768,8 @@ export default function UtilityBillsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">月份</label>
-                <input
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">月份</label>
+                <input id="f-2"
                   type="text"
                   value={meta.month}
                   onChange={e => setMeta(m => ({ ...m, month: e.target.value }))}
@@ -778,8 +778,8 @@ export default function UtilityBillsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">從第幾頁開始讀取</label>
-                <input
+                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">從第幾頁開始讀取</label>
+                <input id="f-3"
                   type="number"
                   min={1}
                   value={startPage}
@@ -1023,8 +1023,8 @@ export default function UtilityBillsPage() {
 
                   const renderWaterField = (k) => (
                     <div key={k} className="flex items-center gap-2">
-                      <label className="font-medium text-gray-600 shrink-0 text-xs" style={{ width: k.length > 6 ? '7rem' : '5rem' }}>{k}</label>
-                      <input
+                      <label htmlFor="6-7rem-5rem" className="font-medium text-gray-600 shrink-0 text-xs" style={{ width: k.length > 6 ? '7rem' : '5rem' }}>{k}</label>
+                      <input id="6-7rem-5rem"
                         type="text"
                         value={rec[k] ?? ''}
                         readOnly={readOnlyFields.includes(k)}
@@ -1338,8 +1338,8 @@ export default function UtilityBillsPage() {
               {/* 篩選列 */}
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap gap-3 items-end">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={paymentFilter.warehouse}
+                  <label htmlFor="f-6" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-6" value={paymentFilter.warehouse}
                     onChange={e => setPaymentFilter(f => ({ ...f, warehouse: e.target.value }))}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                     <option value="">全部</option>
@@ -1349,14 +1349,14 @@ export default function UtilityBillsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">年度（民國）</label>
-                  <input type="number" value={paymentFilter.year}
+                  <label htmlFor="f-12" className="block text-xs text-gray-500 mb-1">年度（民國）</label>
+                  <input id="f-12" type="number" value={paymentFilter.year}
                     onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
                     placeholder="例：114" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">類型</label>
-                  <select value={paymentFilter.billType}
+                  <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">類型</label>
+                  <select id="f-7" value={paymentFilter.billType}
                     onChange={e => setPaymentFilter(f => ({ ...f, billType: e.target.value }))}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                     <option value="">全部</option>
@@ -1365,8 +1365,8 @@ export default function UtilityBillsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">付款狀態</label>
-                  <select value={paymentFilter.status}
+                  <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">付款狀態</label>
+                  <select id="f-4" value={paymentFilter.status}
                     onChange={e => setPaymentFilter(f => ({ ...f, status: e.target.value }))}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                     <option value="">全部</option>
@@ -1501,14 +1501,14 @@ export default function UtilityBillsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">年度（民國）</label>
-                  <input type="number" value={analysisFilter.year}
+                  <label htmlFor="f-13" className="block text-xs text-gray-500 mb-1">年度（民國）</label>
+                  <input id="f-13" type="number" value={analysisFilter.year}
                     onChange={e => setAnalysisFilter(f => ({ ...f, year: e.target.value }))}
                     placeholder="例：114" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">類型</label>
-                  <select value={analysisFilter.billType}
+                  <label htmlFor="f-8" className="block text-xs text-gray-500 mb-1">類型</label>
+                  <select id="f-8" value={analysisFilter.billType}
                     onChange={e => setAnalysisFilter(f => ({ ...f, billType: e.target.value }))}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                     <option value="電費">電費</option>
@@ -1635,20 +1635,20 @@ export default function UtilityBillsPage() {
             {/* Filters */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap gap-4 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={detailFilter.warehouse} onChange={e => setDetailFilter(f => ({ ...f, warehouse: e.target.value }))}
+                <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-5" value={detailFilter.warehouse} onChange={e => setDetailFilter(f => ({ ...f, warehouse: e.target.value }))}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   {WAREHOUSE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">年度</label>
-                <input type="text" value={detailFilter.year} onChange={e => setDetailFilter(f => ({ ...f, year: e.target.value }))}
+                <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">年度</label>
+                <input id="f-9" type="text" value={detailFilter.year} onChange={e => setDetailFilter(f => ({ ...f, year: e.target.value }))}
                   placeholder="例：114" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">類型</label>
-                <select value={detailFilter.billType} onChange={e => setDetailFilter(f => ({ ...f, billType: e.target.value }))}
+                <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">類型</label>
+                <select id="f-10" value={detailFilter.billType} onChange={e => setDetailFilter(f => ({ ...f, billType: e.target.value }))}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">全部</option>
                   <option value="水費">水費</option>

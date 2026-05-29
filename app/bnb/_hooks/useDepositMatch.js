@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/context/ToastContext';
+import { todayStr } from '@/lib/localDate';
 
 export function useDepositMatch() {
   const { showToast } = useToast();
 
-  const [dmMonth,     setDmMonth]     = useState(() => new Date().toISOString().slice(0, 7));
+  const [dmMonth,     setDmMonth]     = useState(() => todayStr().slice(0, 7));
   const [dmWarehouse, setDmWarehouse] = useState('');
   const [dmAccountId, setDmAccountId] = useState('');
   const [dmData,      setDmData]      = useState(null);

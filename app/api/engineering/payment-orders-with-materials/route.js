@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,7 @@ export async function POST(request) {
 
     const result = await prisma.$transaction(async (tx) => {
       // Generate PAY-YYYYMMDD-XXXX order number
-      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+      const dateStr = localDateStr(now).replace(/-/g, '');
       const prefix = `PAY-${dateStr}-`;
       const existing = await tx.paymentOrder.findMany({
         where: { orderNo: { startsWith: prefix } },
@@ -107,7 +108,7 @@ export async function POST(request) {
             quantity: matQty,
             unit: mat.unit?.trim() || null,
             unitPrice: parseFloat(mat.unitPrice) || 0,
-            usedAt: now.toISOString().slice(0, 10),
+            usedAt: localDateStr(now),
             note: mat.note?.trim() || `付款單 ${orderNo} 領用`,
           },
         });
@@ -124,7 +125,7 @@ export async function POST(request) {
             const qty = Math.round(matQty);
             if (qty >= 1) {
               const wh = proj?.warehouse || warehouse;
-              const date = now.toISOString().slice(0, 10);
+              const date = localDateStr(now);
               const reqPrefix = `REQ-${date.replace(/-/g, '')}`;
               const lastReq = await tx.inventoryRequisition.findFirst({
                 where: { requisitionNo: { startsWith: reqPrefix } },

@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 const TABS = [
   { key: 'overview',        label: '經營總覽' },
@@ -133,9 +134,9 @@ function AnalyticsPageContent() {
   const [pnl, setPnl] = useState(null);
   const [pnlLoading, setPnlLoading] = useState(false);
   const [pnlStart, setPnlStart] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(1); return localDateStr(d);
   });
-  const [pnlEnd, setPnlEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [pnlEnd, setPnlEnd] = useState(() => todayStr());
   const [pnlWarehouse, setPnlWarehouse] = useState('');
   const [pnlTrace, setPnlTrace] = useState(null);
   const [pnlTraceCtx, setPnlTraceCtx] = useState(null);
@@ -145,17 +146,17 @@ function AnalyticsPageContent() {
   const [supplierPnl, setSupplierPnl] = useState(null);
   const [supplierPnlLoading, setSupplierPnlLoading] = useState(false);
   const [supplierPnlStart, setSupplierPnlStart] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(1); return localDateStr(d);
   });
-  const [supplierPnlEnd, setSupplierPnlEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [supplierPnlEnd, setSupplierPnlEnd] = useState(() => todayStr());
   const [supplierPnlWarehouse, setSupplierPnlWarehouse] = useState('');
   const [supplierPnlSearch, setSupplierPnlSearch] = useState('');
 
   // ── 損益彙總（整體 P&L，/api/analytics/pnl）────────────────────
   const [pnlSumStart, setPnlSumStart] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(1); return localDateStr(d);
   });
-  const [pnlSumEnd, setPnlSumEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [pnlSumEnd, setPnlSumEnd] = useState(() => todayStr());
   const [pnlSumWarehouse, setPnlSumWarehouse] = useState('');
   const [pnlSummaryData, setPnlSummaryData] = useState(null);
   const [pnlSummaryLoading, setPnlSummaryLoading] = useState(false);
@@ -185,9 +186,9 @@ function AnalyticsPageContent() {
   const [procurementStruct, setProcurementStruct] = useState(null);
   const [procurementStructLoading, setProcurementStructLoading] = useState(false);
   const [procStart, setProcStart] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(1); return localDateStr(d);
   });
-  const [procEnd, setProcEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [procEnd, setProcEnd] = useState(() => todayStr());
   const [procWarehouse, setProcWarehouse] = useState('');
   /** 早餐人數 vs 品項採購（procurement-vs-breakfast） */
   const [pvYearMonth, setPvYearMonth] = useState(() => {
@@ -220,9 +221,9 @@ function AnalyticsPageContent() {
   const [spItems, setSpItems] = useState(null);
   const [spItemsLoading, setSpItemsLoading] = useState(false);
   const [spItemsStart, setSpItemsStart] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(1); return localDateStr(d);
   });
-  const [spItemsEnd, setSpItemsEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [spItemsEnd, setSpItemsEnd] = useState(() => todayStr());
   const [spItemsWarehouse, setSpItemsWarehouse] = useState('');
   const [spItemsSupplierId, setSpItemsSupplierId] = useState('');
   const [suppliersFullList, setSuppliersFullList] = useState([]); // [{id, name}]
@@ -231,17 +232,17 @@ function AnalyticsPageContent() {
   const [occCost, setOccCost] = useState(null);
   const [occCostLoading, setOccCostLoading] = useState(false);
   const [occCostStart, setOccCostStart] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 89); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(d.getDate() - 89); return localDateStr(d);
   });
-  const [occCostEnd, setOccCostEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [occCostEnd, setOccCostEnd] = useState(() => todayStr());
   const [occCostWarehouse, setOccCostWarehouse] = useState('');
   const [occCostCategory, setOccCostCategory] = useState('');
 
   // ── 營運入住統計（occupancy-stats API，純 PMS 量體）──────────────
   const [occStatsStart, setOccStatsStart] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(d.getDate() - 29); return localDateStr(d);
   });
-  const [occStatsEnd, setOccStatsEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [occStatsEnd, setOccStatsEnd] = useState(() => todayStr());
   const [occStatsWarehouse, setOccStatsWarehouse] = useState('');
   const [occStatsGroupBy, setOccStatsGroupBy] = useState('day');
   const [occStatsPayload, setOccStatsPayload] = useState(null);
@@ -697,18 +698,18 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input type="date" value={pnlStart} onChange={e => setPnlStart(e.target.value)}
+                  <label htmlFor="f" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f" type="date" value={pnlStart} onChange={e => setPnlStart(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input type="date" value={pnlEnd} onChange={e => setPnlEnd(e.target.value)}
+                  <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-2" type="date" value={pnlEnd} onChange={e => setPnlEnd(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <select value={pnlWarehouse} onChange={e => setPnlWarehouse(e.target.value)}
+                  <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select id="f-3" value={pnlWarehouse} onChange={e => setPnlWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="">全部館別</option>
                     {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
@@ -734,26 +735,26 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input type="date" value={supplierPnlStart} onChange={e => setSupplierPnlStart(e.target.value)}
+                  <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f-4" type="date" value={supplierPnlStart} onChange={e => setSupplierPnlStart(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input type="date" value={supplierPnlEnd} onChange={e => setSupplierPnlEnd(e.target.value)}
+                  <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-5" type="date" value={supplierPnlEnd} onChange={e => setSupplierPnlEnd(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <select value={supplierPnlWarehouse} onChange={e => setSupplierPnlWarehouse(e.target.value)}
+                  <label htmlFor="f-6" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select id="f-6" value={supplierPnlWarehouse} onChange={e => setSupplierPnlWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="">全部館別</option>
                     {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">搜尋廠商</label>
-                  <select value={supplierPnlSearch} onChange={e => setSupplierPnlSearch(e.target.value)}
+                  <label htmlFor="f-25" className="block text-xs text-gray-500 mb-1">搜尋廠商</label>
+                  <select id="f-25" value={supplierPnlSearch} onChange={e => setSupplierPnlSearch(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="">全部廠商</option>
                     {suppliersList.map(s => <option key={s} value={s}>{s}</option>)}
@@ -779,18 +780,18 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input type="date" value={pnlSumStart} onChange={e => setPnlSumStart(e.target.value)}
+                  <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f-7" type="date" value={pnlSumStart} onChange={e => setPnlSumStart(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input type="date" value={pnlSumEnd} onChange={e => setPnlSumEnd(e.target.value)}
+                  <label htmlFor="f-8" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-8" type="date" value={pnlSumEnd} onChange={e => setPnlSumEnd(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <select value={pnlSumWarehouse} onChange={e => setPnlSumWarehouse(e.target.value)}
+                  <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select id="f-9" value={pnlSumWarehouse} onChange={e => setPnlSumWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="">全部館別</option>
                     {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
@@ -816,8 +817,8 @@ function AnalyticsPageContent() {
           <div className="space-y-5">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-end gap-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">預測天數</label>
-                <select value={forecastDays} onChange={e => setForecastDays(Number(e.target.value))}
+                <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">預測天數</label>
+                <select id="f-10" value={forecastDays} onChange={e => setForecastDays(Number(e.target.value))}
                   className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                   <option value={7}>7 天</option>
                   <option value={14}>14 天</option>
@@ -878,8 +879,8 @@ function AnalyticsPageContent() {
               <>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
-                    <input type="text" value={riskMonth} onChange={e => setRiskMonth(e.target.value)}
+                    <label htmlFor="yyyymm" className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
+                    <input id="yyyymm" type="text" value={riskMonth} onChange={e => setRiskMonth(e.target.value)}
                       placeholder="202506" maxLength={6}
                       className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-32 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                   </div>
@@ -900,18 +901,18 @@ function AnalyticsPageContent() {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                   <div className="flex flex-wrap items-end gap-4">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">進貨起始日</label>
-                      <input type="date" value={procStart} onChange={e => setProcStart(e.target.value)}
+                      <label htmlFor="f-11" className="block text-xs text-gray-500 mb-1">進貨起始日</label>
+                      <input id="f-11" type="date" value={procStart} onChange={e => setProcStart(e.target.value)}
                         className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">進貨結束日</label>
-                      <input type="date" value={procEnd} onChange={e => setProcEnd(e.target.value)}
+                      <label htmlFor="f-12" className="block text-xs text-gray-500 mb-1">進貨結束日</label>
+                      <input id="f-12" type="date" value={procEnd} onChange={e => setProcEnd(e.target.value)}
                         className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                      <select value={procWarehouse} onChange={e => setProcWarehouse(e.target.value)}
+                      <label htmlFor="f-13" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                      <select id="f-13" value={procWarehouse} onChange={e => setProcWarehouse(e.target.value)}
                         className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                         <option value="">全部館別</option>
                         {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
@@ -935,8 +936,8 @@ function AnalyticsPageContent() {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                   <div className="flex flex-wrap items-end gap-4">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">年月（YYYY-MM）</label>
-                      <input
+                      <label htmlFor="yyyy-mm" className="block text-xs text-gray-500 mb-1">年月（YYYY-MM）</label>
+                      <input id="yyyy-mm"
                         type="month"
                         value={pvYearMonth.length >= 7 ? pvYearMonth.substring(0, 7) : pvYearMonth}
                         onChange={(e) => setPvYearMonth(e.target.value)}
@@ -944,8 +945,8 @@ function AnalyticsPageContent() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                      <select
+                      <label htmlFor="f-14" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                      <select id="f-14"
                         value={pvWarehouse}
                         onChange={(e) => setPvWarehouse(e.target.value)}
                         className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]"
@@ -959,8 +960,8 @@ function AnalyticsPageContent() {
                       </select>
                     </div>
                     <div className="min-w-[180px] flex-1">
-                      <label className="block text-xs text-gray-500 mb-1">品項關鍵字（選填，對應進貨品名／編號）</label>
-                      <input
+                      <label htmlFor="f-26" className="block text-xs text-gray-500 mb-1">品項關鍵字（選填，對應進貨品名／編號）</label>
+                      <input id="f-26"
                         type="text"
                         value={pvKeyword}
                         onChange={(e) => setPvKeyword(e.target.value)}
@@ -1033,8 +1034,8 @@ function AnalyticsPageContent() {
               <>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">館別篩選（選填）</label>
-                    <select value={apAgingWarehouse} onChange={e => setApAgingWarehouse(e.target.value)}
+                    <label htmlFor="f-15" className="block text-xs text-gray-500 mb-1">館別篩選（選填）</label>
+                    <select id="f-15" value={apAgingWarehouse} onChange={e => setApAgingWarehouse(e.target.value)}
                       className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]">
                       <option value="">全部館別</option>
                       {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
@@ -1059,8 +1060,8 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
-                  <input type="text" value={reportMonth} onChange={e => setReportMonth(e.target.value)}
+                  <label htmlFor="yyyymm-2" className="block text-xs text-gray-500 mb-1">月份（YYYYMM）</label>
+                  <input id="yyyymm-2" type="text" value={reportMonth} onChange={e => setReportMonth(e.target.value)}
                     placeholder="202506" maxLength={6}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
@@ -1083,26 +1084,26 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">廠商</label>
-                  <select value={spItemsSupplierId} onChange={e => setSpItemsSupplierId(e.target.value)}
+                  <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">廠商</label>
+                  <select id="f-16" value={spItemsSupplierId} onChange={e => setSpItemsSupplierId(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[160px]">
                     <option value="">全部廠商</option>
                     {suppliersFullList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input type="date" value={spItemsStart} onChange={e => setSpItemsStart(e.target.value)}
+                  <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f-27" type="date" value={spItemsStart} onChange={e => setSpItemsStart(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input type="date" value={spItemsEnd} onChange={e => setSpItemsEnd(e.target.value)}
+                  <label htmlFor="f-28" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-28" type="date" value={spItemsEnd} onChange={e => setSpItemsEnd(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <select value={spItemsWarehouse} onChange={e => setSpItemsWarehouse(e.target.value)}
+                  <label htmlFor="f-29" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select id="f-29" value={spItemsWarehouse} onChange={e => setSpItemsWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="">全部館別</option>
                     {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
@@ -1143,26 +1144,26 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input type="date" value={occCostStart} onChange={e => setOccCostStart(e.target.value)}
+                  <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f-17" type="date" value={occCostStart} onChange={e => setOccCostStart(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input type="date" value={occCostEnd} onChange={e => setOccCostEnd(e.target.value)}
+                  <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-18" type="date" value={occCostEnd} onChange={e => setOccCostEnd(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <select value={occCostWarehouse} onChange={e => setOccCostWarehouse(e.target.value)}
+                  <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select id="f-19" value={occCostWarehouse} onChange={e => setOccCostWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="">全部館別</option>
                     {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">採購分類（選填）</label>
-                  <select value={occCostCategory} onChange={e => setOccCostCategory(e.target.value)}
+                  <label htmlFor="f-30" className="block text-xs text-gray-500 mb-1">採購分類（選填）</label>
+                  <select id="f-30" value={occCostCategory} onChange={e => setOccCostCategory(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]">
                     <option value="">全部分類</option>
                     {(occCost?.categories || []).map(c => <option key={c} value={c}>{c}</option>)}
@@ -1199,8 +1200,8 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                  <input
+                  <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                  <input id="f-20"
                     type="date"
                     value={occStatsStart}
                     onChange={(e) => setOccStatsStart(e.target.value)}
@@ -1208,8 +1209,8 @@ function AnalyticsPageContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                  <input
+                  <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                  <input id="f-21"
                     type="date"
                     value={occStatsEnd}
                     onChange={(e) => setOccStatsEnd(e.target.value)}
@@ -1217,8 +1218,8 @@ function AnalyticsPageContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別（選填）</label>
-                  <select
+                  <label htmlFor="f-22" className="block text-xs text-gray-500 mb-1">館別（選填）</label>
+                  <select id="f-22"
                     value={occStatsWarehouse}
                     onChange={(e) => setOccStatsWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]"
@@ -1232,8 +1233,8 @@ function AnalyticsPageContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">彙總方式</label>
-                  <select
+                  <label htmlFor="f-31" className="block text-xs text-gray-500 mb-1">彙總方式</label>
+                  <select id="f-31"
                     value={occStatsGroupBy}
                     onChange={(e) => setOccStatsGroupBy(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
@@ -1272,8 +1273,8 @@ function AnalyticsPageContent() {
           <div className="space-y-5">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-end gap-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">會計年度（西元）</label>
-                <input
+                <label htmlFor="f-23" className="block text-xs text-gray-500 mb-1">會計年度（西元）</label>
+                <input id="f-23"
                   type="number"
                   value={rentalRoiYear}
                   onChange={(e) => {
@@ -1308,8 +1309,8 @@ function AnalyticsPageContent() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select
+                  <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-24"
                     value={utilOccWarehouse}
                     onChange={e => setUtilOccWarehouse(e.target.value)}
                     className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[140px]"
@@ -1321,8 +1322,8 @@ function AnalyticsPageContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">年度（民國，與水電帳單一致）</label>
-                  <input
+                  <label htmlFor="f-32" className="block text-xs text-gray-500 mb-1">年度（民國，與水電帳單一致）</label>
+                  <input id="f-32"
                     type="number"
                     value={utilOccRocYear}
                     onChange={e => setUtilOccRocYear(e.target.value)}

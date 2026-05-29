@@ -10,6 +10,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 function PurchasingPageInner() {
   const searchParams = useSearchParams();
@@ -46,7 +47,7 @@ function PurchasingPageInner() {
     warehouse: '', // 館別
     department: '', // 部門
     supplierId: '',
-    purchaseDate: new Date().toISOString().split('T')[0],
+    purchaseDate: todayStr(),
     paymentTerms: '月結'
   });
   const [newItem, setNewItem] = useState({
@@ -75,14 +76,14 @@ function PurchasingPageInner() {
   const [expenseRecordsTotal, setExpenseRecordsTotal] = useState(0);
   const [expenseRecordsLoading, setExpenseRecordsLoading] = useState(false);
   const [expenseRecordFilter, setExpenseRecordFilter] = useState({
-    month: new Date().toISOString().slice(0, 7),
+    month: todayStr().slice(0, 7),
     warehouse: '',
     status: ''
   });
   const [selectedExpenseTemplateId, setSelectedExpenseTemplateId] = useState('');
   const [executeExpenseForm, setExecuteExpenseForm] = useState({
     warehouse: '',
-    expenseMonth: new Date().toISOString().slice(0, 7),
+    expenseMonth: todayStr().slice(0, 7),
     supplierId: '',
     supplierName: '',
     paymentTerms: '月結',
@@ -471,7 +472,7 @@ function PurchasingPageInner() {
         setSelectedExpenseTemplateId('');
         setExecuteExpenseForm({
           warehouse: '',
-          expenseMonth: new Date().toISOString().slice(0, 7),
+          expenseMonth: todayStr().slice(0, 7),
           supplierId: '',
           supplierName: '',
           paymentTerms: '月結',
@@ -504,7 +505,7 @@ function PurchasingPageInner() {
             setSelectedExpenseTemplateId('');
             setExecuteExpenseForm({
               warehouse: '',
-              expenseMonth: new Date().toISOString().slice(0, 7),
+              expenseMonth: todayStr().slice(0, 7),
               supplierId: '',
               supplierName: '',
               paymentTerms: '月結',
@@ -1044,7 +1045,7 @@ function PurchasingPageInner() {
           warehouse: '',
           department: '',
           supplierId: '',
-          purchaseDate: new Date().toISOString().split('T')[0],
+          purchaseDate: todayStr(),
           paymentTerms: '月結'
         });
         setSupplierSearch('');
@@ -1121,10 +1122,10 @@ function PurchasingPageInner() {
             <form onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="link-href-settings-wareho" className="block text-sm font-medium text-gray-700 mb-1">
                     館別 *（<Link href="/settings#warehouses" className="text-xs text-blue-600 hover:underline">設定</Link>）
                   </label>
-                  <select
+                  <select id="link-href-settings-wareho"
                     required
                     value={formData.warehouse}
                     onChange={(e) => handleWarehouseChange(e.target.value)}
@@ -1137,10 +1138,10 @@ function PurchasingPageInner() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-26" className="block text-sm font-medium text-gray-700 mb-1">
                     部門 *
                   </label>
-                  <select
+                  <select id="f-26"
                     required
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
@@ -1159,10 +1160,10 @@ function PurchasingPageInner() {
                 </div>
 
                 <div className="relative supplier-search-container">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-22" className="block text-sm font-medium text-gray-700 mb-1">
                     廠商 *
                   </label>
-                  <input
+                  <input id="f-22"
                     type="text"
                     placeholder="輸入關鍵字搜尋廠商..."
                     value={supplierSearch}
@@ -1204,10 +1205,10 @@ function PurchasingPageInner() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-23" className="block text-sm font-medium text-gray-700 mb-1">
                     進貨日期 *
                   </label>
-                  <input
+                  <input id="f-23"
                     type="date"
                     required
                     value={formData.purchaseDate}
@@ -1216,10 +1217,10 @@ function PurchasingPageInner() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="f-24" className="block text-sm font-medium text-gray-700 mb-1">
                     付款條件
                   </label>
-                  <select
+                  <select id="f-24"
                     value={formData.paymentTerms}
                     onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1590,7 +1591,7 @@ function PurchasingPageInner() {
                       warehouse: '',
                       department: '',
                       supplierId: '',
-                      purchaseDate: new Date().toISOString().split('T')[0],
+                      purchaseDate: todayStr(),
                       paymentTerms: '月結'
                     });
                   }}
@@ -2032,14 +2033,14 @@ function PurchasingPageInner() {
                     <h4 className="text-md font-semibold mb-3">{editingExpTemplate ? '編輯範本' : '新增範本'}</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">範本名稱 *</label>
-                        <input value={expTemplateForm.name}
+                        <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">範本名稱 *</label>
+                        <input id="f" value={expTemplateForm.name}
                           onChange={e => setExpTemplateForm(p => ({ ...p, name: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="例: OO食品每月進貨" />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
-                        <select value={expTemplateForm.defaultSupplierId}
+                        <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
+                        <select id="f-2" value={expTemplateForm.defaultSupplierId}
                           onChange={e => {
                             const sid = e.target.value;
                             const s = suppliers.find(s => s.id === parseInt(sid));
@@ -2051,16 +2052,16 @@ function PurchasingPageInner() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">付款方式 (連動廠商)</label>
-                        <input value={expTemplateForm.paymentMethod}
+                        <label htmlFor="f-13" className="block text-sm font-medium text-gray-700 mb-1">付款方式 (連動廠商)</label>
+                        <input id="f-13" value={expTemplateForm.paymentMethod}
                           onChange={e => setExpTemplateForm(p => ({ ...p, paymentMethod: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="月結" />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">預設館別</label>
-                        <select value={expTemplateForm.warehouse}
+                        <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">預設館別</label>
+                        <select id="f-14" value={expTemplateForm.warehouse}
                           onChange={e => setExpTemplateForm(p => ({ ...p, warehouse: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                           <option value="">不限</option>
@@ -2068,8 +2069,8 @@ function PurchasingPageInner() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
-                        <select value={expTemplateForm.defaultTaxType}
+                        <label htmlFor="f-15" className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
+                        <select id="f-15" value={expTemplateForm.defaultTaxType}
                           onChange={e => setExpTemplateForm(p => ({ ...p, defaultTaxType: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                           <option value="">不指定</option>
@@ -2079,8 +2080,8 @@ function PurchasingPageInner() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">說明</label>
-                        <input value={expTemplateForm.description}
+                        <label htmlFor="f-16" className="block text-sm font-medium text-gray-700 mb-1">說明</label>
+                        <input id="f-16" value={expTemplateForm.description}
                           onChange={e => setExpTemplateForm(p => ({ ...p, description: e.target.value }))}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="範本說明..." />
                       </div>
@@ -2240,8 +2241,8 @@ function PurchasingPageInner() {
                 <h3 className="text-lg font-semibold mb-4">快速執行</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">選擇範本 *</label>
-                    <select value={selectedExpenseTemplateId}
+                    <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">選擇範本 *</label>
+                    <select id="f-3" value={selectedExpenseTemplateId}
                       onChange={e => handleSelectExpenseTemplate(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                       <option value="">-- 選擇範本 --</option>
@@ -2251,8 +2252,8 @@ function PurchasingPageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
-                    <select value={executeExpenseForm.warehouse}
+                    <label htmlFor="f-27" className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
+                    <select id="f-27" value={executeExpenseForm.warehouse}
                       onChange={e => setExecuteExpenseForm(prev => ({ ...prev, warehouse: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                       <option value="">選擇館別</option>
@@ -2260,8 +2261,8 @@ function PurchasingPageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">費用月份 *</label>
-                    <input type="month" value={executeExpenseForm.expenseMonth}
+                    <label htmlFor="f-17" className="block text-sm font-medium text-gray-700 mb-1">費用月份 *</label>
+                    <input id="f-17" type="month" value={executeExpenseForm.expenseMonth}
                       onChange={e => setExecuteExpenseForm(prev => ({ ...prev, expenseMonth: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
                   </div>
@@ -2271,8 +2272,8 @@ function PurchasingPageInner() {
                 {selectedExpenseTemplateId && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
-                      <select
+                      <label htmlFor="f-18" className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
+                      <select id="f-18"
                         value={executeExpenseForm.supplierId}
                         onChange={e => {
                           const sid = e.target.value;
@@ -2292,8 +2293,8 @@ function PurchasingPageInner() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
-                      <select value={executeExpenseForm.paymentTerms}
+                      <label htmlFor="f-19" className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
+                      <select id="f-19" value={executeExpenseForm.paymentTerms}
                         onChange={e => setExecuteExpenseForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                         <option value="">請選擇付款方式</option>
@@ -2304,8 +2305,8 @@ function PurchasingPageInner() {
                     </div>
                     {executeExpenseForm.taxType && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
-                        <input value={executeExpenseForm.taxType} readOnly
+                        <label htmlFor="f-20" className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
+                        <input id="f-20" value={executeExpenseForm.taxType} readOnly
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" />
                       </div>
                     )}
@@ -2430,25 +2431,25 @@ function PurchasingPageInner() {
                       <h4 className="text-md font-semibold mb-3 text-blue-800">發票資訊（填寫後會同時建立發票記錄）</h4>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票號碼</label>
-                          <input value={executeExpenseForm.invoiceNo}
+                          <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">發票號碼</label>
+                          <input id="f-4" value={executeExpenseForm.invoiceNo}
                             onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceNo: e.target.value }))}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="例: AB-12345678" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票日期</label>
-                          <input type="date" value={executeExpenseForm.invoiceDate}
+                          <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">發票日期</label>
+                          <input id="f-5" type="date" value={executeExpenseForm.invoiceDate}
                             onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor="f-25" className="block text-sm font-medium text-gray-700 mb-1">
                             發票抬頭
                             {invoiceTitles.length === 0 && (
                               <Link href="/settings" className="text-xs text-blue-600 hover:underline ml-1">（請先至設定新增）</Link>
                             )}
                           </label>
-                          <select
+                          <select id="f-25"
                             value={invoiceTitles.some(t => t.title === executeExpenseForm.invoiceTitle) ? executeExpenseForm.invoiceTitle : (executeExpenseForm.invoiceTitle ? '__other__' : '')}
                             onChange={e => {
                               const v = e.target.value;
@@ -2474,8 +2475,8 @@ function PurchasingPageInner() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">營業稅類型</label>
-                          <select value={executeExpenseForm.taxType}
+                          <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">營業稅類型</label>
+                          <select id="f-6" value={executeExpenseForm.taxType}
                             onChange={e => {
                               const newTaxType = e.target.value;
                               const purchaseAmt = getExecPurchaseTotal();
@@ -2496,8 +2497,8 @@ function PurchasingPageInner() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">營業稅金額</label>
-                          <input type="number" step="1" value={executeExpenseForm.taxAmount}
+                          <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">營業稅金額</label>
+                          <input id="f-7" type="number" step="1" value={executeExpenseForm.taxAmount}
                             onChange={e => {
                               const taxAmt = parseFloat(e.target.value) || 0;
                               const purchaseAmt = getExecPurchaseTotal();
@@ -2511,8 +2512,8 @@ function PurchasingPageInner() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">廠商折讓金額</label>
-                          <input type="number" step="1" value={executeExpenseForm.supplierDiscount}
+                          <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">廠商折讓金額</label>
+                          <input id="f-8" type="number" step="1" value={executeExpenseForm.supplierDiscount}
                             onChange={e => {
                               const discount = parseFloat(e.target.value) || 0;
                               const purchaseAmt = getExecPurchaseTotal();
@@ -2526,8 +2527,8 @@ function PurchasingPageInner() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">發票金額</label>
-                          <input type="number" step="1" value={executeExpenseForm.invoiceAmount}
+                          <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">發票金額</label>
+                          <input id="f-9" type="number" step="1" value={executeExpenseForm.invoiceAmount}
                             onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceAmount: e.target.value }))}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-bold" placeholder="0" />
                         </div>
@@ -2551,8 +2552,8 @@ function PurchasingPageInner() {
 
                     {/* Note */}
                     <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                      <input value={executeExpenseForm.note}
+                      <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                      <input id="f-10" value={executeExpenseForm.note}
                         onChange={e => setExecuteExpenseForm(prev => ({ ...prev, note: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="選填" />
                     </div>
@@ -2579,14 +2580,14 @@ function PurchasingPageInner() {
               <div className="bg-white rounded-lg border p-4">
                 <div className="flex flex-wrap gap-4 mb-4">
                   <div>
-                    <label className="block text-xs text-gray-600 mb-1">月份</label>
-                    <input type="month" value={expenseRecordFilter.month}
+                    <label htmlFor="f-11" className="block text-xs text-gray-600 mb-1">月份</label>
+                    <input id="f-11" type="month" value={expenseRecordFilter.month}
                       onChange={e => setExpenseRecordFilter(prev => ({ ...prev, month: e.target.value }))}
                       className="px-2 py-1 border border-gray-300 rounded text-sm" />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-600 mb-1">館別</label>
-                    <select value={expenseRecordFilter.warehouse}
+                    <label htmlFor="f-12" className="block text-xs text-gray-600 mb-1">館別</label>
+                    <select id="f-12" value={expenseRecordFilter.warehouse}
                       onChange={e => setExpenseRecordFilter(prev => ({ ...prev, warehouse: e.target.value }))}
                       className="px-2 py-1 border border-gray-300 rounded text-sm"
                     >
@@ -2595,8 +2596,8 @@ function PurchasingPageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-600 mb-1">狀態</label>
-                    <select value={expenseRecordFilter.status}
+                    <label htmlFor="f-21" className="block text-xs text-gray-600 mb-1">狀態</label>
+                    <select id="f-21" value={expenseRecordFilter.status}
                       onChange={e => setExpenseRecordFilter(prev => ({ ...prev, status: e.target.value }))}
                       className="px-2 py-1 border border-gray-300 rounded text-sm"
                     >

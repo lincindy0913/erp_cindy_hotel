@@ -8,6 +8,7 @@ import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 const ASSET_TYPE_OPTIONS = [
   { value: 'BUILDING', label: '建物' },
@@ -176,7 +177,7 @@ function AssetsPageInner() {
         setLoading(false);
         if (Array.isArray(acctRes)) setAccounts(acctRes);
         if (Array.isArray(incomeRes)) {
-          const today = new Date().toISOString().split('T')[0];
+          const today = todayStr();
           const map = new Map();
           incomeRes.forEach(i => {
             const existing = map.get(i.propertyId);
@@ -587,8 +588,9 @@ function AssetsPageInner() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <label className="text-sm text-gray-600">年度：</label>
+            <label htmlFor="f-23" className="text-sm text-gray-600">年度：</label>
             <select
+              id="f-23"
               value={year}
               onChange={e => {
                 setYear(Number(e.target.value));
@@ -605,8 +607,8 @@ function AssetsPageInner() {
             </select>
             {/* 日期區間查詢 */}
             <div className="flex items-center gap-2 border rounded px-3 py-1 bg-gray-50">
-              <label className="text-sm text-gray-500 whitespace-nowrap">區間：</label>
-              <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)}
+              <label htmlFor="f-15" className="text-sm text-gray-500 whitespace-nowrap">區間：</label>
+              <input id="f-15" type="date" value={dateStart} onChange={e => setDateStart(e.target.value)}
                 className="border rounded px-2 py-1 text-sm w-36" />
               <span className="text-gray-400 text-sm">~</span>
               <input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)}
@@ -1244,32 +1246,32 @@ function AssetsPageInner() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">{editing ? '編輯資產' : '新增資產'}</h3>
             <div className="space-y-3 text-sm">
               <div>
-                <label className="text-gray-600">名稱 *</label>
-                <input className="w-full border rounded px-3 py-2 mt-1" value={form.name}
+                <label htmlFor="f" className="text-gray-600">名稱 *</label>
+                <input id="f" className="w-full border rounded px-3 py-2 mt-1" value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-gray-600">序號</label>
-                  <input className="w-full border rounded px-3 py-2 mt-1" placeholder="例：A001" value={form.serialNo}
+                  <label htmlFor="f-2" className="text-gray-600">序號</label>
+                  <input id="f-2" className="w-full border rounded px-3 py-2 mt-1" placeholder="例：A001" value={form.serialNo}
                     onChange={e => setForm(f => ({ ...f, serialNo: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-gray-600">類別</label>
-                  <input className="w-full border rounded px-3 py-2 mt-1" placeholder="例：住宅、商業" value={form.category}
+                  <label htmlFor="f-3" className="text-gray-600">類別</label>
+                  <input id="f-3" className="w-full border rounded px-3 py-2 mt-1" placeholder="例：住宅、商業" value={form.category}
                     onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
                 </div>
               </div>
               <div>
-                <label className="text-gray-600">資產類型</label>
-                <select className="w-full border rounded px-3 py-2 mt-1" value={form.assetType}
+                <label htmlFor="f-4" className="text-gray-600">資產類型</label>
+                <select id="f-4" className="w-full border rounded px-3 py-2 mt-1" value={form.assetType}
                   onChange={e => setForm(f => ({ ...f, assetType: e.target.value }))}>
                   {ASSET_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-gray-600">地址</label>
-                <input className="w-full border rounded px-3 py-2 mt-1" value={form.address}
+                <label htmlFor="f-16" className="text-gray-600">地址</label>
+                <input id="f-16" className="w-full border rounded px-3 py-2 mt-1" value={form.address}
                   onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
                 {editing && form.rentalPropertyId && (() => {
                   const linkedProp = properties.find(p => String(p.id) === String(form.rentalPropertyId));
@@ -1280,13 +1282,13 @@ function AssetsPageInner() {
                 })()}
               </div>
               <div>
-                <label className="text-gray-600">面積（㎡）</label>
-                <input type="text" inputMode="decimal" className="w-full border rounded px-3 py-2 mt-1" value={form.areaSqm}
+                <label htmlFor="f-5" className="text-gray-600">面積（㎡）</label>
+                <input id="f-5" type="text" inputMode="decimal" className="w-full border rounded px-3 py-2 mt-1" value={form.areaSqm}
                   onChange={e => setForm(f => ({ ...f, areaSqm: e.target.value }))} />
               </div>
               <div>
-                <label className="text-gray-600">取得日期（選填）</label>
-                <input type="date" className="w-full border rounded px-3 py-2 mt-1" value={form.acquisitionDate}
+                <label htmlFor="f-6" className="text-gray-600">取得日期（選填）</label>
+                <input id="f-6" type="date" className="w-full border rounded px-3 py-2 mt-1" value={form.acquisitionDate}
                   onChange={e => setForm(f => ({ ...f, acquisitionDate: e.target.value }))} />
               </div>
               <div className="border rounded-lg p-3 bg-gray-50">
@@ -1307,8 +1309,8 @@ function AssetsPageInner() {
                 </div>
               </div>
               <div>
-                <label className="text-gray-600">綁定租屋物業</label>
-                <select className="w-full border rounded px-3 py-2 mt-1" value={form.rentalPropertyId}
+                <label htmlFor="f-17" className="text-gray-600">綁定租屋物業</label>
+                <select id="f-17" className="w-full border rounded px-3 py-2 mt-1" value={form.rentalPropertyId}
                   onChange={e => setForm(f => ({ ...f, rentalPropertyId: e.target.value }))}>
                   <option value="">不綁定</option>
                   {propertyOptions.map(p => (
@@ -1319,8 +1321,8 @@ function AssetsPageInner() {
                 </select>
               </div>
               <div>
-                <label className="text-gray-600">備註</label>
-                <textarea className="w-full border rounded px-3 py-2 mt-1" rows={2} value={form.notes}
+                <label htmlFor="f-18" className="text-gray-600">備註</label>
+                <textarea id="f-18" className="w-full border rounded px-3 py-2 mt-1" rows={2} value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
             </div>
@@ -1376,41 +1378,41 @@ function AssetsPageInner() {
               <div className="space-y-3 text-sm">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">名稱 *</label>
-                    <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp?.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                    <label htmlFor="f-7" className="text-gray-600">名稱 *</label>
+                    <input id="f-7" className={`w-full border rounded px-3 py-2 mt-1 ${editingProp?.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                       value={propForm.name} disabled={!!editingProp?.asset}
                       onChange={e => setPropForm(f => ({ ...f, name: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-gray-600">狀態</label>
-                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.status}
+                    <label htmlFor="f-8" className="text-gray-600">狀態</label>
+                    <select id="f-8" className="w-full border rounded px-3 py-2 mt-1" value={propForm.status}
                       onChange={e => setPropForm(f => ({ ...f, status: e.target.value }))}>
                       {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="text-gray-600">地址</label>
-                  <input className={`w-full border rounded px-3 py-2 mt-1 ${editingProp?.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                  <label htmlFor="f-19" className="text-gray-600">地址</label>
+                  <input id="f-19" className={`w-full border rounded px-3 py-2 mt-1 ${editingProp?.asset ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     value={propForm.address} disabled={!!editingProp?.asset}
                     onChange={e => setPropForm(f => ({ ...f, address: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">大樓名稱</label>
-                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.buildingName}
+                    <label htmlFor="f-20" className="text-gray-600">大樓名稱</label>
+                    <input id="f-20" className="w-full border rounded px-3 py-2 mt-1" value={propForm.buildingName}
                       onChange={e => setPropForm(f => ({ ...f, buildingName: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-gray-600">戶別</label>
-                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.unitNo}
+                    <label htmlFor="f-9" className="text-gray-600">戶別</label>
+                    <input id="f-9" className="w-full border rounded px-3 py-2 mt-1" value={propForm.unitNo}
                       onChange={e => setPropForm(f => ({ ...f, unitNo: e.target.value }))} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">分類</label>
-                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.category}
+                    <label htmlFor="f-10" className="text-gray-600">分類</label>
+                    <select id="f-10" className="w-full border rounded px-3 py-2 mt-1" value={propForm.category}
                       onChange={e => setPropForm(f => ({ ...f, category: e.target.value }))}>
                       <option value="">—</option>
                       <option value="公司">公司</option>
@@ -1418,35 +1420,35 @@ function AssetsPageInner() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-gray-600">序號</label>
-                    <input type="number" className="w-full border rounded px-3 py-2 mt-1" value={propForm.sortOrder}
+                    <label htmlFor="f-11" className="text-gray-600">序號</label>
+                    <input id="f-11" type="number" className="w-full border rounded px-3 py-2 mt-1" value={propForm.sortOrder}
                       onChange={e => setPropForm(f => ({ ...f, sortOrder: e.target.value }))} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">所有權人</label>
-                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.ownerName}
+                    <label htmlFor="f-12" className="text-gray-600">所有權人</label>
+                    <input id="f-12" className="w-full border rounded px-3 py-2 mt-1" value={propForm.ownerName}
                       onChange={e => setPropForm(f => ({ ...f, ownerName: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-gray-600">房屋稅稅籍編號</label>
-                    <input className="w-full border rounded px-3 py-2 mt-1" value={propForm.houseTaxRegistrationNo}
+                    <label htmlFor="f-13" className="text-gray-600">房屋稅稅籍編號</label>
+                    <input id="f-13" className="w-full border rounded px-3 py-2 mt-1" value={propForm.houseTaxRegistrationNo}
                       onChange={e => setPropForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">收租帳戶</label>
-                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.rentCollectAccountId}
+                    <label htmlFor="f-14" className="text-gray-600">收租帳戶</label>
+                    <select id="f-14" className="w-full border rounded px-3 py-2 mt-1" value={propForm.rentCollectAccountId}
                       onChange={e => setPropForm(f => ({ ...f, rentCollectAccountId: e.target.value }))}>
                       <option value="">無</option>
                       {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-gray-600">押金帳戶</label>
-                    <select className="w-full border rounded px-3 py-2 mt-1" value={propForm.depositAccountId}
+                    <label htmlFor="f-21" className="text-gray-600">押金帳戶</label>
+                    <select id="f-21" className="w-full border rounded px-3 py-2 mt-1" value={propForm.depositAccountId}
                       onChange={e => setPropForm(f => ({ ...f, depositAccountId: e.target.value }))}>
                       <option value="">無</option>
                       {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -1454,8 +1456,8 @@ function AssetsPageInner() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-gray-600">備註</label>
-                  <textarea className="w-full border rounded px-3 py-2 mt-1" rows={2} value={propForm.note}
+                  <label htmlFor="f-22" className="text-gray-600">備註</label>
+                  <textarea id="f-22" className="w-full border rounded px-3 py-2 mt-1" rows={2} value={propForm.note}
                     onChange={e => setPropForm(f => ({ ...f, note: e.target.value }))} />
                 </div>
                 <div className="flex items-center gap-2">

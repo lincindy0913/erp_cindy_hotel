@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 const ACTION_LABELS = {
   'payment_order.create': '建立付款單',
@@ -66,7 +67,7 @@ const TABS = [
 function defaultAuditDateFrom() {
   const d = new Date();
   d.setDate(d.getDate() - 30);
-  return d.toISOString().split('T')[0];
+  return localDateStr(d);
 }
 
 export default function AuditLogPage() {
@@ -131,7 +132,7 @@ export default function AuditLogPage() {
 
   async function fetchSummary() {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
       const monthStart = today.substring(0, 7) + '-01';
 
       const [todayRes, financeRes, attemptRes] = await Promise.all([
@@ -530,8 +531,8 @@ export default function AuditLogPage() {
             {/* Year/Month Selector */}
             <div className="bg-white rounded-lg shadow p-4 mb-6">
               <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-600">選擇期間：</label>
-                <select
+                <label htmlFor="f" className="text-sm font-medium text-gray-600">選擇期間：</label>
+                <select id="f"
                   value={complianceYear}
                   onChange={e => setComplianceYear(Number(e.target.value))}
                   className="border rounded px-3 py-2 text-sm"
@@ -680,10 +681,10 @@ export default function AuditLogPage() {
                 {/* 確認輸入 */}
                 {cleanupPreview && cleanupPreview.counts.total > 0 && (
                   <div className="mb-4">
-                    <label className="text-sm text-gray-600 block mb-1">
+                    <label htmlFor="span-classname-font-mono-" className="text-sm text-gray-600 block mb-1">
                       輸入「<span className="font-mono font-bold">確認清理</span>」以繼續
                     </label>
-                    <input
+                    <input id="span-classname-font-mono-"
                       type="text"
                       value={cleanupConfirm}
                       onChange={e => setCleanupConfirm(e.target.value)}

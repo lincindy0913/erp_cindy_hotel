@@ -5,12 +5,13 @@ import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { createAlert, ALERT_CATEGORIES } from '@/lib/alert';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Generate payment order number: LN-YYYYMMDD-XXXX (loan source)
 async function generateOrderNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (date || todayStr()).replace(/-/g, '');
   const prefix = `LN-${dateStr}-`;
   const existing = await tx.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
@@ -40,8 +41,8 @@ export async function POST(request) {
     // Calculate the cutoff date (today + daysBeforeDue)
     const cutoffDate = new Date(now);
     cutoffDate.setDate(cutoffDate.getDate() + daysBeforeDue);
-    const cutoffStr = cutoffDate.toISOString().split('T')[0];
-    const todayStr = now.toISOString().split('T')[0];
+    const cutoffStr = localDateStr(cutoffDate);
+    const todayStr = localDateStr(now);
 
     // Find records that are 暫估 and due within the window
     const records = await prisma.loanMonthlyRecord.findMany({

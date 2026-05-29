@@ -4,6 +4,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,8 +95,8 @@ export async function GET() {
     // === Loans expiring within 6 months ===
     const sixMonthsLater = new Date(today);
     sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    const sixMonthsStr = sixMonthsLater.toISOString().split('T')[0];
-    const todayStr = today.toISOString().split('T')[0];
+    const sixMonthsStr = localDateStr(sixMonthsLater);
+    const todayStr = localDateStr(today);
 
     const expiringSoon = loans
       .filter(l => l.endDate && l.endDate >= todayStr && l.endDate <= sixMonthsStr)

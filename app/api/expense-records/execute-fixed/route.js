@@ -7,12 +7,13 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Helper: generate sequence number
 async function generateNo(tx, model, prefix) {
-  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const today = todayStr().replace(/-/g, '');
   const fullPrefix = `${prefix}-${today}-`;
 
   let maxSeq = 0;

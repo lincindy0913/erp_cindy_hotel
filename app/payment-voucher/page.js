@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { localDateStr } from '@/lib/localDate';
 
 export default function PaymentVoucherListPage() {
   const { data: session } = useSession();
@@ -29,7 +30,7 @@ export default function PaymentVoucherListPage() {
   // Monthly voucher state (spec23 v3)
   const today = new Date();
   const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = localDateStr(today);
   const [voucherFilter, setVoucherFilter] = useState({
     supplierId: '',
     startDate: firstOfMonth,
@@ -369,8 +370,8 @@ export default function PaymentVoucherListPage() {
               <h3 className="text-base font-semibold text-gray-700 mb-4">廠商傳票</h3>
               <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">進貨起始日 *</label>
-                  <input
+                  <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">進貨起始日 *</label>
+                  <input id="f"
                     type="date"
                     value={voucherFilter.startDate}
                     onChange={e => { setVoucherFilter(v => ({ ...v, startDate: e.target.value })); setSearchExecuted(false); }}
@@ -378,8 +379,8 @@ export default function PaymentVoucherListPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">進貨結束日 *</label>
-                  <input
+                  <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">進貨結束日 *</label>
+                  <input id="f-2"
                     type="date"
                     value={voucherFilter.endDate}
                     onChange={e => { setVoucherFilter(v => ({ ...v, endDate: e.target.value })); setSearchExecuted(false); }}
@@ -387,8 +388,8 @@ export default function PaymentVoucherListPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                  <select
+                  <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                  <select id="f-3"
                     value={voucherFilter.warehouse}
                     onChange={e => { setVoucherFilter(v => ({ ...v, warehouse: e.target.value })); setSearchExecuted(false); }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -412,8 +413,8 @@ export default function PaymentVoucherListPage() {
                   </button>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">廠商（選填，用於單筆預覽/列印）</label>
-                  <select
+                  <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">廠商（選填，用於單筆預覽/列印）</label>
+                  <select id="f-4"
                     value={voucherFilter.supplierId}
                     onChange={e => { setVoucherFilter(v => ({ ...v, supplierId: e.target.value })); setVoucherPreview(null); }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -623,8 +624,8 @@ export default function PaymentVoucherListPage() {
             <h3 className="text-lg font-semibold mb-4">篩選條件</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">銷帳年月</label>
-                <input
+                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">銷帳年月</label>
+                <input id="f-5"
                   type="month"
                   value={filterData.yearMonth}
                   onChange={(e) => setFilterData({ ...filterData, yearMonth: e.target.value })}
@@ -632,8 +633,8 @@ export default function PaymentVoucherListPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
-                <select
+                <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">廠商</label>
+                <select id="f-6"
                   value={filterData.supplierId}
                   onChange={(e) => setFilterData({ ...filterData, supplierId: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -645,8 +646,8 @@ export default function PaymentVoucherListPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                <select
+                <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                <select id="f-7"
                   value={filterData.warehouse}
                   onChange={(e) => setFilterData({ ...filterData, warehouse: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"

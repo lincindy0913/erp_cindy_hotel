@@ -5,12 +5,13 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Generate payment order number: PAY-YYYYMMDD-XXXX
 async function generateOrderNo(date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (date || todayStr()).replace(/-/g, '');
   const prefix = `PAY-${dateStr}-`;
   const existing = await prisma.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },
@@ -180,7 +181,7 @@ export async function POST(request) {
 
 // Generate transaction number
 async function generateTxNo(tx, date) {
-  const dateStr = (date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+  const dateStr = (date || todayStr()).replace(/-/g, '');
   const prefix = `CF-${dateStr}-`;
   const existing = await tx.cashTransaction.findMany({
     where: { transactionNo: { startsWith: prefix } },

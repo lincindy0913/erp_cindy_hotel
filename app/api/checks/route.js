@@ -6,12 +6,13 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { requireMoney } from '@/lib/safe-parse';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Generate check number: CHK-YYYYMMDD-XXXX
 async function generateCheckNo() {
-  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const dateStr = todayStr().replace(/-/g, '');
   const prefix = `CHK-${dateStr}-`;
 
   const existing = await prisma.check.findMany({
@@ -42,7 +43,7 @@ export async function GET(request) {
     const dueDateTo = searchParams.get('dueDateTo');
 
     // Auto-update: any check with status='pending' and dueDate <= today => 'due'
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     await prisma.check.updateMany({
       where: {
         status: 'pending',
@@ -129,7 +130,7 @@ export async function POST(request) {
     const checkNo = await generateCheckNo();
 
     // Determine initial status based on dueDate
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const initialStatus = data.dueDate <= today ? 'due' : 'pending';
 
     const newCheck = await prisma.$transaction(async (tx) => {

@@ -12,12 +12,16 @@ import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
 import { todayStr } from '@/lib/localDate';
 import { useDepositMatch } from './_hooks/useDepositMatch';
+import { useBnbRecords } from './_hooks/useBnbRecords';
 import CalendarTab      from './_tabs/CalendarTab';
 import OccupancyTab     from './_tabs/OccupancyTab';
 import PayAuditTab      from './_tabs/PayAuditTab';
 import SourceAnalysisTab from './_tabs/SourceAnalysisTab';
 import OtaAnalyticsTab  from './_tabs/OtaAnalyticsTab';
 import GuestHistoryTab  from './_tabs/GuestHistoryTab';
+import OtaReconTab      from './_tabs/OtaReconTab';
+import OtaCommissionTab from './_tabs/OtaCommissionTab';
+import BossWithdrawTab  from './_tabs/BossWithdrawTab';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const DEFAULT_WAREHOUSE = '民宿';
@@ -182,21 +186,29 @@ function BnbPage() {
     || (session?.user?.permissions || []).includes('bnb.lock')
     || (session?.user?.permissions || []).includes('bnb.edit');
 
-  // ── 訂房明細 state ────────────────────────────────────────────
-  const [records, setRecords]       = useState([]);
-  const [recLoading, setRecLoading] = useState(false);
-  const roomNoList = useMemo(
-    () => [...new Set(records.map(r => r.roomNo).filter(Boolean))].sort(),
-    [records]
-  );
-  const [recPage,  setRecPage]  = useState(1);
-  const [recTotal, setRecTotal] = useState(0);
+  // ── 訂房明細 hook ─────────────────────────────────────────────
+  const {
+    records, setRecords,
+    recLoading, recPage, recTotal,
+    filterMonth, setFilterMonth,
+    filterSource, setFilterSource,
+    filterStatus, setFilterStatus,
+    filterWarehouse, setFilterWarehouse,
+    filterPayment, setFilterPayment,
+    selectedIds, setSelectedIds,
+    batchField, setBatchField,
+    batchValue, setBatchValue,
+    batchApplying,
+    inlineEdit, setInlineEdit,
+    editMode, editMap, dirtyIds, batchSaving, locking,
+    roomNoList,
+    fetchRecords,
+    handleBatchApply,
+    handleInlineSave,
+    enterEditMode, cancelEditMode, updateCell, focusPayCell, handlePayKeyDown, saveAllEdits,
+    handleLockToggle, lockAllFilled, handleUnlockRow, handleDelete, handleRestore,
+  } = useBnbRecords();
   const REC_PAGE_SIZE = 200;
-  const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [filterSource,    setFilterSource]    = useState('');
-  const [filterStatus,    setFilterStatus]    = useState('');
-  const [filterWarehouse, setFilterWarehouse] = useState('');
-  const [filterPayment, setFilterPayment] = useState(''); // '' | 'unfilled' | 'filled'
   const [editRecord,    setEditRecord]    = useState(null); // PaymentModal
   const [editBooking,   setEditBooking]   = useState(null); // BookingFormModal (edit)
   const [addBookingOpen,setAddBookingOpen]= useState(false); // BookingFormModal (add)
@@ -220,7 +232,7 @@ function BnbPage() {
   const [oaLoading,   setOaLoading]   = useState(false);
 
   // ── 付款稽核 state ────────────────────────────────────────────
-  const [auditMonth,     setAuditMonth]     = useState(() => new Date().toISOString().slice(0, 7));
+  const [auditMonth,     setAuditMonth]     = useState(() => todayStr().slice(0, 7));
   const [auditWarehouse, setAuditWarehouse] = useState('');
   const [auditData,      setAuditData]      = useState([]);
   const [auditLoading,   setAuditLoading]   = useState(false);
@@ -241,33 +253,19 @@ function BnbPage() {
   // ── 老闆收取 state ────────────────────────────────────────────
   const [bwData,        setBwData]        = useState(null);
   const [bwLoading,     setBwLoading]     = useState(false);
-  const [bwMonth,       setBwMonth]       = useState(() => new Date().toISOString().slice(0, 7));
+  const [bwMonth,       setBwMonth]       = useState(() => todayStr().slice(0, 7));
   const [bwWarehouse,   setBwWarehouse]   = useState('');
   const [bwViewMode,    setBwViewMode]    = useState('detail');   // 'detail' | 'monthly'
   const [bwYear,        setBwYear]        = useState(() => String(new Date().getFullYear()));
   const [bwSummary,     setBwSummary]     = useState(null);
   const [bwSummaryLoad, setBwSummaryLoad] = useState(false);
 
-  // ── 批次填入 state ────────────────────────────────────────────
-  const [selectedIds,   setSelectedIds]   = useState(new Set());
-  const [batchField,    setBatchField]    = useState('status');
-  const [batchValue,    setBatchValue]    = useState('');
-  const [batchApplying, setBatchApplying] = useState(false);
-
-  // ── Inline edit state ─────────────────────────────────────────
-  const [inlineEdit,  setInlineEdit]  = useState(null); // { id, field }
+  // ── Inline edit value（保留在 page.js，直接綁定 JSX input）────
   const [inlineValue, setInlineValue] = useState('');
-
-  // ── Excel 模式 state ──────────────────────────────────────────
-  const [editMode,    setEditMode]    = useState(false);
-  const [editMap,     setEditMap]     = useState({});  // { [id]: { payDeposit, depositLast5, payCard, payCash, payVoucher } }
-  const [dirtyIds,    setDirtyIds]    = useState(new Set());
-  const [batchSaving, setBatchSaving] = useState(false);
-  const [locking,     setLocking]     = useState(false);
 
   // ── 雲掌櫃匯入 state ─────────────────────────────────────────
   const [importFile,      setImportFile]      = useState(null);
-  const [importMonth,     setImportMonth]     = useState(() => new Date().toISOString().slice(0, 7));
+  const [importMonth,     setImportMonth]     = useState(() => todayStr().slice(0, 7));
   const [importWarehouse, setImportWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [importReplace,   setImportReplace]   = useState(true);
   const [importing,       setImporting]       = useState(false);
@@ -281,7 +279,7 @@ function BnbPage() {
   });
 
   // ── 每日收入 state ──────────────────────────────────────────
-  const [drMonth,      setDrMonth]      = useState(() => new Date().toISOString().slice(0, 7));
+  const [drMonth,      setDrMonth]      = useState(() => todayStr().slice(0, 7));
   const [drWarehouse,  setDrWarehouse]  = useState(DEFAULT_WAREHOUSE);
   const [drData,       setDrData]       = useState(null);
   const [drLoading,    setDrLoading]    = useState(false);
@@ -319,7 +317,7 @@ function BnbPage() {
   const [bankImportError, setBankImportError] = useState('');
 
   // ── 收款流水帳 state ─────────────────────────────────────────
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = todayStr().slice(0, 7);
   const [ledgerMonthFrom, setLedgerMonthFrom] = useState(thisMonth);
   const [ledgerMonthTo,   setLedgerMonthTo]   = useState(thisMonth);
   const [ledgerWarehouse, setLedgerWarehouse] = useState('');
@@ -338,7 +336,7 @@ function BnbPage() {
   const [oiForm, setOiForm] = useState({ importMonth: thisMonth, warehouse: DEFAULT_WAREHOUSE, incomeDate: '', category: '', description: '', amount: '', note: '' });
 
   // ── 旅宿網申報 state ─────────────────────────────────────────
-  const [declMonth,     setDeclMonth]     = useState(() => new Date().toISOString().slice(0, 7));
+  const [declMonth,     setDeclMonth]     = useState(() => todayStr().slice(0, 7));
   const [declWarehouse, setDeclWarehouse] = useState(DEFAULT_WAREHOUSE);
   const [declActual,    setDeclActual]    = useState(null);  // 實際資料（auto-computed）
   const [declForm, setDeclForm] = useState({
@@ -453,30 +451,6 @@ function BnbPage() {
     } catch { showToast(`${action}失敗`, 'error'); }
     finally { setLockLoading(false); }
   }, [lockStatus, lockLoading, getActiveLockContext]);
-
-  // ── 訂房明細 fetch ────────────────────────────────────────────
-  const fetchRecords = useCallback(async (page = 1) => {
-    setRecLoading(true);
-    try {
-      const p = new URLSearchParams({ month: filterMonth, page: String(page), pageSize: '200' });
-      if (filterSource)    p.set('source', filterSource);
-      if (filterStatus)    p.set('status', filterStatus);
-      if (filterWarehouse) p.set('warehouse', filterWarehouse);
-      const res = await fetch(`/api/bnb?${p}`);
-      if (!res.ok) {
-        if (res.status === 401) { window.location.href = '/login'; return; }
-        const errJson = await res.json().catch(() => ({}));
-        const msg = errJson?.error || `載入訂房記錄失敗（${res.status}）`;
-        showToast(msg, 'error');
-        return;
-      }
-      const json = await res.json();
-      setRecords(json.data ?? json);
-      setRecTotal(json.total ?? (json.data ?? json).length);
-      setRecPage(page);
-    } catch (e) { showToast(`載入訂房記錄失敗：${e.message}`, 'error'); }
-    finally { setRecLoading(false); }
-  }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
 
   // ── 月彙整 fetch ──────────────────────────────────────────────
   const fetchSummary = useCallback(async () => {
@@ -603,7 +577,7 @@ function BnbPage() {
       setOtaViewTab('matched');
       setCommAmt(data.summary?.otaCommission > 0 ? String(data.summary.otaCommission) : '');
       // 查詢是否已有傭金記錄
-      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
       try {
         const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
         const chk = await fetch(`/api/bnb/ota-commission?${p}`);
@@ -618,7 +592,7 @@ function BnbPage() {
     if (!otaResult) return;
     const amt = Number(commAmt);
     if (!amt || amt <= 0) { showToast('請輸入有效的傭金金額', 'error'); return; }
-    const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+    const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
     setCommSubmitting(true);
     try {
       const res = await fetch('/api/bnb/ota-commission', {
@@ -684,7 +658,7 @@ function BnbPage() {
       if (!res.ok) { showToast(data.error || '取消失敗', 'error'); return; }
       showToast('已取消傭金應付款', 'success');
       fetchCommHistory();
-      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
       const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
       const chk = await fetch(`/api/bnb/ota-commission?${p}`);
       if (chk.ok) setCommExisting(await chk.json());
@@ -730,7 +704,7 @@ function BnbPage() {
     setReconcileConfirming(true);
     try {
       const s = otaResult.summary;
-      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : new Date().toISOString().substring(0, 7);
+      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
       const res = await fetch('/api/bnb/ota-reconcile-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1069,240 +1043,6 @@ function BnbPage() {
     }
   }
 
-  // ── 批次套用 ──────────────────────────────────────────────────
-  async function handleBatchApply() {
-    if (!selectedIds.size || !batchValue) {
-      showToast('請選擇狀態', 'error'); return;
-    }
-    setBatchApplying(true);
-    try {
-      const results = await Promise.all([...selectedIds].map(id =>
-        fetch(`/api/bnb/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: batchValue }),
-        })
-      ));
-      const failed = results.filter(r => !r.ok).length;
-      const succeeded = results.length - failed;
-      if (failed > 0) {
-        showToast(`${succeeded} 筆成功，${failed} 筆失敗`, 'error');
-      } else {
-        showToast(`已套用 ${succeeded} 筆`, 'success');
-      }
-      setSelectedIds(new Set());
-      setBatchValue('');
-      fetchRecords();
-    } catch { showToast('批次套用失敗', 'error'); }
-    finally { setBatchApplying(false); }
-  }
-
-  // ── Inline 儲存 ───────────────────────────────────────────────
-  async function handleInlineSave(id, field, value) {
-    setInlineEdit(null);
-    const isText = ['depositLast5', 'transferLast5', 'note', 'roomNo'].includes(field);
-    const payload = isText ? { [field]: value || null } : { [field]: parseFloat(value) || 0 };
-    const res = await fetch(`/api/bnb/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.message || err.error || '儲存失敗', 'error');
-      fetchRecords();
-      return;
-    }
-    const updated = await res.json();
-    // merge payload so inline-edited field is reflected immediately without refetch
-    setRecords(prev => prev.map(r => r.id === id ? { ...r, ...payload, ...updated } : r));
-  }
-
-  // ── Excel 模式：進入 ──────────────────────────────────────────
-  function enterEditMode() {
-    const map = {};
-    for (const r of records) {
-      if (r.status === '已刪除' || r.paymentLocked) continue;
-      map[r.id] = {
-        payDeposit:      String(r.payDeposit   > 0 ? r.payDeposit   : ''),
-        depositLast5:    r.depositLast5 || '',
-        payTransfer:     String(r.payTransfer  > 0 ? r.payTransfer  : ''),
-        transferDate:    r.transferDate  || '',
-        transferLast5:   r.transferLast5 || '',
-        payCard:         String(r.payCard      > 0 ? r.payCard      : ''),
-        payCash:         String(r.payCash      > 0 ? r.payCash      : ''),
-        cashDestination: r.cashDestination || '',
-        payVoucher:      String(r.payVoucher   > 0 ? r.payVoucher   : ''),
-      };
-    }
-    setEditMap(map);
-    setDirtyIds(new Set());
-    setEditMode(true);
-    setInlineEdit(null);
-  }
-
-  function cancelEditMode() {
-    setEditMode(false);
-    setEditMap({});
-    setDirtyIds(new Set());
-  }
-
-  function updateCell(id, field, value) {
-    setEditMap(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
-    setDirtyIds(prev => new Set([...prev, id]));
-  }
-
-  function focusPayCell(id, field) {
-    const el = document.getElementById(`pc-${id}-${field}`);
-    if (el) { el.focus(); el.select(); }
-  }
-
-  function handlePayKeyDown(e, rid, field, editableRecords) {
-    if (e.key === 'Escape') { cancelEditMode(); return; }
-    const fieldIdx  = PAY_FIELDS.indexOf(field);
-    const recordIdx = editableRecords.findIndex(x => x.id === rid);
-
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      if (fieldIdx < PAY_FIELDS.length - 1) {
-        focusPayCell(rid, PAY_FIELDS[fieldIdx + 1]);
-      } else if (recordIdx < editableRecords.length - 1) {
-        focusPayCell(editableRecords[recordIdx + 1].id, PAY_FIELDS[0]);
-      }
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (recordIdx < editableRecords.length - 1) {
-        focusPayCell(editableRecords[recordIdx + 1].id, field);
-      }
-    }
-  }
-
-  async function saveAllEdits() {
-    const toSave = [...dirtyIds].map(id => ({ id, ...editMap[id] }));
-    if (!toSave.length) { cancelEditMode(); return; }
-    setBatchSaving(true);
-    try {
-      const res = await fetch('/api/bnb/batch', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'savePayment', records: toSave }),
-      });
-      if (!res.ok) { showToast('批次儲存失敗', 'error'); return; }
-      const d = await res.json();
-      const msg = d.skipped > 0 ? `已儲存 ${d.saved} 筆（${d.skipped} 筆鎖定跳過）` : `已儲存 ${d.saved} 筆`;
-      showToast(msg, 'success');
-      cancelEditMode();
-      fetchRecords();
-    } catch { showToast('儲存失敗', 'error'); }
-    finally { setBatchSaving(false); }
-  }
-
-  async function handleLockToggle(action) {
-    if (!selectedIds.size) return;
-    setLocking(true);
-    try {
-      const res = await fetch('/api/bnb/batch', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ids: [...selectedIds] }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        showToast(d.message || (action === 'lock' ? '鎖帳失敗' : '解鎖失敗'), 'error');
-        return;
-      }
-      showToast(action === 'lock' ? `已鎖帳 ${selectedIds.size} 筆` : `已解鎖 ${selectedIds.size} 筆`, 'success');
-      setSelectedIds(new Set());
-      fetchRecords();
-    } catch { showToast('操作失敗', 'error'); }
-    finally { setLocking(false); }
-  }
-
-  // ── 月底批次鎖帳（全部已填付款）────────────────────────────────
-  async function lockAllFilled() {
-    const eligible = records.filter(r => r.paymentFilled && !r.paymentLocked && r.status !== '已刪除');
-    if (eligible.length === 0) {
-      showToast('無可鎖定的記錄（已全部鎖帳或無已填付款記錄）', 'error');
-      return;
-    }
-    const mismatchList = eligible.filter(r => {
-      const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
-      const ct = Number(r.roomCharge) + Number(r.otherCharge);
-      return Math.abs(pt - ct) > 0.01;
-    });
-    if (mismatchList.length > 0) {
-      const names = mismatchList.slice(0, 5).map(r => r.guestName).join('、');
-      const extra = mismatchList.length > 5 ? `…等 ${mismatchList.length} 筆` : '';
-      if (!(await confirm(`以下 ${mismatchList.length} 筆收款金額與房費+消費不符：\n${names}${extra}\n\n是否仍要繼續鎖帳？`, { title: '金額不符警告', danger: false }))) return;
-    }
-    if (!(await confirm(`確定要鎖定本月 ${eligible.length} 筆已填付款記錄嗎？鎖定後僅有鎖帳權限者可修改付款資料。`, { title: '批次鎖帳確認', danger: true }))) return;
-    setLocking(true);
-    try {
-      const res = await fetch('/api/bnb/batch', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'lock', ids: eligible.map(r => r.id) }),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(d.message || '鎖帳失敗', 'error'); return; }
-      showToast(`已鎖帳 ${eligible.length} 筆`, 'success');
-      fetchRecords();
-    } catch { showToast('鎖帳失敗', 'error'); }
-    finally { setLocking(false); }
-  }
-
-  // ── 逐筆解鎖 ─────────────────────────────────────────────────
-  async function handleUnlockRow(id, name) {
-    if (!(await confirm(`確定解鎖「${name}」的付款鎖定？解鎖後可重新編輯付款資料。`, { title: '解鎖付款', danger: false }))) return;
-    const res = await fetch(`/api/bnb/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentLocked: false }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.error || '解鎖失敗', 'error');
-      return;
-    }
-    showToast('已解鎖', 'success');
-    fetchRecords();
-  }
-
-  // ── 刪除記錄（軟刪除：將狀態改為「已刪除」）──────────────────
-  async function handleDelete(id, name) {
-    if (!(await confirm(`確定刪除「${name}」的訂房記錄？刪除後可點擊「還原」恢復。`, { title: '刪除訂房記錄', danger: true }))) return;
-    const res = await fetch(`/api/bnb/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: '已刪除' }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.error || '刪除失敗', 'error');
-      return;
-    }
-    showToast('已刪除（可點擊「還原」恢復）', 'success');
-    fetchRecords();
-  }
-
-  // ── 還原已刪除記錄 ──────────────────────────────────────────
-  async function handleRestore(id, name) {
-    if (!(await confirm(`確定還原「${name}」的訂房記錄？`, { title: '還原訂房記錄', danger: false }))) return;
-    const res = await fetch(`/api/bnb/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: '已退房' }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.error || '還原失敗', 'error');
-      return;
-    }
-    showToast('已還原', 'success');
-    fetchRecords();
-  }
-
   // ── 旅宿網申報儲存 ────────────────────────────────────────────
   async function handleDeclSave() {
     setDeclSaving(true);
@@ -1439,12 +1179,12 @@ function BnbPage() {
             {/* 篩選列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">月份</label>
-                <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className={inputCls} />
+                <label htmlFor="f" className="block text-xs text-gray-500 mb-1">月份</label>
+                <input id="f" type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">來源</label>
-                <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className={inputCls}>
+                <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">來源</label>
+                <select id="f-2" value={filterSource} onChange={e => setFilterSource(e.target.value)} className={inputCls}>
                   <option value="">全部</option>
                   <option value="電話">電話</option>
                   <option value="Booking">Booking</option>
@@ -1452,8 +1192,8 @@ function BnbPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">狀態</label>
-                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={inputCls}>
+                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">狀態</label>
+                <select id="f-3" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={inputCls}>
                   <option value="">全部</option>
                   {Object.keys(STATUS_COLORS).map(s => (
                     <option key={s} value={s}>{s}</option>
@@ -1461,8 +1201,8 @@ function BnbPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)} className={inputCls}>
+                <label htmlFor="f-39" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-39" value={filterWarehouse} onChange={e => setFilterWarehouse(e.target.value)} className={inputCls}>
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
@@ -1534,21 +1274,21 @@ function BnbPage() {
                 {/* 設定列 */}
                 <div className="flex flex-wrap gap-3 items-end">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
-                    <input type="month" value={importMonth} onChange={e => setImportMonth(e.target.value)} className={inputCls} />
+                    <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">匯入月份</label>
+                    <input id="f-4" type="month" value={importMonth} onChange={e => setImportMonth(e.target.value)} className={inputCls} />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">館別</label>
-                    <select value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
+                    <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">館別</label>
+                    <select id="f-5" value={importWarehouse} onChange={e => setImportWarehouse(e.target.value)} className={inputCls}>
                       {(warehouseList.length ? warehouseList : [importWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">
+                    <label htmlFor="span" className="block text-xs text-gray-500 mb-1">
                       選擇檔案
                       {importPreview && <span className="ml-2 text-violet-600 font-semibold">（解析到 {importPreview.totalRows} 筆）</span>}
                     </label>
-                    <input type="file" accept=".xlsx,.xls,.csv"
+                    <input id="span" type="file" accept=".xlsx,.xls,.csv"
                       onChange={e => handleFileSelect(e.target.files?.[0] || null)}
                       className="block text-sm text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-indigo-300 file:text-indigo-600 file:bg-indigo-50 hover:file:bg-indigo-100" />
                   </div>
@@ -2213,12 +1953,12 @@ function BnbPage() {
             {/* 搜尋列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">月份</label>
-                <input type="month" value={drMonth} onChange={e => setDrMonth(e.target.value)} className={inputCls} />
+                <label htmlFor="f-6" className="block text-xs text-gray-500 mb-1">月份</label>
+                <input id="f-6" type="month" value={drMonth} onChange={e => setDrMonth(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
+                <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-7" value={drWarehouse} onChange={e => setDrWarehouse(e.target.value)} className={inputCls}>
                   {(warehouseList.length ? warehouseList : [drWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
                 <WhQuickBtns list={warehouseList} value={drWarehouse} onChange={setDrWarehouse} />
@@ -2397,12 +2137,12 @@ function BnbPage() {
         {activeTab === 'analytics' && analyticsSub === 'monthly' && (
           <div>
             <div className="flex flex-wrap items-center gap-3 mb-4">
-              <label className="text-sm text-gray-600">年份</label>
-              <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
+              <label htmlFor="f-8" className="text-sm text-gray-600">年份</label>
+              <select id="f-8" value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
-              <label className="text-sm text-gray-600">館別</label>
-              <select value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
+              <label htmlFor="f-28" className="text-sm text-gray-600">館別</label>
+              <select id="f-28" value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
                 <option value="">全部</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
@@ -2524,14 +2264,14 @@ function BnbPage() {
               </div>
               {summaryMode === 'monthly' && (
                 <>
-                  <label className="text-sm text-gray-600">年份</label>
-                  <select value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
+                  <label htmlFor="f-29" className="text-sm text-gray-600">年份</label>
+                  <select id="f-29" value={summaryYear} onChange={e => setSummaryYear(e.target.value)} className={inputCls}>
                     {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </>
               )}
-              <label className="text-sm text-gray-600">館別</label>
-              <select value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
+              <label htmlFor="f-30" className="text-sm text-gray-600">館別</label>
+              <select id="f-30" value={summaryWarehouse} onChange={e => setSummaryWarehouse(e.target.value)} className={inputCls}>
                 <option value="">全部</option>
                 {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
@@ -2702,12 +2442,12 @@ function BnbPage() {
             {/* 搜尋列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">申報月份</label>
-                <input type="month" value={declMonth} onChange={e => setDeclMonth(e.target.value)} className={inputCls} />
+                <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">申報月份</label>
+                <input id="f-9" type="month" value={declMonth} onChange={e => setDeclMonth(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
+                <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-10" value={declWarehouse} onChange={e => setDeclWarehouse(e.target.value)} className={inputCls}>
                   {(warehouseList.length ? warehouseList : [declWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
                 <WhQuickBtns list={warehouseList} value={declWarehouse} onChange={setDeclWarehouse} />
@@ -2801,30 +2541,30 @@ function BnbPage() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-gray-500 mb-0.5">業務來源%</label>
-                      <input type="text" value={declForm.businessSource} disabled={isLocked}
+                      <label htmlFor="f-31" className="block text-[11px] text-gray-500 mb-0.5">業務來源%</label>
+                      <input id="f-31" type="text" value={declForm.businessSource} disabled={isLocked}
                         onChange={e => setDeclForm(p => ({ ...p, businessSource: e.target.value }))}
                         placeholder="例：Booking 60%、電話 40%" className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] text-gray-500 mb-0.5">其他額外收入</label>
-                        <input type="number" value={declForm.otherIncome} disabled={isLocked}
+                        <label htmlFor="f-11" className="block text-[11px] text-gray-500 mb-0.5">其他額外收入</label>
+                        <input id="f-11" type="number" value={declForm.otherIncome} disabled={isLocked}
                           onChange={e => setDeclForm(p => ({ ...p, otherIncome: e.target.value }))}
                           className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
                       </div>
                       <div>
-                        <label className="block text-[11px] text-gray-500 mb-0.5">收入說明</label>
-                        <input type="text" value={declForm.otherIncomeNote} disabled={isLocked}
+                        <label htmlFor="f-12" className="block text-[11px] text-gray-500 mb-0.5">收入說明</label>
+                        <input id="f-12" type="text" value={declForm.otherIncomeNote} disabled={isLocked}
                           onChange={e => setDeclForm(p => ({ ...p, otherIncomeNote: e.target.value }))}
                           className={inputCls + ' w-full text-sm disabled:bg-gray-100'} />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-gray-500 mb-0.5">備註</label>
-                      <textarea rows={2} value={declForm.note} disabled={isLocked}
+                      <label htmlFor="f-13" className="block text-[11px] text-gray-500 mb-0.5">備註</label>
+                      <textarea id="f-13" rows={2} value={declForm.note} disabled={isLocked}
                         onChange={e => setDeclForm(p => ({ ...p, note: e.target.value }))}
                         className={inputCls + ' w-full text-sm resize-none disabled:bg-gray-100'} />
                     </div>
@@ -2874,12 +2614,12 @@ function BnbPage() {
         {activeTab === 'analytics' && analyticsSub === 'declList' && (
           <div>
             <div className="flex flex-wrap items-center gap-3 mb-4">
-              <label className="text-sm text-gray-600">年份</label>
-              <select value={dlYear} onChange={e => setDlYear(e.target.value)} className={inputCls}>
+              <label htmlFor="f-14" className="text-sm text-gray-600">年份</label>
+              <select id="f-14" value={dlYear} onChange={e => setDlYear(e.target.value)} className={inputCls}>
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
-              <label className="text-sm text-gray-600">館別</label>
-              <select value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
+              <label htmlFor="f-32" className="text-sm text-gray-600">館別</label>
+              <select id="f-32" value={dlWarehouse} onChange={e => setDlWarehouse(e.target.value)} className={inputCls}>
                 {(warehouseList.length ? warehouseList : [dlWarehouse]).map(w => <option key={w} value={w}>{w}</option>)}
               </select>
               <WhQuickBtns list={warehouseList} value={dlWarehouse} onChange={setDlWarehouse} />
@@ -3052,20 +2792,20 @@ function BnbPage() {
               {/* 篩選列 */}
               {activeOuterTab !== 'ledger' && <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">月份</label>
-                  <input type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)} className={inputCls} />
+                  <label htmlFor="f-15" className="block text-xs text-gray-500 mb-1">月份</label>
+                  <input id="f-15" type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)} className={inputCls} />
                 </div>
                 {dmPayType !== 'all' && (
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">分類</label>
-                    <select value={dmPayType} onChange={e => { setDmPayType(e.target.value); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }} className={inputCls}>
+                    <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">分類</label>
+                    <select id="f-16" value={dmPayType} onChange={e => { setDmPayType(e.target.value); setDmData(null); setDmSelBnb(null); setDmSelLine(null); }} className={inputCls}>
                       {PAY_SUB_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                     </select>
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={dmWarehouse} onChange={e => setDmWarehouse(e.target.value)} className={inputCls}>
+                  <label htmlFor="f-33" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-33" value={dmWarehouse} onChange={e => setDmWarehouse(e.target.value)} className={inputCls}>
                     <option value="">全部</option>
                     {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
@@ -3073,8 +2813,8 @@ function BnbPage() {
                 </div>
                 {dmPayType !== 'all' && dmPayType !== 'combined' && (
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
-                    <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
+                    <label htmlFor="f-34" className="block text-xs text-gray-500 mb-1">存簿帳戶</label>
+                    <select id="f-34" value={dmAccountId} onChange={e => setDmAccountId(e.target.value)} className={inputCls}>
                       <option value="">請選擇帳戶</option>
                       {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
@@ -3130,16 +2870,16 @@ function BnbPage() {
                   {/* 流水帳篩選列 */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">月份起</label>
-                      <input type="month" value={ledgerMonthFrom} onChange={e => setLedgerMonthFrom(e.target.value)} className={inputCls} />
+                      <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">月份起</label>
+                      <input id="f-17" type="month" value={ledgerMonthFrom} onChange={e => setLedgerMonthFrom(e.target.value)} className={inputCls} />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">月份迄</label>
-                      <input type="month" value={ledgerMonthTo} onChange={e => setLedgerMonthTo(e.target.value)} className={inputCls} />
+                      <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">月份迄</label>
+                      <input id="f-18" type="month" value={ledgerMonthTo} onChange={e => setLedgerMonthTo(e.target.value)} className={inputCls} />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">館別</label>
-                      <select value={ledgerWarehouse} onChange={e => setLedgerWarehouse(e.target.value)} className={inputCls}>
+                      <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">館別</label>
+                      <select id="f-19" value={ledgerWarehouse} onChange={e => setLedgerWarehouse(e.target.value)} className={inputCls}>
                         <option value="">全部</option>
                         {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                       </select>
@@ -3642,901 +3382,77 @@ function BnbPage() {
 
         {/* ══ Tab: OTA比對 ══ */}
         {activeTab === 'otaRecon' && (
-          <div>
-            {/* 搜尋列 */}
-            <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">OTA 來源</label>
-                <select className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaSource} onChange={e => setOtaSource(e.target.value)}>
-                  <option value="Booking">Booking.com</option>
-                  <option value="Agoda" disabled>Agoda（尚未支援）</option>
-                  <option value="Expedia" disabled>Expedia（尚未支援）</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">快速月份</label>
-                <input type="month" className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaMonth}
-                  onChange={e => {
-                    const m = e.target.value;
-                    setOtaMonth(m);
-                    if (m) {
-                      const [y, mo] = m.split('-').map(Number);
-                      const last = new Date(y, mo, 0).getDate();
-                      setOtaDateFrom(`${m}-01`);
-                      setOtaDateTo(`${m}-${String(last).padStart(2, '0')}`);
-                    }
-                  }} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">入住起日</label>
-                <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaDateFrom} onChange={e => { setOtaDateFrom(e.target.value); setOtaMonth(''); }} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">入住迄日</label>
-                <input type="date" className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaDateTo} onChange={e => { setOtaDateTo(e.target.value); setOtaMonth(''); }} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaWarehouse} onChange={e => setOtaWarehouse(e.target.value)}>
-                  <option value="">全部</option>
-                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={otaWarehouse} onChange={setOtaWarehouse} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">上傳對帳單</label>
-                <input type="file" accept=".xls,.xlsx,.csv"
-                  className="border rounded-lg px-2 py-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                  onChange={e => setOtaFile(e.target.files?.[0] || null)} />
-              </div>
-              <button onClick={runOtaReconcile} disabled={otaLoading || !otaFile}
-                className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                {otaLoading ? '比對中…' : '開始比對'}
-              </button>
-              {otaResult && (
-                <ExportButtons
-                  data={[
-                    ...otaResult.matched.map(m => ({
-                      type: '已配對', arrival: m.ota.arrival, departure: m.ota.departure,
-                      otaName: m.ota.guestName, sysName: m.bnb.guestName, roomNo: m.bnb.roomNo,
-                      otaAmt: m.ota.finalAmount, sysAmt: m.bnb.roomCharge, diff: m.amountDiff,
-                      commission: m.ota.commissionAmt, reservationNo: m.ota.reservationNo,
-                      status: m.hasAmtIssue || m.hasNameIssue ? '有差異' : '吻合',
-                    })),
-                    ...otaResult.unmatchedOta.map(r => ({
-                      type: 'OTA未配對', arrival: r.arrival, departure: r.departure,
-                      otaName: r.guestName, sysName: '', roomNo: '',
-                      otaAmt: r.finalAmount, sysAmt: '', diff: '',
-                      commission: r.commissionAmt, reservationNo: r.reservationNo, status: r.status,
-                    })),
-                    ...otaResult.unmatchedBnb.map(r => ({
-                      type: '系統未配對', arrival: r.checkInDate, departure: r.checkOutDate,
-                      otaName: '', sysName: r.guestName, roomNo: r.roomNo,
-                      otaAmt: '', sysAmt: r.roomCharge, diff: '',
-                      commission: '', reservationNo: '', status: r.status,
-                    })),
-                  ]}
-                  columns={[
-                    { header: '類別', key: 'type' },
-                    { header: '入住', key: 'arrival' },
-                    { header: '退房', key: 'departure' },
-                    { header: 'OTA姓名', key: 'otaName' },
-                    { header: '系統姓名', key: 'sysName' },
-                    { header: '房號', key: 'roomNo' },
-                    { header: 'OTA金額', key: 'otaAmt', format: 'number' },
-                    { header: '系統金額', key: 'sysAmt', format: 'number' },
-                    { header: '差異', key: 'diff', format: 'number' },
-                    { header: '佣金', key: 'commission', format: 'number' },
-                    { header: '訂單號', key: 'reservationNo' },
-                    { header: '狀態', key: 'status' },
-                  ]}
-                  filename={`OTA比對_${otaSource}_${otaDateFrom || 'all'}`}
-                  title={`OTA 比對結果 ${otaSource}`}
-                />
-              )}
-            </div>
-
-            {/* 比對結果 */}
-            {otaResult && (() => {
-              const s = otaResult.summary;
-              return (
-                <div>
-                  {/* 摘要卡片 */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
-                    {[
-                      { lbl: 'OTA 筆數', val: otaResult.otaRowCount },
-                      { lbl: '系統筆數', val: otaResult.bnbRowCount },
-                      { lbl: '成功配對', val: s.matchedCount, color: 'text-green-700' },
-                      { lbl: 'OTA 未配對', val: s.unmatchedOtaCnt, color: s.unmatchedOtaCnt > 0 ? 'text-red-600' : '' },
-                      { lbl: '系統未配對', val: s.unmatchedBnbCnt, color: s.unmatchedBnbCnt > 0 ? 'text-amber-600' : '' },
-                      { lbl: '差異筆數', val: s.issueCount, color: s.issueCount > 0 ? 'text-red-600' : '' },
-                      { lbl: '已取消', val: s.cancelledCount },
-                    ].map(c => (
-                      <div key={c.lbl} className="bg-white rounded-xl shadow p-3 text-center">
-                        <div className="text-xs text-gray-500">{c.lbl}</div>
-                        <div className={`text-xl font-bold ${c.color || 'text-gray-800'}`}>{c.val}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {/* 金額摘要 */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                    {[
-                      { lbl: 'OTA 總金額', val: s.otaTotal.toLocaleString() },
-                      { lbl: '系統總金額', val: s.bnbTotal.toLocaleString() },
-                      { lbl: '總差異', val: s.diff.toLocaleString(), color: Math.abs(s.diff) > 0 ? 'text-red-600' : 'text-green-700' },
-                      { lbl: 'OTA 佣金合計', val: s.otaCommission.toLocaleString() },
-                    ].map(c => (
-                      <div key={c.lbl} className="bg-white rounded-xl shadow p-3 text-center">
-                        <div className="text-xs text-gray-500">{c.lbl}</div>
-                        <div className={`text-lg font-bold ${c.color || 'text-gray-800'}`}>NT${c.val}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* 確認比對完成 / 存檔 */}
-                  <div className="bg-white rounded-xl shadow p-4 mb-4 flex items-center gap-4">
-                    <div className="flex-1">
-                      <div className="font-semibold text-gray-700 text-sm mb-0.5">確認比對結果</div>
-                      <div className="text-xs text-gray-400">審查完畢後點擊「確認存檔」，將本次比對摘要儲存至系統記錄</div>
-                    </div>
-                    {reconcileConfirmed ? (
-                      <span className="flex items-center gap-1.5 px-4 py-2 bg-green-100 text-green-700 rounded-xl text-sm font-semibold">
-                        ✓ 已確認存檔
-                      </span>
-                    ) : (
-                      <button
-                        onClick={confirmReconcile}
-                        disabled={reconcileConfirming}
-                        className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap">
-                        {reconcileConfirming ? '存檔中…' : '確認存檔'}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* 傭金確認送出 */}
-                  <div className="bg-white rounded-xl shadow p-4 mb-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="font-semibold text-gray-700 text-sm">傭金登記</span>
-                      {commExisting?.exists && commExisting.record?.status !== '已取消' && (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          (commExisting.record?.status === '已付款' || commExisting.orderStatus?.status === '已執行') ? 'bg-green-100 text-green-700'
-                          : commExisting.record?.status === '草稿' ? 'bg-blue-100 text-blue-700'
-                          : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {(commExisting.record?.status === '已付款' || commExisting.orderStatus?.status === '已執行') ? '已付款'
-                            : commExisting.record?.status === '草稿' ? '草稿（未送出）'
-                            : `待出納 — ${commExisting.orderStatus?.orderNo || ''}`}
-                        </span>
-                      )}
-                    </div>
-                    {commExisting?.exists && commExisting.record?.status !== '已取消' ? (
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                        <span>金額：<strong className="text-gray-800">NT$ {Number(commExisting.record.commissionAmount).toLocaleString()}</strong></span>
-                        <span>付款方式：{commExisting.record.paymentMethod}</span>
-                        <span>廠商：{commExisting.record.supplierName}</span>
-                        {commExisting.record.note && <span>備註：{commExisting.record.note}</span>}
-                        {commExisting.record.status === '草稿' && (
-                          <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                            請到「OTA傭金」分頁確認金額後點「確認送出」
-                          </span>
-                        )}
-                        {(commExisting.record.status === '草稿' || commExisting.record.status === '待出納') && (
-                          <button onClick={() => cancelCommission(commExisting.record.id)}
-                            className="px-3 py-1 text-xs rounded-lg bg-red-50 text-red-600 hover:bg-red-100">
-                            取消傭金
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">傭金金額（NT$）</label>
-                          <input type="number" min="0" step="1"
-                            className="border rounded-lg px-3 py-1.5 text-sm w-36"
-                            value={commAmt}
-                            onChange={e => setCommAmt(e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">付款方式</label>
-                          <select className="border rounded-lg px-3 py-1.5 text-sm"
-                            value={commMethod} onChange={e => setCommMethod(e.target.value)}>
-                            <option value="轉帳">轉帳</option>
-                            <option value="匯款">匯款</option>
-                            <option value="現金">現金</option>
-                            <option value="支票">支票</option>
-                            <option value="信用卡">信用卡</option>
-                            <option value="月結">月結</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">備註</label>
-                          <input type="text" className="border rounded-lg px-3 py-1.5 text-sm w-52"
-                            placeholder="選填"
-                            value={commNote} onChange={e => setCommNote(e.target.value)} />
-                        </div>
-                        <button onClick={submitCommission}
-                          disabled={commSubmitting || !commAmt}
-                          className="px-5 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-                          {commSubmitting ? '建立中…' : '建立草稿'}
-                        </button>
-                        <span className="text-xs text-gray-400">建立後可在「OTA傭金」分頁編輯金額再確認送出</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 子分頁切換 */}
-                  <div className="flex gap-1 mb-3">
-                    {[
-                      { k: 'matched', l: `已配對 (${s.matchedCount})` },
-                      { k: 'unmatchedOta', l: `OTA未配對 (${s.unmatchedOtaCnt})` },
-                      { k: 'unmatchedBnb', l: `系統未配對 (${s.unmatchedBnbCnt})` },
-                      { k: 'cancelled', l: `已取消 (${s.cancelledCount})` },
-                    ].map(t => (
-                      <button key={t.k} onClick={() => setOtaViewTab(t.k)}
-                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${otaViewTab === t.k ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}>
-                        {t.l}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* 已配對 */}
-                  {otaViewTab === 'matched' && (
-                    <div className="bg-white rounded-xl shadow tbl-wrap">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0">
-                          <tr className="text-gray-500">
-                            <th className="px-3 py-2 text-left">#</th>
-                            <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">退房</th>
-                            <th className="px-3 py-2 text-left">OTA 姓名</th>
-                            <th className="px-3 py-2 text-left">系統姓名</th>
-                            <th className="px-3 py-2 text-left">房號</th>
-                            <th className="px-3 py-2 text-right">OTA 金額</th>
-                            <th className="px-3 py-2 text-right">系統金額</th>
-                            <th className="px-3 py-2 text-right">差異</th>
-                            <th className="px-3 py-2 text-right">佣金</th>
-                            <th className="px-3 py-2 text-center">訂單號</th>
-                            <th className="px-3 py-2 text-center">狀態</th>
-                            <th className="px-3 py-2 text-center">操作</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {otaResult.matched.length === 0 && (
-                            <tr><td colSpan={13} className="text-center py-8 text-gray-400">無配對資料</td></tr>
-                          )}
-                          {otaResult.matched.map((m, i) => (
-                            <tr key={i} className={`hover:bg-gray-50 ${m.hasAmtIssue || m.hasNameIssue ? 'bg-amber-50' : ''}`}>
-                              <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{m.ota.arrival}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{m.ota.departure}</td>
-                              <td className="px-3 py-2">{m.ota.guestName}
-                                {m.hasNameIssue && <span className="ml-1 text-amber-500 text-xs" title="姓名不符">⚠</span>}
-                              </td>
-                              <td className="px-3 py-2">{m.bnb.guestName}</td>
-                              <td className="px-3 py-2 text-gray-500">{m.bnb.roomNo || '—'}</td>
-                              <td className="px-3 py-2 text-right">{m.ota.finalAmount.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-right">{m.bnb.roomCharge.toLocaleString()}</td>
-                              <td className={`px-3 py-2 text-right font-semibold ${m.hasAmtIssue ? 'text-red-600' : 'text-green-600'}`}>
-                                {m.amountDiff === 0 ? '—' : m.amountDiff > 0 ? `+${m.amountDiff}` : m.amountDiff}
-                              </td>
-                              <td className="px-3 py-2 text-right text-gray-500">{m.ota.commissionAmt.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-center text-xs text-gray-400 font-mono">{m.ota.reservationNo}</td>
-                              <td className="px-3 py-2 text-center">
-                                {m.hasAmtIssue || m.hasNameIssue
-                                  ? <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs">有差異</span>
-                                  : <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs">吻合</span>}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <button onClick={() => openOtaEdit(m.bnb.id)}
-                                  className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100">編輯</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* OTA未配對 */}
-                  {otaViewTab === 'unmatchedOta' && (
-                    <div className="bg-white rounded-xl shadow tbl-wrap">
-                      <p className="px-4 pt-3 text-sm text-red-600">以下筆數存在於 OTA 帳單，但在系統中找不到對應的訂房紀錄</p>
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0">
-                          <tr className="text-gray-500">
-                            <th className="px-3 py-2 text-left">#</th>
-                            <th className="px-3 py-2 text-left">訂單號</th>
-                            <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">退房</th>
-                            <th className="px-3 py-2 text-left">房客姓名</th>
-                            <th className="px-3 py-2 text-left">訂房人</th>
-                            <th className="px-3 py-2 text-right">金額</th>
-                            <th className="px-3 py-2 text-right">佣金</th>
-                            <th className="px-3 py-2 text-center">OTA狀態</th>
-                            <th className="px-3 py-2 text-center">操作</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {otaResult.unmatchedOta.length === 0 && (
-                            <tr><td colSpan={10} className="text-center py-8 text-green-600">全部 OTA 筆數都有配對</td></tr>
-                          )}
-                          {otaResult.unmatchedOta.map((r, i) => (
-                            <tr key={i} className="hover:bg-red-50">
-                              <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                              <td className="px-3 py-2 font-mono text-xs">{r.reservationNo}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{r.arrival}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{r.departure}</td>
-                              <td className="px-3 py-2">{r.guestName}</td>
-                              <td className="px-3 py-2 text-gray-500">{r.bookerName}</td>
-                              <td className="px-3 py-2 text-right font-semibold">{r.finalAmount.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-right text-gray-500">{r.commissionAmt.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-center text-xs">{r.status}</td>
-                              <td className="px-3 py-2 text-center">
-                                <button onClick={() => openOtaAdd(r)}
-                                  className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 whitespace-nowrap">新增到系統</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* 系統未配對 */}
-                  {otaViewTab === 'unmatchedBnb' && (
-                    <div className="bg-white rounded-xl shadow tbl-wrap">
-                      <p className="px-4 pt-3 text-sm text-amber-600">以下筆數存在於系統，但在 OTA 帳單中找不到對應紀錄（可能是直接訂房、電話訂、其他來源）</p>
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0">
-                          <tr className="text-gray-500">
-                            <th className="px-3 py-2 text-left">#</th>
-                            <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">退房</th>
-                            <th className="px-3 py-2 text-left">房客姓名</th>
-                            <th className="px-3 py-2 text-left">房號</th>
-                            <th className="px-3 py-2 text-right">房費</th>
-                            <th className="px-3 py-2 text-center">狀態</th>
-                            <th className="px-3 py-2 text-center">操作</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {otaResult.unmatchedBnb.length === 0 && (
-                            <tr><td colSpan={8} className="text-center py-8 text-green-600">全部系統紀錄都有配對</td></tr>
-                          )}
-                          {otaResult.unmatchedBnb.map((r, i) => (
-                            <tr key={i} className="hover:bg-amber-50">
-                              <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{r.checkInDate}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{r.checkOutDate}</td>
-                              <td className="px-3 py-2">{r.guestName}</td>
-                              <td className="px-3 py-2 text-gray-500">{r.roomNo || '—'}</td>
-                              <td className="px-3 py-2 text-right font-semibold">{r.roomCharge.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-center text-xs">{r.status}</td>
-                              <td className="px-3 py-2 text-center">
-                                <div className="flex gap-1 justify-center">
-                                  <button onClick={() => openOtaEdit(r.id)}
-                                    className="px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100">編輯</button>
-                                  <button onClick={() => deleteOtaBnb(r.id)}
-                                    className="px-2 py-1 text-xs bg-red-50 text-red-700 rounded hover:bg-red-100">刪除</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* 已取消 */}
-                  {otaViewTab === 'cancelled' && (
-                    <div className="bg-white rounded-xl shadow tbl-wrap">
-                      <p className="px-4 pt-3 text-sm text-gray-500">以下為 OTA 帳單中標記為已取消的訂單</p>
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0">
-                          <tr className="text-gray-500">
-                            <th className="px-3 py-2 text-left">#</th>
-                            <th className="px-3 py-2 text-left">訂單號</th>
-                            <th className="px-3 py-2 text-left">入住</th>
-                            <th className="px-3 py-2 text-left">退房</th>
-                            <th className="px-3 py-2 text-left">房客姓名</th>
-                            <th className="px-3 py-2 text-right">原始金額</th>
-                            <th className="px-3 py-2 text-right">最終金額</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {otaResult.cancelledOta.length === 0 && (
-                            <tr><td colSpan={7} className="text-center py-8 text-gray-400">無已取消訂單</td></tr>
-                          )}
-                          {otaResult.cancelledOta.map((r, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                              <td className="px-3 py-2 font-mono text-xs">{r.reservationNo}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{r.arrival}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">{r.departure}</td>
-                              <td className="px-3 py-2">{r.guestName}</td>
-                              <td className="px-3 py-2 text-right line-through text-gray-400">{r.originalAmount.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-right font-semibold">{r.finalAmount.toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
+          <OtaReconTab
+            otaSource={otaSource} setOtaSource={setOtaSource}
+            otaDateFrom={otaDateFrom} setOtaDateFrom={setOtaDateFrom}
+            otaDateTo={otaDateTo} setOtaDateTo={setOtaDateTo}
+            otaWarehouse={otaWarehouse} setOtaWarehouse={setOtaWarehouse}
+            otaFile={otaFile} setOtaFile={setOtaFile}
+            otaResult={otaResult}
+            otaLoading={otaLoading}
+            otaMonth={otaMonth} setOtaMonth={setOtaMonth}
+            otaViewTab={otaViewTab} setOtaViewTab={setOtaViewTab}
+            commAmt={commAmt} setCommAmt={setCommAmt}
+            commMethod={commMethod} setCommMethod={setCommMethod}
+            commNote={commNote} setCommNote={setCommNote}
+            commSubmitting={commSubmitting}
+            commExisting={commExisting}
+            reconcileConfirmed={reconcileConfirmed}
+            reconcileConfirming={reconcileConfirming}
+            warehouseList={warehouseList}
+            runOtaReconcile={runOtaReconcile}
+            confirmReconcile={confirmReconcile}
+            submitCommission={submitCommission}
+            cancelCommission={cancelCommission}
+            openOtaEdit={openOtaEdit}
+            openOtaAdd={openOtaAdd}
+            deleteOtaBnb={deleteOtaBnb}
+          />
         )}
-
         {/* ══ Tab: OTA傭金 ══ */}
         {activeTab === 'otaCommission' && (
-          <div>
-            {/* KPI 摘要 */}
-            {commHistRows.length > 0 && (() => {
-              const active     = commHistRows.filter(r => r.status !== '已取消');
-              const totalAmt   = active.reduce((s, r) => s + Number(r.commissionAmount), 0);
-              const draftAmt   = active.filter(r => r.status === '草稿').reduce((s, r) => s + Number(r.commissionAmount), 0);
-              const paidAmt    = active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').reduce((s, r) => s + Number(r.commissionAmount), 0);
-              const pendingAmt = active.filter(r => r.status === '待出納').reduce((s, r) => s + Number(r.commissionAmount), 0);
-              const draftCnt   = active.filter(r => r.status === '草稿').length;
-              const pendingCnt = active.filter(r => r.status === '待出納').length;
-              const paidCnt    = active.filter(r => r.status === '已付款' || r.paymentOrder?.status === '已執行').length;
-              return (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="text-xs text-gray-400 mb-1">傭金總額（有效）</div>
-                    <div className="text-xl font-bold text-gray-800">NT$ {totalAmt.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">{active.length} 筆</div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-4">
-                    <div className="text-xs text-blue-400 mb-1">草稿（待確認）</div>
-                    <div className="text-xl font-bold text-blue-600">NT$ {draftAmt.toLocaleString()}</div>
-                    <div className="text-xs text-blue-400 mt-1">{draftCnt} 筆</div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="text-xs text-gray-400 mb-1">待出納</div>
-                    <div className="text-xl font-bold text-amber-600">NT$ {pendingAmt.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">{pendingCnt} 筆</div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="text-xs text-gray-400 mb-1">已付款</div>
-                    <div className="text-xl font-bold text-green-600">NT$ {paidAmt.toLocaleString()}</div>
-                    <div className="text-xs text-gray-400 mt-1">{paidCnt} 筆</div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="text-xs text-gray-400 mb-1">已付款率</div>
-                    <div className="text-xl font-bold text-indigo-600">
-                      {totalAmt > 0 ? Math.round(paidAmt / totalAmt * 100) : 0}%
-                    </div>
-                    <div className="mt-1.5 bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-green-500 h-1.5 rounded-full"
-                        style={{ width: `${totalAmt > 0 ? Math.round(paidAmt / totalAmt * 100) : 0}%` }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select className="border rounded-lg px-3 py-1.5 text-sm"
-                  value={otaWarehouse} onChange={e => setOtaWarehouse(e.target.value)}>
-                  <option value="">全部</option>
-                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={otaWarehouse} onChange={setOtaWarehouse} />
-              </div>
-              <button onClick={fetchCommHistory} disabled={commHistLoading}
-                className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                {commHistLoading ? '載入中…' : '重新整理'}
-              </button>
-              {commHistRows.length > 0 && (
-                <ExportButtons
-                  data={commHistRows.map(r => ({
-                    ...r,
-                    poStatus: r.paymentOrder?.status || '',
-                    orderNo: r.paymentOrder?.orderNo || '',
-                  }))}
-                  columns={[
-                    { header: '月份',     key: 'commissionMonth' },
-                    { header: 'OTA來源',  key: 'otaSource' },
-                    { header: '館別',     key: 'warehouse' },
-                    { header: '傭金金額',  key: 'commissionAmount', format: 'number' },
-                    { header: '付款方式',  key: 'paymentMethod' },
-                    { header: '廠商',     key: 'supplierName' },
-                    { header: '傭金狀態',  key: 'status' },
-                    { header: '出納狀態',  key: 'poStatus' },
-                    { header: '付款單號',  key: 'orderNo' },
-                    { header: '確認者',   key: 'confirmedBy' },
-                    { header: '備註',     key: 'note' },
-                  ]}
-                  filename={`OTA傭金_${otaWarehouse || '全部'}`}
-                  title="OTA 傭金記錄"
-                />
-              )}
-            </div>
-
-            <div className="bg-white rounded-xl shadow tbl-wrap">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr className="text-gray-500">
-                    <th className="px-3 py-2 text-left">月份</th>
-                    <th className="px-3 py-2 text-left">OTA 來源</th>
-                    <th className="px-3 py-2 text-left">館別</th>
-                    <th className="px-3 py-2 text-right">傭金金額</th>
-                    <th className="px-3 py-2 text-left">付款方式</th>
-                    <th className="px-3 py-2 text-left">廠商</th>
-                    <th className="px-3 py-2 text-center">傭金狀態</th>
-                    <th className="px-3 py-2 text-center">出納狀態</th>
-                    <th className="px-3 py-2 text-left">付款單號</th>
-                    <th className="px-3 py-2 text-left">確認者</th>
-                    <th className="px-3 py-2 text-left">備註</th>
-                    <th className="px-3 py-2 text-center">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {commHistLoading && (
-                    <tr><td colSpan={12} className="text-center py-8 text-gray-400">載入中…</td></tr>
-                  )}
-                  {!commHistLoading && commHistRows.length === 0 && (
-                    <tr><td colSpan={12} className="text-center py-8 text-gray-400">尚無傭金記錄</td></tr>
-                  )}
-                  {commHistRows.map(r => {
-                    const isPaid      = r.status === '已付款' || r.paymentOrder?.status === '已執行';
-                    const isCancelled = r.status === '已取消';
-                    const isDraft     = r.status === '草稿';
-                    const isPending   = r.status === '待出納' && !isPaid;
-                    const isEditing   = commEditId === r.id;
-                    const statusColor = isCancelled ? 'bg-gray-100 text-gray-400'
-                      : isPaid    ? 'bg-green-100 text-green-700'
-                      : isDraft   ? 'bg-blue-100 text-blue-700'
-                      : 'bg-amber-100 text-amber-700';
-                    const statusLabel = isCancelled ? '已取消' : isPaid ? '已付款' : r.status;
-                    const poColor = !r.paymentOrder ? ''
-                      : (r.paymentOrder.status === '已執行' || r.paymentOrder.status === '已付款') ? 'text-green-600 font-semibold'
-                      : r.paymentOrder.status === '已取消' ? 'text-gray-400 line-through'
-                      : 'text-amber-600';
-                    const canEdit = (isDraft || isPending) && !isPaid && !isCancelled;
-                    return (
-                      <tr key={r.id} className={`hover:bg-gray-50 ${isCancelled ? 'opacity-50' : ''} ${isDraft ? 'bg-blue-50/40' : ''} ${isEditing ? 'bg-indigo-50' : ''}`}>
-                        <td className="px-3 py-2.5 whitespace-nowrap font-mono">{r.commissionMonth}</td>
-                        <td className="px-3 py-2.5">{r.otaSource}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{r.warehouse}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-gray-800">
-                          {isEditing ? (
-                            <input type="number" min="1" step="1"
-                              className="border rounded px-2 py-0.5 w-28 text-right text-sm"
-                              value={commEditData.commissionAmount}
-                              onChange={e => setCommEditData(p => ({ ...p, commissionAmount: e.target.value }))} />
-                          ) : `NT$ ${r.commissionAmount.toLocaleString()}`}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-600">
-                          {isEditing ? (
-                            <select className="border rounded px-2 py-0.5 text-sm"
-                              value={commEditData.paymentMethod}
-                              onChange={e => setCommEditData(p => ({ ...p, paymentMethod: e.target.value }))}>
-                              <option>轉帳</option><option>匯款</option><option>現金</option><option>支票</option><option>信用卡</option><option>月結</option>
-                            </select>
-                          ) : r.paymentMethod}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-600">{r.supplierName || '—'}</td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor}`}>
-                            {statusLabel}
-                          </span>
-                        </td>
-                        <td className={`px-3 py-2.5 text-center text-sm ${poColor}`}>
-                          {r.paymentOrder?.status || (isDraft ? '未建立' : '—')}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs font-mono text-gray-400">
-                          {r.paymentOrder?.orderNo || (isDraft ? '—' : '—')}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-500 text-xs">{r.confirmedBy || '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-400 text-xs max-w-[140px] truncate">
-                          {isEditing ? (
-                            <input type="text" className="border rounded px-2 py-0.5 w-full text-sm"
-                              placeholder="備註"
-                              value={commEditData.note}
-                              onChange={e => setCommEditData(p => ({ ...p, note: e.target.value }))} />
-                          ) : <span title={r.note}>{r.note || '—'}</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          <div className="flex gap-1 justify-center flex-wrap">
-                            {isEditing ? (
-                              <>
-                                <button onClick={saveEditComm} disabled={commEditSaving}
-                                  className="px-2 py-0.5 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                                  {commEditSaving ? '…' : '儲存'}
-                                </button>
-                                <button onClick={() => setCommEditId(null)}
-                                  className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200">
-                                  取消編輯
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                {canEdit && (
-                                  <button onClick={() => startEditComm(r)}
-                                    className="px-2 py-0.5 text-xs rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
-                                    編輯
-                                  </button>
-                                )}
-                                {isDraft && (
-                                  <button onClick={() => confirmCommission(r.id)}
-                                    className="px-2 py-0.5 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 font-medium">
-                                    確認送出
-                                  </button>
-                                )}
-                                {canEdit && (
-                                  <button onClick={() => cancelCommission(r.id)}
-                                    className="px-2 py-0.5 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100">
-                                    取消
-                                  </button>
-                                )}
-                                {isPaid && (
-                                  <span className="text-xs text-green-600 font-semibold">已付款</span>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 比對記錄 */}
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-gray-700">OTA 比對記錄（最近 100 次）</h3>
-                <button onClick={fetchReconLogs} disabled={reconLogsLoading}
-                  className="text-xs text-indigo-600 hover:underline disabled:opacity-50">
-                  {reconLogsLoading ? '載入中…' : '重新整理'}
-                </button>
-              </div>
-              <div className="bg-white rounded-xl shadow tbl-wrap">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr className="text-gray-500 text-xs">
-                      <th className="px-3 py-2 text-left">比對時間</th>
-                      <th className="px-3 py-2 text-left">月份</th>
-                      <th className="px-3 py-2 text-left">來源</th>
-                      <th className="px-3 py-2 text-left">館別</th>
-                      <th className="px-3 py-2 text-center">OTA筆</th>
-                      <th className="px-3 py-2 text-center">系統筆</th>
-                      <th className="px-3 py-2 text-center">配對</th>
-                      <th className="px-3 py-2 text-center">OTA未配</th>
-                      <th className="px-3 py-2 text-center">系統未配</th>
-                      <th className="px-3 py-2 text-center">差異筆</th>
-                      <th className="px-3 py-2 text-right">OTA總額</th>
-                      <th className="px-3 py-2 text-right">系統總額</th>
-                      <th className="px-3 py-2 text-right">差異</th>
-                      <th className="px-3 py-2 text-right">佣金</th>
-                      <th className="px-3 py-2 text-left">執行者</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {reconLogsLoading && (
-                      <tr><td colSpan={15} className="text-center py-6 text-gray-400">載入中…</td></tr>
-                    )}
-                    {!reconLogsLoading && reconLogs.length === 0 && (
-                      <tr><td colSpan={15} className="text-center py-6 text-gray-400">尚無比對記錄</td></tr>
-                    )}
-                    {reconLogs.map(r => (
-                      <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-xs text-gray-400 whitespace-nowrap">
-                          {new Date(r.createdAt).toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs">{r.reconcileMonth}</td>
-                        <td className="px-3 py-2">{r.otaSource}</td>
-                        <td className="px-3 py-2 text-gray-500">{r.warehouse}</td>
-                        <td className="px-3 py-2 text-center">{r.otaRowCount}</td>
-                        <td className="px-3 py-2 text-center">{r.bnbRowCount}</td>
-                        <td className="px-3 py-2 text-center text-green-600 font-semibold">{r.matchedCount}</td>
-                        <td className={`px-3 py-2 text-center ${r.unmatchedOtaCnt > 0 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{r.unmatchedOtaCnt}</td>
-                        <td className={`px-3 py-2 text-center ${r.unmatchedBnbCnt > 0 ? 'text-amber-500 font-semibold' : 'text-gray-400'}`}>{r.unmatchedBnbCnt}</td>
-                        <td className={`px-3 py-2 text-center ${r.issueCount > 0 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{r.issueCount}</td>
-                        <td className="px-3 py-2 text-right text-xs">{r.otaTotal.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-xs">{r.bnbTotal.toLocaleString()}</td>
-                        <td className={`px-3 py-2 text-right text-xs font-semibold ${Math.abs(r.diff) > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                          {r.diff === 0 ? '—' : r.diff > 0 ? `+${r.diff.toLocaleString()}` : r.diff.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs text-gray-600">{r.otaCommission.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-xs text-gray-400">{r.createdBy || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <OtaCommissionTab
+            otaWarehouse={otaWarehouse} setOtaWarehouse={setOtaWarehouse}
+            commHistRows={commHistRows} commHistLoading={commHistLoading}
+            commEditId={commEditId} setCommEditId={setCommEditId}
+            commEditData={commEditData} setCommEditData={setCommEditData}
+            commEditSaving={commEditSaving}
+            reconLogs={reconLogs} reconLogsLoading={reconLogsLoading}
+            warehouseList={warehouseList}
+            fetchCommHistory={fetchCommHistory}
+            fetchReconLogs={fetchReconLogs}
+            saveEditComm={saveEditComm}
+            startEditComm={startEditComm}
+            confirmCommission={confirmCommission}
+            cancelCommission={cancelCommission}
+          />
         )}
-
         {/* ══ Tab: 老闆收取 ══ */}
         {activeTab === 'bossWithdraw' && (
-          <div>
-            {/* 檢視切換 */}
-            <div className="flex gap-2 mb-4">
-              {[{ key: 'detail', label: '📋 明細' }, { key: 'monthly', label: '📊 月份報表' }].map(v => (
-                <button key={v.key} onClick={() => setBwViewMode(v.key)}
-                  className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${bwViewMode === v.key ? 'bg-orange-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-orange-50'}`}>
-                  {v.label}
-                </button>
-              ))}
-            </div>
-
-            {/* ── 明細模式 ── */}
-            {bwViewMode === 'detail' && (
-              <>
-                <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">月份</label>
-                    <input type="month" value={bwMonth} onChange={e => setBwMonth(e.target.value)}
-                      className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">館別</label>
-                    <select value={bwWarehouse} onChange={e => setBwWarehouse(e.target.value)}
-                      className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none">
-                      <option value="">全部</option>
-                      {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                    <WhQuickBtns list={warehouseList} value={bwWarehouse} onChange={setBwWarehouse} />
-                  </div>
-                  <button onClick={fetchBossWithdraw}
-                    className="px-4 py-1.5 text-sm rounded-lg bg-orange-600 text-white hover:bg-orange-700">
-                    查詢
-                  </button>
-                  {bwData && (
-                    <div className="ml-auto text-sm text-gray-500">
-                      共 <span className="font-semibold text-gray-800">{(bwData.rows || []).length}</span> 筆，
-                      合計 <span className="font-bold text-orange-600">NT${Number(bwData.total || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="bg-white rounded-xl shadow overflow-hidden">
-                  {bwLoading ? (
-                    <div className="text-center py-10 text-gray-400">載入中…</div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 z-10 bg-orange-50">
-                        <tr className="text-orange-800 text-xs">
-                          <th className="px-4 py-2 text-left font-medium">日期</th>
-                          <th className="px-4 py-2 text-left font-medium">館別</th>
-                          <th className="px-4 py-2 text-left font-medium">房客姓名</th>
-                          <th className="px-4 py-2 text-right font-medium">金額</th>
-                          <th className="px-4 py-2 text-left font-medium">備註</th>
-                          <th className="px-4 py-2 text-left font-medium">建立時間</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {(!bwData || !bwData.rows || bwData.rows.length === 0) && (
-                          <tr><td colSpan={6} className="text-center py-10 text-gray-400">無資料</td></tr>
-                        )}
-                        {(bwData?.rows || []).map(r => (
-                          <tr key={r.id} className="hover:bg-orange-50/40">
-                            <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{r.withdrawDate}</td>
-                            <td className="px-4 py-2 text-gray-400 text-xs">{r.warehouse}</td>
-                            <td className="px-4 py-2 font-medium text-gray-700">{r.guestName || '—'}</td>
-                            <td className="px-4 py-2 text-right font-semibold text-orange-600">NT${Number(r.amount).toLocaleString()}</td>
-                            <td className="px-4 py-2 text-gray-500 text-xs">{r.note || '—'}</td>
-                            <td className="px-4 py-2 text-gray-300 text-xs whitespace-nowrap">
-                              {r.createdAt ? new Date(r.createdAt).toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* ── 月份報表模式 ── */}
-            {bwViewMode === 'monthly' && (
-              <>
-                <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">年度</label>
-                    <select value={bwYear} onChange={e => setBwYear(e.target.value)}
-                      className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none">
-                      {[0,1,2,3].map(d => {
-                        const y = String(new Date().getFullYear() - d);
-                        return <option key={y} value={y}>{y} 年</option>;
-                      })}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">館別</label>
-                    <select value={bwWarehouse} onChange={e => setBwWarehouse(e.target.value)}
-                      className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-300 outline-none">
-                      <option value="">全部</option>
-                      {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                    <WhQuickBtns list={warehouseList} value={bwWarehouse} onChange={setBwWarehouse} />
-                  </div>
-                  <button onClick={fetchBossWithdrawSummary}
-                    className="px-4 py-1.5 text-sm rounded-lg bg-orange-600 text-white hover:bg-orange-700">
-                    {bwSummaryLoad ? '載入中…' : '查詢'}
-                  </button>
-                  {bwSummary && (
-                    <div className="ml-auto text-sm text-gray-500">
-                      全年共 <span className="font-semibold">{bwSummary.grandCnt}</span> 筆，
-                      合計 <span className="font-bold text-orange-600">NT${Number(bwSummary.grandTotal || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* 月份彙整表 */}
-                <div className="bg-white rounded-xl shadow overflow-hidden">
-                  {bwSummaryLoad ? (
-                    <div className="text-center py-10 text-gray-400">載入中…</div>
-                  ) : !bwSummary ? (
-                    <div className="text-center py-10 text-gray-400">請選擇年度後按「查詢」</div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 z-10 bg-orange-50">
-                        <tr className="text-orange-800 text-xs font-medium">
-                          <th className="px-4 py-3 text-left">月份</th>
-                          <th className="px-4 py-3 text-left">館別</th>
-                          <th className="px-4 py-3 text-center">筆數</th>
-                          <th className="px-4 py-3 text-right">老闆收取現金</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {(bwSummary.summaryRows || []).length === 0 && (
-                          <tr><td colSpan={4} className="text-center py-10 text-gray-400">{bwYear} 年無資料</td></tr>
-                        )}
-                        {(bwSummary.summaryRows || []).map((r, i) => (
-                          <tr key={i} className="hover:bg-orange-50/40">
-                            <td className="px-4 py-3 font-medium text-gray-800">{r.month}</td>
-                            <td className="px-4 py-3 text-gray-500 text-xs">{r.warehouse}</td>
-                            <td className="px-4 py-3 text-center text-gray-500">{r.cnt} 筆</td>
-                            <td className="px-4 py-3 text-right font-bold text-orange-600 text-base">
-                              NT${r.total.toLocaleString('zh-TW')}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      {(bwSummary.summaryRows || []).length > 0 && (
-                        <tfoot className="bg-orange-100 font-bold text-sm">
-                          <tr>
-                            <td className="px-4 py-3 text-orange-800">全年合計</td>
-                            <td className="px-4 py-3"></td>
-                            <td className="px-4 py-3 text-center text-orange-700">{bwSummary.grandCnt} 筆</td>
-                            <td className="px-4 py-3 text-right text-orange-700 text-lg">
-                              NT${Number(bwSummary.grandTotal).toLocaleString('zh-TW')}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          <BossWithdrawTab
+            bwData={bwData} bwLoading={bwLoading}
+            bwMonth={bwMonth} setBwMonth={setBwMonth}
+            bwWarehouse={bwWarehouse} setBwWarehouse={setBwWarehouse}
+            bwViewMode={bwViewMode} setBwViewMode={setBwViewMode}
+            bwYear={bwYear} setBwYear={setBwYear}
+            bwSummary={bwSummary} bwSummaryLoad={bwSummaryLoad}
+            warehouseList={warehouseList}
+            fetchBossWithdraw={fetchBossWithdraw}
+            fetchBossWithdrawSummary={fetchBossWithdrawSummary}
+          />
         )}
-
         {/* ══ Tab: 其他收入 ══ */}
         {activeTab === 'otherIncome' && (
           <div>
             {/* 篩選列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">月份</label>
-                <input type="month" value={oiMonth} onChange={e => setOiMonth(e.target.value)} className={inputCls} />
+                <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">月份</label>
+                <input id="f-20" type="month" value={oiMonth} onChange={e => setOiMonth(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={oiWarehouse} onChange={e => setOiWarehouse(e.target.value)} className={inputCls}>
+                <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-21" value={oiWarehouse} onChange={e => setOiWarehouse(e.target.value)} className={inputCls}>
                   <option value="">全部</option>
                   {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
@@ -4626,42 +3542,42 @@ function BnbPage() {
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">月份 *</label>
-                        <input type="month" value={oiForm.importMonth} onChange={e => setOiForm(f => ({ ...f, importMonth: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                        <label htmlFor="f-22" className="block text-xs text-gray-500 mb-1">月份 *</label>
+                        <input id="f-22" type="month" value={oiForm.importMonth} onChange={e => setOiForm(f => ({ ...f, importMonth: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">日期 *</label>
-                        <input type="date" value={oiForm.incomeDate} onChange={e => setOiForm(f => ({ ...f, incomeDate: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
+                        <label htmlFor="f-23" className="block text-xs text-gray-500 mb-1">日期 *</label>
+                        <input id="f-23" type="date" value={oiForm.incomeDate} onChange={e => setOiForm(f => ({ ...f, incomeDate: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">館別 *</label>
-                        <select value={oiForm.warehouse} onChange={e => setOiForm(f => ({ ...f, warehouse: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                        <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">館別 *</label>
+                        <select id="f-24" value={oiForm.warehouse} onChange={e => setOiForm(f => ({ ...f, warehouse: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
                           {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">類別</label>
-                        <select value={oiForm.category} onChange={e => setOiForm(f => ({ ...f, category: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
+                        <label htmlFor="f-35" className="block text-xs text-gray-500 mb-1">類別</label>
+                        <select id="f-35" value={oiForm.category} onChange={e => setOiForm(f => ({ ...f, category: e.target.value }))} className="w-full border rounded-lg px-3 py-1.5 text-sm">
                           <option value="">請選擇</option>
                           {OI_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">說明 *</label>
-                      <input type="text" value={oiForm.description} onChange={e => setOiForm(f => ({ ...f, description: e.target.value }))}
+                      <label htmlFor="f-36" className="block text-xs text-gray-500 mb-1">說明 *</label>
+                      <input id="f-36" type="text" value={oiForm.description} onChange={e => setOiForm(f => ({ ...f, description: e.target.value }))}
                         placeholder="例：5月停車費" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">金額 *</label>
-                      <input type="number" value={oiForm.amount} onChange={e => setOiForm(f => ({ ...f, amount: e.target.value }))}
+                      <label htmlFor="f-37" className="block text-xs text-gray-500 mb-1">金額 *</label>
+                      <input id="f-37" type="number" value={oiForm.amount} onChange={e => setOiForm(f => ({ ...f, amount: e.target.value }))}
                         placeholder="0" className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">備註</label>
-                      <input type="text" value={oiForm.note} onChange={e => setOiForm(f => ({ ...f, note: e.target.value }))}
+                      <label htmlFor="f-38" className="block text-xs text-gray-500 mb-1">備註</label>
+                      <input id="f-38" type="text" value={oiForm.note} onChange={e => setOiForm(f => ({ ...f, note: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                     </div>
                   </div>
@@ -4791,8 +3707,8 @@ function BnbPage() {
                 : '此筆款項為現金收帳或已另行處理，不需存簿配對。'}
             </p>
             <div className="mb-5">
-              <label className="block text-xs text-gray-500 mb-1">備註（選填）</label>
-              <input
+              <label htmlFor="f-25" className="block text-xs text-gray-500 mb-1">備註（選填）</label>
+              <input id="f-25"
                 type="text"
                 value={dmMarkNote}
                 onChange={e => setDmMarkNote(e.target.value)}
@@ -4840,13 +3756,13 @@ function BnbPage() {
               {/* 匯入月份/帳戶 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">月份</label>
-                  <input type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)}
+                  <label htmlFor="f-26" className="block text-xs text-gray-500 mb-1">月份</label>
+                  <input id="f-26" type="month" value={dmMonth} onChange={e => setDmMonth(e.target.value)}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">存簿帳戶 *</label>
-                  <select value={dmAccountId} onChange={e => setDmAccountId(e.target.value)}
+                  <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">存簿帳戶 *</label>
+                  <select id="f-27" value={dmAccountId} onChange={e => setDmAccountId(e.target.value)}
                     className="w-full border rounded-lg px-3 py-1.5 text-sm">
                     <option value="">請選擇帳戶</option>
                     {dmAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -4856,8 +3772,8 @@ function BnbPage() {
 
               {/* 檔案選擇 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">選擇檔案（.xls / .xlsx / .csv）</label>
-                <input type="file" accept=".xls,.xlsx,.csv"
+                <label htmlFor="xls-xlsx-csv" className="block text-sm font-medium text-gray-700 mb-1">選擇檔案（.xls / .xlsx / .csv）</label>
+                <input id="xls-xlsx-csv" type="file" accept=".xls,.xlsx,.csv"
                   onChange={handleBankFileUpload}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
                 {bankImportParsing && <p className="text-xs text-blue-500 mt-1">解析中…</p>}

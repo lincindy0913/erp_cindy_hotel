@@ -9,6 +9,7 @@ import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,7 +81,7 @@ export async function PUT(request, { params }) {
         return createErrorResponse('VALIDATION_FAILED', '只有待兌現或到期的支票才能兌現', 400);
       }
 
-      const clearDate = data.clearDate || new Date().toISOString().split('T')[0];
+      const clearDate = data.clearDate || todayStr();
       await assertPeriodOpen(prisma, clearDate, check.warehouse);
       const actualAmount = data.actualAmount ? parseFloat(data.actualAmount) : Number(check.amount);
       const clearedBy = data.clearedBy || null;
@@ -170,7 +171,7 @@ export async function PUT(request, { params }) {
 
       // If was cleared, create reverse transaction
       if (check.status === 'cleared' && check.cashTransactionId) {
-        const reverseDate = new Date().toISOString().split('T')[0];
+        const reverseDate = todayStr();
         const reverseTransactionNo = await nextCashTransactionNo(prisma, reverseDate);
 
         let accountId, txType;

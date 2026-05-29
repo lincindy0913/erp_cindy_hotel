@@ -1,12 +1,16 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
+import { todayStr, localDateStr } from '@/lib/localDate';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { CONTRACT_STATUSES, getContractDisplayStatus, getTenantDisplayName } from './_lib/rentalHelpers';
+import EditTenantModal from './_components/EditTenantModal';
+import ContractModal   from './_components/ContractModal';
 
 const TABS = [
   { key: 'overview', label: '總覽' },
@@ -60,12 +64,7 @@ const PROPERTY_STATUSES = [
   { value: 'inactive', label: '停用', color: 'bg-gray-100 text-gray-500' },
 ];
 
-const CONTRACT_STATUSES = [
-  { value: 'pending', label: '待審核', color: 'bg-gray-100 text-gray-800' },
-  { value: 'active', label: '生效中', color: 'bg-green-100 text-green-800' },
-  { value: 'expired', label: '已到期', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'terminated', label: '已終止', color: 'bg-red-100 text-red-800' }
-];
+// CONTRACT_STATUSES → imported from ./_lib/rentalHelpers
 
 const INCOME_STATUSES = [
   { value: 'pending', label: '待收', color: 'bg-yellow-100 text-yellow-800' },
@@ -90,12 +89,7 @@ function StatusBadge({ value, list }) {
   return <span className={`text-xs px-2 py-0.5 rounded ${item.color}`}>{item.label}</span>;
 }
 
-function getContractDisplayStatus(c) {
-  if (c.status === 'active' && c.endDate && c.endDate < new Date().toISOString().slice(0, 10)) {
-    return 'expired';
-  }
-  return c.status;
-}
+// getContractDisplayStatus → imported from ./_lib/rentalHelpers
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('zh-TW');
@@ -215,14 +209,14 @@ function RentalsPage() {
       actualAmount: (i) => Number(i.actualAmount || 0),
       remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
       dueDate: (i) => i.dueDate || '',
-      status: (i) => (i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0] ? 'overdue' : i.status || ''),
+      status: (i) => (i.status === 'pending' && i.dueDate < todayStr() ? 'overdue' : i.status || ''),
       payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
     });
   }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch, incomeFilter.category]);
 
   const expiringContractCount = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const limit = new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0];
+    const today = todayStr();
+    const limit = localDateStr(new Date(Date.now() + 60 * 86400000));
     return contracts.filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= limit).length;
   }, [contracts]);
 
@@ -266,16 +260,16 @@ function RentalsPage() {
   const [taxForm, setTaxForm] = useState({ propertyId: '', taxYear: new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '', certNo: '', paidDate: '', note: '' });
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
+  const [maintenanceForm, setMaintenanceForm] = useState({ propertyId: '', maintenanceDate: todayStr(), category: '水電', amount: '', accountingSubjectId: '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
   const [editingMaintenance, setEditingMaintenance] = useState(null);
 
   // Inline payment forms
   const [payingIncomeId, setPayingIncomeId] = useState(null);
   const [incomeFormMode, setIncomeFormMode] = useState('confirm'); // 'confirm' | 'edit'
-  const [incomePayForm, setIncomePayForm] = useState({ actualAmount: '', actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '現金', matchTransferRef: '', matchBankAccountName: '', matchNote: '' });
+  const [incomePayForm, setIncomePayForm] = useState({ actualAmount: '', actualDate: todayStr(), accountId: '', paymentMethod: '現金', matchTransferRef: '', matchBankAccountName: '', matchNote: '' });
 
   const [payingTaxId, setPayingTaxId] = useState(null);
-  const [taxPayForm, setTaxPayForm] = useState({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] });
+  const [taxPayForm, setTaxPayForm] = useState({ accountId: '', paymentDate: todayStr() });
 
   const [reportYear, setReportYear] = useState(new Date().getFullYear());
   const [reportStartDate, setReportStartDate] = useState('');
@@ -322,7 +316,7 @@ function RentalsPage() {
   const [overdueReportLoading, setOverdueReportLoading] = useState(false);
   const [overdueSelectedIds, setOverdueSelectedIds] = useState(new Set());
   const [showOverdueBatch, setShowOverdueBatch] = useState(false);
-  const [overdueBatchForm, setOverdueBatchForm] = useState({ actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '匯款' });
+  const [overdueBatchForm, setOverdueBatchForm] = useState({ actualDate: todayStr(), accountId: '', paymentMethod: '匯款' });
   const [overdueBatchSaving, setOverdueBatchSaving] = useState(false);
 
   // Quick-pay modal (從逾期催繳直接收款)
@@ -351,7 +345,7 @@ function RentalsPage() {
   // Batch cashier operations
   const [selectedIncomeIds, setSelectedIncomeIds] = useState(new Set());
   const [showBatchPay, setShowBatchPay] = useState(false);
-  const [batchPayForm, setBatchPayForm] = useState({ actualDate: new Date().toISOString().split('T')[0], accountId: '', paymentMethod: '匯款' });
+  const [batchPayForm, setBatchPayForm] = useState({ actualDate: todayStr(), accountId: '', paymentMethod: '匯款' });
   const [batchSaving, setBatchSaving] = useState(false);
   const [batchLockSaving, setBatchLockSaving] = useState(false);
 
@@ -881,7 +875,7 @@ function RentalsPage() {
     try {
       const res = await fetch('/api/rentals/income?status=pending');
       const data = await res.json();
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayStr();
       const overdue = (Array.isArray(data) ? data : [])
         .filter(i => i.dueDate && i.dueDate < today)
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -912,7 +906,7 @@ function RentalsPage() {
     const resolvedQPAccountId = defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId;
     setQuickPayForm({
       actualAmount: remaining > 0 ? String(remaining) : String(expected),
-      actualDate: new Date().toISOString().split('T')[0],
+      actualDate: todayStr(),
       accountId: resolvedQPAccountId,
       paymentMethod: resolvePaymentMethod(income.paymentMethod, resolvedQPAccountId),
     });
@@ -950,7 +944,7 @@ function RentalsPage() {
   }
 
   function markReminderSent(contractId) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const updated = { ...reminderSentDates, [contractId]: today };
     setReminderSentDates(updated);
     try { localStorage.setItem('rental_contract_reminders', JSON.stringify(updated)); } catch { /* ignore */ }
@@ -1206,7 +1200,7 @@ function RentalsPage() {
         // 若 startDate 是閏年 2/29，+1 年後 JS 會自動進位成 3/1，需回退到 2/28
         const origMonth = parseInt(sd.slice(5, 7), 10);
         if (origMonth !== sdDate.getMonth() + 1) sdDate.setDate(0); // 0 = 上個月最後一天
-        const ed = sdDate.toISOString().slice(0, 10);
+        const ed = localDateStr(sdDate);
         const contractRes = await fetch('/api/rentals/contracts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1405,7 +1399,7 @@ function RentalsPage() {
   function openRenewalModal(contract) {
     const nextDay = new Date(contract.endDate);
     nextDay.setDate(nextDay.getDate() + 1);
-    const nextStart = nextDay.toISOString().split('T')[0];
+    const nextStart = localDateStr(nextDay);
     setRenewingFromContract(contract);
     setEditingContract(null);
     setContractForm({
@@ -1500,7 +1494,7 @@ function RentalsPage() {
 
   // ==================== INCOME (CASHIER) ====================
   function exportIncomeCSV() {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const rows = [
       ['物業', '棟別', '租客', '年', '月', '分類', '應收', '已收', '欠款', '到期日', '狀態', '備註'],
       ...sortedIncomes.map(i => {
@@ -1563,7 +1557,7 @@ function RentalsPage() {
     const resolvedAccountId = defaultAccountId === 'null' || defaultAccountId === 'undefined' ? '' : defaultAccountId;
     setIncomePayForm({
       actualAmount: remaining > 0 ? String(remaining) : String(expected),
-      actualDate: new Date().toISOString().split('T')[0],
+      actualDate: todayStr(),
       accountId: resolvedAccountId,
       paymentMethod: resolvePaymentMethod(income.paymentMethod, resolvedAccountId),
       matchTransferRef: '',
@@ -1586,7 +1580,7 @@ function RentalsPage() {
     setPayingIncomeId(income.id);
     setIncomePayForm({
       actualAmount: String(income.actualAmount ?? ''),
-      actualDate: income.actualDate || new Date().toISOString().split('T')[0],
+      actualDate: income.actualDate || todayStr(),
       accountId: income.accountId || '',
       paymentMethod: resolvePaymentMethod(income.paymentMethod, income.accountId || ''),
       matchTransferRef: income.matchTransferRef || '',
@@ -1795,10 +1789,7 @@ function RentalsPage() {
   }
 
   // ==================== HELPER ====================
-  function getTenantDisplayName(tenant) {
-    if (!tenant) return '-';
-    return tenant.tenantType === 'company' ? tenant.companyName : tenant.fullName;
-  }
+  // getTenantDisplayName → imported from ./_lib/rentalHelpers
 
   function getCreditColor(count) {
     if (count === 0) return 'text-green-600';
@@ -2016,8 +2007,8 @@ function RentalsPage() {
                 )}
                 {/* 合約到期提醒橫幅 */}
                 {(() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  const threshold = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+                  const today = todayStr();
+                  const threshold = localDateStr(new Date(Date.now() + 30 * 86400000));
                   const expiring30 = contracts
                     .filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= threshold)
                     .sort((a, b) => a.endDate.localeCompare(b.endDate));
@@ -2061,7 +2052,7 @@ function RentalsPage() {
                     </div>
                     <div className="bg-white rounded-lg shadow-sm p-3 border-l-4 border-red-500">
                       <p className="text-xs text-gray-500">逾期</p>
-                      <p className="text-lg font-bold text-red-600">{sortedIncomes.filter(i => i.status === 'pending' && i.dueDate < new Date().toISOString().split('T')[0]).length} 筆</p>
+                      <p className="text-lg font-bold text-red-600">{sortedIncomes.filter(i => i.status === 'pending' && i.dueDate < todayStr()).length} 筆</p>
                     </div>
                   </div>
                 )}
@@ -2070,11 +2061,11 @@ function RentalsPage() {
                   {/* 時間區域 */}
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="text-xs font-semibold text-gray-500 w-16">時間區域</span>
-                    <label className="text-sm text-gray-600">年份:</label>
-                    <input type="number" value={incomeFilter.year} onChange={e => setIncomeFilter(f => ({ ...f, year: e.target.value }))}
+                    <label htmlFor="f-62" className="text-sm text-gray-600">年份:</label>
+                    <input id="f-62" type="number" value={incomeFilter.year} onChange={e => setIncomeFilter(f => ({ ...f, year: e.target.value }))}
                       className="border rounded px-2 py-1 w-24 text-sm" />
-                    <label className="text-sm text-gray-600">月份:</label>
-                    <select value={incomeFilter.month} onChange={e => setIncomeFilter(f => ({ ...f, month: e.target.value }))}
+                    <label htmlFor="f-63" className="text-sm text-gray-600">月份:</label>
+                    <select id="f-63" value={incomeFilter.month} onChange={e => setIncomeFilter(f => ({ ...f, month: e.target.value }))}
                       className="border rounded px-2 py-1 text-sm">
                       <option value="">全部月份</option>
                       {Array.from({ length: 12 }, (_, i) => (
@@ -2180,13 +2171,13 @@ function RentalsPage() {
                     </div>
                     <div className="grid grid-cols-3 gap-3 mb-3">
                       <div>
-                        <label className="text-xs text-gray-600">收款日期</label>
-                        <input type="date" value={batchPayForm.actualDate} onChange={e => setBatchPayForm(f => ({ ...f, actualDate: e.target.value }))}
+                        <label htmlFor="f" className="text-xs text-gray-600">收款日期</label>
+                        <input id="f" type="date" value={batchPayForm.actualDate} onChange={e => setBatchPayForm(f => ({ ...f, actualDate: e.target.value }))}
                           className="w-full border rounded px-2 py-1 text-sm" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">收款帳戶 *</label>
-                        <select value={batchPayForm.accountId} onChange={e => {
+                        <label htmlFor="f-2" className="text-xs text-gray-600">收款帳戶 *</label>
+                        <select id="f-2" value={batchPayForm.accountId} onChange={e => {
                           const acct = accounts.find(a => String(a.id) === e.target.value);
                           const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
                           setBatchPayForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
@@ -2196,8 +2187,8 @@ function RentalsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">付款方式</label>
-                        <select value={batchPayForm.paymentMethod} onChange={e => setBatchPayForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                        <label htmlFor="f-64" className="text-xs text-gray-600">付款方式</label>
+                        <select id="f-64" value={batchPayForm.paymentMethod} onChange={e => setBatchPayForm(f => ({ ...f, paymentMethod: e.target.value }))}
                           className="w-full border rounded px-2 py-1 text-sm">
                           {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
                         </select>
@@ -2252,7 +2243,7 @@ function RentalsPage() {
                       {incomes.length === 0 ? (
                         <tr><td colSpan={colSpan} className="text-center py-8 text-gray-400">暫無資料</td></tr>
                       ) : sortedIncomes.map(income => {
-                        const isOverdue = income.status === 'pending' && income.dueDate < new Date().toISOString().split('T')[0];
+                        const isOverdue = income.status === 'pending' && income.dueDate < todayStr();
                         const expected = Number(income.expectedAmount || 0);
                         const actual = Number(income.actualAmount || 0);
                         const remaining = expected - actual;
@@ -2442,21 +2433,21 @@ function RentalsPage() {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="text-xs text-gray-600">
+                            <label htmlFor="f-95" className="text-xs text-gray-600">
                               實收金額
                               {incomeFormMode === 'confirm' && <span className="ml-1 text-teal-500 font-normal">（自動帶入尚欠）</span>}
                             </label>
-                            <input type="number" value={incomePayForm.actualAmount} onChange={e => setIncomePayForm(f => ({ ...f, actualAmount: e.target.value }))}
+                            <input id="f-95" type="number" value={incomePayForm.actualAmount} onChange={e => setIncomePayForm(f => ({ ...f, actualAmount: e.target.value }))}
                               className="w-full border rounded px-2 py-1.5 text-sm" />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">收款日期</label>
-                            <input type="date" value={incomePayForm.actualDate} onChange={e => setIncomePayForm(f => ({ ...f, actualDate: e.target.value }))}
+                            <label htmlFor="f-3" className="text-xs text-gray-600">收款日期</label>
+                            <input id="f-3" type="date" value={incomePayForm.actualDate} onChange={e => setIncomePayForm(f => ({ ...f, actualDate: e.target.value }))}
                               className="w-full border rounded px-2 py-1.5 text-sm" />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">收款帳戶</label>
-                            <select value={incomePayForm.accountId} onChange={e => {
+                            <label htmlFor="f-4" className="text-xs text-gray-600">收款帳戶</label>
+                            <select id="f-4" value={incomePayForm.accountId} onChange={e => {
                               const acct = accounts.find(a => String(a.id) === e.target.value);
                               const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
                               setIncomePayForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) }));
@@ -2466,8 +2457,8 @@ function RentalsPage() {
                             </select>
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600">付款方式</label>
-                            <select value={incomePayForm.paymentMethod} onChange={e => setIncomePayForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                            <label htmlFor="f-65" className="text-xs text-gray-600">付款方式</label>
+                            <select id="f-65" value={incomePayForm.paymentMethod} onChange={e => setIncomePayForm(f => ({ ...f, paymentMethod: e.target.value }))}
                               className="w-full border rounded px-2 py-1.5 text-sm">
                               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
                             </select>
@@ -2475,20 +2466,20 @@ function RentalsPage() {
                           {incomePayForm.paymentMethod === 'transfer' && (
                             <>
                               <div>
-                                <label className="text-xs text-gray-600">轉帳參考號</label>
-                                <input type="text" value={incomePayForm.matchTransferRef} onChange={e => setIncomePayForm(f => ({ ...f, matchTransferRef: e.target.value }))}
+                                <label htmlFor="f-66" className="text-xs text-gray-600">轉帳參考號</label>
+                                <input id="f-66" type="text" value={incomePayForm.matchTransferRef} onChange={e => setIncomePayForm(f => ({ ...f, matchTransferRef: e.target.value }))}
                                   className="w-full border rounded px-2 py-1.5 text-sm" />
                               </div>
                               <div>
-                                <label className="text-xs text-gray-600">匯款人戶名</label>
-                                <input type="text" value={incomePayForm.matchBankAccountName} onChange={e => setIncomePayForm(f => ({ ...f, matchBankAccountName: e.target.value }))}
+                                <label htmlFor="f-67" className="text-xs text-gray-600">匯款人戶名</label>
+                                <input id="f-67" type="text" value={incomePayForm.matchBankAccountName} onChange={e => setIncomePayForm(f => ({ ...f, matchBankAccountName: e.target.value }))}
                                   className="w-full border rounded px-2 py-1.5 text-sm" />
                               </div>
                             </>
                           )}
                           <div className="col-span-2">
-                            <label className="text-xs text-gray-600">備註</label>
-                            <input type="text" value={incomePayForm.matchNote} onChange={e => setIncomePayForm(f => ({ ...f, matchNote: e.target.value }))}
+                            <label htmlFor="f-5" className="text-xs text-gray-600">備註</label>
+                            <input id="f-5" type="text" value={incomePayForm.matchNote} onChange={e => setIncomePayForm(f => ({ ...f, matchNote: e.target.value }))}
                               className="w-full border rounded px-2 py-1.5 text-sm" placeholder="收款備註" />
                           </div>
                         </div>
@@ -2499,16 +2490,16 @@ function RentalsPage() {
                             <h5 className="text-sm font-medium text-blue-800 mb-2">電費收入（與租金一併入帳）</h5>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs text-blue-700">電費應收金額</label>
-                                <input type="number" min="0" step="0.01"
+                                <label htmlFor="f-6" className="text-xs text-blue-700">電費應收金額</label>
+                                <input id="f-6" type="number" min="0" step="0.01"
                                   value={incomeUtilityForm.expectedAmount}
                                   onChange={e => setIncomeUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))}
                                   className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm bg-white"
                                   placeholder="本月電費帳單金額" />
                               </div>
                               <div>
-                                <label className="text-xs text-blue-700">電費實收金額</label>
-                                <input type="number" min="0" step="0.01"
+                                <label htmlFor="f-7" className="text-xs text-blue-700">電費實收金額</label>
+                                <input id="f-7" type="number" min="0" step="0.01"
                                   value={incomeUtilityForm.actualAmount}
                                   onChange={e => setIncomeUtilityForm(f => ({ ...f, actualAmount: e.target.value }))}
                                   className="w-full border border-blue-200 rounded px-2 py-1.5 text-sm bg-white"
@@ -2558,29 +2549,29 @@ function RentalsPage() {
                                         <td colSpan={7} className="py-2 px-2">
                                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
                                             <div>
-                                              <label className="text-xs text-gray-500">金額</label>
-                                              <input type="number" value={editingPaymentForm.amount} onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                              <label htmlFor="f-8" className="text-xs text-gray-500">金額</label>
+                                              <input id="f-8" type="number" value={editingPaymentForm.amount} onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
                                             </div>
                                             <div>
-                                              <label className="text-xs text-gray-500">日期</label>
-                                              <input type="date" value={editingPaymentForm.paymentDate} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                              <label htmlFor="f-9" className="text-xs text-gray-500">日期</label>
+                                              <input id="f-9" type="date" value={editingPaymentForm.paymentDate} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
                                             </div>
                                             <div>
-                                              <label className="text-xs text-gray-500">收款帳戶</label>
-                                              <select value={editingPaymentForm.accountId} onChange={e => { const acct = accounts.find(a => String(a.id) === e.target.value); const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null; setEditingPaymentForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) })); }} className="w-full border rounded px-2 py-0.5 text-xs">
+                                              <label htmlFor="f-10" className="text-xs text-gray-500">收款帳戶</label>
+                                              <select id="f-10" value={editingPaymentForm.accountId} onChange={e => { const acct = accounts.find(a => String(a.id) === e.target.value); const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null; setEditingPaymentForm(f => ({ ...f, accountId: e.target.value, ...(autoMethod ? { paymentMethod: autoMethod } : {}) })); }} className="w-full border rounded px-2 py-0.5 text-xs">
                                                 <option value="">選擇</option>
                                                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                                               </select>
                                             </div>
                                             <div>
-                                              <label className="text-xs text-gray-500">付款方式</label>
-                                              <select value={editingPaymentForm.paymentMethod} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
+                                              <label htmlFor="f-68" className="text-xs text-gray-500">付款方式</label>
+                                              <select id="f-68" value={editingPaymentForm.paymentMethod} onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs">
                                                 {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
                                               </select>
                                             </div>
                                             <div className="col-span-2">
-                                              <label className="text-xs text-gray-500">備註</label>
-                                              <input type="text" value={editingPaymentForm.matchNote} onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
+                                              <label htmlFor="f-69" className="text-xs text-gray-500">備註</label>
+                                              <input id="f-69" type="text" value={editingPaymentForm.matchNote} onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))} className="w-full border rounded px-2 py-0.5 text-xs" />
                                             </div>
                                           </div>
                                           <div className="flex gap-2">
@@ -2751,8 +2742,8 @@ function RentalsPage() {
                     <span className="text-xs text-yellow-500">{reminderOpen ? '▲ 收起' : '▼ 展開'}</span>
                   </button>
                   {reminderOpen && (() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const thresholdDate = new Date(Date.now() + reminderThreshold * 86400000).toISOString().split('T')[0];
+                    const today = todayStr();
+                    const thresholdDate = localDateStr(new Date(Date.now() + reminderThreshold * 86400000));
                     const expiring = contracts.filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= thresholdDate)
                       .sort((a, b) => a.endDate.localeCompare(b.endDate));
                     return (
@@ -2857,7 +2848,7 @@ function RentalsPage() {
                             })
                           : sortRows(contracts, contractSortKey, contractSortDir, contractAccessors);
                         return sortedContracts.map((c, rowIdx) => {
-                        const today = new Date().toISOString().split('T')[0];
+                        const today = todayStr();
                         const daysToExpire = Math.ceil((new Date(c.endDate) - new Date()) / (1000 * 60 * 60 * 24));
                         const isExpiring = c.status === 'active' && daysToExpire <= 60 && daysToExpire > 0;
                         const CATEGORY_COLORS = { '公司': 'bg-blue-100 text-blue-800', '湯三姐': 'bg-purple-100 text-purple-800' };
@@ -2945,8 +2936,8 @@ function RentalsPage() {
                 <div className="mb-8">
                   <h3 className="text-base font-semibold text-gray-800 mb-3">年度稅額表格</h3>
                   <div className="flex items-center gap-3 mb-3">
-                    <label className="text-sm text-gray-600">年度：</label>
-                    <select value={taxTableYear} onChange={e => { setTaxTableYear(Number(e.target.value)); }} className="border rounded px-2 py-1.5 text-sm w-28">
+                    <label htmlFor="f-11" className="text-sm text-gray-600">年度：</label>
+                    <select id="f-11" value={taxTableYear} onChange={e => { setTaxTableYear(Number(e.target.value)); }} className="border rounded px-2 py-1.5 text-sm w-28">
                       {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
                         <option key={y} value={y}>{y}</option>
                       ))}
@@ -2999,11 +2990,11 @@ function RentalsPage() {
                 {taxView === 'calendar' && (() => {
                   const today = new Date();
                   const d90 = new Date(today); d90.setDate(d90.getDate() + 90);
-                  const todayStr = today.toISOString().split('T')[0];
-                  const d90Str = d90.toISOString().split('T')[0];
-                  const upcoming = taxes.filter(t => t.status === 'pending' && t.dueDate >= todayStr && t.dueDate <= d90Str)
+                  const todayDate = localDateStr(today);
+                  const d90Str = localDateStr(d90);
+                  const upcoming = taxes.filter(t => t.status === 'pending' && t.dueDate >= todayDate && t.dueDate <= d90Str)
                     .sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
-                  const overdue = taxes.filter(t => t.status === 'pending' && t.dueDate < todayStr)
+                  const overdue = taxes.filter(t => t.status === 'pending' && t.dueDate < todayDate)
                     .sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
                   const urgency = (dueDate) => {
                     const diff = Math.floor((new Date(dueDate) - today) / 86400000);
@@ -3047,7 +3038,7 @@ function RentalsPage() {
                                 <button onClick={()=>openTaxEdit(t)} className="text-blue-600 hover:text-blue-800 text-xs shrink-0">編輯</button>
                                 {t.paymentOrderId
                                   ? <Link href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs underline shrink-0">前往出納</Link>
-                                  : <button onClick={()=>{setPayingTaxId(t.id);setTaxPayForm({accountId:'',paymentDate:new Date().toISOString().split('T')[0]});}}
+                                  : <button onClick={()=>{setPayingTaxId(t.id);setTaxPayForm({accountId:'',paymentDate:todayStr()});}}
                                       className="text-teal-600 hover:text-teal-800 text-xs shrink-0">確認繳納</button>
                                 }
                               </div>
@@ -3062,8 +3053,8 @@ function RentalsPage() {
                 {taxView === 'list' && (
                   <>
                     <div className="flex items-center gap-3 mb-4 flex-wrap">
-                      <label className="text-sm text-gray-600">年度:</label>
-                      <input type="number" value={taxFilter.taxYear} onChange={e => setTaxFilter(f => ({ ...f, taxYear: e.target.value }))}
+                      <label htmlFor="f-12" className="text-sm text-gray-600">年度:</label>
+                      <input id="f-12" type="number" value={taxFilter.taxYear} onChange={e => setTaxFilter(f => ({ ...f, taxYear: e.target.value }))}
                         className="border rounded px-2 py-1.5 w-24 text-sm" />
                       <select value={taxFilter.propertyId} onChange={e => setTaxFilter(f => ({ ...f, propertyId: e.target.value }))}
                         className="border rounded px-2 py-1.5 text-sm">
@@ -3131,7 +3122,7 @@ function RentalsPage() {
                                       {tax.paymentOrderId ? (
                                         <Link href="/cashier" className="text-teal-600 hover:text-teal-800 text-xs font-medium underline">前往出納</Link>
                                       ) : (
-                                        <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: new Date().toISOString().split('T')[0] }); }}
+                                        <button onClick={() => { setPayingTaxId(tax.id); setTaxPayForm({ accountId: '', paymentDate: todayStr() }); }}
                                           className="text-teal-600 hover:text-teal-800 text-xs font-medium">
                                           確認繳納
                                         </button>
@@ -3158,16 +3149,16 @@ function RentalsPage() {
                     <h4 className="font-medium text-teal-800 mb-3">確認繳納稅款</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-gray-600">付款帳戶</label>
-                        <select value={taxPayForm.accountId} onChange={e => setTaxPayForm(f => ({ ...f, accountId: e.target.value }))}
+                        <label htmlFor="f-13" className="text-xs text-gray-600">付款帳戶</label>
+                        <select id="f-13" value={taxPayForm.accountId} onChange={e => setTaxPayForm(f => ({ ...f, accountId: e.target.value }))}
                           className="w-full border rounded px-2 py-1 text-sm">
                           <option value="">-- 選擇帳戶 --</option>
                           {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">付款日期</label>
-                        <input type="date" value={taxPayForm.paymentDate} onChange={e => setTaxPayForm(f => ({ ...f, paymentDate: e.target.value }))}
+                        <label htmlFor="f-70" className="text-xs text-gray-600">付款日期</label>
+                        <input id="f-70" type="date" value={taxPayForm.paymentDate} onChange={e => setTaxPayForm(f => ({ ...f, paymentDate: e.target.value }))}
                           className="w-full border rounded px-2 py-1 text-sm" />
                       </div>
                     </div>
@@ -3188,8 +3179,8 @@ function RentalsPage() {
                 </div>
                 <div className="flex flex-wrap items-end gap-3 mb-4">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">申報／所得年度</label>
-                    <select value={rentFilingYear} onChange={(e) => setRentFilingYear(Number(e.target.value))}
+                    <label htmlFor="f-14" className="block text-xs text-gray-500 mb-1">申報／所得年度</label>
+                    <select id="f-14" value={rentFilingYear} onChange={(e) => setRentFilingYear(Number(e.target.value))}
                       className="border rounded-lg px-3 py-1.5 text-sm">
                       {[0, 1, 2, 3].map((d) => {
                         const y = new Date().getFullYear() - d;
@@ -3354,7 +3345,7 @@ function RentalsPage() {
                   <button onClick={() => {
                     setEditingMaintenance(null);
                     const defaultSubject = accountingSubjects.find(s => s.code === '6010' || s.name.includes('租屋維修'));
-                    setMaintenanceForm({ propertyId: maintenanceFilter.propertyId || '', maintenanceDate: new Date().toISOString().split('T')[0], category: '水電', amount: '', accountingSubjectId: defaultSubject ? String(defaultSubject.id) : '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
+                    setMaintenanceForm({ propertyId: maintenanceFilter.propertyId || '', maintenanceDate: todayStr(), category: '水電', amount: '', accountingSubjectId: defaultSubject ? String(defaultSubject.id) : '', accountId: '', isEmployeeAdvance: false, advancedBy: '', advancePaymentMethod: '現金', isCapitalized: false, isRecurring: false, note: '' });
                     setShowMaintenanceModal(true);
                   }}
                     className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
@@ -3432,8 +3423,8 @@ function RentalsPage() {
             {activeTab === 'utilityIncome' && (
               <div>
                 <div className="flex items-center gap-3 mb-4 flex-wrap">
-                  <label className="text-sm text-gray-600">年月：</label>
-                  <select value={utilityFilter.year} onChange={e => setUtilityFilter(f => ({ ...f, year: Number(e.target.value) }))} className="border rounded px-2 py-1.5 text-sm">
+                  <label htmlFor="f-15" className="text-sm text-gray-600">年月：</label>
+                  <select id="f-15" value={utilityFilter.year} onChange={e => setUtilityFilter(f => ({ ...f, year: Number(e.target.value) }))} className="border rounded px-2 py-1.5 text-sm">
                     {[new Date().getFullYear(), new Date().getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                   <span className="text-sm">年</span>
@@ -3542,8 +3533,8 @@ function RentalsPage() {
                         <h3 className="text-lg font-bold text-gray-800 mb-4">登記水電收入</h3>
                         <div className="space-y-3">
                           <div>
-                            <label className="text-sm text-gray-600">物業 *</label>
-                            <select value={utilityForm.propertyId} onChange={e => setUtilityForm(f => ({ ...f, propertyId: e.target.value }))}
+                            <label htmlFor="f-16" className="text-sm text-gray-600">物業 *</label>
+                            <select id="f-16" value={utilityForm.propertyId} onChange={e => setUtilityForm(f => ({ ...f, propertyId: e.target.value }))}
                               className="w-full border rounded px-3 py-2 text-sm">
                               <option value="">選擇物業</option>
                               {properties.map(p => <option key={p.id} value={p.id}>{p.name}{p.collectUtilityFee ? '' : ' ⚠'}</option>)}
@@ -3554,38 +3545,38 @@ function RentalsPage() {
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="text-sm text-gray-600">年份</label>
-                              <input type="number" value={utilityForm.incomeYear} onChange={e => setUtilityForm(f => ({ ...f, incomeYear: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                              <label htmlFor="f-71" className="text-sm text-gray-600">年份</label>
+                              <input id="f-71" type="number" value={utilityForm.incomeYear} onChange={e => setUtilityForm(f => ({ ...f, incomeYear: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
                             </div>
                             <div>
-                              <label className="text-sm text-gray-600">月份</label>
-                              <select value={utilityForm.incomeMonth} onChange={e => setUtilityForm(f => ({ ...f, incomeMonth: Number(e.target.value) }))} className="w-full border rounded px-3 py-2 text-sm">
+                              <label htmlFor="f-72" className="text-sm text-gray-600">月份</label>
+                              <select id="f-72" value={utilityForm.incomeMonth} onChange={e => setUtilityForm(f => ({ ...f, incomeMonth: Number(e.target.value) }))} className="w-full border rounded px-3 py-2 text-sm">
                                 {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}</option>)}
                               </select>
                             </div>
                           </div>
                           <div>
-                            <label className="text-sm text-gray-600">應收金額</label>
-                            <input type="number" min="0" step="0.01" value={utilityForm.expectedAmount} onChange={e => setUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                            <label htmlFor="f-73" className="text-sm text-gray-600">應收金額</label>
+                            <input id="f-73" type="number" min="0" step="0.01" value={utilityForm.expectedAmount} onChange={e => setUtilityForm(f => ({ ...f, expectedAmount: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
                           </div>
                           <div>
-                            <label className="text-sm text-gray-600">實收金額（已收再填）</label>
-                            <input type="number" min="0" step="0.01" value={utilityForm.actualAmount} onChange={e => setUtilityForm(f => ({ ...f, actualAmount: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                            <label htmlFor="f-74" className="text-sm text-gray-600">實收金額（已收再填）</label>
+                            <input id="f-74" type="number" min="0" step="0.01" value={utilityForm.actualAmount} onChange={e => setUtilityForm(f => ({ ...f, actualAmount: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
                           </div>
                           <div>
-                            <label className="text-sm text-gray-600">收款日期</label>
-                            <input type="date" value={utilityForm.actualDate} onChange={e => setUtilityForm(f => ({ ...f, actualDate: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                            <label htmlFor="f-75" className="text-sm text-gray-600">收款日期</label>
+                            <input id="f-75" type="date" value={utilityForm.actualDate} onChange={e => setUtilityForm(f => ({ ...f, actualDate: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
                           </div>
                           <div>
-                            <label className="text-sm text-gray-600">收款帳戶</label>
-                            <select value={utilityForm.accountId} onChange={e => setUtilityForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm">
+                            <label htmlFor="f-17" className="text-sm text-gray-600">收款帳戶</label>
+                            <select id="f-17" value={utilityForm.accountId} onChange={e => setUtilityForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm">
                               <option value="">-- 選擇帳戶 --</option>
                               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="text-sm text-gray-600">備註</label>
-                            <input type="text" value={utilityForm.note} onChange={e => setUtilityForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
+                            <label htmlFor="f-76" className="text-sm text-gray-600">備註</label>
+                            <input id="f-76" type="text" value={utilityForm.note} onChange={e => setUtilityForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded px-3 py-2 text-sm" />
                           </div>
                         </div>
                         <div className="flex justify-end gap-2 mt-6">
@@ -3622,19 +3613,19 @@ function RentalsPage() {
             {analyticsSub === 'income' && (
               <div className="rental-report-print-area">
                 <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
-                  <label className="text-sm">年份：</label>
-                  <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                  <label htmlFor="f-18" className="text-sm">年份：</label>
+                  <select id="f-18" value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
                     {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
                   <span className="text-gray-400 text-xs">或</span>
-                  <label className="text-sm">日期區間：</label>
-                  <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+                  <label htmlFor="f-96" className="text-sm">日期區間：</label>
+                  <input id="f-96" type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
                   <span className="text-sm">～</span>
                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
-                  <label className="text-sm">類別：</label>
-                  <select value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
+                  <label htmlFor="f-77" className="text-sm">類別：</label>
+                  <select id="f-77" value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
                     <option value="">全部</option>
                     {reportCategoryOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -3726,19 +3717,19 @@ function RentalsPage() {
             {analyticsSub === 'operating' && (
               <div className="rental-report-print-area">
                 <div className="no-print flex items-center gap-3 mb-4 flex-wrap">
-                  <label className="text-sm">年份：</label>
-                  <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                  <label htmlFor="f-19" className="text-sm">年份：</label>
+                  <select id="f-19" value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
                     {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>
                   <span className="text-gray-400 text-xs">或</span>
-                  <label className="text-sm">日期區間：</label>
-                  <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
+                  <label htmlFor="f-97" className="text-sm">日期區間：</label>
+                  <input id="f-97" type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
                   <span className="text-sm">～</span>
                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="border rounded px-2 py-1.5 text-sm" />
-                  <label className="text-sm">類別：</label>
-                  <select value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
+                  <label htmlFor="f-78" className="text-sm">類別：</label>
+                  <select id="f-78" value={reportCategoryFilter} onChange={e => setReportCategoryFilter(e.target.value)} className="border rounded px-2 py-1.5 text-sm min-w-[140px]">
                     <option value="">全部</option>
                     {reportCategoryOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -3831,14 +3822,14 @@ function RentalsPage() {
                       <div className="no-print mb-3 bg-teal-50 border border-teal-200 rounded-xl p-4">
                         <div className="flex flex-wrap gap-3 items-end">
                           <div>
-                            <label className="text-xs text-gray-600 block mb-1">收款日期 *</label>
-                            <input type="date" value={overdueBatchForm.actualDate}
+                            <label htmlFor="f-20" className="text-xs text-gray-600 block mb-1">收款日期 *</label>
+                            <input id="f-20" type="date" value={overdueBatchForm.actualDate}
                               onChange={e => setOverdueBatchForm(f => ({ ...f, actualDate: e.target.value }))}
                               className="border rounded px-2 py-1.5 text-sm" />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 block mb-1">收款帳戶 *</label>
-                            <select value={overdueBatchForm.accountId}
+                            <label htmlFor="f-21" className="text-xs text-gray-600 block mb-1">收款帳戶 *</label>
+                            <select id="f-21" value={overdueBatchForm.accountId}
                               onChange={e => {
                                 const acct = accounts.find(a => String(a.id) === e.target.value);
                                 const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
@@ -3850,8 +3841,8 @@ function RentalsPage() {
                             </select>
                           </div>
                           <div>
-                            <label className="text-xs text-gray-600 block mb-1">付款方式</label>
-                            <select value={overdueBatchForm.paymentMethod}
+                            <label htmlFor="f-79" className="text-xs text-gray-600 block mb-1">付款方式</label>
+                            <select id="f-79" value={overdueBatchForm.paymentMethod}
                               onChange={e => setOverdueBatchForm(f => ({ ...f, paymentMethod: e.target.value }))}
                               className="border rounded px-2 py-1.5 text-sm">
                               {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
@@ -3888,7 +3879,7 @@ function RentalsPage() {
                         </thead>
                         <tbody>
                           {overdueReportData.map((i, idx) => {
-                            const today = new Date().toISOString().split('T')[0];
+                            const today = todayStr();
                             const daysOverdue = Math.floor((new Date(today) - new Date(i.dueDate)) / 86400000);
                             const tenantPhone = i.tenant?.phone || '—';
                             const tenantName = i.tenantName || (i.tenant?.tenantType === 'company' ? i.tenant?.companyName : i.tenant?.fullName) || '—';
@@ -4039,8 +4030,8 @@ function RentalsPage() {
             {analyticsSub === 'vacancy' && (
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-4 no-print">
-                  <label className="text-sm">年份：</label>
-                  <select value={vacancyYear} onChange={e => setVacancyYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
+                  <label htmlFor="f-22" className="text-sm">年份：</label>
+                  <select id="f-22" value={vacancyYear} onChange={e => setVacancyYear(Number(e.target.value))} className="border rounded px-2 py-1.5 text-sm">
                     {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
                       <option key={y} value={y}>{y}</option>
                     ))}
@@ -4125,31 +4116,31 @@ function RentalsPage() {
               <>
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-4">
-                  <label className="text-sm text-gray-600">年份：</label>
-                  <input type="number" value={paymentFilter.year} onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
+                  <label htmlFor="f-23" className="text-sm text-gray-600">年份：</label>
+                  <input id="f-23" type="number" value={paymentFilter.year} onChange={e => setPaymentFilter(f => ({ ...f, year: e.target.value }))}
                     className="border rounded px-2 py-1 w-24 text-sm" />
-                  <label className="text-sm text-gray-600">月份：</label>
-                  <select value={paymentFilter.month} onChange={e => setPaymentFilter(f => ({ ...f, month: e.target.value }))}
+                  <label htmlFor="f-24" className="text-sm text-gray-600">月份：</label>
+                  <select id="f-24" value={paymentFilter.month} onChange={e => setPaymentFilter(f => ({ ...f, month: e.target.value }))}
                     className="border rounded px-2 py-1 text-sm">
                     <option value="">全部月份</option>
                     {Array.from({ length: 12 }, (_, i) => (
                       <option key={i + 1} value={i + 1}>{i + 1} 月</option>
                     ))}
                   </select>
-                  <label className="text-sm text-gray-600">物業：</label>
-                  <select value={paymentFilter.propertyId} onChange={e => setPaymentFilter(f => ({ ...f, propertyId: e.target.value }))}
+                  <label htmlFor="f-25" className="text-sm text-gray-600">物業：</label>
+                  <select id="f-25" value={paymentFilter.propertyId} onChange={e => setPaymentFilter(f => ({ ...f, propertyId: e.target.value }))}
                     className="border rounded px-2 py-1 text-sm">
                     <option value="">全部物業</option>
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                  <label className="text-sm text-gray-600">收款帳戶：</label>
-                  <select value={paymentFilter.accountId} onChange={e => setPaymentFilter(f => ({ ...f, accountId: e.target.value }))}
+                  <label htmlFor="f-80" className="text-sm text-gray-600">收款帳戶：</label>
+                  <select id="f-80" value={paymentFilter.accountId} onChange={e => setPaymentFilter(f => ({ ...f, accountId: e.target.value }))}
                     className="border rounded px-2 py-1 text-sm">
                     <option value="">全部收款帳戶</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
-                  <label className="text-sm text-gray-600">付款方式：</label>
-                  <select value={paymentFilter.paymentMethod} onChange={e => setPaymentFilter(f => ({ ...f, paymentMethod: e.target.value }))}
+                  <label htmlFor="f-81" className="text-sm text-gray-600">付款方式：</label>
+                  <select id="f-81" value={paymentFilter.paymentMethod} onChange={e => setPaymentFilter(f => ({ ...f, paymentMethod: e.target.value }))}
                     className="border rounded px-2 py-1 text-sm">
                     <option value="">全部</option>
                     {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
@@ -4278,20 +4269,20 @@ function RentalsPage() {
                     </div>
                     <div className="space-y-3">
                       <div>
-                        <label className="text-xs text-gray-600">實收金額 *</label>
-                        <input type="number" value={editingPaymentForm.amount}
+                        <label htmlFor="f-26" className="text-xs text-gray-600">實收金額 *</label>
+                        <input id="f-26" type="number" value={editingPaymentForm.amount}
                           onChange={e => setEditingPaymentForm(f => ({ ...f, amount: e.target.value }))}
                           className="w-full border rounded px-3 py-1.5 text-sm mt-0.5" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">收款日期 *</label>
-                        <input type="date" value={editingPaymentForm.paymentDate}
+                        <label htmlFor="f-27" className="text-xs text-gray-600">收款日期 *</label>
+                        <input id="f-27" type="date" value={editingPaymentForm.paymentDate}
                           onChange={e => setEditingPaymentForm(f => ({ ...f, paymentDate: e.target.value }))}
                           className="w-full border rounded px-3 py-1.5 text-sm mt-0.5" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">收款帳戶 *</label>
-                        <select value={editingPaymentForm.accountId}
+                        <label htmlFor="f-28" className="text-xs text-gray-600">收款帳戶 *</label>
+                        <select id="f-28" value={editingPaymentForm.accountId}
                           onChange={e => {
                             const acct = accounts.find(a => String(a.id) === e.target.value);
                             const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
@@ -4303,16 +4294,16 @@ function RentalsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">付款方式</label>
-                        <select value={editingPaymentForm.paymentMethod}
+                        <label htmlFor="f-82" className="text-xs text-gray-600">付款方式</label>
+                        <select id="f-82" value={editingPaymentForm.paymentMethod}
                           onChange={e => setEditingPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))}
                           className="w-full border rounded px-3 py-1.5 text-sm mt-0.5">
                           {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">備註</label>
-                        <input type="text" value={editingPaymentForm.matchNote}
+                        <label htmlFor="f-83" className="text-xs text-gray-600">備註</label>
+                        <input id="f-83" type="text" value={editingPaymentForm.matchNote}
                           onChange={e => setEditingPaymentForm(f => ({ ...f, matchNote: e.target.value }))}
                           className="w-full border rounded px-3 py-1.5 text-sm mt-0.5" placeholder="匯款備註…" />
                       </div>
@@ -4411,8 +4402,8 @@ function RentalsPage() {
               <h3 className="text-base font-semibold text-gray-800 mb-1">辦理退租</h3>
               <p className="text-sm text-gray-500 mb-4">租客：{getTenantDisplayName(terminateModal.tenant)}</p>
               <div className="mb-3">
-                <label className="text-sm text-gray-600 block mb-1">退租日期</label>
-                <input type="date" value={terminateModal.endDate}
+                <label htmlFor="f-29" className="text-sm text-gray-600 block mb-1">退租日期</label>
+                <input id="f-29" type="date" value={terminateModal.endDate}
                   onChange={e => setTerminateModal(m => ({ ...m, endDate: e.target.value }))}
                   className="border rounded px-3 py-1.5 text-sm w-full" />
               </div>
@@ -4443,359 +4434,22 @@ function RentalsPage() {
 
       {/* ==================== MODAL: TENANT ==================== */}
       {showTenantModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTenantModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">{editingTenant ? '編輯租客' : '新增租客'}</h3>
-
-              {/* 基本資料 */}
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">基本資料</p>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                {editingTenant && (
-                  <div>
-                    <label className="text-sm text-gray-600">代碼</label>
-                    <input type="text" value={tenantForm.tenantCode} onChange={e => setTenantForm(f => ({ ...f, tenantCode: e.target.value }))}
-                      className="w-full border rounded px-3 py-2 text-sm font-mono" />
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm text-gray-600">類型 *</label>
-                  <select value={tenantForm.tenantType} onChange={e => setTenantForm(f => ({ ...f, tenantType: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="individual">個人</option>
-                    <option value="company">公司</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">狀態</label>
-                  <select value={tenantForm.leaseStatus || 'active'} onChange={e => setTenantForm(f => ({ ...f, leaseStatus: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="active">出租中</option>
-                    <option value="terminating">退租</option>
-                    <option value="terminated">已退租</option>
-                  </select>
-                </div>
-                {tenantForm.tenantType === 'individual' ? (
-                  <>
-                    <div>
-                      <label className="text-sm text-gray-600">姓名 *</label>
-                      <input type="text" value={tenantForm.fullName} onChange={e => setTenantForm(f => ({ ...f, fullName: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-600">身分證號</label>
-                      <input type="text" value={tenantForm.idNumber} onChange={e => setTenantForm(f => ({ ...f, idNumber: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-600">生日</label>
-                      <input type="date" value={tenantForm.birthDate} onChange={e => setTenantForm(f => ({ ...f, birthDate: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <label className="text-sm text-gray-600">公司名稱 *</label>
-                      <input type="text" value={tenantForm.companyName} onChange={e => setTenantForm(f => ({ ...f, companyName: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-600">統一編號</label>
-                      <input type="text" value={tenantForm.taxId} onChange={e => setTenantForm(f => ({ ...f, taxId: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label className="text-sm text-gray-600">負責人</label>
-                      <input type="text" value={tenantForm.representativeName} onChange={e => setTenantForm(f => ({ ...f, representativeName: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" />
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* 聯絡資料 */}
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">聯絡資料</p>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="text-sm text-gray-600">電話 *</label>
-                  <input type="text" value={tenantForm.phone} onChange={e => setTenantForm(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">電話 2</label>
-                  <input type="text" value={tenantForm.phone2} onChange={e => setTenantForm(f => ({ ...f, phone2: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">Email</label>
-                  <input type="email" value={tenantForm.email} onChange={e => setTenantForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">地址</label>
-                  <input type="text" value={tenantForm.address} onChange={e => setTenantForm(f => ({ ...f, address: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">緊急聯絡人</label>
-                  <input type="text" value={tenantForm.emergencyContact} onChange={e => setTenantForm(f => ({ ...f, emergencyContact: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">緊急聯絡電話</label>
-                  <input type="text" value={tenantForm.emergencyPhone} onChange={e => setTenantForm(f => ({ ...f, emergencyPhone: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-              </div>
-
-              {/* 銀行資料 */}
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">銀行資料</p>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="text-sm text-gray-600">銀行代碼</label>
-                  <input type="text" value={tenantForm.bankCode} onChange={e => setTenantForm(f => ({ ...f, bankCode: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">分行</label>
-                  <input type="text" value={tenantForm.bankBranch} onChange={e => setTenantForm(f => ({ ...f, bankBranch: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">帳戶名稱</label>
-                  <input type="text" value={tenantForm.bankAccountName} onChange={e => setTenantForm(f => ({ ...f, bankAccountName: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">帳號</label>
-                  <input type="text" value={tenantForm.bankAccountNumber} onChange={e => setTenantForm(f => ({ ...f, bankAccountNumber: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-              </div>
-
-              {/* 信用與備註 */}
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">信用與備註</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm text-gray-600">信用備註</label>
-                  <textarea value={tenantForm.creditNote} onChange={e => setTenantForm(f => ({ ...f, creditNote: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">備註</label>
-                  <textarea value={tenantForm.note} onChange={e => setTenantForm(f => ({ ...f, note: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                </div>
-                <div className="border-t pt-3">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input type="checkbox" checked={tenantForm.isBlacklisted || false}
-                      onChange={e => setTenantForm(f => ({ ...f, isBlacklisted: e.target.checked }))} />
-                    列入黑名單
-                  </label>
-                  {tenantForm.isBlacklisted && (
-                    <div className="mt-2">
-                      <label className="text-sm text-gray-600">黑名單原因</label>
-                      <textarea value={tenantForm.blacklistReason || ''} onChange={e => setTenantForm(f => ({ ...f, blacklistReason: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 合約 / 物業 — 僅編輯時顯示 */}
-              {editingTenant && (() => {
-                const tenantContracts = editingTenant.contracts || [];
-                const hasActiveContract = tenantContracts.some(c => {
-                  const ds = getContractDisplayStatus(c);
-                  return (c.status === 'active' || c.status === 'pending') && ds !== 'expired';
-                });
-                return (
-                  <div className="mt-5 border-t pt-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">合約 / 物業 <span className="normal-case font-normal text-gray-400">（生效中及待審核合約可更換物業）</span></p>
-
-                    {/* 現有合約列表 */}
-                    {tenantContracts.length > 0 && (
-                      <div className="space-y-2 mb-3">
-                        {tenantContracts.map(c => {
-                          const contractDisplayStatus = getContractDisplayStatus(c);
-                          const isActive = (c.status === 'active' || c.status === 'pending') && contractDisplayStatus !== 'expired';
-                          const isTerminated = c.status === 'terminated' || contractDisplayStatus === 'expired';
-                          const statusLabel = { active: '生效中', pending: '待審核', terminated: '已終止', expired: '已到期' }[contractDisplayStatus] || contractDisplayStatus;
-                          const statusColor = isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200';
-                          return (
-                            <div key={c.id} className="flex items-center justify-between border rounded-lg px-3 py-2 bg-gray-50 gap-2">
-                              <div className="flex-1 min-w-0">
-                                {isActive ? (
-                                  <select
-                                    value={contractPropertyChanges[c.id] || ''}
-                                    onChange={e => setContractPropertyChanges(prev => ({ ...prev, [c.id]: e.target.value }))}
-                                    className="text-sm border rounded px-2 py-1 w-full max-w-xs"
-                                  >
-                                    <option value="">-- 選擇物業 --</option>
-                                    {properties.map(p => {
-                                      const isOccupied = (p.currentContractStatus === 'active' || p.currentContractStatus === 'pending')
-                                        && String(p.id) !== String(c.property?.id);
-                                      return <option key={p.id} value={String(p.id)} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
-                                    })}
-                                  </select>
-                                ) : (
-                                  <span className="text-sm font-medium text-gray-800">{c.property?.name || '未知物業'}</span>
-                                )}
-                                {c.contractNo && <span className="text-xs text-gray-400 ml-2">{c.contractNo}</span>}
-                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                  <span className={`text-xs px-2 py-0.5 border rounded ${statusColor}`}>{statusLabel}</span>
-                                  {c.startDate && <span className="text-xs text-gray-400">{c.startDate}{c.endDate ? ` ~ ${c.endDate}` : ''}</span>}
-                                </div>
-                              </div>
-                              {isActive ? (
-                                <button
-                                  onClick={() => {
-                                    setShowTenantModal(false);
-                                    setTerminateModal({
-                                      tenant: editingTenant,
-                                      contracts: [c],
-                                      endDate: new Date().toISOString().split('T')[0]
-                                    });
-                                  }}
-                                  className="text-xs px-3 py-1 bg-orange-50 text-orange-700 border border-orange-300 rounded hover:bg-orange-100 font-medium whitespace-nowrap shrink-0">
-                                  退租
-                                </button>
-                              ) : isTerminated ? (
-                                <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded shrink-0">已退租</span>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* 新增物業合約（無生效合約時顯示） */}
-                    {!hasActiveContract && (
-                      <div className={`${tenantContracts.length > 0 ? 'border-t pt-3 mt-2' : ''}`}>
-                        <p className="text-xs text-gray-500 mb-2">新增物業合約 <span className="text-gray-400">（儲存後自動建立待審核合約）</span></p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="col-span-2">
-                            <label className="text-sm text-gray-600">物業</label>
-                            <select value={tenantForm.initPropertyId}
-                              onChange={e => setTenantForm(f => ({ ...f, initPropertyId: e.target.value }))}
-                              className="w-full border rounded px-3 py-2 text-sm">
-                              <option value="">-- 不設定 --</option>
-                              {properties.map(p => {
-                                const isOccupied = p.currentContractStatus === 'active' || p.currentContractStatus === 'pending';
-                                return <option key={p.id} value={String(p.id)} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
-                              })}
-                            </select>
-                          </div>
-                          {tenantForm.initPropertyId && (
-                            <>
-                              <div>
-                                <label className={`text-sm ${initContractErrors.has('initMonthlyRent') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>月租金 *</label>
-                                <input type="number" min="0" value={tenantForm.initMonthlyRent}
-                                  onChange={e => { setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initMonthlyRent'); return n; }); }}
-                                  className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initMonthlyRent') ? 'border-red-400 bg-red-50' : ''}`} placeholder="0" />
-                              </div>
-                              <div>
-                                <label className="text-sm text-gray-600">每月應繳日</label>
-                                <input type="number" min="1" max="28" value={tenantForm.initPaymentDueDay}
-                                  onChange={e => setTenantForm(f => ({ ...f, initPaymentDueDay: e.target.value }))}
-                                  className="w-full border rounded px-3 py-2 text-sm" />
-                              </div>
-                              <div>
-                                <label className={`text-sm ${initContractErrors.has('initStartDate') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>開始日期 *</label>
-                                <input type="date" value={tenantForm.initStartDate}
-                                  onChange={e => { setTenantForm(f => ({ ...f, initStartDate: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initStartDate'); return n; }); }}
-                                  className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initStartDate') ? 'border-red-400 bg-red-50' : ''}`} />
-                              </div>
-                              <div className="col-span-2">
-                                <label className={`text-sm ${initContractErrors.has('initRentAccountId') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>收租帳戶 *</label>
-                                <select value={tenantForm.initRentAccountId}
-                                  onChange={e => { setTenantForm(f => ({ ...f, initRentAccountId: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initRentAccountId'); return n; }); }}
-                                  className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initRentAccountId') ? 'border-red-400 bg-red-50' : ''}`}>
-                                  <option value="">-- 選擇帳戶 --</option>
-                                  {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
-                                </select>
-                              </div>
-                              {initContractErrors.size > 0 && (
-                                <p className="col-span-2 text-xs text-red-500 font-medium">請補齊標紅的必填欄位</p>
-                              )}
-                              <p className="col-span-2 text-xs text-gray-400">合約結束日期自動設為開始日期 +1 年，狀態為「待審核」，可至合約管理補全資訊。</p>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* 物業合約：新增租客時顯示 */}
-              {!editingTenant && (
-                <div className="mt-5 border-t pt-4">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                    初始物業合約 <span className="normal-case font-normal">（選填，儲存後自動建立待審核合約）</span>
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <label className="text-sm text-gray-600">物業</label>
-                      <select value={tenantForm.initPropertyId}
-                        onChange={e => setTenantForm(f => ({ ...f, initPropertyId: e.target.value }))}
-                        className="w-full border rounded px-3 py-2 text-sm">
-                        <option value="">-- 不設定 --</option>
-                        {properties.map(p => {
-                          const isOccupied = p.currentContractStatus === 'active' || p.currentContractStatus === 'pending';
-                          return <option key={p.id} value={String(p.id)} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
-                        })}
-                      </select>
-                    </div>
-                    {tenantForm.initPropertyId && (
-                      <>
-                        <div>
-                          <label className={`text-sm ${initContractErrors.has('initMonthlyRent') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>月租金 *</label>
-                          <input type="number" min="0" value={tenantForm.initMonthlyRent}
-                            onChange={e => { setTenantForm(f => ({ ...f, initMonthlyRent: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initMonthlyRent'); return n; }); }}
-                            className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initMonthlyRent') ? 'border-red-400 bg-red-50' : ''}`} placeholder="0" />
-                        </div>
-                        <div>
-                          <label className="text-sm text-gray-600">每月應繳日</label>
-                          <input type="number" min="1" max="28" value={tenantForm.initPaymentDueDay}
-                            onChange={e => setTenantForm(f => ({ ...f, initPaymentDueDay: e.target.value }))}
-                            className="w-full border rounded px-3 py-2 text-sm" />
-                        </div>
-                        <div>
-                          <label className={`text-sm ${initContractErrors.has('initStartDate') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>開始日期 *</label>
-                          <input type="date" value={tenantForm.initStartDate}
-                            onChange={e => { setTenantForm(f => ({ ...f, initStartDate: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initStartDate'); return n; }); }}
-                            className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initStartDate') ? 'border-red-400 bg-red-50' : ''}`} />
-                        </div>
-                        <div className="col-span-2">
-                          <label className={`text-sm ${initContractErrors.has('initRentAccountId') ? 'text-red-600 font-medium' : 'text-gray-600'}`}>收租帳戶 *</label>
-                          <select value={tenantForm.initRentAccountId}
-                            onChange={e => { setTenantForm(f => ({ ...f, initRentAccountId: e.target.value })); setInitContractErrors(prev => { const n = new Set(prev); n.delete('initRentAccountId'); return n; }); }}
-                            className={`w-full border rounded px-3 py-2 text-sm ${initContractErrors.has('initRentAccountId') ? 'border-red-400 bg-red-50' : ''}`}>
-                            <option value="">-- 選擇帳戶 --</option>
-                            {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
-                          </select>
-                        </div>
-                        {initContractErrors.size > 0 && (
-                          <p className="col-span-2 text-xs text-red-500 font-medium">請補齊標紅的必填欄位</p>
-                        )}
-                        <p className="col-span-2 text-xs text-gray-400">合約結束日期自動設為開始日期 +1 年，狀態為「待審核」，可至合約管理補全資訊。</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setShowTenantModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveTenant} disabled={tenantSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{tenantSaving ? '儲存中…' : '儲存'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <EditTenantModal
+          editingTenant={editingTenant}
+          tenantForm={tenantForm} setTenantForm={setTenantForm}
+          tenantSaving={tenantSaving}
+          saveTenant={saveTenant}
+          onClose={() => setShowTenantModal(false)}
+          onInitiateTerminate={(tenant, contract) => {
+            setShowTenantModal(false);
+            setTerminateModal({ tenant, contracts: [contract], endDate: todayStr() });
+          }}
+          contractPropertyChanges={contractPropertyChanges} setContractPropertyChanges={setContractPropertyChanges}
+          properties={properties}
+          accounts={accounts}
+          initContractErrors={initContractErrors} setInitContractErrors={setInitContractErrors}
+        />
       )}
-
       {/* ==================== MODAL: QUICK PAY ==================== */}
       {quickPayIncome && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setQuickPayIncome(null)}>
@@ -4834,20 +4488,20 @@ function RentalsPage() {
               {/* 可編輯欄位 */}
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">實收金額 *</label>
-                  <input type="number" min="0" value={quickPayForm.actualAmount}
+                  <label htmlFor="f-30" className="text-sm text-gray-600">實收金額 *</label>
+                  <input id="f-30" type="number" min="0" value={quickPayForm.actualAmount}
                     onChange={e => setQuickPayForm(f => ({ ...f, actualAmount: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">收款日期 *</label>
-                  <input type="date" value={quickPayForm.actualDate}
+                  <label htmlFor="f-31" className="text-sm text-gray-600">收款日期 *</label>
+                  <input id="f-31" type="date" value={quickPayForm.actualDate}
                     onChange={e => setQuickPayForm(f => ({ ...f, actualDate: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">收款帳戶 *</label>
-                  <select value={quickPayForm.accountId}
+                  <label htmlFor="f-32" className="text-sm text-gray-600">收款帳戶 *</label>
+                  <select id="f-32" value={quickPayForm.accountId}
                     onChange={e => {
                       const acct = accounts.find(a => String(a.id) === e.target.value);
                       const autoMethod = acct?.type === '現金' ? '現金' : acct?.type === '銀行存款' ? '匯款' : null;
@@ -4859,8 +4513,8 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">付款方式</label>
-                  <select value={quickPayForm.paymentMethod}
+                  <label htmlFor="f-84" className="text-sm text-gray-600">付款方式</label>
+                  <select id="f-84" value={quickPayForm.paymentMethod}
                     onChange={e => setQuickPayForm(f => ({ ...f, paymentMethod: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m === 'transfer' ? '轉帳' : m}</option>)}
@@ -4887,8 +4541,8 @@ function RentalsPage() {
               <h3 className="text-lg font-bold text-gray-800 mb-4">{editingRentFiling ? '編輯申報列' : '新增申報列'}（{rentFilingYear} 年）</h3>
               <div className="space-y-3 text-sm">
                 <div>
-                  <label className="text-gray-600">物業 *</label>
-                  <select value={rentFilingForm.propertyId} disabled={!!editingRentFiling}
+                  <label htmlFor="f-33" className="text-gray-600">物業 *</label>
+                  <select id="f-33" value={rentFilingForm.propertyId} disabled={!!editingRentFiling}
                     onChange={(e) => setRentFilingForm((f) => ({ ...f, propertyId: e.target.value, contractId: '' }))}
                     className="w-full border rounded px-3 py-2 mt-1">
                     <option value="">選擇物業</option>
@@ -4898,8 +4552,8 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-gray-600">綁定租約（同址多公司時建議指定）</label>
-                  <select value={rentFilingForm.contractId} onChange={(e) => setRentFilingForm((f) => ({ ...f, contractId: e.target.value }))}
+                  <label htmlFor="f-98" className="text-gray-600">綁定租約（同址多公司時建議指定）</label>
+                  <select id="f-98" value={rentFilingForm.contractId} onChange={(e) => setRentFilingForm((f) => ({ ...f, contractId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 mt-1">
                     <option value="">不指定（合計該物業全部實收）</option>
                     {contracts.filter((c) => !rentFilingForm.propertyId || String(c.propertyId) === rentFilingForm.propertyId).map((c) => (
@@ -4908,8 +4562,8 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-gray-600">承租人／公司抬頭（手動註記）</label>
-                  <input type="text" value={rentFilingForm.lesseeDisplayName} onChange={(e) => setRentFilingForm((f) => ({ ...f, lesseeDisplayName: e.target.value }))}
+                  <label htmlFor="f-99" className="text-gray-600">承租人／公司抬頭（手動註記）</label>
+                  <input id="f-99" type="text" value={rentFilingForm.lesseeDisplayName} onChange={(e) => setRentFilingForm((f) => ({ ...f, lesseeDisplayName: e.target.value }))}
                     className="w-full border rounded px-3 py-2 mt-1" placeholder="例：OO股份有限公司" />
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -4918,31 +4572,31 @@ function RentalsPage() {
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">申報月租</label>
-                    <input type="number" min="0" value={rentFilingForm.declaredMonthlyRent} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredMonthlyRent: e.target.value }))}
+                    <label htmlFor="f-34" className="text-gray-600">申報月租</label>
+                    <input id="f-34" type="number" min="0" value={rentFilingForm.declaredMonthlyRent} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredMonthlyRent: e.target.value }))}
                       className="w-full border rounded px-3 py-2 mt-1 text-right" />
                   </div>
                   <div>
-                    <label className="text-gray-600">申報月數</label>
-                    <input type="number" min="1" max="12" value={rentFilingForm.monthsInScope} onChange={(e) => setRentFilingForm((f) => ({ ...f, monthsInScope: e.target.value }))}
+                    <label htmlFor="f-35" className="text-gray-600">申報月數</label>
+                    <input id="f-35" type="number" min="1" max="12" value={rentFilingForm.monthsInScope} onChange={(e) => setRentFilingForm((f) => ({ ...f, monthsInScope: e.target.value }))}
                       className="w-full border rounded px-3 py-2 mt-1 text-right" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-gray-600">全年申報金額</label>
-                    <input type="number" min="0" value={rentFilingForm.declaredAnnualIncome} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredAnnualIncome: e.target.value }))}
+                    <label htmlFor="f-36" className="text-gray-600">全年申報金額</label>
+                    <input id="f-36" type="number" min="0" value={rentFilingForm.declaredAnnualIncome} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredAnnualIncome: e.target.value }))}
                       className="w-full border rounded px-3 py-2 mt-1 text-right" />
                   </div>
                   <div>
-                    <label className="text-gray-600">預估房屋稅</label>
-                    <input type="number" min="0" value={rentFilingForm.estimatedHouseTax} onChange={(e) => setRentFilingForm((f) => ({ ...f, estimatedHouseTax: e.target.value }))}
+                    <label htmlFor="f-37" className="text-gray-600">預估房屋稅</label>
+                    <input id="f-37" type="number" min="0" value={rentFilingForm.estimatedHouseTax} onChange={(e) => setRentFilingForm((f) => ({ ...f, estimatedHouseTax: e.target.value }))}
                       className="w-full border rounded px-3 py-2 mt-1 text-right" placeholder="公益與一般稅率不同" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-gray-600">狀態</label>
-                  <select value={rentFilingForm.status} onChange={(e) => setRentFilingForm((f) => ({ ...f, status: e.target.value }))}
+                  <label htmlFor="f-38" className="text-gray-600">狀態</label>
+                  <select id="f-38" value={rentFilingForm.status} onChange={(e) => setRentFilingForm((f) => ({ ...f, status: e.target.value }))}
                     className="w-full border rounded px-3 py-2 mt-1">
                     <option value="draft">草稿</option>
                     <option value="filed">已報稅</option>
@@ -4950,8 +4604,8 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-gray-600">備註</label>
-                  <textarea value={rentFilingForm.note} onChange={(e) => setRentFilingForm((f) => ({ ...f, note: e.target.value }))} rows={2} className="w-full border rounded px-3 py-2 mt-1" />
+                  <label htmlFor="f-39" className="text-gray-600">備註</label>
+                  <textarea id="f-39" value={rentFilingForm.note} onChange={(e) => setRentFilingForm((f) => ({ ...f, note: e.target.value }))} rows={2} className="w-full border rounded px-3 py-2 mt-1" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
@@ -4982,65 +4636,65 @@ function RentalsPage() {
               )}
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">名稱 *</label>
-                  <input type="text" value={propertyForm.name} onChange={e => setPropertyForm(f => ({ ...f, name: e.target.value }))}
+                  <label htmlFor="f-40" className="text-sm text-gray-600">名稱 *</label>
+                  <input id="f-40" type="text" value={propertyForm.name} onChange={e => setPropertyForm(f => ({ ...f, name: e.target.value }))}
                     disabled={!!editingProperty?.asset?.id}
                     className={`w-full border rounded px-3 py-2 text-sm ${editingProperty?.asset?.id ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`} />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">大樓名稱</label>
-                  <input type="text" value={propertyForm.buildingName} onChange={e => setPropertyForm(f => ({ ...f, buildingName: e.target.value }))}
+                  <label htmlFor="f-41" className="text-sm text-gray-600">大樓名稱</label>
+                  <input id="f-41" type="text" value={propertyForm.buildingName} onChange={e => setPropertyForm(f => ({ ...f, buildingName: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">類別</label>
-                  <input type="text" value={propertyForm.unitNo} onChange={e => setPropertyForm(f => ({ ...f, unitNo: e.target.value }))}
+                  <label htmlFor="f-42" className="text-sm text-gray-600">類別</label>
+                  <input id="f-42" type="text" value={propertyForm.unitNo} onChange={e => setPropertyForm(f => ({ ...f, unitNo: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">地址</label>
-                  <input type="text" value={propertyForm.address} onChange={e => setPropertyForm(f => ({ ...f, address: e.target.value }))}
+                  <label htmlFor="f-43" className="text-sm text-gray-600">地址</label>
+                  <input id="f-43" type="text" value={propertyForm.address} onChange={e => setPropertyForm(f => ({ ...f, address: e.target.value }))}
                     disabled={!!editingProperty?.asset?.id}
                     className={`w-full border rounded px-3 py-2 text-sm ${editingProperty?.asset?.id ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-sm text-gray-600">所有權人</label>
-                    <input type="text" value={propertyForm.ownerName || ''} onChange={e => setPropertyForm(f => ({ ...f, ownerName: e.target.value }))}
+                    <label htmlFor="f-44" className="text-sm text-gray-600">所有權人</label>
+                    <input id="f-44" type="text" value={propertyForm.ownerName || ''} onChange={e => setPropertyForm(f => ({ ...f, ownerName: e.target.value }))}
                       className="w-full border rounded px-3 py-2 text-sm" placeholder="建物登記所有權人" />
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">房屋稅稅籍編號</label>
-                    <input type="text" value={propertyForm.houseTaxRegistrationNo || ''} onChange={e => setPropertyForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))}
+                    <label htmlFor="f-45" className="text-sm text-gray-600">房屋稅稅籍編號</label>
+                    <input id="f-45" type="text" value={propertyForm.houseTaxRegistrationNo || ''} onChange={e => setPropertyForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))}
                       className="w-full border rounded px-3 py-2 text-sm" placeholder="對應房屋稅單" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">狀態</label>
-                  <select value={propertyForm.status} onChange={e => setPropertyForm(f => ({ ...f, status: e.target.value }))}
+                  <label htmlFor="f-46" className="text-sm text-gray-600">狀態</label>
+                  <select id="f-46" value={propertyForm.status} onChange={e => setPropertyForm(f => ({ ...f, status: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     {PROPERTY_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">收租帳戶</label>
-                  <select value={propertyForm.rentCollectAccountId} onChange={e => setPropertyForm(f => ({ ...f, rentCollectAccountId: e.target.value }))}
+                  <label htmlFor="f-85" className="text-sm text-gray-600">收租帳戶</label>
+                  <select id="f-85" value={propertyForm.rentCollectAccountId} onChange={e => setPropertyForm(f => ({ ...f, rentCollectAccountId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">無</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">押金帳戶</label>
-                  <select value={propertyForm.depositAccountId} onChange={e => setPropertyForm(f => ({ ...f, depositAccountId: e.target.value }))}
+                  <label htmlFor="f-86" className="text-sm text-gray-600">押金帳戶</label>
+                  <select id="f-86" value={propertyForm.depositAccountId} onChange={e => setPropertyForm(f => ({ ...f, depositAccountId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">無</option>
                     {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">備註</label>
-                  <textarea value={propertyForm.note} onChange={e => setPropertyForm(f => ({ ...f, note: e.target.value }))}
+                  <label htmlFor="f-87" className="text-sm text-gray-600">備註</label>
+                  <textarea id="f-87" value={propertyForm.note} onChange={e => setPropertyForm(f => ({ ...f, note: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" rows={2} />
                 </div>
                 <div className="col-span-2">
@@ -5063,15 +4717,15 @@ function RentalsPage() {
                       <button type="button" onClick={() => { setShowPropertyModal(false); switchTab('rentFiling'); }} className="text-xs text-teal-700 underline font-medium">開啟租金申報 →</button>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-xs text-green-700 font-medium block mb-1">申請人名稱</label>
-                          <input type="text" value={propertyForm.publicInterestApplicant}
+                          <label htmlFor="f-47" className="text-xs text-green-700 font-medium block mb-1">申請人名稱</label>
+                          <input id="f-47" type="text" value={propertyForm.publicInterestApplicant}
                             onChange={e => setPropertyForm(f => ({ ...f, publicInterestApplicant: e.target.value }))}
                             placeholder="申請公益出租人之人名"
                             className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
                         </div>
                         <div>
-                          <label className="text-xs text-green-700 font-medium block mb-1">公益月租金</label>
-                          <input type="number" min="0" step="1" value={propertyForm.publicInterestRent}
+                          <label htmlFor="f-48" className="text-xs text-green-700 font-medium block mb-1">公益月租金</label>
+                          <input id="f-48" type="number" min="0" step="1" value={propertyForm.publicInterestRent}
                             onChange={e => setPropertyForm(f => ({ ...f, publicInterestRent: e.target.value }))}
                             placeholder="0"
                             className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
@@ -5079,21 +4733,21 @@ function RentalsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-xs text-green-700 font-medium block mb-1">租約開始日期</label>
-                          <input type="date" value={propertyForm.publicInterestStartDate}
+                          <label htmlFor="f-49" className="text-xs text-green-700 font-medium block mb-1">租約開始日期</label>
+                          <input id="f-49" type="date" value={propertyForm.publicInterestStartDate}
                             onChange={e => setPropertyForm(f => ({ ...f, publicInterestStartDate: e.target.value }))}
                             className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
                         </div>
                         <div>
-                          <label className="text-xs text-green-700 font-medium block mb-1">租約結束日期</label>
-                          <input type="date" value={propertyForm.publicInterestEndDate}
+                          <label htmlFor="f-50" className="text-xs text-green-700 font-medium block mb-1">租約結束日期</label>
+                          <input id="f-50" type="date" value={propertyForm.publicInterestEndDate}
                             onChange={e => setPropertyForm(f => ({ ...f, publicInterestEndDate: e.target.value }))}
                             className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
                         </div>
                       </div>
                       <div>
-                        <label className="text-xs text-green-700 font-medium block mb-1">公益出租人備註</label>
-                        <textarea value={propertyForm.publicInterestNote}
+                        <label htmlFor="f-51" className="text-xs text-green-700 font-medium block mb-1">公益出租人備註</label>
+                        <textarea id="f-51" value={propertyForm.publicInterestNote}
                           onChange={e => setPropertyForm(f => ({ ...f, publicInterestNote: e.target.value }))}
                           placeholder="申請相關備註"
                           className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" rows={2} />
@@ -5137,137 +4791,19 @@ function RentalsPage() {
 
       {/* ==================== MODAL: CONTRACT ==================== */}
       {showContractModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowContractModal(false); setRenewingFromContract(null); }}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">
-                {renewingFromContract ? '續約' : editingContract ? '編輯合約' : '新增合約'}
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {renewingFromContract && (
-                  <div className="col-span-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-sm text-teal-800">
-                    <span className="font-medium">續約自：</span>
-                    {renewingFromContract.contractNo}（{renewingFromContract.propertyName} · {renewingFromContract.tenantName}，舊月租 NT${Number(renewingFromContract.monthlyRent).toLocaleString()}）
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm text-gray-600">物業 *</label>
-                  <select value={contractForm.propertyId} onChange={e => {
-                    const pid = e.target.value;
-                    const prop = properties.find(p => String(p.id) === pid);
-                    setContractForm(f => ({ ...f, propertyId: pid, category: f.category || (prop?.category || '') }));
-                  }}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">選擇物業</option>
-                    {properties.map(p => {
-                      const isOccupied = (p.currentContractStatus === 'active' || p.currentContractStatus === 'pending')
-                        && String(p.id) !== String(contractForm.propertyId);
-                      return <option key={p.id} value={p.id} disabled={isOccupied}>{p.name}{isOccupied ? ' （已出租）' : ''}</option>;
-                    })}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">租客 *</label>
-                  <select value={contractForm.tenantId} onChange={e => setContractForm(f => ({ ...f, tenantId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">選擇租客</option>
-                    {tenants.map(t => <option key={t.id} value={t.id}>{getTenantDisplayName(t)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">開始日期 *</label>
-                  <input type="date" value={contractForm.startDate} onChange={e => setContractForm(f => ({ ...f, startDate: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">結束日期 *</label>
-                  <input type="date" value={contractForm.endDate} onChange={e => setContractForm(f => ({ ...f, endDate: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">月租金 *</label>
-                  <input type="number" value={contractForm.monthlyRent} onChange={e => setContractForm(f => ({ ...f, monthlyRent: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">繳租日 (每月) *</label>
-                  <input type="number" min="1" max="28" value={contractForm.paymentDueDay} onChange={e => setContractForm(f => ({ ...f, paymentDueDay: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">押金金額</label>
-                  <input type="number" value={contractForm.depositAmount} onChange={e => setContractForm(f => ({ ...f, depositAmount: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">押金帳戶</label>
-                  <select value={contractForm.depositAccountId} onChange={e => setContractForm(f => ({ ...f, depositAccountId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">無</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">收租帳戶 *</label>
-                  <select value={contractForm.rentAccountId} onChange={e => setContractForm(f => ({ ...f, rentAccountId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">-- 選擇帳戶 --</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">會計科目 *</label>
-                  <select value={contractForm.accountingSubjectId} onChange={e => setContractForm(f => ({ ...f, accountingSubjectId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">請選擇會計科目</option>
-                    {accountingSubjects.map(s => <option key={s.id} value={s.id}>{s.code} - {s.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">狀態</label>
-                  <select value={contractForm.status} onChange={e => setContractForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    {CONTRACT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">分類</label>
-                  <div className="w-full border rounded px-3 py-2 text-sm bg-gray-50 text-gray-600 flex items-center gap-1">
-                    {(() => {
-                      const prop = properties.find(p => String(p.id) === String(contractForm.propertyId));
-                      return prop?.category
-                        ? <><span className="text-xs text-gray-400">繼承自物業：</span><span className="font-medium text-gray-800">{prop.category}</span></>
-                        : <span className="text-gray-400">（選擇物業後自動帶入）</span>;
-                    })()}
-                  </div>
-                </div>
-                <div className="col-span-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={contractForm.autoRenew}
-                      onChange={e => setContractForm(f => ({ ...f, autoRenew: e.target.checked }))} />
-                    自動續約
-                  </label>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">特殊條款</label>
-                  <textarea value={contractForm.specialTerms} onChange={e => setContractForm(f => ({ ...f, specialTerms: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">備註</label>
-                  <textarea value={contractForm.note} onChange={e => setContractForm(f => ({ ...f, note: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => { setShowContractModal(false); setRenewingFromContract(null); }} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{contractSaving ? '儲存中…' : (renewingFromContract ? '建立續約合約' : '儲存')}</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ContractModal
+          editingContract={editingContract}
+          contractForm={contractForm} setContractForm={setContractForm}
+          contractSaving={contractSaving}
+          saveContract={saveContract}
+          onClose={() => { setShowContractModal(false); setRenewingFromContract(null); }}
+          renewingFromContract={renewingFromContract}
+          properties={properties}
+          tenants={tenants}
+          accounts={accounts}
+          accountingSubjects={accountingSubjects}
+        />
       )}
-
       {/* ==================== MODAL: TAX ==================== */}
       {showTaxModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowTaxModal(false); setEditingTax(null); }}>
@@ -5276,8 +4812,8 @@ function RentalsPage() {
               <h3 className="text-lg font-bold text-gray-800 mb-4">{editingTax ? '編輯稅款' : '新增稅款'}</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">物業 *</label>
-                  <select value={taxForm.propertyId} onChange={e => setTaxForm(f => ({ ...f, propertyId: e.target.value }))}
+                  <label htmlFor="f-52" className="text-sm text-gray-600">物業 *</label>
+                  <select id="f-52" value={taxForm.propertyId} onChange={e => setTaxForm(f => ({ ...f, propertyId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingTax}>
                     <option value="">選擇物業</option>
                     {properties.map(p => {
@@ -5290,13 +4826,13 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">年度 *</label>
-                  <input type="number" value={taxForm.taxYear} onChange={e => setTaxForm(f => ({ ...f, taxYear: e.target.value }))}
+                  <label htmlFor="f-88" className="text-sm text-gray-600">年度 *</label>
+                  <input id="f-88" type="number" value={taxForm.taxYear} onChange={e => setTaxForm(f => ({ ...f, taxYear: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingTax} />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">稅種 *</label>
-                  <select value={taxForm.taxType} onChange={e => setTaxForm(f => ({ ...f, taxType: e.target.value }))}
+                  <label htmlFor="f-89" className="text-sm text-gray-600">稅種 *</label>
+                  <select id="f-89" value={taxForm.taxType} onChange={e => setTaxForm(f => ({ ...f, taxType: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={editingTax?.status === 'paid'}>
                     <option value="房屋稅">房屋稅</option>
                     <option value="地價稅">地價稅</option>
@@ -5305,33 +4841,33 @@ function RentalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">應繳到期日 *</label>
-                  <input type="date" value={taxForm.dueDate} onChange={e => setTaxForm(f => ({ ...f, dueDate: e.target.value }))}
+                  <label htmlFor="f-53" className="text-sm text-gray-600">應繳到期日 *</label>
+                  <input id="f-53" type="date" value={taxForm.dueDate} onChange={e => setTaxForm(f => ({ ...f, dueDate: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={editingTax?.status === 'paid'} />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">金額 *</label>
-                  <input type="number" value={taxForm.amount} onChange={e => setTaxForm(f => ({ ...f, amount: e.target.value }))}
+                  <label htmlFor="f-54" className="text-sm text-gray-600">金額 *</label>
+                  <input id="f-54" type="number" value={taxForm.amount} onChange={e => setTaxForm(f => ({ ...f, amount: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={editingTax?.status === 'paid'} />
                 </div>
                 <div className="border-t pt-3">
                   <p className="text-xs text-gray-500 mb-2">繳款憑證（已繳後填寫，供對帳用）</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs text-gray-600">實際繳款日</label>
-                      <input type="date" value={taxForm.paidDate} onChange={e => setTaxForm(f => ({ ...f, paidDate: e.target.value }))}
+                      <label htmlFor="f-55" className="text-xs text-gray-600">實際繳款日</label>
+                      <input id="f-55" type="date" value={taxForm.paidDate} onChange={e => setTaxForm(f => ({ ...f, paidDate: e.target.value }))}
                         className="w-full border rounded px-2 py-1.5 text-sm mt-1" />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">繳款憑證號</label>
-                      <input type="text" value={taxForm.certNo} onChange={e => setTaxForm(f => ({ ...f, certNo: e.target.value }))}
+                      <label htmlFor="f-56" className="text-xs text-gray-600">繳款憑證號</label>
+                      <input id="f-56" type="text" value={taxForm.certNo} onChange={e => setTaxForm(f => ({ ...f, certNo: e.target.value }))}
                         placeholder="e.g. 2026050100001" className="w-full border rounded px-2 py-1.5 text-sm mt-1" />
                     </div>
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">備註</label>
-                  <textarea value={taxForm.note} onChange={e => setTaxForm(f => ({ ...f, note: e.target.value }))}
+                  <label htmlFor="f-57" className="text-sm text-gray-600">備註</label>
+                  <textarea id="f-57" value={taxForm.note} onChange={e => setTaxForm(f => ({ ...f, note: e.target.value }))}
                     rows={2} placeholder="繳款方式、代繳機構…" className="w-full border rounded px-3 py-2 text-sm mt-1" />
                 </div>
               </div>
@@ -5352,8 +4888,8 @@ function RentalsPage() {
               <h3 className="text-lg font-bold text-gray-800 mb-4">{editingMaintenance ? '編輯維護紀錄' : '新增維護紀錄'}</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">物業 *</label>
-                  <select value={maintenanceForm.propertyId} onChange={e => setMaintenanceForm(f => ({ ...f, propertyId: e.target.value }))}
+                  <label htmlFor="f-58" className="text-sm text-gray-600">物業 *</label>
+                  <select id="f-58" value={maintenanceForm.propertyId} onChange={e => setMaintenanceForm(f => ({ ...f, propertyId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" disabled={!!editingMaintenance}>
                     <option value="">選擇物業</option>
                     {properties.map(p => {
@@ -5370,25 +4906,25 @@ function RentalsPage() {
                   })()}
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">日期 *</label>
-                  <input type="date" value={maintenanceForm.maintenanceDate} onChange={e => setMaintenanceForm(f => ({ ...f, maintenanceDate: e.target.value }))}
+                  <label htmlFor="f-90" className="text-sm text-gray-600">日期 *</label>
+                  <input id="f-90" type="date" value={maintenanceForm.maintenanceDate} onChange={e => setMaintenanceForm(f => ({ ...f, maintenanceDate: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">類別 *</label>
-                  <select value={maintenanceForm.category} onChange={e => setMaintenanceForm(f => ({ ...f, category: e.target.value }))}
+                  <label htmlFor="f-59" className="text-sm text-gray-600">類別 *</label>
+                  <select id="f-59" value={maintenanceForm.category} onChange={e => setMaintenanceForm(f => ({ ...f, category: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     {MAINTENANCE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">金額 *</label>
-                  <input type="number" value={maintenanceForm.amount} onChange={e => setMaintenanceForm(f => ({ ...f, amount: e.target.value }))}
+                  <label htmlFor="f-91" className="text-sm text-gray-600">金額 *</label>
+                  <input id="f-91" type="number" value={maintenanceForm.amount} onChange={e => setMaintenanceForm(f => ({ ...f, amount: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">會計科目 *</label>
-                  <select value={maintenanceForm.accountingSubjectId} onChange={e => setMaintenanceForm(f => ({ ...f, accountingSubjectId: e.target.value }))}
+                  <label htmlFor="f-92" className="text-sm text-gray-600">會計科目 *</label>
+                  <select id="f-92" value={maintenanceForm.accountingSubjectId} onChange={e => setMaintenanceForm(f => ({ ...f, accountingSubjectId: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm">
                     <option value="">請選擇會計科目</option>
                     {accountingSubjects.map(s => <option key={s.id} value={s.id}>{s.code} - {s.name}</option>)}
@@ -5396,8 +4932,8 @@ function RentalsPage() {
                 </div>
                 {!editingMaintenance && (
                   <div>
-                    <label className="text-sm text-gray-600">支出戶頭 *</label>
-                    <select value={maintenanceForm.accountId} onChange={e => setMaintenanceForm(f => ({ ...f, accountId: e.target.value }))}
+                    <label htmlFor="f-93" className="text-sm text-gray-600">支出戶頭 *</label>
+                    <select id="f-93" value={maintenanceForm.accountId} onChange={e => setMaintenanceForm(f => ({ ...f, accountId: e.target.value }))}
                       className="w-full border rounded px-3 py-2 text-sm">
                       <option value="">請選擇（存檔後同步至出納待出納）</option>
                       {accounts.map(a => <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>)}
@@ -5414,13 +4950,13 @@ function RentalsPage() {
                   {maintenanceForm.isEmployeeAdvance && (
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div>
-                        <label className="text-xs text-gray-500">代墊員工 *</label>
-                        <input value={maintenanceForm.advancedBy} onChange={e => setMaintenanceForm(f => ({ ...f, advancedBy: e.target.value }))}
+                        <label htmlFor="f-94" className="text-xs text-gray-500">代墊員工 *</label>
+                        <input id="f-94" value={maintenanceForm.advancedBy} onChange={e => setMaintenanceForm(f => ({ ...f, advancedBy: e.target.value }))}
                           placeholder="員工姓名" className="w-full border rounded px-3 py-1.5 text-sm" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-500">代墊方式</label>
-                        <select value={maintenanceForm.advancePaymentMethod} onChange={e => setMaintenanceForm(f => ({ ...f, advancePaymentMethod: e.target.value }))}
+                        <label htmlFor="f-60" className="text-xs text-gray-500">代墊方式</label>
+                        <select id="f-60" value={maintenanceForm.advancePaymentMethod} onChange={e => setMaintenanceForm(f => ({ ...f, advancePaymentMethod: e.target.value }))}
                           className="w-full border rounded px-3 py-1.5 text-sm">
                           <option value="現金">現金</option>
                           <option value="信用卡">信用卡</option>
@@ -5449,8 +4985,8 @@ function RentalsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">備註</label>
-                  <textarea value={maintenanceForm.note} onChange={e => setMaintenanceForm(f => ({ ...f, note: e.target.value }))}
+                  <label htmlFor="f-61" className="text-sm text-gray-600">備註</label>
+                  <textarea id="f-61" value={maintenanceForm.note} onChange={e => setMaintenanceForm(f => ({ ...f, note: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm" rows={2} />
                 </div>
               </div>

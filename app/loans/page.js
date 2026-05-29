@@ -9,6 +9,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 const TABS = [
   { key: 'overview', label: '貸款總覽' },
@@ -352,7 +353,7 @@ export default function LoansPage() {
     setConfirmForm({
       actualPrincipal: String(record.estimatedPrincipal),
       actualInterest: String(record.estimatedInterest),
-      actualDebitDate: new Date().toISOString().split('T')[0],
+      actualDebitDate: todayStr(),
       statementNo: '',
       note: record.note || ''
     });
@@ -451,7 +452,7 @@ export default function LoansPage() {
       sourceAccountId: '',
       amount: String(Math.max(0, Math.ceil(suggestedAmount))),
       description: `貸款扣款預存 → ${targetAcct.name}`,
-      transactionDate: new Date().toISOString().split('T')[0]
+      transactionDate: todayStr()
     });
     setShowTransferModal(true);
   }
@@ -1151,8 +1152,8 @@ export default function LoansPage() {
 
         {/* Month Selector & Actions */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center">
-          <label className="text-sm font-medium text-gray-600">年月:</label>
-          <select value={monthlyYear} onChange={e => setMonthlyYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
+          <label htmlFor="f" className="text-sm font-medium text-gray-600">年月:</label>
+          <select id="f" value={monthlyYear} onChange={e => setMonthlyYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
             {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
@@ -1590,8 +1591,8 @@ export default function LoansPage() {
       <div>
         {/* Month Selector + Print */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center">
-          <label className="text-sm font-medium text-gray-600">報表月份:</label>
-          <select value={reportYear} onChange={e => setReportYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
+          <label htmlFor="f-28" className="text-sm font-medium text-gray-600">報表月份:</label>
+          <select id="f-28" value={reportYear} onChange={e => setReportYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
             {[now.getFullYear() - 2, now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
@@ -1746,8 +1747,8 @@ export default function LoansPage() {
       <div>
         {/* Controls */}
         <div className="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap gap-3 items-center">
-          <label className="text-sm font-medium text-gray-600">報表年度:</label>
-          <select value={annualYear} onChange={e => setAnnualYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
+          <label htmlFor="f-29" className="text-sm font-medium text-gray-600">報表年度:</label>
+          <select id="f-29" value={annualYear} onChange={e => setAnnualYear(parseInt(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">
             {yearOptions.map(y => <option key={y} value={y}>{y} 年</option>)}
           </select>
           {annualLoading && <span className="text-sm text-gray-400 ml-2">載入中...</span>}
@@ -2086,16 +2087,16 @@ export default function LoansPage() {
             {/* Row 1: Name & Owner */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">貸款名稱 *</label>
-                <input
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">貸款名稱 *</label>
+                <input id="f-2"
                   type="text" value={loanForm.loanName}
                   onChange={e => setLoanForm({ ...loanForm, loanName: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：台銀房貸-麗格"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">持有人類型 *</label>
-                <select value={loanForm.ownerType} onChange={e => setLoanForm({ ...loanForm, ownerType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">持有人類型 *</label>
+                <select id="f-3" value={loanForm.ownerType} onChange={e => setLoanForm({ ...loanForm, ownerType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                   {OWNER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
@@ -2104,16 +2105,16 @@ export default function LoansPage() {
             {/* Row 2: Owner Name & Warehouse */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">持有人姓名</label>
-                <input
+                <label htmlFor="f-30" className="block text-sm font-medium text-gray-700 mb-1">持有人姓名</label>
+                <input id="f-30"
                   type="text" value={loanForm.ownerName}
                   onChange={e => setLoanForm({ ...loanForm, ownerName: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="選填"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                <select value={loanForm.warehouse} onChange={e => setLoanForm({ ...loanForm, warehouse: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                <select id="f-4" value={loanForm.warehouse} onChange={e => setLoanForm({ ...loanForm, warehouse: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                   <option value="">請選擇</option>
                   {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
@@ -2123,16 +2124,16 @@ export default function LoansPage() {
             {/* Row 3: Bank */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">銀行名稱 *</label>
-                <input
+                <label htmlFor="f-31" className="block text-sm font-medium text-gray-700 mb-1">銀行名稱 *</label>
+                <input id="f-31"
                   type="text" value={loanForm.bankName}
                   onChange={e => setLoanForm({ ...loanForm, bankName: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：台灣銀行"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">分行</label>
-                <input
+                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">分行</label>
+                <input id="f-5"
                   type="text" value={loanForm.bankBranch}
                   onChange={e => setLoanForm({ ...loanForm, bankBranch: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="選填"
@@ -2143,14 +2144,14 @@ export default function LoansPage() {
             {/* Row 4: Loan Type & Amount */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">貸款類型</label>
-                <select value={loanForm.loanType} onChange={e => setLoanForm({ ...loanForm, loanType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">貸款類型</label>
+                <select id="f-6" value={loanForm.loanType} onChange={e => setLoanForm({ ...loanForm, loanType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                   {LOAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">貸款金額 *</label>
-                <input
+                <label htmlFor="f-32" className="block text-sm font-medium text-gray-700 mb-1">貸款金額 *</label>
+                <input id="f-32"
                   type="number" value={loanForm.originalAmount}
                   onChange={e => setLoanForm({ ...loanForm, originalAmount: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="原始貸款金額"
@@ -2161,22 +2162,22 @@ export default function LoansPage() {
             {/* Row 5: Rate */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">年利率 (%)</label>
-                <input
+                <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">年利率 (%)</label>
+                <input id="f-7"
                   type="number" step="0.01" value={loanForm.annualRate}
                   onChange={e => setLoanForm({ ...loanForm, annualRate: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0 表示無利息"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">利率類型</label>
-                <select value={loanForm.rateType} onChange={e => setLoanForm({ ...loanForm, rateType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">利率類型</label>
+                <select id="f-8" value={loanForm.rateType} onChange={e => setLoanForm({ ...loanForm, rateType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                   {RATE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">還款日 *</label>
-                <input
+                <label htmlFor="f-33" className="block text-sm font-medium text-gray-700 mb-1">還款日 *</label>
+                <input id="f-33"
                   type="number" min="1" max="28" value={loanForm.repaymentDay}
                   onChange={e => setLoanForm({ ...loanForm, repaymentDay: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="1-28"
@@ -2187,22 +2188,22 @@ export default function LoansPage() {
             {/* Row 6: Repayment Type & Dates */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">還款方式 *</label>
-                <select value={loanForm.repaymentType} onChange={e => setLoanForm({ ...loanForm, repaymentType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">還款方式 *</label>
+                <select id="f-9" value={loanForm.repaymentType} onChange={e => setLoanForm({ ...loanForm, repaymentType: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                   {REPAYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">起始日 *</label>
-                <input
+                <label htmlFor="f-34" className="block text-sm font-medium text-gray-700 mb-1">起始日 *</label>
+                <input id="f-34"
                   type="date" value={loanForm.startDate}
                   onChange={e => setLoanForm({ ...loanForm, startDate: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">到期日 *</label>
-                <input
+                <label htmlFor="f-35" className="block text-sm font-medium text-gray-700 mb-1">到期日 *</label>
+                <input id="f-35"
                   type="date" value={loanForm.endDate}
                   onChange={e => setLoanForm({ ...loanForm, endDate: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2213,8 +2214,8 @@ export default function LoansPage() {
             {/* Row 7: Deduct Account & Sort */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">扣款帳戶 *</label>
-                <select value={loanForm.deductAccountId} onChange={e => setLoanForm({ ...loanForm, deductAccountId: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">扣款帳戶 *</label>
+                <select id="f-10" value={loanForm.deductAccountId} onChange={e => setLoanForm({ ...loanForm, deductAccountId: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                   <option value="">請選擇</option>
                   {accounts.filter(a => a.isActive).map(a => (
                     <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
@@ -2222,8 +2223,8 @@ export default function LoansPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">排序</label>
-                <input
+                <label htmlFor="f-37" className="block text-sm font-medium text-gray-700 mb-1">排序</label>
+                <input id="f-37"
                   type="number" value={loanForm.sortOrder}
                   onChange={e => setLoanForm({ ...loanForm, sortOrder: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0"
@@ -2234,8 +2235,8 @@ export default function LoansPage() {
             {/* Row 7.2: 會計科目（本金 / 利息） */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">本金會計科目</label>
-                <select
+                <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">本金會計科目</label>
+                <select id="f-11"
                   value={loanForm.principalSubjectId}
                   onChange={e => setLoanForm({ ...loanForm, principalSubjectId: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2247,8 +2248,8 @@ export default function LoansPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">利息會計科目</label>
-                <select
+                <label htmlFor="f-38" className="block text-sm font-medium text-gray-700 mb-1">利息會計科目</label>
+                <select id="f-38"
                   value={loanForm.interestSubjectId}
                   onChange={e => setLoanForm({ ...loanForm, interestSubjectId: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2267,8 +2268,8 @@ export default function LoansPage() {
                 <h4 className="text-sm font-bold text-gray-700 mb-3">貸款狀態管理</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">貸款狀態</label>
-                    <select value={loanForm.status} onChange={e => setLoanForm({ ...loanForm, status: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <label htmlFor="f-36" className="block text-sm font-medium text-gray-700 mb-1">貸款狀態</label>
+                    <select id="f-36" value={loanForm.status} onChange={e => setLoanForm({ ...loanForm, status: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
                       {LOAN_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
@@ -2299,16 +2300,16 @@ export default function LoansPage() {
             {/* Row 8: Contact */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">聯絡人</label>
-                <input
+                <label htmlFor="f-12" className="block text-sm font-medium text-gray-700 mb-1">聯絡人</label>
+                <input id="f-12"
                   type="text" value={loanForm.contactPerson}
                   onChange={e => setLoanForm({ ...loanForm, contactPerson: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">聯絡電話</label>
-                <input
+                <label htmlFor="f-13" className="block text-sm font-medium text-gray-700 mb-1">聯絡電話</label>
+                <input id="f-13"
                   type="text" value={loanForm.contactPhone}
                   onChange={e => setLoanForm({ ...loanForm, contactPhone: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2318,8 +2319,8 @@ export default function LoansPage() {
 
             {/* Row 9: Collateral & Guarantor */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">擔保物</label>
-              <input
+              <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">擔保物</label>
+              <input id="f-14"
                 type="text" value={loanForm.collateral}
                 onChange={e => setLoanForm({ ...loanForm, collateral: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2328,24 +2329,24 @@ export default function LoansPage() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">保證人/要保人</label>
-                <input
+                <label htmlFor="f-15" className="block text-sm font-medium text-gray-700 mb-1">保證人/要保人</label>
+                <input id="f-15"
                   type="text" value={loanForm.guarantor}
                   onChange={e => setLoanForm({ ...loanForm, guarantor: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">保證人電話</label>
-                <input
+                <label htmlFor="f-16" className="block text-sm font-medium text-gray-700 mb-1">保證人電話</label>
+                <input id="f-16"
                   type="text" value={loanForm.guarantorPhone}
                   onChange={e => setLoanForm({ ...loanForm, guarantorPhone: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">保證人身分證</label>
-                <input
+                <label htmlFor="f-17" className="block text-sm font-medium text-gray-700 mb-1">保證人身分證</label>
+                <input id="f-17"
                   type="text" value={loanForm.guarantorIdNo}
                   onChange={e => setLoanForm({ ...loanForm, guarantorIdNo: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2355,8 +2356,8 @@ export default function LoansPage() {
 
             {/* Remark */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-              <textarea
+              <label htmlFor="f-18" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+              <textarea id="f-18"
                 value={loanForm.remark}
                 onChange={e => setLoanForm({ ...loanForm, remark: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm" rows={3}
@@ -2438,16 +2439,16 @@ export default function LoansPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">實際本金 *</label>
-                <input
+                <label htmlFor="f-19" className="block text-sm font-medium text-gray-700 mb-1">實際本金 *</label>
+                <input id="f-19"
                   type="number" value={confirmForm.actualPrincipal}
                   onChange={e => setConfirmForm({ ...confirmForm, actualPrincipal: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">實際利息 *</label>
-                <input
+                <label htmlFor="f-20" className="block text-sm font-medium text-gray-700 mb-1">實際利息 *</label>
+                <input id="f-20"
                   type="number" value={confirmForm.actualInterest}
                   onChange={e => setConfirmForm({ ...confirmForm, actualInterest: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2478,16 +2479,16 @@ export default function LoansPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">實際扣款日</label>
-                <input
+                <label htmlFor="f-21" className="block text-sm font-medium text-gray-700 mb-1">實際扣款日</label>
+                <input id="f-21"
                   type="date" value={confirmForm.actualDebitDate}
                   onChange={e => setConfirmForm({ ...confirmForm, actualDebitDate: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">對帳單號</label>
-                <input
+                <label htmlFor="f-22" className="block text-sm font-medium text-gray-700 mb-1">對帳單號</label>
+                <input id="f-22"
                   type="text" value={confirmForm.statementNo}
                   onChange={e => setConfirmForm({ ...confirmForm, statementNo: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2496,8 +2497,8 @@ export default function LoansPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-              <textarea
+              <label htmlFor="f-23" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+              <textarea id="f-23"
                 value={confirmForm.note}
                 onChange={e => setConfirmForm({ ...confirmForm, note: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm" rows={2}
@@ -2612,8 +2613,8 @@ export default function LoansPage() {
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">來源帳戶 *</label>
-              <select
+              <label htmlFor="f-24" className="block text-sm font-medium text-gray-700 mb-1">來源帳戶 *</label>
+              <select id="f-24"
                 value={transferForm.sourceAccountId}
                 onChange={e => setTransferForm({ ...transferForm, sourceAccountId: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2647,16 +2648,16 @@ export default function LoansPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">移轉金額 *</label>
-                <input
+                <label htmlFor="f-25" className="block text-sm font-medium text-gray-700 mb-1">移轉金額 *</label>
+                <input id="f-25"
                   type="number" value={transferForm.amount}
                   onChange={e => setTransferForm({ ...transferForm, amount: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm" min="0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">交易日期</label>
-                <input
+                <label htmlFor="f-26" className="block text-sm font-medium text-gray-700 mb-1">交易日期</label>
+                <input id="f-26"
                   type="date" value={transferForm.transactionDate}
                   onChange={e => setTransferForm({ ...transferForm, transactionDate: e.target.value })}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -2674,8 +2675,8 @@ export default function LoansPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">說明</label>
-              <input
+              <label htmlFor="f-27" className="block text-sm font-medium text-gray-700 mb-1">說明</label>
+              <input id="f-27"
                 type="text" value={transferForm.description}
                 onChange={e => setTransferForm({ ...transferForm, description: e.target.value })}
                 className="w-full border rounded-lg px-3 py-2 text-sm"

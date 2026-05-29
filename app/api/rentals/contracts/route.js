@@ -3,13 +3,14 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 // Auto-generate contractNo: RC-YYYYMMDD-XXX
 async function generateContractNo() {
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+  const dateStr = localDateStr(now).replace(/-/g, '');
   const prefix = `RC-${dateStr}-`;
 
   const existing = await prisma.rentalContract.findMany({
@@ -37,7 +38,7 @@ export async function GET(request) {
     const tenantId = searchParams.get('tenantId');
 
     // 自動將 endDate 已過期的 active 合約更新為 expired
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     await prisma.rentalContract.updateMany({
       where: { status: 'active', endDate: { lt: today } },
       data: { status: 'expired' },

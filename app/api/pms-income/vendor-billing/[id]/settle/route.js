@@ -15,6 +15,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export async function POST(request, { params }) {
     const account = await prisma.cashAccount.findUnique({ where: { id: parseInt(accountId) } });
     if (!account) return createErrorResponse('NOT_FOUND', '帳戶不存在', 404);
 
-    const txDate  = settleDate || new Date().toISOString().split('T')[0];
+    const txDate  = settleDate || todayStr();
     const txType  = billing.direction === 'AR' ? '收入' : '支出';
     const amount  = Number(billing.totalAmount);
 

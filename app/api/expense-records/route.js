@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { validateWarehouse } from '@/lib/master-data-validator';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,7 +174,7 @@ export async function POST(request) {
 
       // Generate recordNo: EXP-YYYYMMDD-XXXX
       const today = new Date();
-      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const dateStr = localDateStr(today).replace(/-/g, '');
       const todayStart = `EXP-${dateStr}-`;
 
       const lastRecord = await tx.commonExpenseRecord.findFirst({

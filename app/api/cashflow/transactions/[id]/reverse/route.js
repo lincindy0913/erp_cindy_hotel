@@ -7,6 +7,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function POST(request, { params }) {
       const reversalTx = await tx.cashTransaction.create({
         data: {
           transactionNo: txNo,
-          transactionDate: new Date().toISOString().split('T')[0],
+          transactionDate: todayStr(),
           type: reversalType,
           warehouse: original.warehouse,
           accountId: original.accountId,

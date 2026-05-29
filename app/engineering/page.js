@@ -12,6 +12,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 const COMPANY_INV_PERIODS = [
   '113.3-4','113.5-6','113.7-8','113.9-10','113.11-12',
@@ -248,10 +249,10 @@ function EngineeringPageInner() {
     const sumIncome = allIncomesForDash.reduce((s, i) => s + Number(i.amount || 0), 0);
     const sumInputInvoices = allInputInvsForDash.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
     const sumOutputInvoices = allOutputInvsForDash.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayStr();
     const weekLater = new Date();
     weekLater.setDate(weekLater.getDate() + 7);
-    const weekEnd = weekLater.toISOString().slice(0, 10);
+    const weekEnd = localDateStr(weekLater);
     let overdueTerms = 0;
     let dueThisWeek = 0;
     for (const c of contracts) {
@@ -346,7 +347,7 @@ function EngineeringPageInner() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `工程付款單_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `工程付款單_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -408,7 +409,7 @@ function EngineeringPageInner() {
   const [incomes, setIncomes] = useState([]);
   const [incomeSaving, setIncomeSaving] = useState(false);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
-  const [incomeForm, setIncomeForm] = useState({ projectId: '', termName: '', amount: '', receivedDate: new Date().toISOString().split('T')[0], accountId: '', accountingSubject: '41000 工程收入', note: '' });
+  const [incomeForm, setIncomeForm] = useState({ projectId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' });
   const [incomeFilterProjectId, setIncomeFilterProjectId] = useState('');
   const [editingIncome, setEditingIncome] = useState(null); // { id, form }
   const [incomeEditSaving, setIncomeEditSaving] = useState(false);
@@ -433,7 +434,7 @@ function EngineeringPageInner() {
     fetchSuppliers();
     refreshDashInvoices();
     fetch('/api/company-expenses?type=invoice&projectId=null')
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setUnassignedInvCount(Array.isArray(data) ? data.length : 0))
       .catch(() => {});
   }, []);
@@ -447,7 +448,7 @@ function EngineeringPageInner() {
       fetchPaymentOrders();
       fetchAccounts();
       fetchContracts();
-      fetch('/api/settings/payment-methods').then(res => res.json()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(() => null);
+      fetch('/api/settings/payment-methods').then(res => res.ok ? res.json() : Promise.reject()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(() => null);
     }
     if (activeTab === 'income') {
       fetchIncomes();
@@ -553,6 +554,7 @@ function EngineeringPageInner() {
         fetch('/api/engineering/input-invoices'),
         fetch('/api/engineering/output-invoices'),
       ]);
+      if (!iRes.ok || !oRes.ok) throw new Error();
       const [iData, oData] = await Promise.all([iRes.json(), oRes.json()]);
       setAllInputInvsForDash(Array.isArray(iData) ? iData : []);
       setAllOutputInvsForDash(Array.isArray(oData) ? oData : []);
@@ -579,7 +581,7 @@ function EngineeringPageInner() {
       if (!res.ok) { showToast(resData.error?.message || '建立失敗', 'error'); return; }
       showToast('收款紀錄已建立', 'success');
       setShowIncomeForm(false);
-      setIncomeForm({ projectId: '', termName: '', amount: '', receivedDate: new Date().toISOString().split('T')[0], accountId: '', accountingSubject: '41000 工程收入', note: '' });
+      setIncomeForm({ projectId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' });
       fetchIncomes();
       refreshDashIncomes();
     } catch { showToast('建立收款紀錄失敗', 'error'); }
@@ -647,7 +649,7 @@ function EngineeringPageInner() {
       const params = new URLSearchParams({ type: 'invoice' });
       if (pid) params.set('projectId', pid);
       if (period) params.set('period', period);
-      const data = await fetch(`/api/company-expenses?${params}`).then(r => r.json());
+      const data = await fetch(`/api/company-expenses?${params}`).then(r => r.ok ? r.json() : Promise.reject(r));
       setCompanyInvoices(Array.isArray(data) ? data : []);
     } catch { setCompanyInvoices([]); }
     finally { setCompanyInvLoading(false); }
@@ -678,7 +680,7 @@ function EngineeringPageInner() {
   async function fetchInputInvoices(pid) {
     try {
       const url = pid ? `/api/engineering/input-invoices?projectId=${pid}` : '/api/engineering/input-invoices';
-      const data = await fetch(url).then(r => r.json());
+      const data = await fetch(url).then(r => r.ok ? r.json() : Promise.reject(r));
       setInputInvoices(Array.isArray(data) ? data : []);
     } catch { setInputInvoices([]); }
   }
@@ -686,7 +688,7 @@ function EngineeringPageInner() {
   async function fetchOutputInvoices(pid) {
     try {
       const url = pid ? `/api/engineering/output-invoices?projectId=${pid}` : '/api/engineering/output-invoices';
-      const data = await fetch(url).then(r => r.json());
+      const data = await fetch(url).then(r => r.ok ? r.json() : Promise.reject(r));
       setOutputInvoices(Array.isArray(data) ? data : []);
     } catch { setOutputInvoices([]); }
   }
@@ -717,7 +719,8 @@ function EngineeringPageInner() {
 
   async function deleteInputInvoice(inv) {
     if (!(await confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`, { title: '刪除確認', danger: true }))) return;
-    await fetch(`/api/engineering/input-invoices/${inv.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/engineering/input-invoices/${inv.id}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('刪除失敗', 'error'); return; }
     fetchInputInvoices(invProjectFilter || undefined);
     refreshDashInvoices();
   }
@@ -742,7 +745,8 @@ function EngineeringPageInner() {
 
   async function deleteOutputInvoice(inv) {
     if (!(await confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`, { title: '刪除確認', danger: true }))) return;
-    await fetch(`/api/engineering/output-invoices/${inv.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/engineering/output-invoices/${inv.id}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('刪除失敗', 'error'); return; }
     fetchOutputInvoices(invProjectFilter || undefined);
     refreshDashInvoices();
   }
@@ -784,10 +788,12 @@ function EngineeringPageInner() {
         permitNo: projectForm.permitNo?.trim() || null, note: projectForm.note?.trim() || null,
       };
       if (editingProject) {
-        await fetch(`/api/engineering/projects/${editingProject.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch(`/api/engineering/projects/${editingProject.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '更新失敗', 'error'); return; }
         showToast('已更新', 'success');
       } else {
-        await fetch('/api/engineering/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch('/api/engineering/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '新增失敗', 'error'); return; }
         showToast('已新增', 'success');
       }
       setShowProjectModal(false); fetchProjects();
@@ -798,7 +804,8 @@ function EngineeringPageInner() {
   function deleteProject(p) {
     askConfirm(`確定刪除工程案「${p.name}」？\n其合約與材料記錄也會一併刪除。`, async () => {
       try {
-        await fetch(`/api/engineering/projects/${p.id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/engineering/projects/${p.id}`, { method: 'DELETE' });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '刪除失敗', 'error'); return; }
         fetchProjects();
         if (filterProjectId === String(p.id)) setFilterProjectId('');
       } catch (e) { showToast('刪除失敗', 'error'); }
@@ -914,7 +921,7 @@ function EngineeringPageInner() {
   function openMarkTermPaid(term) {
     setEditingTerm(term);
     setTermForm({ termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
-      content: term.content || '', status: 'paid', paidAt: new Date().toISOString().slice(0, 10),
+      content: term.content || '', status: 'paid', paidAt: todayStr(),
       paymentOrderId: term.paymentOrderId ? String(term.paymentOrderId) : '', note: term.note || '' });
     setShowTermModal(true);
   }
@@ -950,7 +957,7 @@ function EngineeringPageInner() {
     setEditingMaterial(null);
     setMaterialForm({ projectId: filterProjectId || (projects[0]?.id ? String(projects[0].id) : ''),
       productId: '', contractId: '', termId: '', description: '', quantity: '', unit: '', unitPrice: '',
-      usedAt: new Date().toISOString().slice(0, 10), note: '' });
+      usedAt: todayStr(), note: '' });
     setShowMaterialModal(true);
   }
 
@@ -1105,7 +1112,7 @@ ${projectRows.map(p => `<tr>
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `工程案列表_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `工程案列表_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1147,23 +1154,23 @@ ${projectRows.map(p => `<tr>
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
             <div className="flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">起始日期</label>
-                <input type="date" value={searchDateFrom} onChange={e => setSearchDateFrom(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+                <label htmlFor="f" className="block text-xs text-gray-500 mb-1">起始日期</label>
+                <input id="f" type="date" value={searchDateFrom} onChange={e => setSearchDateFrom(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">結束日期</label>
-                <input type="date" value={searchDateTo} onChange={e => setSearchDateTo(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
+                <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">結束日期</label>
+                <input id="f-2" type="date" value={searchDateTo} onChange={e => setSearchDateTo(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">廠商</label>
-                <select value={searchSupplierId} onChange={e => setSearchSupplierId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[140px]">
+                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">廠商</label>
+                <select id="f-3" value={searchSupplierId} onChange={e => setSearchSupplierId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[140px]">
                   <option value="">全部</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">館別</label>
-                <select value={searchWarehouse} onChange={e => setSearchWarehouse(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
+                <label htmlFor="f-22" className="block text-xs text-gray-500 mb-1">館別</label>
+                <select id="f-22" value={searchWarehouse} onChange={e => setSearchWarehouse(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
                   <option value="">全部</option>
                   {(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                 </select>
@@ -1233,8 +1240,8 @@ ${projectRows.map(p => `<tr>
         {activeTab === 'contracts' && (
           <>
             <div className="flex gap-3 mb-4 items-center">
-              <label className="text-sm text-gray-600">篩選工程案</label>
-              <select value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
+              <label htmlFor="f-4" className="text-sm text-gray-600">篩選工程案</label>
+              <select id="f-4" value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
                 <option value="">全部</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
               </select>
@@ -1487,7 +1494,7 @@ ${projectRows.map(p => `<tr>
                           s + (c.terms || []).filter(t => {
                             if (!t.dueDate) return false;
                             const isPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount);
-                            return !isPaid && t.dueDate < new Date().toISOString().slice(0, 10);
+                            return !isPaid && t.dueDate < todayStr();
                           }).length, 0);
                         const inputInvTotal = allInputInvsForDash.filter(i => i.projectId === proj.id).reduce((s, i) => s + Number(i.totalAmount || 0), 0);
                         const outputInvTotal = allOutputInvsForDash.filter(i => i.projectId === proj.id).reduce((s, i) => s + Number(i.totalAmount || 0), 0);
@@ -1599,7 +1606,7 @@ ${projectRows.map(p => `<tr>
                     const cOverdue = (c.terms || []).filter(t => {
                       if (!t.dueDate) return false;
                       const isPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount);
-                      return !isPaid && t.dueDate < new Date().toISOString().slice(0, 10);
+                      return !isPaid && t.dueDate < todayStr();
                     }).length;
                     sm.contracted += cTotal;
                     sm.paid += cPaid;
@@ -1843,7 +1850,7 @@ ${projectRows.map(p => `<tr>
             </div>
 
             <div className="flex gap-3 mb-4 items-center flex-wrap">
-              <button onClick={() => { setEditingPaymentOrder(null); setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: new Date().toISOString().slice(0, 10), summary: '', note: '', materials: [] }); setShowPaymentModal(true);}} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 建立付款單</button>
+              <button onClick={() => { setEditingPaymentOrder(null); setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: todayStr(), summary: '', note: '', materials: [] }); setShowPaymentModal(true);}} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 建立付款單</button>
               <Link href="/cashier" className="text-sm text-amber-600 hover:underline">→ 至出納執行付款</Link>
               <div className="ml-auto flex gap-2">
                 <button onClick={handlePayPrint} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300">🖨 列印</button>
@@ -1855,26 +1862,26 @@ ${projectRows.map(p => `<tr>
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">建立日期起</label>
-                  <input type="date" value={paySearchDateFrom} onChange={e => setPaySearchDateFrom(e.target.value)}
+                  <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">建立日期起</label>
+                  <input id="f-5" type="date" value={paySearchDateFrom} onChange={e => setPaySearchDateFrom(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">建立日期迄</label>
-                  <input type="date" value={paySearchDateTo} onChange={e => setPaySearchDateTo(e.target.value)}
+                  <label htmlFor="f-6" className="block text-xs text-gray-500 mb-1">建立日期迄</label>
+                  <input id="f-6" type="date" value={paySearchDateTo} onChange={e => setPaySearchDateTo(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={paySearchWarehouse} onChange={e => setPaySearchWarehouse(e.target.value)}
+                  <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-7" value={paySearchWarehouse} onChange={e => setPaySearchWarehouse(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
                     <option value="">全部館別</option>
                     {(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">廠商</label>
-                  <select value={paySearchSupplierId} onChange={e => setPaySearchSupplierId(e.target.value)}
+                  <label htmlFor="f-23" className="block text-xs text-gray-500 mb-1">廠商</label>
+                  <select id="f-23" value={paySearchSupplierId} onChange={e => setPaySearchSupplierId(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
                     <option value="">全部廠商</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -2038,8 +2045,8 @@ ${projectRows.map(p => `<tr>
         {activeTab === 'materials' && (
           <>
             <div className="flex gap-3 mb-4 items-center">
-              <label className="text-sm text-gray-600">篩選工程案</label>
-              <select value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
+              <label htmlFor="f-8" className="text-sm text-gray-600">篩選工程案</label>
+              <select id="f-8" value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
                 <option value="">全部</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
               </select>
@@ -2130,8 +2137,8 @@ ${projectRows.map(p => `<tr>
               {/* Filter & Add toolbar */}
               <div className="flex gap-3 mb-5 items-end">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">篩選工程案</label>
-                  <select value={incomeFilterProjectId} onChange={e => { setIncomeFilterProjectId(e.target.value); fetchIncomes(e.target.value); }}
+                  <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">篩選工程案</label>
+                  <select id="f-24" value={incomeFilterProjectId} onChange={e => { setIncomeFilterProjectId(e.target.value); fetchIncomes(e.target.value); }}
                     className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
                     <option value="">全部（有業主）</option>
                     {projectsWithClient.map(p => <option key={p.id} value={p.id}>{p.code} {p.name} — {p.clientName}</option>)}
@@ -2149,44 +2156,44 @@ ${projectRows.map(p => `<tr>
                   <h4 className="text-sm font-semibold text-green-800 mb-3">新增收款紀錄</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">工程案 *</label>
-                      <select value={incomeForm.projectId} onChange={e => setIncomeForm(f => ({ ...f, projectId: e.target.value }))}
+                      <label htmlFor="f-25" className="block text-xs text-gray-500 mb-1">工程案 *</label>
+                      <select id="f-25" value={incomeForm.projectId} onChange={e => setIncomeForm(f => ({ ...f, projectId: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm" required>
                         <option value="">請選擇</option>
                         {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">期數名稱 *</label>
-                      <input value={incomeForm.termName} onChange={e => setIncomeForm(f => ({ ...f, termName: e.target.value }))}
+                      <label htmlFor="f-26" className="block text-xs text-gray-500 mb-1">期數名稱 *</label>
+                      <input id="f-26" value={incomeForm.termName} onChange={e => setIncomeForm(f => ({ ...f, termName: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：第一期款" required />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">收款金額 *</label>
-                      <input type="number" value={incomeForm.amount} onChange={e => setIncomeForm(f => ({ ...f, amount: e.target.value }))}
+                      <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">收款金額 *</label>
+                      <input id="f-27" type="number" value={incomeForm.amount} onChange={e => setIncomeForm(f => ({ ...f, amount: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" step="0.01" min="0.01" required />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">收款日期 *</label>
-                      <input type="date" value={incomeForm.receivedDate} onChange={e => setIncomeForm(f => ({ ...f, receivedDate: e.target.value }))}
+                      <label htmlFor="f-28" className="block text-xs text-gray-500 mb-1">收款日期 *</label>
+                      <input id="f-28" type="date" value={incomeForm.receivedDate} onChange={e => setIncomeForm(f => ({ ...f, receivedDate: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm" required />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">收款帳戶</label>
-                      <select value={incomeForm.accountId} onChange={e => setIncomeForm(f => ({ ...f, accountId: e.target.value }))}
+                      <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">收款帳戶</label>
+                      <select id="f-9" value={incomeForm.accountId} onChange={e => setIncomeForm(f => ({ ...f, accountId: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm">
                         <option value="">請選擇（選擇後自動建立現金流）</option>
                         {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? `${a.warehouse} - ` : ''}{a.name} ({a.type})</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">會計科目</label>
-                      <input value={incomeForm.accountingSubject} onChange={e => setIncomeForm(f => ({ ...f, accountingSubject: e.target.value }))}
+                      <label htmlFor="f-29" className="block text-xs text-gray-500 mb-1">會計科目</label>
+                      <input id="f-29" value={incomeForm.accountingSubject} onChange={e => setIncomeForm(f => ({ ...f, accountingSubject: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="41000 工程收入" />
                     </div>
                     <div className="col-span-2 md:col-span-3">
-                      <label className="block text-xs text-gray-500 mb-1">備註</label>
-                      <input value={incomeForm.note} onChange={e => setIncomeForm(f => ({ ...f, note: e.target.value }))}
+                      <label htmlFor="f-30" className="block text-xs text-gray-500 mb-1">備註</label>
+                      <input id="f-30" value={incomeForm.note} onChange={e => setIncomeForm(f => ({ ...f, note: e.target.value }))}
                         className="w-full border rounded-lg px-3 py-2 text-sm" />
                     </div>
                   </div>
@@ -2562,31 +2569,31 @@ ${projectRows.map(p => `<tr>
             <h3 className="text-lg font-bold mb-4">{editingProject ? '編輯工程案' : '新增工程案'}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">工程代碼 *</label><input value={projectForm.code} onChange={e => setProjectForm(f => ({ ...f, code: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：PRJ-001" disabled={!!editingProject} /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">名稱 *</label><input value={projectForm.name} onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-40" className="block text-xs text-gray-500 mb-1">工程代碼 *</label><input id="f-40" value={projectForm.code} onChange={e => setProjectForm(f => ({ ...f, code: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：PRJ-001" disabled={!!editingProject} /></div>
+                <div><label htmlFor="f-41" className="block text-xs text-gray-500 mb-1">名稱 *</label><input id="f-41" value={projectForm.name} onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">業主／客戶</label><input value={projectForm.clientName} onChange={e => setProjectForm(f => ({ ...f, clientName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">業主合約金額（收款總額）</label><input type="number" value={projectForm.clientContractAmount} onChange={e => setProjectForm(f => ({ ...f, clientContractAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" /></div>
+                <div><label htmlFor="f-42" className="block text-xs text-gray-500 mb-1">業主／客戶</label><input id="f-42" value={projectForm.clientName} onChange={e => setProjectForm(f => ({ ...f, clientName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-43" className="block text-xs text-gray-500 mb-1">業主合約金額（收款總額）</label><input id="f-43" type="number" value={projectForm.clientContractAmount} onChange={e => setProjectForm(f => ({ ...f, clientContractAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">開始日期</label><input type="date" value={projectForm.startDate} onChange={e => setProjectForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">結束日期</label><input type="date" value={projectForm.endDate} onChange={e => setProjectForm(f => ({ ...f, endDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-44" className="block text-xs text-gray-500 mb-1">開始日期</label><input id="f-44" type="date" value={projectForm.startDate} onChange={e => setProjectForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-45" className="block text-xs text-gray-500 mb-1">結束日期</label><input id="f-45" type="date" value={projectForm.endDate} onChange={e => setProjectForm(f => ({ ...f, endDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">預算</label><input type="number" value={projectForm.budget} onChange={e => setProjectForm(f => ({ ...f, budget: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">狀態</label><select value={projectForm.status} onChange={e => setProjectForm(f => ({ ...f, status: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">{PROJECT_STATUS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                <div><label htmlFor="f-46" className="block text-xs text-gray-500 mb-1">預算</label><input id="f-46" type="number" value={projectForm.budget} onChange={e => setProjectForm(f => ({ ...f, budget: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
+                <div><label htmlFor="f-47" className="block text-xs text-gray-500 mb-1">狀態</label><select id="f-47" value={projectForm.status} onChange={e => setProjectForm(f => ({ ...f, status: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">{PROJECT_STATUS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">館別</label><select value={projectForm.warehouseId} onChange={e => setProjectForm(f => ({ ...f, warehouseId: e.target.value, departmentId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+                <div><label htmlFor="f-48" className="block text-xs text-gray-500 mb-1">館別</label><select id="f-48" value={projectForm.warehouseId} onChange={e => setProjectForm(f => ({ ...f, warehouseId: e.target.value, departmentId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
                 <div><label className="block text-xs text-gray-500 mb-1">部門</label><select value={projectForm.departmentId} onChange={e => setProjectForm(f => ({ ...f, departmentId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{projectForm.warehouseId && (() => { const wh = (warehouseDepartments.list || []).find(w => w.id === parseInt(projectForm.warehouseId)); return (wh?.departments || []).map(d => typeof d === 'object' && d.id != null ? <option key={d.id} value={d.id}>{d.name}</option> : <option key={d} value={d}>{d}</option>); })()}</select></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">工程地點</label><input value={projectForm.location} onChange={e => setProjectForm(f => ({ ...f, location: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-49" className="block text-xs text-gray-500 mb-1">工程地點</label><input id="f-49" value={projectForm.location} onChange={e => setProjectForm(f => ({ ...f, location: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">建造號碼</label><input value={projectForm.buildingNo} onChange={e => setProjectForm(f => ({ ...f, buildingNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">使造號碼</label><input value={projectForm.permitNo} onChange={e => setProjectForm(f => ({ ...f, permitNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-50" className="block text-xs text-gray-500 mb-1">建造號碼</label><input id="f-50" value={projectForm.buildingNo} onChange={e => setProjectForm(f => ({ ...f, buildingNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-51" className="block text-xs text-gray-500 mb-1">使造號碼</label><input id="f-51" value={projectForm.permitNo} onChange={e => setProjectForm(f => ({ ...f, permitNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">備註</label><textarea value={projectForm.note} onChange={e => setProjectForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} /></div>
+              <div><label htmlFor="f-52" className="block text-xs text-gray-500 mb-1">備註</label><textarea id="f-52" value={projectForm.note} onChange={e => setProjectForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowProjectModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={projectSaving}>取消</button>
@@ -2603,18 +2610,18 @@ ${projectRows.map(p => `<tr>
             <h3 className="text-lg font-bold mb-4">{editingContract ? '編輯合約' : '新增合約'}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">工程案 *</label><select value={contractForm.projectId} onChange={e => setContractForm(f => ({ ...f, projectId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
-                <div><label className="block text-xs text-gray-500 mb-1">廠商 *</label><select value={contractForm.supplierId} onChange={e => setContractForm(f => ({ ...f, supplierId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                <div><label htmlFor="f-53" className="block text-xs text-gray-500 mb-1">工程案 *</label><select id="f-53" value={contractForm.projectId} onChange={e => setContractForm(f => ({ ...f, projectId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
+                <div><label htmlFor="f-54" className="block text-xs text-gray-500 mb-1">廠商 *</label><select id="f-54" value={contractForm.supplierId} onChange={e => setContractForm(f => ({ ...f, supplierId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">合約編號 *</label><input value={contractForm.contractNo} onChange={e => setContractForm(f => ({ ...f, contractNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract} /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">合約總金額</label><input type="number" value={contractForm.totalAmount} onChange={e => setContractForm(f => ({ ...f, totalAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
+                <div><label htmlFor="f-55" className="block text-xs text-gray-500 mb-1">合約編號 *</label><input id="f-55" value={contractForm.contractNo} onChange={e => setContractForm(f => ({ ...f, contractNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract} /></div>
+                <div><label htmlFor="f-56" className="block text-xs text-gray-500 mb-1">合約總金額</label><input id="f-56" type="number" value={contractForm.totalAmount} onChange={e => setContractForm(f => ({ ...f, totalAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">簽約日</label><input type="date" value={contractForm.signDate} onChange={e => setContractForm(f => ({ ...f, signDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-57" className="block text-xs text-gray-500 mb-1">簽約日</label><input id="f-57" type="date" value={contractForm.signDate} onChange={e => setContractForm(f => ({ ...f, signDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
                 <div />
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">合約內容 *</label><textarea value={contractForm.content} onChange={e => setContractForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="請填寫合約內容（必填）" /></div>
+              <div><label htmlFor="f-58" className="block text-xs text-gray-500 mb-1">合約內容 *</label><textarea id="f-58" value={contractForm.content} onChange={e => setContractForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="請填寫合約內容（必填）" /></div>
               {editingContract && (editingContract.terms || []).length > 0 && (
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">既有期數（至期數列表編輯）</label>
@@ -2713,16 +2720,16 @@ ${projectRows.map(p => `<tr>
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">{termForm.status === 'paid' ? '標記期數已付款' : '取消付款標記'}</h3>
             <div className="space-y-3">
-              <div><label className="block text-xs text-gray-500 mb-1">期別</label><input value={termForm.termName} onChange={e => setTermForm(f => ({ ...f, termName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={termForm.status === 'pending'} /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">金額</label><input type="number" value={termForm.amount} onChange={e => setTermForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" disabled={termForm.status === 'pending'} /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">到期日</label><input type="date" value={termForm.dueDate} onChange={e => setTermForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">內容</label><input value={termForm.content || ''} onChange={e => setTermForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="付款內容" /></div>
+              <div><label htmlFor="f-59" className="block text-xs text-gray-500 mb-1">期別</label><input id="f-59" value={termForm.termName} onChange={e => setTermForm(f => ({ ...f, termName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={termForm.status === 'pending'} /></div>
+              <div><label htmlFor="f-60" className="block text-xs text-gray-500 mb-1">金額</label><input id="f-60" type="number" value={termForm.amount} onChange={e => setTermForm(f => ({ ...f, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" disabled={termForm.status === 'pending'} /></div>
+              <div><label htmlFor="f-61" className="block text-xs text-gray-500 mb-1">到期日</label><input id="f-61" type="date" value={termForm.dueDate} onChange={e => setTermForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-62" className="block text-xs text-gray-500 mb-1">內容</label><input id="f-62" value={termForm.content || ''} onChange={e => setTermForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="付款內容" /></div>
               {termForm.status === 'paid' && (<>
-                <div><label className="block text-xs text-gray-500 mb-1">付款日期</label><input type="date" value={termForm.paidAt} onChange={e => setTermForm(f => ({ ...f, paidAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">付款單 ID（選填）</label><input type="number" value={termForm.paymentOrderId} onChange={e => setTermForm(f => ({ ...f, paymentOrderId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-63" className="block text-xs text-gray-500 mb-1">付款日期</label><input id="f-63" type="date" value={termForm.paidAt} onChange={e => setTermForm(f => ({ ...f, paidAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="id" className="block text-xs text-gray-500 mb-1">付款單 ID（選填）</label><input id="id" type="number" value={termForm.paymentOrderId} onChange={e => setTermForm(f => ({ ...f, paymentOrderId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </>)}
               {termForm.status === 'pending' && <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg">取消此期的付款標記後，合約狀態也會同步更新為「進行中」</p>}
-              <div><label className="block text-xs text-gray-500 mb-1">備註</label><input value={termForm.note} onChange={e => setTermForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-64" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-64" value={termForm.note} onChange={e => setTermForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowTermModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={termSaving}>取消</button>
@@ -2739,8 +2746,8 @@ ${projectRows.map(p => `<tr>
             <h3 className="text-lg font-bold mb-4">{editingPaymentOrder ? '編輯付款單' : '建立工程付款單'}</h3>
             <div className="space-y-3">
               {!editingPaymentOrder && <div>
-                <label className="block text-xs text-gray-500 mb-1">連結合約期數（選填）</label>
-                <select value={paymentForm.termId} onChange={e => {
+                <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">連結合約期數（選填）</label>
+                <select id="f-10" value={paymentForm.termId} onChange={e => {
                   const v = e.target.value;
                   if (!v) { setPaymentForm(f => ({ ...f, termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', summary: '' })); return; }
                   const [tid, cid] = v.split('-').map(Number);
@@ -2808,16 +2815,16 @@ ${projectRows.map(p => `<tr>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">廠商</label><input value={paymentForm.supplierName} onChange={e => setPaymentForm(f => ({ ...f, supplierName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">應付金額</label><input type="number" value={paymentForm.netAmount} onChange={e => setPaymentForm(f => ({ ...f, netAmount: e.target.value, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
+                <div><label htmlFor="f-65" className="block text-xs text-gray-500 mb-1">廠商</label><input id="f-65" value={paymentForm.supplierName} onChange={e => setPaymentForm(f => ({ ...f, supplierName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                <div><label htmlFor="f-66" className="block text-xs text-gray-500 mb-1">應付金額</label><input id="f-66" type="number" value={paymentForm.netAmount} onChange={e => setPaymentForm(f => ({ ...f, netAmount: e.target.value, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">摘要</label><input value={paymentForm.summary} onChange={e => setPaymentForm(f => ({ ...f, summary: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：工程案 XXX 第N期款" /></div>
+              <div><label htmlFor="f-67" className="block text-xs text-gray-500 mb-1">摘要</label><input id="f-67" value={paymentForm.summary} onChange={e => setPaymentForm(f => ({ ...f, summary: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：工程案 XXX 第N期款" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">付款方式</label><select value={paymentForm.paymentMethod} onChange={e => setPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">{paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-                <div><label className="block text-xs text-gray-500 mb-1">資金帳戶</label><select value={paymentForm.accountId} onChange={e => setPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                <div><label htmlFor="f-68" className="block text-xs text-gray-500 mb-1">付款方式</label><select id="f-68" value={paymentForm.paymentMethod} onChange={e => setPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">{paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+                <div><label htmlFor="f-69" className="block text-xs text-gray-500 mb-1">資金帳戶</label><select id="f-69" value={paymentForm.accountId} onChange={e => setPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">預計付款日</label><input type="date" value={paymentForm.dueDate} onChange={e => setPaymentForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">備註</label><input value={paymentForm.note} onChange={e => setPaymentForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-70" className="block text-xs text-gray-500 mb-1">預計付款日</label><input id="f-70" type="date" value={paymentForm.dueDate} onChange={e => setPaymentForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-71" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-71" value={paymentForm.note} onChange={e => setPaymentForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               {/* 領用材料 — 從合約材料選取 */}
               {(() => {
                 const selContract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
@@ -2956,20 +2963,20 @@ ${projectRows.map(p => `<tr>
           <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">{editingMaterial ? '編輯材料' : '新增材料'}</h3>
             <div className="space-y-3">
-              <div><label className="block text-xs text-gray-500 mb-1">工程案 *</label><select value={materialForm.projectId} onChange={e => setMaterialForm(f => ({ ...f, projectId: e.target.value, contractId: '', termId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingMaterial}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
+              <div><label htmlFor="f-72" className="block text-xs text-gray-500 mb-1">工程案 *</label><select id="f-72" value={materialForm.projectId} onChange={e => setMaterialForm(f => ({ ...f, projectId: e.target.value, contractId: '', termId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingMaterial}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">合約（選填）</label><select value={materialForm.contractId} onChange={e => setMaterialForm(f => ({ ...f, contractId: e.target.value, termId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">不關聯合約</option>{contracts.filter(c => !materialForm.projectId || c.projectId === parseInt(materialForm.projectId)).map(c => <option key={c.id} value={c.id}>{c.contractNo} - {c.supplier?.name}</option>)}</select></div>
-                <div><label className="block text-xs text-gray-500 mb-1">期別（選填）</label><select value={materialForm.termId} onChange={e => setMaterialForm(f => ({ ...f, termId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!materialForm.contractId}><option value="">不關聯期別</option>{getTermsForContract(materialForm.contractId).map(t => <option key={t.id} value={t.id}>{t.termName || `第${t.termNo}期`} ({formatNum(t.amount)})</option>)}</select></div>
+                <div><label htmlFor="f-73" className="block text-xs text-gray-500 mb-1">合約（選填）</label><select id="f-73" value={materialForm.contractId} onChange={e => setMaterialForm(f => ({ ...f, contractId: e.target.value, termId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">不關聯合約</option>{contracts.filter(c => !materialForm.projectId || c.projectId === parseInt(materialForm.projectId)).map(c => <option key={c.id} value={c.id}>{c.contractNo} - {c.supplier?.name}</option>)}</select></div>
+                <div><label htmlFor="f-74" className="block text-xs text-gray-500 mb-1">期別（選填）</label><select id="f-74" value={materialForm.termId} onChange={e => setMaterialForm(f => ({ ...f, termId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!materialForm.contractId}><option value="">不關聯期別</option>{getTermsForContract(materialForm.contractId).map(t => <option key={t.id} value={t.id}>{t.termName || `第${t.termNo}期`} ({formatNum(t.amount)})</option>)}</select></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">產品（選填，可改為手動說明）</label><select value={materialForm.productId} onChange={e => setMaterialForm(f => ({ ...f, productId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">手動輸入說明</option>{products.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
-              <div><label className="block text-xs text-gray-500 mb-1">說明（無產品時填寫）</label><input value={materialForm.description} onChange={e => setMaterialForm(f => ({ ...f, description: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="材料名稱或規格" /></div>
+              <div><label htmlFor="f-75" className="block text-xs text-gray-500 mb-1">產品（選填，可改為手動說明）</label><select id="f-75" value={materialForm.productId} onChange={e => setMaterialForm(f => ({ ...f, productId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">手動輸入說明</option>{products.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
+              <div><label htmlFor="f-76" className="block text-xs text-gray-500 mb-1">說明（無產品時填寫）</label><input id="f-76" value={materialForm.description} onChange={e => setMaterialForm(f => ({ ...f, description: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="材料名稱或規格" /></div>
               <div className="grid grid-cols-3 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">數量 *</label><input type="number" value={materialForm.quantity} onChange={e => setMaterialForm(f => ({ ...f, quantity: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.0001" min="0" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">單位</label><input value={materialForm.unit} onChange={e => setMaterialForm(f => ({ ...f, unit: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：式、m²" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">單價</label><input type="number" value={materialForm.unitPrice} onChange={e => setMaterialForm(f => ({ ...f, unitPrice: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
+                <div><label htmlFor="f-77" className="block text-xs text-gray-500 mb-1">數量 *</label><input id="f-77" type="number" value={materialForm.quantity} onChange={e => setMaterialForm(f => ({ ...f, quantity: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.0001" min="0" /></div>
+                <div><label htmlFor="f-78" className="block text-xs text-gray-500 mb-1">單位</label><input id="f-78" value={materialForm.unit} onChange={e => setMaterialForm(f => ({ ...f, unit: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：式、m²" /></div>
+                <div><label htmlFor="f-79" className="block text-xs text-gray-500 mb-1">單價</label><input id="f-79" type="number" value={materialForm.unitPrice} onChange={e => setMaterialForm(f => ({ ...f, unitPrice: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">使用日期</label><input type="date" value={materialForm.usedAt} onChange={e => setMaterialForm(f => ({ ...f, usedAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">備註</label><input value={materialForm.note} onChange={e => setMaterialForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-80" className="block text-xs text-gray-500 mb-1">使用日期</label><input id="f-80" type="date" value={materialForm.usedAt} onChange={e => setMaterialForm(f => ({ ...f, usedAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label htmlFor="f-81" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-81" value={materialForm.note} onChange={e => setMaterialForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowMaterialModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={materialSaving}>取消</button>
@@ -2986,16 +2993,16 @@ ${projectRows.map(p => `<tr>
             <h3 className="text-lg font-bold mb-4">{editingInputInv ? '編輯廠商進項發票' : '新增廠商進項發票'}</h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">工程案 *</label>
-                <select value={inputForm.projectId} onChange={e => setInputForm(f => ({ ...f, projectId: e.target.value, contractId: '' }))}
+                <label htmlFor="f-11" className="block text-xs text-gray-500 mb-1">工程案 *</label>
+                <select id="f-11" value={inputForm.projectId} onChange={e => setInputForm(f => ({ ...f, projectId: e.target.value, contractId: '' }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingInputInv}>
                   <option value="">請選擇</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">關聯合約（選填）</label>
-                <select value={inputForm.contractId} onChange={e => setInputForm(f => ({ ...f, contractId: e.target.value }))}
+                <label htmlFor="f-31" className="block text-xs text-gray-500 mb-1">關聯合約（選填）</label>
+                <select id="f-31" value={inputForm.contractId} onChange={e => setInputForm(f => ({ ...f, contractId: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm">
                   <option value="">不關聯合約</option>
                   {contracts.filter(c => !inputForm.projectId || c.projectId === parseInt(inputForm.projectId)).map(c =>
@@ -3004,42 +3011,42 @@ ${projectRows.map(p => `<tr>
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">廠商名稱</label>
-                <input value={inputForm.supplierName} onChange={e => setInputForm(f => ({ ...f, supplierName: e.target.value }))}
+                <label htmlFor="f-82" className="block text-xs text-gray-500 mb-1">廠商名稱</label>
+                <input id="f-82" value={inputForm.supplierName} onChange={e => setInputForm(f => ({ ...f, supplierName: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="可由合約帶入或手動輸入" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票號碼</label>
-                  <input value={inputForm.invoiceNo} onChange={e => setInputForm(f => ({ ...f, invoiceNo: e.target.value }))}
+                  <label htmlFor="f-32" className="block text-xs text-gray-500 mb-1">發票號碼</label>
+                  <input id="f-32" value={inputForm.invoiceNo} onChange={e => setInputForm(f => ({ ...f, invoiceNo: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="AB-12345678" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票日期 *</label>
-                  <input type="date" value={inputForm.invoiceDate} onChange={e => setInputForm(f => ({ ...f, invoiceDate: e.target.value }))}
+                  <label htmlFor="f-12" className="block text-xs text-gray-500 mb-1">發票日期 *</label>
+                  <input id="f-12" type="date" value={inputForm.invoiceDate} onChange={e => setInputForm(f => ({ ...f, invoiceDate: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">未稅金額</label>
-                  <input type="number" value={inputForm.amount} onChange={e => {
+                  <label htmlFor="f-13" className="block text-xs text-gray-500 mb-1">未稅金額</label>
+                  <input id="f-13" type="number" value={inputForm.amount} onChange={e => {
                     const amt = e.target.value;
                     const tax = parseFloat(inputForm.taxAmount) || 0;
                     setInputForm(f => ({ ...f, amount: amt, totalAmount: String((parseFloat(amt) || 0) + tax) }));
                   }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">稅額</label>
-                  <input type="number" value={inputForm.taxAmount} onChange={e => {
+                  <label htmlFor="f-14" className="block text-xs text-gray-500 mb-1">稅額</label>
+                  <input id="f-14" type="number" value={inputForm.taxAmount} onChange={e => {
                     const tax = e.target.value;
                     const amt = parseFloat(inputForm.amount) || 0;
                     setInputForm(f => ({ ...f, taxAmount: tax, totalAmount: String(amt + (parseFloat(tax) || 0)) }));
                   }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">含稅金額</label>
-                  <input type="number" value={inputForm.totalAmount} onChange={e => setInputForm(f => ({ ...f, totalAmount: e.target.value }))}
+                  <label htmlFor="f-15" className="block text-xs text-gray-500 mb-1">含稅金額</label>
+                  <input id="f-15" type="number" value={inputForm.totalAmount} onChange={e => setInputForm(f => ({ ...f, totalAmount: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm bg-blue-50" step="1" />
                 </div>
               </div>
@@ -3052,23 +3059,23 @@ ${projectRows.map(p => `<tr>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票類型</label>
-                  <select value={inputForm.invoiceType} onChange={e => setInputForm(f => ({ ...f, invoiceType: e.target.value }))}
+                  <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">發票類型</label>
+                  <select id="f-16" value={inputForm.invoiceType} onChange={e => setInputForm(f => ({ ...f, invoiceType: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm">
                     {INPUT_INVOICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">狀態</label>
-                  <select value={inputForm.status} onChange={e => setInputForm(f => ({ ...f, status: e.target.value }))}
+                  <label htmlFor="f-33" className="block text-xs text-gray-500 mb-1">狀態</label>
+                  <select id="f-33" value={inputForm.status} onChange={e => setInputForm(f => ({ ...f, status: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm">
                     {INPUT_INVOICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">備註</label>
-                <input value={inputForm.note} onChange={e => setInputForm(f => ({ ...f, note: e.target.value }))}
+                <label htmlFor="f-34" className="block text-xs text-gray-500 mb-1">備註</label>
+                <input id="f-34" value={inputForm.note} onChange={e => setInputForm(f => ({ ...f, note: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>
@@ -3211,8 +3218,8 @@ ${projectRows.map(p => `<tr>
             <h3 className="text-lg font-bold mb-4">{editingOutputInv ? '編輯業主銷項發票' : '新增業主銷項發票'}</h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">工程案 *</label>
-                <select value={outputForm.projectId} onChange={e => {
+                <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">工程案 *</label>
+                <select id="f-17" value={outputForm.projectId} onChange={e => {
                   const pid = e.target.value;
                   const proj = projects.find(p => String(p.id) === pid);
                   setOutputForm(f => ({ ...f, projectId: pid, clientName: proj?.clientName || f.clientName }));
@@ -3222,42 +3229,42 @@ ${projectRows.map(p => `<tr>
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">業主名稱</label>
-                <input value={outputForm.clientName} onChange={e => setOutputForm(f => ({ ...f, clientName: e.target.value }))}
+                <label htmlFor="f-35" className="block text-xs text-gray-500 mb-1">業主名稱</label>
+                <input id="f-35" value={outputForm.clientName} onChange={e => setOutputForm(f => ({ ...f, clientName: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="由工程案帶入或手動修改" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票號碼</label>
-                  <input value={outputForm.invoiceNo} onChange={e => setOutputForm(f => ({ ...f, invoiceNo: e.target.value }))}
+                  <label htmlFor="f-36" className="block text-xs text-gray-500 mb-1">發票號碼</label>
+                  <input id="f-36" value={outputForm.invoiceNo} onChange={e => setOutputForm(f => ({ ...f, invoiceNo: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="AB-12345678" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票日期 *</label>
-                  <input type="date" value={outputForm.invoiceDate} onChange={e => setOutputForm(f => ({ ...f, invoiceDate: e.target.value }))}
+                  <label htmlFor="f-37" className="block text-xs text-gray-500 mb-1">發票日期 *</label>
+                  <input id="f-37" type="date" value={outputForm.invoiceDate} onChange={e => setOutputForm(f => ({ ...f, invoiceDate: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">未稅金額</label>
-                  <input type="number" value={outputForm.amount} onChange={e => {
+                  <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">未稅金額</label>
+                  <input id="f-18" type="number" value={outputForm.amount} onChange={e => {
                     const amt = e.target.value;
                     const tax = parseFloat(outputForm.taxAmount) || 0;
                     setOutputForm(f => ({ ...f, amount: amt, totalAmount: String((parseFloat(amt) || 0) + tax) }));
                   }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">稅額</label>
-                  <input type="number" value={outputForm.taxAmount} onChange={e => {
+                  <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">稅額</label>
+                  <input id="f-19" type="number" value={outputForm.taxAmount} onChange={e => {
                     const tax = e.target.value;
                     const amt = parseFloat(outputForm.amount) || 0;
                     setOutputForm(f => ({ ...f, taxAmount: tax, totalAmount: String(amt + (parseFloat(tax) || 0)) }));
                   }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">含稅金額</label>
-                  <input type="number" value={outputForm.totalAmount} onChange={e => setOutputForm(f => ({ ...f, totalAmount: e.target.value }))}
+                  <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">含稅金額</label>
+                  <input id="f-20" type="number" value={outputForm.totalAmount} onChange={e => setOutputForm(f => ({ ...f, totalAmount: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm bg-green-50" step="1" />
                 </div>
               </div>
@@ -3270,23 +3277,23 @@ ${projectRows.map(p => `<tr>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">發票類型</label>
-                  <select value={outputForm.invoiceType} onChange={e => setOutputForm(f => ({ ...f, invoiceType: e.target.value }))}
+                  <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">發票類型</label>
+                  <select id="f-21" value={outputForm.invoiceType} onChange={e => setOutputForm(f => ({ ...f, invoiceType: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm">
                     {OUTPUT_INVOICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">狀態</label>
-                  <select value={outputForm.status} onChange={e => setOutputForm(f => ({ ...f, status: e.target.value }))}
+                  <label htmlFor="f-38" className="block text-xs text-gray-500 mb-1">狀態</label>
+                  <select id="f-38" value={outputForm.status} onChange={e => setOutputForm(f => ({ ...f, status: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm">
                     {OUTPUT_INVOICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">備註</label>
-                <input value={outputForm.note} onChange={e => setOutputForm(f => ({ ...f, note: e.target.value }))}
+                <label htmlFor="f-39" className="block text-xs text-gray-500 mb-1">備註</label>
+                <input id="f-39" value={outputForm.note} onChange={e => setOutputForm(f => ({ ...f, note: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>

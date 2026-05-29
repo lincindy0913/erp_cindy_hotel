@@ -23,6 +23,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ function parseDate(raw) {
   // Excel serial date number
   if (/^\d+$/.test(s)) {
     const d = new Date((parseInt(s) - 25569) * 86400 * 1000);
-    return d.toISOString().slice(0, 10);
+    return localDateStr(d);
   }
   // YYYY/MM/DD
   const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);

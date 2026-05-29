@@ -384,16 +384,16 @@ function DataImportSection({ showToast }) {
         <p className="text-sm text-gray-500 mb-4">使用 JSON 檔案匯入產品、廠商或會計科目等主資料</p>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">匯入類型</label>
-            <select value={importType} onChange={e => { setImportType(e.target.value); setDryRunResult(null); setImportResult(null); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-48">
+            <label htmlFor="f" className="block text-sm font-medium text-gray-600 mb-1">匯入類型</label>
+            <select id="f" value={importType} onChange={e => { setImportType(e.target.value); setDryRunResult(null); setImportResult(null); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-48">
               <option value="products">產品資料</option>
               <option value="suppliers">廠商資料</option>
               <option value="accounting_subjects">會計科目</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">選擇 JSON 檔案</label>
-            <input type="file" accept=".json" onChange={e => { setImportFile(e.target.files[0]); setDryRunResult(null); setImportResult(null); }} className="text-sm" />
+            <label htmlFor="json" className="block text-sm font-medium text-gray-600 mb-1">選擇 JSON 檔案</label>
+            <input id="json" type="file" accept=".json" onChange={e => { setImportFile(e.target.files[0]); setDryRunResult(null); setImportResult(null); }} className="text-sm" />
           </div>
           <div className="flex gap-3">
             <button onClick={handleDryRun} disabled={importing || !importFile} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 text-sm">
@@ -1477,8 +1477,8 @@ export default function SettingsPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-700 mb-4">稅率設定</h3>
           <div className="flex items-center gap-4">
-            <label className="text-sm text-gray-600 whitespace-nowrap">預設稅率 (%)</label>
-            <input
+            <label htmlFor="f-2" className="text-sm text-gray-600 whitespace-nowrap">預設稅率 (%)</label>
+            <input id="f-2"
               type="number"
               min="0"
               max="100"
@@ -1696,8 +1696,8 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-600 mb-1">說明</label>
-                    <input
+                    <label htmlFor="f-3" className="block text-xs text-gray-600 mb-1">說明</label>
+                    <input id="f-3"
                       type="text"
                       value={newMappingForm.description}
                       onChange={e => setNewMappingForm(prev => ({ ...prev, description: e.target.value }))}
@@ -1709,8 +1709,8 @@ export default function SettingsPage() {
                 {/* Accounting subject quick pick */}
                 {accountingSubjects.length > 0 && (
                   <div className="mb-3">
-                    <label className="block text-xs text-gray-500 mb-1">快速選取會計科目：</label>
-                    <select
+                    <label htmlFor="f-4" className="block text-xs text-gray-500 mb-1">快速選取會計科目：</label>
+                    <select id="f-4"
                       onChange={e => {
                         const subj = accountingSubjects.find(s => s.code === e.target.value);
                         if (subj) {
@@ -1890,8 +1890,8 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">說明</label>
-              <input
+              <label htmlFor="f-5" className="block text-sm text-gray-600 mb-1">說明</label>
+              <input id="f-5"
                 type="text"
                 value={categoryForm.description}
                 onChange={e => setCategoryForm(prev => ({ ...prev, description: e.target.value }))}
@@ -1900,8 +1900,8 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">排序</label>
-              <input
+              <label htmlFor="f-6" className="block text-sm text-gray-600 mb-1">排序</label>
+              <input id="f-6"
                 type="number"
                 value={categoryForm.sortOrder}
                 onChange={e => setCategoryForm(prev => ({ ...prev, sortOrder: e.target.value }))}

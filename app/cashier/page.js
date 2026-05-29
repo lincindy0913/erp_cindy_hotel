@@ -7,6 +7,7 @@ import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 // Determine the correct display order number based on source
 function getDisplayOrderNo(order) {
@@ -29,7 +30,7 @@ function defaultCashierDateRange() {
   const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
   return {
     from: `${threeMonthsAgo.getFullYear()}-${String(threeMonthsAgo.getMonth() + 1).padStart(2, '0')}-01`,
-    to: now.toISOString().split('T')[0],
+    to: localDateStr(now),
   };
 }
 
@@ -45,7 +46,7 @@ export default function CashierPage() {
   const [rejectingOrderId, setRejectingOrderId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [executeData, setExecuteData] = useState({
-    executionDate: new Date().toISOString().split('T')[0],
+    executionDate: todayStr(),
     actualAmount: 0,
     extraAmount: '',
     accountId: '',
@@ -72,7 +73,7 @@ export default function CashierPage() {
   // Batch selection
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [batchAccounts, setBatchAccounts] = useState([{ accountId: '', amount: '' }]);
-  const [batchExecutionDate, setBatchExecutionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [batchExecutionDate, setBatchExecutionDate] = useState(todayStr());
   const [batchNote, setBatchNote] = useState('');
   const [batchExecuting, setBatchExecuting] = useState(false);
   const [batchIsEmployeeAdvance, setBatchIsEmployeeAdvance] = useState(false);
@@ -169,7 +170,7 @@ export default function CashierPage() {
       // 付款單若已選好付款帳戶，自動帶入出納確認執行表單，不需再選一次
       const accountIdStr = (order.accountId != null && order.accountId !== '') ? String(order.accountId) : '';
       setExecuteData({
-        executionDate: new Date().toISOString().split('T')[0],
+        executionDate: todayStr(),
         actualAmount: order.netAmount,
         extraAmount: '',
         accountId: accountIdStr,
@@ -407,8 +408,8 @@ export default function CashierPage() {
   }
 
   // Report tab state
-  const [reportDateFrom, setReportDateFrom] = useState(new Date().toISOString().split('T')[0]);
-  const [reportDateTo, setReportDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [reportDateFrom, setReportDateFrom] = useState(todayStr());
+  const [reportDateTo, setReportDateTo] = useState(todayStr());
   const [reportData, setReportData] = useState([]);
   const [reportLoading, setReportLoading] = useState(false);
 
@@ -621,7 +622,7 @@ export default function CashierPage() {
     const a = document.createElement('a');
     const tabLabel = TABS.find(t => t.key === activeTab)?.label?.replace(/\s*\(.*\)/, '') || activeTab;
     a.href = url;
-    a.download = `出納_${tabLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `出納_${tabLabel}_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -638,8 +639,8 @@ export default function CashierPage() {
           <h3 className="text-sm font-semibold text-gray-700 mb-3">查詢條件</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">建立日期起</label>
-              <input
+              <label htmlFor="f" className="block text-xs text-gray-500 mb-1">建立日期起</label>
+              <input id="f"
                 type="date"
                 value={searchFilter.dateFrom}
                 onChange={e => setSearchFilter({ ...searchFilter, dateFrom: e.target.value })}
@@ -647,8 +648,8 @@ export default function CashierPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">建立日期迄</label>
-              <input
+              <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">建立日期迄</label>
+              <input id="f-2"
                 type="date"
                 value={searchFilter.dateTo}
                 onChange={e => setSearchFilter({ ...searchFilter, dateTo: e.target.value })}
@@ -656,8 +657,8 @@ export default function CashierPage() {
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">館別</label>
-              <select
+              <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">館別</label>
+              <select id="f-3"
                 value={searchFilter.warehouse}
                 onChange={e => setSearchFilter({ ...searchFilter, warehouse: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
@@ -667,8 +668,8 @@ export default function CashierPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">廠商</label>
-              <select
+              <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">廠商</label>
+              <select id="f-16"
                 value={searchFilter.supplierId}
                 onChange={e => setSearchFilter({ ...searchFilter, supplierId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
@@ -680,8 +681,8 @@ export default function CashierPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">類別</label>
-              <select
+              <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">類別</label>
+              <select id="f-18"
                 value={searchFilter.sourceType}
                 onChange={e => setSearchFilter({ ...searchFilter, sourceType: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
@@ -993,14 +994,14 @@ export default function CashierPage() {
                                   <form onSubmit={(e) => handleExecute(e, order)} className="space-y-3">
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">執行日期</label>
-                                        <input type="date" value={executeData.executionDate}
+                                        <label htmlFor="f-4" className="block text-xs font-medium text-gray-700 mb-1">執行日期</label>
+                                        <input id="f-4" type="date" value={executeData.executionDate}
                                           onChange={e => setExecuteData({...executeData, executionDate: e.target.value})}
                                           className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required />
                                       </div>
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">實付金額</label>
-                                        <input type="number" step="0.01" value={executeData.actualAmount}
+                                        <label htmlFor="f-5" className="block text-xs font-medium text-gray-700 mb-1">實付金額</label>
+                                        <input id="f-5" type="number" step="0.01" value={executeData.actualAmount}
                                           onChange={e => {
                                             const val = e.target.value;
                                             const isLoan = (order.summary || '').includes('貸款還款');
@@ -1015,8 +1016,8 @@ export default function CashierPage() {
                                       </div>
                                       {(order.summary || '').includes('貸款還款') && (
                                         <div>
-                                          <label className="block text-xs font-medium text-indigo-700 mb-1">額外預付金額</label>
-                                          <input type="number" step="0.01" value={executeData.extraAmount}
+                                          <label htmlFor="f-6" className="block text-xs font-medium text-indigo-700 mb-1">額外預付金額</label>
+                                          <input id="f-6" type="number" step="0.01" value={executeData.extraAmount}
                                             onChange={e => {
                                               const extra = parseFloat(e.target.value) || 0;
                                               setExecuteData({...executeData, extraAmount: e.target.value, actualAmount: Number(order.netAmount) + extra});
@@ -1062,8 +1063,8 @@ export default function CashierPage() {
                                         )}
                                       </div>
                                       <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">執行付款方式</label>
-                                        <select value={executeData.paymentMethod}
+                                        <label htmlFor="f-17" className="block text-xs font-medium text-gray-700 mb-1">執行付款方式</label>
+                                        <select id="f-17" value={executeData.paymentMethod}
                                           onChange={e => setExecuteData({...executeData, paymentMethod: e.target.value})}
                                           className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
                                           <option value="現金">現金</option>
@@ -1092,15 +1093,15 @@ export default function CashierPage() {
                                       {executeData.isEmployeeAdvance && (
                                         <div className="grid grid-cols-2 gap-3 mt-2">
                                           <div>
-                                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
-                                            <input type="text" value={executeData.advancedBy}
+                                            <label htmlFor="f-7" className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
+                                            <input id="f-7" type="text" value={executeData.advancedBy}
                                               onChange={e => setExecuteData({...executeData, advancedBy: e.target.value})}
                                               placeholder="員工姓名"
                                               className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50" />
                                           </div>
                                           <div>
-                                            <label className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
-                                            <select value={executeData.advancePaymentMethod}
+                                            <label htmlFor="f-8" className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
+                                            <select id="f-8" value={executeData.advancePaymentMethod}
                                               onChange={e => setExecuteData({...executeData, advancePaymentMethod: e.target.value})}
                                               className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50">
                                               <option value="現金">現金</option>
@@ -1112,8 +1113,8 @@ export default function CashierPage() {
                                       )}
                                     </div>
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">備註</label>
-                                      <input type="text" value={executeData.note}
+                                      <label htmlFor="f-9" className="block text-xs font-medium text-gray-700 mb-1">備註</label>
+                                      <input id="f-9" type="text" value={executeData.note}
                                         onChange={e => setExecuteData({...executeData, note: e.target.value})}
                                         placeholder="選填..."
                                         className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
@@ -1291,14 +1292,14 @@ export default function CashierPage() {
             {/* Batch execution form */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">執行日期</label>
-                <input type="date" value={batchExecutionDate}
+                <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">執行日期</label>
+                <input id="f-10" type="date" value={batchExecutionDate}
                   onChange={e => setBatchExecutionDate(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                <input type="text" value={batchNote}
+                <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                <input id="f-11" type="text" value={batchNote}
                   onChange={e => setBatchNote(e.target.value)}
                   placeholder="選填..."
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
@@ -1316,15 +1317,15 @@ export default function CashierPage() {
               {batchIsEmployeeAdvance && (
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   <div>
-                    <label className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
-                    <input type="text" value={batchAdvancedBy}
+                    <label htmlFor="f-12" className="block text-xs font-medium text-purple-700 mb-1">代墊員工 *</label>
+                    <input id="f-12" type="text" value={batchAdvancedBy}
                       onChange={e => setBatchAdvancedBy(e.target.value)}
                       placeholder="員工姓名"
                       className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
-                    <select value={batchAdvancePaymentMethod}
+                    <label htmlFor="f-13" className="block text-xs font-medium text-purple-700 mb-1">代墊方式</label>
+                    <select id="f-13" value={batchAdvancePaymentMethod}
                       onChange={e => setBatchAdvancePaymentMethod(e.target.value)}
                       className="w-full border border-purple-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-purple-50">
                       <option value="現金">現金</option>
@@ -1474,14 +1475,14 @@ export default function CashierPage() {
             <div className="bg-white rounded-lg shadow p-4 mb-4 no-print">
               <div className="flex flex-wrap items-end gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
-                  <input type="date" value={reportDateFrom}
+                  <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
+                  <input id="f-14" type="date" value={reportDateFrom}
                     onChange={e => setReportDateFrom(e.target.value)}
                     className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
-                  <input type="date" value={reportDateTo}
+                  <label htmlFor="f-15" className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+                  <input id="f-15" type="date" value={reportDateTo}
                     onChange={e => setReportDateTo(e.target.value)}
                     className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" />
                 </div>

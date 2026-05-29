@@ -3,13 +3,14 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 function datePlusDays(dateStr, days) {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return localDateStr(d);
 }
 
 function dayDiff(a, b) {

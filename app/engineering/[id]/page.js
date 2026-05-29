@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import { todayStr } from '@/lib/localDate';
 
 const SUB_TABS = [
   { key: 'contracts', label: '合約與期數' },
@@ -312,7 +313,7 @@ function ProjectDetailInner() {
                             const tPaid = executedPOs.reduce((s, po) => s + getActualPaid(po), 0);
                             const isFullyPaid = tPaid >= Number(t.amount) && Number(t.amount) > 0;
                             const hasPending = pendingPOs.length > 0;
-                            const today = new Date().toISOString().slice(0, 10);
+                            const today = todayStr();
                             const isOverdue = t.dueDate && t.dueDate < today && !isFullyPaid;
 
                             return (

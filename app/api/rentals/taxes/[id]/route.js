@@ -6,6 +6,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,7 @@ export async function PUT(request, { params }) {
     }
 
     const acctId = parseInt(accountId);
-    const txDate = paymentDate || new Date().toISOString().split('T')[0];
+    const txDate = paymentDate || todayStr();
     const transactionNo = await nextCashTransactionNo(tx, txDate);
 
     // Create CashTransaction for tax payment

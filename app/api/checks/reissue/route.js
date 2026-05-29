@@ -7,6 +7,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +29,8 @@ export async function POST(request) {
     }
 
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-    const todayStr = now.toISOString().split('T')[0];
+    const dateStr = localDateStr(now).replace(/-/g, '');
+    const todayStr = localDateStr(now);
 
     const result = await prisma.$transaction(async (tx) => {
       // Re-fetch and verify INSIDE transaction to prevent race conditions

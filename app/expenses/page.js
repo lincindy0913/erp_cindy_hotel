@@ -8,6 +8,7 @@ import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 // 進銷存每月費用已移至 /purchasing 小分頁
 const MAIN_TABS = [
@@ -83,7 +84,7 @@ function ExpensesPageInner() {
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordFilter, setRecordFilter] = useState({
-    month: searchParams.get('month') || new Date().toISOString().slice(0, 7),
+    month: searchParams.get('month') || todayStr().slice(0, 7),
     warehouse: searchParams.get('warehouse') || '',
     status: ''
   });
@@ -111,7 +112,7 @@ function ExpensesPageInner() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [executeForm, setExecuteForm] = useState({
     warehouse: '',
-    expenseMonth: new Date().toISOString().slice(0, 7),
+    expenseMonth: todayStr().slice(0, 7),
     supplierId: '',
     supplierName: '',
     paymentMethod: '',
@@ -215,6 +216,7 @@ function ExpensesPageInner() {
   async function fetchTemplates() {
     try {
       const res = await fetch('/api/expense-templates?activeOnly=false');
+      if (!res.ok) return;
       const data = await res.json();
       setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -231,6 +233,7 @@ function ExpensesPageInner() {
       if (recordFilter.status) params.set('paymentStatus', recordFilter.status);
       params.set('type', mainTab);
       const res = await fetch(`/api/expense-records?${params.toString()}`);
+      if (!res.ok) { setRecords([]); setRecordsTotal(0); return; }
       const data = await res.json();
       setRecords(data.records || []);
       setRecordsTotal(data.total || 0);
@@ -1120,14 +1123,14 @@ function ExpensesPageInner() {
                   {/* Common fields */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
-                      <label style={labelStyle}>範本名稱 *</label>
-                      <input value={templateForm.name}
+                      <label htmlFor="f" style={labelStyle}>範本名稱 *</label>
+                      <input id="f" value={templateForm.name}
                         onChange={e => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
                         style={inputStyle} placeholder="例: 每月OO廠商進貨" />
                     </div>
                     <div>
-                      <label style={labelStyle}>館別</label>
-                      <select value={templateForm.warehouse}
+                      <label htmlFor="f-2" style={labelStyle}>館別</label>
+                      <select id="f-2" value={templateForm.warehouse}
                         onChange={e => setTemplateForm(prev => ({ ...prev, warehouse: e.target.value }))}
                         style={inputStyle}>
                         <option value="">不限</option>
@@ -1135,8 +1138,8 @@ function ExpensesPageInner() {
                       </select>
                     </div>
                     <div>
-                      <label style={labelStyle}>分類</label>
-                      <select value={templateForm.categoryId}
+                      <label htmlFor="f-23" style={labelStyle}>分類</label>
+                      <select id="f-23" value={templateForm.categoryId}
                         onChange={e => setTemplateForm(prev => ({ ...prev, categoryId: e.target.value }))}
                         style={inputStyle}>
                         <option value="">無分類</option>
@@ -1147,8 +1150,8 @@ function ExpensesPageInner() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
-                      <label style={labelStyle}>說明</label>
-                      <input value={templateForm.description}
+                      <label htmlFor="f-24" style={labelStyle}>說明</label>
+                      <input id="f-24" value={templateForm.description}
                         onChange={e => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
                         style={inputStyle} placeholder="範本說明..." />
                     </div>
@@ -1159,14 +1162,14 @@ function ExpensesPageInner() {
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                         <div>
-                          <label style={labelStyle}>付款條件</label>
-                          <input value={templateForm.paymentMethod}
+                          <label htmlFor="f-3" style={labelStyle}>付款條件</label>
+                          <input id="f-3" value={templateForm.paymentMethod}
                             onChange={e => setTemplateForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
                             style={inputStyle} placeholder="月結" />
                         </div>
                         <div>
-                          <label style={labelStyle}>預設稅別</label>
-                          <select value={templateForm.defaultTaxType}
+                          <label htmlFor="f-4" style={labelStyle}>預設稅別</label>
+                          <select id="f-4" value={templateForm.defaultTaxType}
                             onChange={e => setTemplateForm(prev => ({ ...prev, defaultTaxType: e.target.value }))}
                             style={inputStyle}>
                             <option value="">不指定</option>
@@ -1452,8 +1455,8 @@ function ExpensesPageInner() {
               {/* Template selection and basic info */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
-                  <label style={labelStyle}>選擇範本 *</label>
-                  <select value={selectedTemplateId}
+                  <label htmlFor="f-5" style={labelStyle}>選擇範本 *</label>
+                  <select id="f-5" value={selectedTemplateId}
                     onChange={e => handleSelectTemplate(e.target.value)}
                     style={inputStyle}>
                     <option value="">-- 選擇範本 --</option>
@@ -1464,8 +1467,8 @@ function ExpensesPageInner() {
                 </div>
                 {mainTab === 'purchase' && (
                   <div>
-                    <label style={labelStyle}>館別 *</label>
-                    <select value={executeForm.warehouse}
+                    <label htmlFor="f-25" style={labelStyle}>館別 *</label>
+                    <select id="f-25" value={executeForm.warehouse}
                       onChange={e => setExecuteForm(prev => ({ ...prev, warehouse: e.target.value }))}
                       style={inputStyle}>
                       <option value="">選擇館別</option>
@@ -1474,8 +1477,8 @@ function ExpensesPageInner() {
                   </div>
                 )}
                 <div>
-                  <label style={labelStyle}>費用月份 *</label>
-                  <input type="month" value={executeForm.expenseMonth}
+                  <label htmlFor="f-26" style={labelStyle}>費用月份 *</label>
+                  <input id="f-26" type="month" value={executeForm.expenseMonth}
                     onChange={e => setExecuteForm(prev => ({ ...prev, expenseMonth: e.target.value }))}
                     style={inputStyle} />
                 </div>
@@ -1488,8 +1491,8 @@ function ExpensesPageInner() {
                     <div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
                         <div>
-                          <label style={labelStyle}>廠商 *</label>
-                          <select value={executeForm.supplierId}
+                          <label htmlFor="f-6" style={labelStyle}>廠商 *</label>
+                          <select id="f-6" value={executeForm.supplierId}
                             onChange={e => {
                               const s = suppliers.find(s => s.id === parseInt(e.target.value));
                               setExecuteForm(prev => ({
@@ -1504,14 +1507,14 @@ function ExpensesPageInner() {
                           </select>
                         </div>
                         <div>
-                          <label style={labelStyle}>付款條件</label>
-                          <input value={executeForm.paymentTerms}
+                          <label htmlFor="f-27" style={labelStyle}>付款條件</label>
+                          <input id="f-27" value={executeForm.paymentTerms}
                             onChange={e => setExecuteForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
                             style={inputStyle} placeholder="月結" />
                         </div>
                         <div>
-                          <label style={labelStyle}>稅別</label>
-                          <select value={executeForm.taxType}
+                          <label htmlFor="f-28" style={labelStyle}>稅別</label>
+                          <select id="f-28" value={executeForm.taxType}
                             onChange={e => setExecuteForm(prev => ({ ...prev, taxType: e.target.value }))}
                             style={inputStyle}>
                             <option value="">不指定</option>
@@ -1592,20 +1595,20 @@ function ExpensesPageInner() {
                         </h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                           <div>
-                            <label style={labelStyle}>發票號碼</label>
-                            <input value={executeForm.invoiceNo}
+                            <label htmlFor="f-7" style={labelStyle}>發票號碼</label>
+                            <input id="f-7" value={executeForm.invoiceNo}
                               onChange={e => setExecuteForm(prev => ({ ...prev, invoiceNo: e.target.value }))}
                               style={inputStyle} placeholder="例: AB-12345678" />
                           </div>
                           <div>
-                            <label style={labelStyle}>發票日期</label>
-                            <input type="date" value={executeForm.invoiceDate}
+                            <label htmlFor="f-8" style={labelStyle}>發票日期</label>
+                            <input id="f-8" type="date" value={executeForm.invoiceDate}
                               onChange={e => setExecuteForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
                               style={inputStyle} />
                           </div>
                           <div>
-                            <label style={labelStyle}>發票抬頭</label>
-                            <input value={executeForm.invoiceTitle}
+                            <label htmlFor="f-9" style={labelStyle}>發票抬頭</label>
+                            <input id="f-9" value={executeForm.invoiceTitle}
                               onChange={e => setExecuteForm(prev => ({ ...prev, invoiceTitle: e.target.value }))}
                               style={inputStyle} placeholder="公司名稱" />
                           </div>
@@ -1619,14 +1622,14 @@ function ExpensesPageInner() {
                     <div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
                         <div>
-                          <label style={labelStyle}>費用月份 *</label>
-                          <input type="month" value={executeForm.expenseMonth}
+                          <label htmlFor="f-10" style={labelStyle}>費用月份 *</label>
+                          <input id="f-10" type="month" value={executeForm.expenseMonth}
                             onChange={e => setExecuteForm(prev => ({ ...prev, expenseMonth: e.target.value }))}
                             style={inputStyle} />
                         </div>
                         <div>
-                          <label style={labelStyle}>付款方式</label>
-                          <select value={executeForm.paymentMethod}
+                          <label htmlFor="f-11" style={labelStyle}>付款方式</label>
+                          <select id="f-11" value={executeForm.paymentMethod}
                             onChange={e => setExecuteForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
                             style={inputStyle}>
                             <option value="月結">月結</option>
@@ -1638,8 +1641,8 @@ function ExpensesPageInner() {
                           </select>
                         </div>
                         <div>
-                          <label style={labelStyle}>廠商</label>
-                          <select value={executeForm.supplierId}
+                          <label htmlFor="f-12" style={labelStyle}>廠商</label>
+                          <select id="f-12" value={executeForm.supplierId}
                             onChange={e => {
                               const s = suppliers.find(s => s.id === parseInt(e.target.value));
                               setExecuteForm(prev => ({
@@ -1683,8 +1686,8 @@ function ExpensesPageInner() {
                               出納繳信用卡帳單時，到「員工預支」頁面勾選結算即可。
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <label style={{ fontSize: 15, color: '#6d28d9', fontWeight: 500, whiteSpace: 'nowrap' }}>代墊人</label>
-                              <input value={executeForm.creditCardAdvanceName || ''}
+                              <label htmlFor="f-29" style={{ fontSize: 15, color: '#6d28d9', fontWeight: 500, whiteSpace: 'nowrap' }}>代墊人</label>
+                              <input id="f-29" value={executeForm.creditCardAdvanceName || ''}
                                 onChange={e => {
                                   const name = e.target.value;
                                   setExecuteForm(prev => ({
@@ -1705,8 +1708,8 @@ function ExpensesPageInner() {
                         <div style={{ background: '#f3e8ff', border: '1px solid #c4b5fd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                           <div style={{ fontSize: 16, fontWeight: 600, color: '#6d28d9', marginBottom: 8 }}>員工代墊資訊（存檔後自動連動代墊款管理）</div>
                           <div>
-                            <label style={{ fontSize: 14, color: '#6d28d9' }}>代墊員工 *</label>
-                            <input value={executeForm.advancedBy || ''}
+                            <label htmlFor="f-13" style={{ fontSize: 14, color: '#6d28d9' }}>代墊員工 *</label>
+                            <input id="f-13" value={executeForm.advancedBy || ''}
                               onChange={e => setExecuteForm(prev => ({ ...prev, advancedBy: e.target.value }))}
                               placeholder="員工姓名" style={{ ...inputStyle, borderColor: '#c4b5fd', background: '#fff' }} />
                           </div>
@@ -1723,28 +1726,28 @@ function ExpensesPageInner() {
                           </p>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                             <div>
-                              <label style={{ fontSize: 14, color: '#b45309' }}>付款(開票)日期 *</label>
-                              <input type="date" value={executeForm.checkIssueDate || ''}
+                              <label htmlFor="f-14" style={{ fontSize: 14, color: '#b45309' }}>付款(開票)日期 *</label>
+                              <input id="f-14" type="date" value={executeForm.checkIssueDate || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkIssueDate: e.target.value }))}
                                 style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
                             <div>
-                              <label style={{ fontSize: 14, color: '#b45309' }}>支票日期(到期日) *</label>
-                              <input type="date" value={executeForm.checkDate || ''}
+                              <label htmlFor="f-15" style={{ fontSize: 14, color: '#b45309' }}>支票日期(到期日) *</label>
+                              <input id="f-15" type="date" value={executeForm.checkDate || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkDate: e.target.value }))}
                                 style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
                             <div style={{ gridColumn: '1 / -1' }}>
-                              <label style={{ fontSize: 14, color: '#b45309' }}>支票號碼 *</label>
-                              <input type="text" value={executeForm.checkNo || ''}
+                              <label htmlFor="f-16" style={{ fontSize: 14, color: '#b45309' }}>支票號碼 *</label>
+                              <input id="f-16" type="text" value={executeForm.checkNo || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkNo: e.target.value }))}
                                 placeholder="請輸入支票號碼" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
                             {executeForm.paymentMethod === '支票' &&
                               !executeForm.entryLines?.some((l) => l.entryType === 'debit' && l.paymentMethod === '支票') && (
                               <div style={{ gridColumn: '1 / -1' }}>
-                                <label style={{ fontSize: 14, color: '#b45309' }}>開票帳戶 *</label>
-                                <select value={executeForm.checkAccountId || ''}
+                                <label htmlFor="f-17" style={{ fontSize: 14, color: '#b45309' }}>開票帳戶 *</label>
+                                <select id="f-17" value={executeForm.checkAccountId || ''}
                                   onChange={e => setExecuteForm(prev => ({ ...prev, checkAccountId: e.target.value }))}
                                   style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }}>
                                   <option value="">請選擇</option>
@@ -1755,8 +1758,8 @@ function ExpensesPageInner() {
                               </div>
                             )}
                             <div style={{ gridColumn: '1 / -1' }}>
-                              <label style={{ fontSize: 14, color: '#b45309' }}>備註</label>
-                              <input type="text" value={executeForm.checkNote || ''}
+                              <label htmlFor="f-30" style={{ fontSize: 14, color: '#b45309' }}>備註</label>
+                              <input id="f-30" type="text" value={executeForm.checkNote || ''}
                                 onChange={e => setExecuteForm(prev => ({ ...prev, checkNote: e.target.value }))}
                                 placeholder="選填" style={{ ...inputStyle, borderColor: '#f59e0b', background: '#fff' }} />
                             </div>
@@ -1966,8 +1969,8 @@ function ExpensesPageInner() {
 
                   {/* Note */}
                   <div style={{ marginTop: 16 }}>
-                    <label style={labelStyle}>備註</label>
-                    <input value={executeForm.note}
+                    <label htmlFor="f-18" style={labelStyle}>備註</label>
+                    <input id="f-18" value={executeForm.note}
                       onChange={e => setExecuteForm(prev => ({ ...prev, note: e.target.value }))}
                       style={inputStyle} placeholder="選填" />
                   </div>
@@ -2081,14 +2084,14 @@ function ExpensesPageInner() {
               {/* Filters */}
               <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 15 }}>月份</label>
-                  <input type="month" value={recordFilter.month}
+                  <label htmlFor="f-19" style={{ ...labelStyle, fontSize: 15 }}>月份</label>
+                  <input id="f-19" type="month" value={recordFilter.month}
                     onChange={e => setRecordFilter(prev => ({ ...prev, month: e.target.value }))}
                     style={{ ...inputStyle, width: 160 }} />
                 </div>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 15 }}>館別</label>
-                  <select value={recordFilter.warehouse}
+                  <label htmlFor="f-20" style={{ ...labelStyle, fontSize: 15 }}>館別</label>
+                  <select id="f-20" value={recordFilter.warehouse}
                     onChange={e => setRecordFilter(prev => ({ ...prev, warehouse: e.target.value }))}
                     style={{ ...inputStyle, width: 120 }}>
                     <option value="">全部</option>
@@ -2096,8 +2099,8 @@ function ExpensesPageInner() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ ...labelStyle, fontSize: 15 }}>付款狀態</label>
-                  <select value={recordFilter.status}
+                  <label htmlFor="f-31" style={{ ...labelStyle, fontSize: 15 }}>付款狀態</label>
+                  <select id="f-31" value={recordFilter.status}
                     onChange={e => setRecordFilter(prev => ({ ...prev, status: e.target.value }))}
                     style={{ ...inputStyle, width: 120 }}>
                     <option value="">全部</option>
@@ -2257,8 +2260,8 @@ function ExpensesPageInner() {
               {editingRecord.paymentOrderNo && <> | 付款單: {editingRecord.paymentOrderNo}</>}
             </div>
 
-            <label style={labelStyle}>付款方式</label>
-            <select value={editForm.paymentMethod}
+            <label htmlFor="f-21" style={labelStyle}>付款方式</label>
+            <select id="f-21" value={editForm.paymentMethod}
               onChange={e => setEditForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
               style={{ ...inputStyle, width: 200, marginBottom: 12 }}>
               <option value="">—</option>
@@ -2338,8 +2341,8 @@ function ExpensesPageInner() {
               合計: NT$ {editForm.entryLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0).toLocaleString()}
             </div>
 
-            <label style={labelStyle}>備註</label>
-            <textarea value={editForm.note}
+            <label htmlFor="f-22" style={labelStyle}>備註</label>
+            <textarea id="f-22" value={editForm.note}
               onChange={e => setEditForm(prev => ({ ...prev, note: e.target.value }))}
               style={{ ...inputStyle, height: 60, resize: 'vertical' }}
               placeholder="備註" />

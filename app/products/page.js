@@ -410,10 +410,10 @@ export default function ProductsPage() {
             <h3 className="text-lg font-semibold mb-4">{editingProduct ? '編輯產品' : '新增產品'}</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">
                   產品編碼 *
                 </label>
-                <input
+                <input id="f"
                   type="text"
                   required
                   value={formData.code}
@@ -422,10 +422,10 @@ export default function ProductsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">
                   產品名稱 *
                 </label>
-                <input
+                <input id="f-2"
                   type="text"
                   required
                   value={formData.name}
@@ -434,10 +434,10 @@ export default function ProductsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">
                   類別
                 </label>
-                <input
+                <input id="f-3"
                   type="text"
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -445,10 +445,10 @@ export default function ProductsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">
                   單位
                 </label>
-                <input
+                <input id="f-4"
                   type="text"
                   value={formData.unit}
                   onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
@@ -456,10 +456,10 @@ export default function ProductsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">
                   成本價 *
                 </label>
-                <input
+                <input id="f-5"
                   type="number"
                   step="0.01"
                   required
@@ -469,10 +469,10 @@ export default function ProductsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">
                   數量 *
                 </label>
-                <input
+                <input id="f-6"
                   type="number"
                   step="1"
                   required
@@ -482,10 +482,10 @@ export default function ProductsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">
                   是否列入庫存 *
                 </label>
-                <select
+                <select id="f-7"
                   required
                   value={formData.isInStock ? '是' : '否'}
                   onChange={(e) => {
@@ -563,10 +563,10 @@ export default function ProductsPage() {
                 </div>
               )}
               <div className="relative product-accounting-search">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">
                   會計科目 *
                 </label>
-                <input
+                <input id="f-8"
                   type="text"
                   required
                   placeholder="輸入代碼或名稱搜尋..."
@@ -610,10 +610,10 @@ export default function ProductsPage() {
                 )}
               </div>
               <div className="relative product-inventory-subject-search">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">
                   存貨科目
                 </label>
-                <input
+                <input id="f-9"
                   type="text"
                   placeholder="輸入代碼或名稱搜尋..."
                   value={inventorySubjectSearch}

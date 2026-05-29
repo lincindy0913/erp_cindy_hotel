@@ -5,6 +5,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function GET(request) {
     const defaultFrom = (() => {
       const d = new Date();
       d.setFullYear(d.getFullYear() - 2);
-      return d.toISOString().split('T')[0];
+      return localDateStr(d);
     })();
 
     const where = {
@@ -127,14 +128,14 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：核銷品項', 400);
     }
 
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const today = todayStr().replace(/-/g, '');
     const todayPrefix = `INV-${today}-`;
     const existingCount = await prisma.salesMaster.count({
       where: { salesNo: { startsWith: todayPrefix } }
     });
     const salesNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
 
-    const invoiceDate = data.invoiceDate || new Date().toISOString().split('T')[0];
+    const invoiceDate = data.invoiceDate || todayStr();
     const warehouse = isOwnerPrivate
       ? (data.warehouse || null)
       : (data.warehouse || (data.items && data.items[0] && data.items[0].warehouse) || undefined);

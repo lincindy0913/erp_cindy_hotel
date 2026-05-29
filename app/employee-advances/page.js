@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 export default function EmployeeAdvancesPage() {
   const { data: session } = useSession();
@@ -19,7 +20,7 @@ export default function EmployeeAdvancesPage() {
   // Settlement form
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [settleAccountId, setSettleAccountId] = useState('');
-  const [settleDate, setSettleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [settleDate, setSettleDate] = useState(todayStr());
   const [settleNote, setSettleNote] = useState('');
   const [settling, setSettling] = useState(false);
 
@@ -331,7 +332,7 @@ export default function EmployeeAdvancesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `代墊款_${tabLabel}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `代墊款_${tabLabel}_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -382,46 +383,46 @@ export default function EmployeeAdvancesPage() {
             <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>手動新增代墊款</h3>
             <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>代墊員工 *</label>
-                <input value={addForm.employeeName} onChange={e => setAddForm(f => ({ ...f, employeeName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
+                <label htmlFor="f" style={{ fontSize: 15, color: '#6b7280' }}>代墊員工 *</label>
+                <input id="f" value={addForm.employeeName} onChange={e => setAddForm(f => ({ ...f, employeeName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>代墊方式</label>
-                <select value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
+                <label htmlFor="f-2" style={{ fontSize: 15, color: '#6b7280' }}>代墊方式</label>
+                <select id="f-2" value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
                   <option value="現金">現金</option>
                   <option value="信用卡">信用卡</option>
                   <option value="其他">其他</option>
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>金額 *</label>
-                <input type="number" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
+                <label htmlFor="f-3" style={{ fontSize: 15, color: '#6b7280' }}>金額 *</label>
+                <input id="f-3" type="number" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>費用名稱</label>
-                <select value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
+                <label htmlFor="f-4" style={{ fontSize: 15, color: '#6b7280' }}>費用名稱</label>
+                <select id="f-4" value={addForm.expenseName} onChange={e => setAddForm(f => ({ ...f, expenseName: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
                   <option value="">選填</option>
                   {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>摘要</label>
-                <input value={addForm.summary} onChange={e => setAddForm(f => ({ ...f, summary: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
+                <label htmlFor="f-13" style={{ fontSize: 15, color: '#6b7280' }}>摘要</label>
+                <input id="f-13" value={addForm.summary} onChange={e => setAddForm(f => ({ ...f, summary: e.target.value }))} placeholder="選填" style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>說明</label>
-                <input value={addForm.sourceDescription} onChange={e => setAddForm(f => ({ ...f, sourceDescription: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
+                <label htmlFor="f-14" style={{ fontSize: 15, color: '#6b7280' }}>說明</label>
+                <input id="f-14" value={addForm.sourceDescription} onChange={e => setAddForm(f => ({ ...f, sourceDescription: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>館別</label>
-                <select value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
+                <label htmlFor="f-15" style={{ fontSize: 15, color: '#6b7280' }}>館別</label>
+                <select id="f-15" value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }}>
                   <option value="">選填</option>
                   {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280' }}>備註</label>
-                <input value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
+                <label htmlFor="f-16" style={{ fontSize: 15, color: '#6b7280' }}>備註</label>
+                <input id="f-16" value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))} style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 16 }} />
               </div>
               <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
                 <button type="submit" style={{ padding: '8px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 16 }}>新增</button>
@@ -456,8 +457,8 @@ export default function EmployeeAdvancesPage() {
             {/* Filter bar */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <label style={{ fontSize: 16, color: '#6b7280', marginRight: 4 }}>篩選員工：</label>
-                <select value={filterEmployee} onChange={e => { setFilterEmployee(e.target.value); setSelectedIds(new Set()); }} style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17 }}>
+                <label htmlFor="f-5" style={{ fontSize: 16, color: '#6b7280', marginRight: 4 }}>篩選員工：</label>
+                <select id="f-5" value={filterEmployee} onChange={e => { setFilterEmployee(e.target.value); setSelectedIds(new Set()); }} style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17 }}>
                   <option value="">全部</option>
                   {employeeNames.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
@@ -507,19 +508,19 @@ export default function EmployeeAdvancesPage() {
                 {/* Settlement form */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
                   <div>
-                    <label style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>付款帳戶 *</label>
-                    <select value={settleAccountId} onChange={e => setSettleAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17 }}>
+                    <label htmlFor="f-6" style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>付款帳戶 *</label>
+                    <select id="f-6" value={settleAccountId} onChange={e => setSettleAccountId(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17 }}>
                       <option value="">選擇帳戶</option>
                       {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>結算日期 *</label>
-                    <input type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
+                    <label htmlFor="f-17" style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>結算日期 *</label>
+                    <input id="f-17" type="date" value={settleDate} onChange={e => setSettleDate(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>備註</label>
-                    <input value={settleNote} onChange={e => setSettleNote(e.target.value)} placeholder="選填" style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
+                    <label htmlFor="f-18" style={{ fontSize: 16, color: '#065f46', display: 'block', marginBottom: 4, fontWeight: 600 }}>備註</label>
+                    <input id="f-18" value={settleNote} onChange={e => setSettleNote(e.target.value)} placeholder="選填" style={{ width: '100%', padding: '8px 10px', border: '1px solid #86efac', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
                   </div>
                 </div>
 
@@ -531,8 +532,8 @@ export default function EmployeeAdvancesPage() {
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, alignItems: 'end' }}>
                     <div>
-                      <label style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>信用卡帳單總額</label>
-                      <input type="number" value={billTotal} onChange={e => setBillTotal(e.target.value)} placeholder="留空則不拆帳" style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
+                      <label htmlFor="f-7" style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>信用卡帳單總額</label>
+                      <input id="f-7" type="number" value={billTotal} onChange={e => setBillTotal(e.target.value)} placeholder="留空則不拆帳" style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 17, boxSizing: 'border-box' }} />
                     </div>
                     <div>
                       <label style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>老闆私帳金額（自動計算）</label>
@@ -541,8 +542,8 @@ export default function EmployeeAdvancesPage() {
                       </div>
                     </div>
                     <div>
-                      <label style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>私帳入帳科目</label>
-                      <select value={privateAccountId} onChange={e => setPrivateAccountId(e.target.value)} disabled={!billTotal || privateAmount <= 0} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 17, opacity: billTotal && privateAmount > 0 ? 1 : 0.5 }}>
+                      <label htmlFor="f-8" style={{ fontSize: 16, color: '#7c3aed', display: 'block', marginBottom: 4, fontWeight: 600 }}>私帳入帳科目</label>
+                      <select id="f-8" value={privateAccountId} onChange={e => setPrivateAccountId(e.target.value)} disabled={!billTotal || privateAmount <= 0} style={{ width: '100%', padding: '8px 10px', border: '1px solid #d8b4fe', borderRadius: 6, fontSize: 17, opacity: billTotal && privateAmount > 0 ? 1 : 0.5 }}>
                         <option value="">股東往來（預設）</option>
                         {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
                       </select>
@@ -731,13 +732,13 @@ export default function EmployeeAdvancesPage() {
             <h3 style={{ fontSize: 19, fontWeight: 700, marginBottom: 16 }}>編輯代墊款 — {editingAdvance.advanceNo}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>代墊員工 *</label>
-                <input value={editForm.employeeName} onChange={e => setEditForm(f => ({ ...f, employeeName: e.target.value }))}
+                <label htmlFor="f-9" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>代墊員工 *</label>
+                <input id="f-9" value={editForm.employeeName} onChange={e => setEditForm(f => ({ ...f, employeeName: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>付款方式</label>
-                <select value={editForm.paymentMethod} onChange={e => setEditForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                <label htmlFor="f-10" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>付款方式</label>
+                <select id="f-10" value={editForm.paymentMethod} onChange={e => setEditForm(f => ({ ...f, paymentMethod: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }}>
                   <option value="現金">現金</option>
                   <option value="信用卡">信用卡</option>
@@ -745,13 +746,13 @@ export default function EmployeeAdvancesPage() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>金額 *</label>
-                <input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))}
+                <label htmlFor="f-11" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>金額 *</label>
+                <input id="f-11" type="number" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box', textAlign: 'right' }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>費用名稱</label>
-                <select value={editForm.expenseName} onChange={e => setEditForm(f => ({ ...f, expenseName: e.target.value }))}
+                <label htmlFor="f-12" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>費用名稱</label>
+                <select id="f-12" value={editForm.expenseName} onChange={e => setEditForm(f => ({ ...f, expenseName: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }}>
                   <option value="">選填</option>
                   {expenseCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -759,18 +760,18 @@ export default function EmployeeAdvancesPage() {
                 </select>
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>摘要</label>
-                <input value={editForm.summary} onChange={e => setEditForm(f => ({ ...f, summary: e.target.value }))}
+                <label htmlFor="f-19" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>摘要</label>
+                <input id="f-19" value={editForm.summary} onChange={e => setEditForm(f => ({ ...f, summary: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>來源說明</label>
-                <input value={editForm.sourceDescription} onChange={e => setEditForm(f => ({ ...f, sourceDescription: e.target.value }))}
+                <label htmlFor="f-20" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>來源說明</label>
+                <input id="f-20" value={editForm.sourceDescription} onChange={e => setEditForm(f => ({ ...f, sourceDescription: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>館別</label>
-                <select value={editForm.warehouse} onChange={e => setEditForm(f => ({ ...f, warehouse: e.target.value }))}
+                <label htmlFor="f-21" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>館別</label>
+                <select id="f-21" value={editForm.warehouse} onChange={e => setEditForm(f => ({ ...f, warehouse: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }}>
                   <option value="">選填</option>
                   {warehousesList.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
@@ -778,8 +779,8 @@ export default function EmployeeAdvancesPage() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>備註</label>
-                <input value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}
+                <label htmlFor="f-22" style={{ fontSize: 15, color: '#6b7280', display: 'block', marginBottom: 4 }}>備註</label>
+                <input id="f-22" value={editForm.note} onChange={e => setEditForm(f => ({ ...f, note: e.target.value }))}
                   style={{ width: '100%', padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 17, boxSizing: 'border-box' }} />
               </div>
             </div>

@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,7 +83,7 @@ export async function POST(request) {
       });
 
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+      const dateStr = localDateStr(now).replace(/-/g, '');
       const prefix = `RENT-${dateStr}-`;
       const existing = await tx.paymentOrder.findMany({
         where: { orderNo: { startsWith: prefix } },

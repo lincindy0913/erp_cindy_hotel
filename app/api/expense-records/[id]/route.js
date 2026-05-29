@@ -7,6 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { todayStr } from '@/lib/localDate';
 
 // Helper: generate transaction number CF-YYYYMMDD-XXXX
 async function generateTxNo(tx, dateStr) {
@@ -164,7 +165,7 @@ async function reverseExpenseCashTransaction(tx, recordId) {
   });
   if (!cashTx) return null; // 找不到或已被沖銷
 
-  const transactionDate = new Date().toISOString().split('T')[0];
+  const transactionDate = todayStr();
   const reversalTxNo = await generateTxNo(tx, transactionDate);
 
   const reversalTx = await tx.cashTransaction.create({

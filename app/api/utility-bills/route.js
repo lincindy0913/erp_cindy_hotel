@@ -6,6 +6,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ function calcTotalFromJson(summaryJson, billType) {
 
 // ── 產生 PAY-YYYYMMDD-NNN 單號 ────────────────────────────────
 async function generatePaymentOrderNo() {
-  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const today = todayStr().replace(/-/g, '');
   const prefix = `PAY-${today}-`;
   const existing = await prisma.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +72,7 @@ export async function POST(request) {
         if (prod?.isInStock) {
           const qty = Math.round(quantity);
           if (qty >= 1) {
-            const date = data.usedAt || new Date().toISOString().slice(0, 10);
+            const date = data.usedAt || todayStr();
             const prefix = `REQ-${date.replace(/-/g, '')}`;
             const last = await tx.inventoryRequisition.findFirst({
               where: { requisitionNo: { startsWith: prefix } },

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,7 @@ export async function GET(request) {
 }
 
 async function createPaymentOrderForTax(tx, tax) {
-  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const dateStr = todayStr().replace(/-/g, '');
   const prefix = `RENT-${dateStr}-`;
   const existing = await tx.paymentOrder.findMany({
     where: { orderNo: { startsWith: prefix } },

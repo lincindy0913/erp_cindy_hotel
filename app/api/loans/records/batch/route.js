@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +67,7 @@ export async function POST(request) {
     const pushed = [];
     const skipped = [];
 
-    const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const todayStr = todayStr().replace(/-/g, '');
     const userName = auth.session?.user?.name || auth.session?.user?.email || 'system';
 
     for (const loan of loans) {

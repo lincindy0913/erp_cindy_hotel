@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export async function GET(request) {
       monthStart = startDate;
       const ed = new Date(endDate);
       ed.setDate(ed.getDate() + 1);
-      nextMonth = ed.toISOString().slice(0, 10);
+      nextMonth = localDateStr(ed);
     } else {
       monthStart = `${month}-01`;
       const [year, mon] = month.split('-');

@@ -35,6 +35,7 @@ import PmsIncomeDailyTodoBar from '@/components/pms-income/PmsIncomeDailyTodoBar
 import { usePmsIncomeOverview } from '@/components/pms-income/usePmsIncomeOverview';
 import { usePmsIncomeRecords } from '@/components/pms-income/usePmsIncomeRecords';
 import { usePmsIncomeSettlement } from '@/components/pms-income/usePmsIncomeSettlement';
+import { todayStr } from '@/lib/localDate';
 
 const VALID_TAB_KEYS = new Set(TABS.map(t => t.key));
 
@@ -68,7 +69,7 @@ function PmsIncomePage() {
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadWarehouse, setUploadWarehouse] = useState('麗格');
-  const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]);
+  const [uploadDate, setUploadDate] = useState(todayStr());
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadRecords, setUploadRecords] = useState(
     DEFAULT_PMS_COLUMNS.map(col => ({ ...col, amount: '' }))
@@ -84,7 +85,7 @@ function PmsIncomePage() {
   // Manual add record modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({
-    warehouse: '麗格', businessDate: new Date().toISOString().split('T')[0],
+    warehouse: '麗格', businessDate: todayStr(),
     entryType: '貸方', pmsColumnName: '', amount: '', accountingCode: '', accountingName: '', note: ''
   });
 
@@ -400,7 +401,7 @@ function PmsIncomePage() {
 
   const resetUploadForm = () => {
     setUploadWarehouse(overview.selectedWarehouseForUpload);
-    setUploadDate(new Date().toISOString().split('T')[0]);
+    setUploadDate(todayStr());
     setUploadFileName('');
     setUploadRecords(DEFAULT_PMS_COLUMNS.map(col => ({ ...col, amount: '' })));
     setUploadRoomCount('');
@@ -432,7 +433,7 @@ function PmsIncomePage() {
       setSuccess('手動新增成功');
       setShowAddModal(false);
       setAddForm({
-        warehouse: '麗格', businessDate: new Date().toISOString().split('T')[0],
+        warehouse: '麗格', businessDate: todayStr(),
         entryType: '貸方', pmsColumnName: '', amount: '', accountingCode: '', accountingName: '', note: ''
       });
       incomeRecords.fetchRecords();
@@ -781,28 +782,28 @@ function PmsIncomePage() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">{editingTravelAgency ? '編輯旅行社配置' : '新增旅行社配置'}</h3>
             <div className="space-y-3 text-sm">
               <div>
-                <label className="block text-gray-600 mb-1">公司名稱 *</label>
-                <input value={travelAgencyForm.companyName} onChange={e => setTravelAgencyForm(f => ({ ...f, companyName: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 booking.com" />
+                <label htmlFor="f" className="block text-gray-600 mb-1">公司名稱 *</label>
+                <input id="f" value={travelAgencyForm.companyName} onChange={e => setTravelAgencyForm(f => ({ ...f, companyName: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 booking.com" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">代碼</label>
-                <input value={travelAgencyForm.agencyCode} onChange={e => setTravelAgencyForm(f => ({ ...f, agencyCode: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 TA-01" />
+                <label htmlFor="f-2" className="block text-gray-600 mb-1">代碼</label>
+                <input id="f-2" value={travelAgencyForm.agencyCode} onChange={e => setTravelAgencyForm(f => ({ ...f, agencyCode: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 TA-01" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">佣金 % *</label>
-                <input type="number" step="0.01" value={travelAgencyForm.commissionPercentage} onChange={e => setTravelAgencyForm(f => ({ ...f, commissionPercentage: e.target.value }))} className="w-full border rounded px-3 py-2" />
+                <label htmlFor="f-3" className="block text-gray-600 mb-1">佣金 % *</label>
+                <input id="f-3" type="number" step="0.01" value={travelAgencyForm.commissionPercentage} onChange={e => setTravelAgencyForm(f => ({ ...f, commissionPercentage: e.target.value }))} className="w-full border rounded px-3 py-2" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">應收/應付</label>
-                <select value={travelAgencyForm.paymentType} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentType: e.target.value }))} className="w-full border rounded px-3 py-2">
+                <label htmlFor="f-4" className="block text-gray-600 mb-1">應收/應付</label>
+                <select id="f-4" value={travelAgencyForm.paymentType} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentType: e.target.value }))} className="w-full border rounded px-3 py-2">
                   <option value="NONE">NONE（無佣金）</option>
                   <option value="AR">AR（應收）</option>
                   <option value="AP">AP（應付）</option>
                 </select>
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">數據源</label>
-                <select value={travelAgencyForm.dataSource} onChange={e => setTravelAgencyForm(f => ({ ...f, dataSource: e.target.value }))} className="w-full border rounded px-3 py-2">
+                <label htmlFor="f-5" className="block text-gray-600 mb-1">數據源</label>
+                <select id="f-5" value={travelAgencyForm.dataSource} onChange={e => setTravelAgencyForm(f => ({ ...f, dataSource: e.target.value }))} className="w-full border rounded px-3 py-2">
                   <option value="AUTO">AUTO（自動提取）</option>
                   <option value="MANUAL">MANUAL（每月手動輸入）</option>
                 </select>
@@ -810,8 +811,8 @@ function PmsIncomePage() {
               {travelAgencyForm.paymentType === 'AP' && (
                 <>
                   <div>
-                    <label className="block text-gray-600 mb-1">應付日（每月幾號）</label>
-                    <input type="number" min="1" max="28" value={travelAgencyForm.paymentDueDay} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentDueDay: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="5" />
+                    <label htmlFor="f-6" className="block text-gray-600 mb-1">應付日（每月幾號）</label>
+                    <input id="f-6" type="number" min="1" max="28" value={travelAgencyForm.paymentDueDay} onChange={e => setTravelAgencyForm(f => ({ ...f, paymentDueDay: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="5" />
                   </div>
                   <div>
                     <label className="block text-gray-600 mb-1">支付帳戶</label>
@@ -864,12 +865,12 @@ function PmsIncomePage() {
             </p>
             <div className="space-y-3 text-sm">
               <div>
-                <label className="block text-gray-600 mb-1">交易日期 *</label>
-                <input type="date" value={confirmCommissionForm.transactionDate} onChange={e => setConfirmCommissionForm(f => ({ ...f, transactionDate: e.target.value }))} className="w-full border rounded px-3 py-2" />
+                <label htmlFor="f-7" className="block text-gray-600 mb-1">交易日期 *</label>
+                <input id="f-7" type="date" value={confirmCommissionForm.transactionDate} onChange={e => setConfirmCommissionForm(f => ({ ...f, transactionDate: e.target.value }))} className="w-full border rounded px-3 py-2" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">存簿帳戶 *</label>
-                <select value={confirmCommissionForm.accountId} onChange={e => setConfirmCommissionForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2">
+                <label htmlFor="f-8" className="block text-gray-600 mb-1">存簿帳戶 *</label>
+                <select id="f-8" value={confirmCommissionForm.accountId} onChange={e => setConfirmCommissionForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded px-3 py-2">
                   <option value="">請選擇帳戶</option>
                   {manualAccounts.map(a => (
                     <option key={a.id} value={a.id}>{a.name}{a.warehouse ? ` (${a.warehouse})` : ''}</option>
@@ -921,32 +922,32 @@ function PmsIncomePage() {
             <h3 className="text-lg font-bold text-gray-800 mb-4">{editingManualEntry ? '編輯代訂記錄' : '新增代訂中心記錄'}（{manualMonth || '請選月份'}）</h3>
             <div className="space-y-3 text-sm">
               <div>
-                <label className="block text-gray-600 mb-1">代訂中心名稱 *</label>
-                <input value={manualEntryForm.agencyName} onChange={e => setManualEntryForm(f => ({ ...f, agencyName: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 林董代訂(湯總)" />
+                <label htmlFor="f-9" className="block text-gray-600 mb-1">代訂中心名稱 *</label>
+                <input id="f-9" value={manualEntryForm.agencyName} onChange={e => setManualEntryForm(f => ({ ...f, agencyName: e.target.value }))} className="w-full border rounded px-3 py-2" placeholder="如 林董代訂(湯總)" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">本月房租總額 *</label>
-                <input type="number" step="0.01" value={manualEntryForm.totalRoomRent} onChange={e => { const v = e.target.value; setManualEntryForm(f => ({ ...f, totalRoomRent: v })); }} className="w-full border rounded px-3 py-2" />
+                <label htmlFor="f-10" className="block text-gray-600 mb-1">本月房租總額 *</label>
+                <input id="f-10" type="number" step="0.01" value={manualEntryForm.totalRoomRent} onChange={e => { const v = e.target.value; setManualEntryForm(f => ({ ...f, totalRoomRent: v })); }} className="w-full border rounded px-3 py-2" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">房晚數</label>
-                <input type="number" value={manualEntryForm.roomNights} onChange={e => setManualEntryForm(f => ({ ...f, roomNights: e.target.value }))} className="w-full border rounded px-3 py-2" />
+                <label htmlFor="f-11" className="block text-gray-600 mb-1">房晚數</label>
+                <input id="f-11" type="number" value={manualEntryForm.roomNights} onChange={e => setManualEntryForm(f => ({ ...f, roomNights: e.target.value }))} className="w-full border rounded px-3 py-2" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">佣金 %</label>
-                <input type="number" step="0.01" value={manualEntryForm.commissionPercentage} onChange={e => setManualEntryForm(f => ({ ...f, commissionPercentage: e.target.value }))} className="w-full border rounded px-3 py-2" />
+                <label htmlFor="f-12" className="block text-gray-600 mb-1">佣金 %</label>
+                <input id="f-12" type="number" step="0.01" value={manualEntryForm.commissionPercentage} onChange={e => setManualEntryForm(f => ({ ...f, commissionPercentage: e.target.value }))} className="w-full border rounded px-3 py-2" />
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">應收/應付</label>
-                <select value={manualEntryForm.arOrAp} onChange={e => setManualEntryForm(f => ({ ...f, arOrAp: e.target.value }))} className="w-full border rounded px-3 py-2">
+                <label htmlFor="f-13" className="block text-gray-600 mb-1">應收/應付</label>
+                <select id="f-13" value={manualEntryForm.arOrAp} onChange={e => setManualEntryForm(f => ({ ...f, arOrAp: e.target.value }))} className="w-full border rounded px-3 py-2">
                   <option value="AP">AP（應付）</option>
                   <option value="AR">AR（應收）</option>
                   <option value="NONE">NONE</option>
                 </select>
               </div>
               <div>
-                <label className="block text-gray-600 mb-1">備註</label>
-                <input value={manualEntryForm.remarks} onChange={e => setManualEntryForm(f => ({ ...f, remarks: e.target.value }))} className="w-full border rounded px-3 py-2" />
+                <label htmlFor="f-14" className="block text-gray-600 mb-1">備註</label>
+                <input id="f-14" value={manualEntryForm.remarks} onChange={e => setManualEntryForm(f => ({ ...f, remarks: e.target.value }))} className="w-full border rounded px-3 py-2" />
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2">

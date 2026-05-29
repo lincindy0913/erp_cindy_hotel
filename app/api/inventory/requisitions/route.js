@@ -4,12 +4,13 @@ import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-access';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 function todayStr() {
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d);
 }
 
 // GET: 領用單列表

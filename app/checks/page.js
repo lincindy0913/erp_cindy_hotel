@@ -8,6 +8,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr, localDateStr } from '@/lib/localDate';
 
 const CHECK_SORT_ACCESSORS = {
   status: (c) => c.status || '',
@@ -126,7 +127,7 @@ export default function ChecksPage() {
   // Batch clear：未兌現 TAB 批次兌現時需填寫兌現日
   const [selectedIds, setSelectedIds] = useState([]);
   const [showBatchClearModal, setShowBatchClearModal] = useState(false);
-  const [batchClearDate, setBatchClearDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [batchClearDate, setBatchClearDate] = useState(() => todayStr());
 
   // Filters
   const [filterStatus, setFilterStatus] = useState('');
@@ -414,7 +415,7 @@ export default function ChecksPage() {
 
   const openBatchClearModal = () => {
     if (selectedIds.length === 0) { showToast('請選擇要兌現的支票', 'error'); return; }
-    setBatchClearDate(new Date().toISOString().split('T')[0]);
+    setBatchClearDate(todayStr());
     setShowBatchClearModal(true);
   };
 
@@ -465,7 +466,7 @@ export default function ChecksPage() {
   const openClear = (check) => {
     setSelectedCheck(check);
     setClearForm({
-      clearDate: new Date().toISOString().split('T')[0],
+      clearDate: todayStr(),
       actualAmount: String(check.amount),
       clearedBy: ''
     });
@@ -521,7 +522,7 @@ export default function ChecksPage() {
     const days = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDateStr(today);
 
     // Collect overdue checks (grouped into a single "overdue" entry)
     const overdueChecks = checks.filter(c =>
@@ -546,7 +547,7 @@ export default function ChecksPage() {
     for (let i = 0; i < scheduleRange; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = localDateStr(d);
       const dayChecks = checks.filter(c =>
         c.dueDate === dateStr && (c.status === 'pending' || c.status === 'due')
       );
@@ -580,44 +581,44 @@ export default function ChecksPage() {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">支票類型 *</label>
-          <select value={addForm.checkType} onChange={e => setAddForm(f => ({ ...f, checkType: e.target.value }))}
+          <label htmlFor="f" className="block text-base font-medium text-gray-700 mb-1">支票類型 *</label>
+          <select id="f" value={addForm.checkType} onChange={e => setAddForm(f => ({ ...f, checkType: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" disabled={isEdit}>
             <option value="payable">應付支票</option>
             <option value="receivable">應收支票</option>
           </select>
         </div>
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">支票號碼 *</label>
-          <input type="text" value={addForm.checkNumber}
+          <label htmlFor="f-2" className="block text-base font-medium text-gray-700 mb-1">支票號碼 *</label>
+          <input id="f-2" type="text" value={addForm.checkNumber}
             onChange={e => setAddForm(f => ({ ...f, checkNumber: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="輸入支票號碼" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">金額 *</label>
-          <input type="number" value={addForm.amount}
+          <label htmlFor="f-3" className="block text-base font-medium text-gray-700 mb-1">金額 *</label>
+          <input id="f-3" type="number" value={addForm.amount}
             onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="0" />
         </div>
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">到期日 *</label>
-          <input type="date" value={addForm.dueDate}
+          <label htmlFor="f-4" className="block text-base font-medium text-gray-700 mb-1">到期日 *</label>
+          <input id="f-4" type="date" value={addForm.dueDate}
             onChange={e => setAddForm(f => ({ ...f, dueDate: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">開票日</label>
-          <input type="date" value={addForm.issueDate}
+          <label htmlFor="f-5" className="block text-base font-medium text-gray-700 mb-1">開票日</label>
+          <input id="f-5" type="date" value={addForm.issueDate}
             onChange={e => setAddForm(f => ({ ...f, issueDate: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
         </div>
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">館別</label>
-          <select value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))}
+          <label htmlFor="f-6" className="block text-base font-medium text-gray-700 mb-1">館別</label>
+          <select id="f-6" value={addForm.warehouse} onChange={e => setAddForm(f => ({ ...f, warehouse: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
             <option value="">全部</option>
             <option value="麗格">麗格</option>
@@ -629,8 +630,8 @@ export default function ChecksPage() {
       {addForm.checkType === 'payable' && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">來源帳戶 *</label>
-            <select value={addForm.sourceAccountId}
+            <label htmlFor="f-7" className="block text-base font-medium text-gray-700 mb-1">來源帳戶 *</label>
+            <select id="f-7" value={addForm.sourceAccountId}
               onChange={e => setAddForm(f => ({ ...f, sourceAccountId: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
               <option value="">選擇帳戶</option>
@@ -640,8 +641,8 @@ export default function ChecksPage() {
             </select>
           </div>
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">收款人</label>
-            <input type="text" value={addForm.payeeName}
+            <label htmlFor="f-26" className="block text-base font-medium text-gray-700 mb-1">收款人</label>
+            <input id="f-26" type="text" value={addForm.payeeName}
               onChange={e => setAddForm(f => ({ ...f, payeeName: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
           </div>
@@ -650,8 +651,8 @@ export default function ChecksPage() {
       {addForm.checkType === 'receivable' && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">目的帳戶 *</label>
-            <select value={addForm.destinationAccountId}
+            <label htmlFor="f-8" className="block text-base font-medium text-gray-700 mb-1">目的帳戶 *</label>
+            <select id="f-8" value={addForm.destinationAccountId}
               onChange={e => setAddForm(f => ({ ...f, destinationAccountId: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
               <option value="">選擇帳戶</option>
@@ -661,8 +662,8 @@ export default function ChecksPage() {
             </select>
           </div>
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">開票人</label>
-            <input type="text" value={addForm.drawerName}
+            <label htmlFor="f-27" className="block text-base font-medium text-gray-700 mb-1">開票人</label>
+            <input id="f-27" type="text" value={addForm.drawerName}
               onChange={e => setAddForm(f => ({ ...f, drawerName: e.target.value }))}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
           </div>
@@ -670,8 +671,8 @@ export default function ChecksPage() {
       )}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">供應商</label>
-          <select value={addForm.supplierId}
+          <label htmlFor="f-23" className="block text-base font-medium text-gray-700 mb-1">供應商</label>
+          <select id="f-23" value={addForm.supplierId}
             onChange={e => setAddForm(f => ({ ...f, supplierId: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base">
             <option value="">無</option>
@@ -681,15 +682,15 @@ export default function ChecksPage() {
           </select>
         </div>
         <div>
-          <label className="block text-base font-medium text-gray-700 mb-1">銀行名稱</label>
-          <input type="text" value={addForm.bankName}
+          <label htmlFor="f-28" className="block text-base font-medium text-gray-700 mb-1">銀行名稱</label>
+          <input id="f-28" type="text" value={addForm.bankName}
             onChange={e => setAddForm(f => ({ ...f, bankName: e.target.value }))}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
         </div>
       </div>
       <div>
-        <label className="block text-base font-medium text-gray-700 mb-1">備註</label>
-        <textarea value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))}
+        <label htmlFor="f-24" className="block text-base font-medium text-gray-700 mb-1">備註</label>
+        <textarea id="f-24" value={addForm.note} onChange={e => setAddForm(f => ({ ...f, note: e.target.value }))}
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={2} />
       </div>
       <div className="flex justify-end gap-3 pt-2">
@@ -876,8 +877,8 @@ export default function ChecksPage() {
         {/* Filters */}
         <div className="flex flex-wrap items-end gap-3 bg-gray-50 p-4 rounded-lg">
           <div>
-            <label className="block text-sm text-gray-500 mb-1">狀態</label>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            <label htmlFor="f-9" className="block text-sm text-gray-500 mb-1">狀態</label>
+            <select id="f-9" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
               <option value="">全部</option>
               <option value="pending">待處理</option>
@@ -888,19 +889,19 @@ export default function ChecksPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-gray-500 mb-1">到期日起</label>
-            <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+            <label htmlFor="f-10" className="block text-sm text-gray-500 mb-1">到期日起</label>
+            <input id="f-10" type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
           </div>
           <div>
-            <label className="block text-sm text-gray-500 mb-1">到期日迄</label>
-            <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+            <label htmlFor="f-11" className="block text-sm text-gray-500 mb-1">到期日迄</label>
+            <input id="f-11" type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
               className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
           </div>
           {type === 'payable' && (
             <div>
-              <label className="block text-sm text-gray-500 mb-1">供應商</label>
-              <select value={filterSupplierId} onChange={e => setFilterSupplierId(e.target.value)}
+              <label htmlFor="f-12" className="block text-sm text-gray-500 mb-1">供應商</label>
+              <select id="f-12" value={filterSupplierId} onChange={e => setFilterSupplierId(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
                 <option value="">全部</option>
                 {suppliers.map(s => (
@@ -1086,15 +1087,15 @@ export default function ChecksPage() {
   // ============== TAB: STATS ==============
   const renderStatsTab = () => {
     const bouncedChecks = checks.filter(c => c.status === 'bounced');
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const overdueChecks = checks.filter(c => (c.status === 'pending' || c.status === 'due') && c.dueDate < today);
 
     return (
       <div className="space-y-6">
         {/* Month selector */}
         <div className="flex items-center gap-3 bg-gray-50 p-4 rounded-lg">
-          <label className="text-base text-gray-600">統計月份:</label>
-          <select value={statsYear} onChange={e => setStatsYear(parseInt(e.target.value))}
+          <label htmlFor="f-25" className="text-base text-gray-600">統計月份:</label>
+          <select id="f-25" value={statsYear} onChange={e => setStatsYear(parseInt(e.target.value))}
             className="border border-gray-300 rounded-lg px-3 py-1.5 text-base">
             {[2024, 2025, 2026, 2027].map(y => (
               <option key={y} value={y}>{y}</option>
@@ -1391,20 +1392,20 @@ export default function ChecksPage() {
               </div>
             </div>
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">兌現日期</label>
-              <input type="date" value={clearForm.clearDate}
+              <label htmlFor="f-13" className="block text-base font-medium text-gray-700 mb-1">兌現日期</label>
+              <input id="f-13" type="date" value={clearForm.clearDate}
                 onChange={e => setClearForm(f => ({ ...f, clearDate: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
             </div>
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">實際金額</label>
-              <input type="number" value={clearForm.actualAmount}
+              <label htmlFor="f-14" className="block text-base font-medium text-gray-700 mb-1">實際金額</label>
+              <input id="f-14" type="number" value={clearForm.actualAmount}
                 onChange={e => setClearForm(f => ({ ...f, actualAmount: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" />
             </div>
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">兌現人</label>
-              <input type="text" value={clearForm.clearedBy}
+              <label htmlFor="f-15" className="block text-base font-medium text-gray-700 mb-1">兌現人</label>
+              <input id="f-15" type="text" value={clearForm.clearedBy}
                 onChange={e => setClearForm(f => ({ ...f, clearedBy: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" placeholder="選填" />
             </div>
@@ -1434,8 +1435,8 @@ export default function ChecksPage() {
               </div>
             </div>
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">退票原因</label>
-              <textarea value={actionReason} onChange={e => setActionReason(e.target.value)}
+              <label htmlFor="f-16" className="block text-base font-medium text-gray-700 mb-1">退票原因</label>
+              <textarea id="f-16" value={actionReason} onChange={e => setActionReason(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={3}
                 placeholder="輸入退票原因..." />
             </div>
@@ -1479,8 +1480,8 @@ export default function ChecksPage() {
               </div>
             </div>
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">作廢原因</label>
-              <textarea value={actionReason} onChange={e => setActionReason(e.target.value)}
+              <label htmlFor="f-17" className="block text-base font-medium text-gray-700 mb-1">作廢原因</label>
+              <textarea id="f-17" value={actionReason} onChange={e => setActionReason(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base" rows={3}
                 placeholder="輸入作廢原因..." />
             </div>
@@ -1500,8 +1501,8 @@ export default function ChecksPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <p className="text-base text-gray-500">列印日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
             <div className="flex items-center gap-2">
-              <label className="text-base font-medium text-gray-700">館別：</label>
-              <select value={printWarehouse} onChange={e => setPrintWarehouse(e.target.value)}
+              <label htmlFor="f-18" className="text-base font-medium text-gray-700">館別：</label>
+              <select id="f-18" value={printWarehouse} onChange={e => setPrintWarehouse(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-base min-w-[120px]">
                 <option value="">全部</option>
                 <option value="麗格">麗格</option>
@@ -1604,13 +1605,13 @@ export default function ChecksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm text-gray-500 mb-1">日期起</label>
-              <input type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
+              <label htmlFor="f-19" className="block text-sm text-gray-500 mb-1">日期起</label>
+              <input id="f-19" type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <div>
-              <label className="block text-sm text-gray-500 mb-1">日期迄</label>
-              <input type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
+              <label htmlFor="f-20" className="block text-sm text-gray-500 mb-1">日期迄</label>
+              <input id="f-20" type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <button onClick={() => handlePrintSearch('payment')} disabled={printSearchLoading}
@@ -1713,13 +1714,13 @@ export default function ChecksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm text-gray-500 mb-1">日期起</label>
-              <input type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
+              <label htmlFor="f-21" className="block text-sm text-gray-500 mb-1">日期起</label>
+              <input id="f-21" type="date" value={printSearchDateFrom} onChange={e => setPrintSearchDateFrom(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <div>
-              <label className="block text-sm text-gray-500 mb-1">日期迄</label>
-              <input type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
+              <label htmlFor="f-22" className="block text-sm text-gray-500 mb-1">日期迄</label>
+              <input id="f-22" type="date" value={printSearchDateTo} onChange={e => setPrintSearchDateTo(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-1.5 text-base" />
             </div>
             <button onClick={() => handlePrintSearch('purchase')} disabled={printSearchLoading}

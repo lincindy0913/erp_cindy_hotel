@@ -223,8 +223,8 @@ export default function FundManagementPage() {
             )}
             <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">帳戶序號</label>
-                <input
+                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">帳戶序號</label>
+                <input id="f"
                   type="text"
                   value={formData.accountCode}
                   onChange={(e) => setFormData(prev => ({ ...prev, accountCode: e.target.value }))}
@@ -233,8 +233,8 @@ export default function FundManagementPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">分類 *</label>
-                <select
+                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">分類 *</label>
+                <select id="f-2"
                   value={formData.type}
                   onChange={(e) => handleTypeChange(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -246,8 +246,8 @@ export default function FundManagementPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">帳戶名稱 *</label>
-                <input
+                <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">帳戶名稱 *</label>
+                <input id="f-4"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -257,8 +257,8 @@ export default function FundManagementPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">館別</label>
-                <select
+                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">館別</label>
+                <select id="f-3"
                   value={formData.warehouse}
                   onChange={(e) => setFormData(prev => ({ ...prev, warehouse: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm"
@@ -270,8 +270,8 @@ export default function FundManagementPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">期初餘額</label>
-                <input
+                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">期初餘額</label>
+                <input id="f-5"
                   type="number"
                   step="0.01"
                   value={formData.openingBalance}

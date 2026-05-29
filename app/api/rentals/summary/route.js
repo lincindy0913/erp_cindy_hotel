@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export async function GET() {
     const now = new Date();
     const thisYear = now.getFullYear();
     const thisMonth = now.getMonth() + 1;
-    const today = now.toISOString().split('T')[0];
+    const today = localDateStr(now);
 
     // Total properties by status
     const totalProperties = await prisma.rentalProperty.count();
@@ -44,7 +45,7 @@ export async function GET() {
 
     // Expiring contracts (within 60 days)
     const futureDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-    const futureDateStr = futureDate.toISOString().split('T')[0];
+    const futureDateStr = localDateStr(futureDate);
 
     const expiringContracts = await prisma.rentalContract.count({
       where: {

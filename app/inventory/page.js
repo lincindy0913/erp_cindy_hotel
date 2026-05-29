@@ -8,6 +8,7 @@ import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { useConfirm } from '@/context/ConfirmContext';
+import { todayStr } from '@/lib/localDate';
 
 const TABS = [
   { key: 'query', label: '庫存查詢', icon: '📦' },
@@ -18,7 +19,7 @@ const TABS = [
 ];
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return todayStr();
 }
 
 // Combobox: text input with styled suggestion dropdown
@@ -705,27 +706,27 @@ export default function InventoryPage() {
             <div className="bg-white rounded-xl shadow-sm border p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">關鍵字（商品/廠商/單號）</label>
-                  <input type="text" value={inboundSearch} onChange={e => setInboundSearch(e.target.value)}
+                  <label htmlFor="f" className="block text-xs text-gray-500 mb-1">關鍵字（商品/廠商/單號）</label>
+                  <input id="f" type="text" value={inboundSearch} onChange={e => setInboundSearch(e.target.value)}
                     placeholder="搜尋..." className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select value={inboundWareFilter} onChange={e => setInboundWareFilter(e.target.value)}
+                  <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">館別</label>
+                  <select id="f-2" value={inboundWareFilter} onChange={e => setInboundWareFilter(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">全部館別</option>
                     {uniqueWarehouses.map(w => <option key={w} value={w}>{w}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">進貨日期起</label>
-                  <input type="date" value={inboundDateFrom} onChange={e => setInboundDateFrom(e.target.value)}
+                  <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">進貨日期起</label>
+                  <input id="f-7" type="date" value={inboundDateFrom} onChange={e => setInboundDateFrom(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">進貨日期迄</label>
-                    <input type="date" value={inboundDateTo} onChange={e => setInboundDateTo(e.target.value)}
+                    <label htmlFor="f-8" className="block text-xs text-gray-500 mb-1">進貨日期迄</label>
+                    <input id="f-8" type="date" value={inboundDateTo} onChange={e => setInboundDateTo(e.target.value)}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <button onClick={() => { setInboundSearch(''); setInboundWareFilter(''); setInboundDateFrom(''); setInboundDateTo(''); }}
@@ -993,8 +994,8 @@ export default function InventoryPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">數量 *</label>
-                  <input
+                  <label htmlFor="f-9" className="block text-sm text-gray-600 mb-1">數量 *</label>
+                  <input id="f-9"
                     type="number"
                     min="1"
                     value={reqForm.quantity}
@@ -1003,8 +1004,8 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">備註</label>
-                  <input
+                  <label htmlFor="f-10" className="block text-sm text-gray-600 mb-1">備註</label>
+                  <input id="f-10"
                     type="text"
                     value={reqForm.note}
                     onChange={e => setReqForm(prev => ({ ...prev, note: e.target.value }))}
@@ -1077,8 +1078,8 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">產品 *</label>
-                  <select
+                  <label htmlFor="f-3" className="block text-sm text-gray-600 mb-1">產品 *</label>
+                  <select id="f-3"
                     value={trfForm.productId}
                     onChange={e => {
                       const p = products.find(x => x.id === Number(e.target.value));
@@ -1091,8 +1092,8 @@ export default function InventoryPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">數量 *</label>
-                  <input
+                  <label htmlFor="f-11" className="block text-sm text-gray-600 mb-1">數量 *</label>
+                  <input id="f-11"
                     type="number"
                     min="1"
                     value={trfForm.quantity}
@@ -1101,8 +1102,8 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">備註</label>
-                  <input
+                  <label htmlFor="f-12" className="block text-sm text-gray-600 mb-1">備註</label>
+                  <input id="f-12"
                     type="text"
                     value={trfForm.note}
                     onChange={e => setTrfForm(prev => ({ ...prev, note: e.target.value }))}
@@ -1171,8 +1172,8 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">盤點日期</label>
-                  <input
+                  <label htmlFor="f-4" className="block text-sm text-gray-600 mb-1">盤點日期</label>
+                  <input id="f-4"
                     type="date"
                     value={countForm.countDate}
                     onChange={e => setCountForm(prev => ({ ...prev, countDate: e.target.value }))}
@@ -1283,8 +1284,8 @@ export default function InventoryPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">設定為（目標數量） *</label>
-                <input
+                <label htmlFor="f-5" className="block text-sm text-gray-600 mb-1">設定為（目標數量） *</label>
+                <input id="f-5"
                   type="number"
                   value={adjustForm.targetQty}
                   onChange={e => setAdjustForm(prev => ({ ...prev, targetQty: e.target.value }))}
@@ -1293,8 +1294,8 @@ export default function InventoryPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">原因</label>
-                <input
+                <label htmlFor="f-6" className="block text-sm text-gray-600 mb-1">原因</label>
+                <input id="f-6"
                   type="text"
                   value={adjustForm.reason}
                   onChange={e => setAdjustForm(prev => ({ ...prev, reason: e.target.value }))}
