@@ -10,6 +10,7 @@ import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import PropertyModal from '@/components/PropertyModal';
 import { todayStr } from '@/lib/localDate';
+import { PROPERTY_STATUSES, PROPERTY_STATUS_LABEL } from '@/lib/propertyStatus';
 
 const ASSET_TYPE_OPTIONS = [
   { value: 'BUILDING', label: '建物' },
@@ -18,14 +19,7 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'OTHER', label: '其他' },
 ];
 
-const STATUS_LABELS = {
-  rented: '已出租',
-  available: '空置',
-  maintenance: '維護中',
-  renovation: '裝修中',
-  pending: '洽談中',
-  inactive: '停用',
-};
+// PROPERTY_STATUSES / PROPERTY_STATUS_LABEL → imported from @/lib/propertyStatus
 
 function fmtMoney(n) {
   if (n == null || n === '') return '—';
@@ -315,7 +309,7 @@ function AssetsPageInner() {
       p.sortOrder ?? '',
       p.name + (p.unitNo ? `(${p.unitNo})` : ''),
       p.category || '',
-      STATUS_LABELS[p.status] || p.status || '',
+      PROPERTY_STATUS_LABEL[p.status] || p.status || '',
       p.currentTenantName || '',
       p.currentMonthlyRent || '',
       p.rentIncome || 0,
@@ -733,7 +727,7 @@ function AssetsPageInner() {
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
               className="border rounded px-2 py-1.5 text-sm">
               <option value="">全部狀態</option>
-              {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {PROPERTY_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
             <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
               className="border rounded px-2 py-1.5 text-sm">
@@ -853,7 +847,7 @@ function AssetsPageInner() {
                               onBlur={() => savePropField(p.id, 'status', propInlineEdit.value)}
                               onKeyDown={e => { if (e.key === 'Escape') setPropInlineEdit(null); }}
                               className="border border-indigo-400 rounded px-1 py-0.5 text-xs outline-none ring-1 ring-indigo-400">
-                              {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                              {PROPERTY_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                             </select>
                           ) : (
                             <span
@@ -863,7 +857,7 @@ function AssetsPageInner() {
                                 ${p.status === 'rented' ? 'bg-green-100 text-green-700'
                                 : p.status === 'available' ? 'bg-gray-100 text-gray-500'
                                 : 'bg-yellow-100 text-yellow-700'}`}>
-                              {STATUS_LABELS[p.status] || p.status || '—'}
+                              {PROPERTY_STATUS_LABEL[p.status] || p.status || '—'}
                               {p.currentContractStatus === 'active' && p.status !== 'rented' && (
                                 <Link href={`/rentals?propertyId=${p.id}&tab=contracts`} onClick={e => e.stopPropagation()}
                                   className="ml-1 text-amber-500 hover:text-amber-700" title="有活躍合約但狀態非已出租，點擊前往合約管理">⚠</Link>
@@ -993,7 +987,7 @@ function AssetsPageInner() {
                     {selected.unitNo && <span className="text-sm text-gray-500 ml-1">({selected.unitNo})</span>}
                   </h3>
                   <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${selected.status === 'rented' ? 'bg-green-100 text-green-700' : selected.status === 'available' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-100 text-yellow-700'}`}>
-                    {STATUS_LABELS[selected.status] || selected.status}
+                    {PROPERTY_STATUS_LABEL[selected.status] || selected.status}
                   </span>
                   {selected.publicInterestLandlord && (
                     <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">公益出租人</span>

@@ -1,15 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-
-const PROPERTY_STATUSES = [
-  { value: 'available',    label: '空置' },
-  { value: 'rented',       label: '已出租' },
-  { value: 'maintenance',  label: '維護中' },
-  { value: 'renovation',   label: '裝修中' },
-  { value: 'pending',      label: '洽談中' },
-  { value: 'inactive',     label: '停用' },
-];
+import { PROPERTY_STATUSES } from '@/lib/propertyStatus';
 
 /**
  * 共用物業編輯 Modal（assets + rentals 兩頁共用）
