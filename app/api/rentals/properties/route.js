@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,6 +111,15 @@ export async function POST(request) {
         publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
         collectUtilityFee: body.collectUtilityFee === true,
       }
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_PROPERTY_CREATE,
+      targetModule: 'rentals',
+      targetRecordId: property.id,
+      targetRecordNo: property.name,
+      afterState: { name: property.name, status: property.status },
+      note: `新增物業「${property.name}」`,
     });
 
     return NextResponse.json(property, { status: 201 });

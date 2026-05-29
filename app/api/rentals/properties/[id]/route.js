@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,9 +86,28 @@ export async function PATCH(request, { params }) {
 
     if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
 
+    // 先讀舊值（只取要追蹤的欄位）
+    const before = await prisma.rentalProperty.findUnique({
+      where: { id: propertyId },
+      select: { name: true, status: true },
+    });
+
     const property = await prisma.rentalProperty.update({
       where: { id: propertyId },
       data,
+    });
+
+    const statusChanged = data.status !== undefined && data.status !== before?.status;
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_PROPERTY_UPDATE,
+      targetModule: 'rentals',
+      targetRecordId: propertyId,
+      targetRecordNo: before?.name,
+      beforeState: statusChanged ? { status: before.status } : undefined,
+      afterState:  statusChanged ? { status: data.status }   : undefined,
+      note: statusChanged
+        ? `物業「${before?.name}」狀態：${before.status} → ${data.status}`
+        : `更新物業「${before?.name}」資料`,
     });
 
     return NextResponse.json(property);
@@ -127,6 +147,15 @@ export async function DELETE(request, { params }) {
         counts: { contractCount, incomeCount, taxCount, maintenanceCount },
       }, { status: 400 });
     }
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_PROPERTY_DELETE,
+      targetModule: 'rentals',
+      targetRecordId: propertyId,
+      targetRecordNo: existing.name,
+      beforeState: { name: existing.name, status: existing.status },
+      note: `刪除物業「${existing.name}」${total > 0 ? `（強制，含 ${total} 筆關聯資料）` : ''}`,
+    });
 
     await prisma.$transaction(async (tx) => {
       if (total > 0) {

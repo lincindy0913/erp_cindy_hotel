@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr, localDateStr } from '@/lib/localDate';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,6 +151,24 @@ export async function POST(request) {
         });
       }
     }
+
+    const tenantName = contract.tenant?.fullName || contract.tenant?.companyName || `tenant#${tenantId}`;
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_CONTRACT_CREATE,
+      targetModule: 'rentals',
+      targetRecordId: contract.id,
+      targetRecordNo: contract.contractNo,
+      afterState: {
+        contractNo: contract.contractNo,
+        propertyName: contract.property?.name,
+        tenantName,
+        monthlyRent: parseFloat(monthlyRent),
+        startDate,
+        endDate,
+        status: newStatus,
+      },
+      note: `新增合約「${contract.contractNo}」— ${contract.property?.name} / ${tenantName}`,
+    });
 
     return NextResponse.json(contract, { status: 201 });
   } catch (error) {
