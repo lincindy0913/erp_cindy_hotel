@@ -12,6 +12,12 @@ import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
 import { todayStr } from '@/lib/localDate';
 import { useDepositMatch } from './_hooks/useDepositMatch';
+import CalendarTab      from './_tabs/CalendarTab';
+import OccupancyTab     from './_tabs/OccupancyTab';
+import PayAuditTab      from './_tabs/PayAuditTab';
+import SourceAnalysisTab from './_tabs/SourceAnalysisTab';
+import OtaAnalyticsTab  from './_tabs/OtaAnalyticsTab';
+import GuestHistoryTab  from './_tabs/GuestHistoryTab';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const DEFAULT_WAREHOUSE = '民宿';
@@ -4674,582 +4680,64 @@ function BnbPage() {
         )}
 
         {/* ══ Tab: 訂房日曆 ══ */}
-        {activeTab === 'analytics' && analyticsSub === 'calendar' && (() => {
-          const daysInMonth = new Date(calYear, calMonth, 0).getDate();
-          const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-          // 統計每天有幾筆入住中的訂單
-          const dayMap = {};
-          for (const r of calData) {
-            if (r.status === '已刪除') continue;
-            const inn  = new Date(r.checkInDate);
-            const out  = new Date(r.checkOutDate);
-            for (let d = new Date(inn); d < out; d.setDate(d.getDate() + 1)) {
-              if (d.getFullYear() === calYear && d.getMonth() + 1 === calMonth) {
-                const key = d.getDate();
-                if (!dayMap[key]) dayMap[key] = [];
-                dayMap[key].push(r);
-              }
-            }
-          }
-          const firstDay = new Date(calYear, calMonth - 1, 1).getDay(); // 0=Sun
-          const cells = [];
-          for (let i = 0; i < firstDay; i++) cells.push(null);
-          for (const d of days) cells.push(d);
-          const weekLabels = ['日','一','二','三','四','五','六'];
-          return (
-            <div className="space-y-4">
-              {/* toolbar */}
-              <div className="flex flex-wrap items-center gap-3">
-                <button onClick={() => { const d = new Date(calYear, calMonth - 2, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth() + 1); }}
-                  className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">← 上月</button>
-                <span className="font-semibold text-gray-800 text-lg">{calYear} 年 {calMonth} 月</span>
-                <button onClick={() => { const d = new Date(calYear, calMonth, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth() + 1); }}
-                  className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">下月 →</button>
-                <select value={calWarehouse} onChange={e => setCalWarehouse(e.target.value)} className={inputCls}>
-                  <option value="">全館</option>
-                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={calWarehouse} onChange={setCalWarehouse} />
-                {calLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
-              </div>
-              {/* calendar grid */}
-              <div className="bg-white rounded-xl shadow overflow-hidden">
-                <div className="grid grid-cols-7 border-b">
-                  {weekLabels.map(w => (
-                    <div key={w} className={`py-2 text-center text-xs font-medium ${w === '日' ? 'text-red-400' : w === '六' ? 'text-blue-400' : 'text-gray-500'}`}>{w}</div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 auto-rows-[minmax(80px,auto)]">
-                  {cells.map((day, idx) => {
-                    if (!day) return <div key={`e${idx}`} className="border-b border-r border-gray-50" />;
-                    const bookings = dayMap[day] || [];
-                    const isToday = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(day).padStart(2,'0')}` === new Date().toISOString().slice(0,10);
-                    const dow = (firstDay + day - 1) % 7;
-                    const hasUnfilled = bookings.some(b => !b.paymentFilled && !b.paymentLocked);
-                    return (
-                      <div key={day} className={`border-b border-r border-gray-100 p-1.5 ${isToday ? 'bg-indigo-50' : hasUnfilled ? 'bg-red-50/40' : bookings.length > 0 ? 'bg-green-50/40' : ''}`}>
-                        <div className={`text-xs font-semibold mb-1 ${isToday ? 'text-indigo-600' : dow === 0 ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-gray-500'}`}>{day}</div>
-                        {bookings.slice(0, 3).map(b => {
-                          const chipCls = b.paymentLocked
-                            ? 'bg-gray-100 text-gray-500'
-                            : !b.paymentFilled
-                            ? 'bg-red-100 text-red-600'
-                            : 'bg-green-100 text-green-700';
-                          const prefix = b.paymentLocked ? '🔒 ' : '';
-                          return (
-                            <div key={b.id} className={`text-[10px] leading-4 px-1 rounded truncate mb-0.5 ${chipCls}`}
-                              title={`${b.guestName} ${b.checkInDate}~${b.checkOutDate}${b.paymentLocked ? ' [已鎖帳]' : !b.paymentFilled ? ' [未付款]' : ''}`}>
-                              {prefix}{b.roomNo ? `${b.roomNo} ` : ''}{b.guestName}
-                            </div>
-                          );
-                        })}
-                        {bookings.length > 3 && <div className="text-[10px] text-gray-400">+{bookings.length - 3}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              {/* legend */}
-              <div className="text-xs text-gray-400 flex flex-wrap gap-4">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" />已付款</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-100 inline-block" />未付款</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 inline-block" />已鎖帳</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-50 inline-block" />今日</span>
-                <span>共 {calData.filter(r => r.status !== '已刪除').length} 筆訂房</span>
-              </div>
-            </div>
-          );
-        })()}
-
+        {activeTab === 'analytics' && analyticsSub === 'calendar' && (
+          <CalendarTab
+            calYear={calYear} setCalYear={setCalYear}
+            calMonth={calMonth} setCalMonth={setCalMonth}
+            calWarehouse={calWarehouse} setCalWarehouse={setCalWarehouse}
+            calData={calData} calLoading={calLoading}
+            warehouseList={warehouseList}
+          />
+        )}
+        {/* ══ Tab: 入住率統計 ══ */}
         {/* ══ Tab: 入住率統計 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'occupancy' && (
-          <div className="space-y-4">
-            {/* toolbar */}
-            <div className="flex flex-wrap items-center gap-3">
-              <input type="number" min="2020" max="2035" value={occYear} onChange={e => setOccYear(e.target.value)}
-                className={inputCls + ' w-24'} placeholder="年度" />
-              <select value={occWarehouse} onChange={e => setOccWarehouse(e.target.value)} className={inputCls}>
-                <option value="">全館</option>
-                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-              <WhQuickBtns list={warehouseList} value={occWarehouse} onChange={setOccWarehouse} />
-              <button onClick={fetchOccupancy} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
-              {occLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
-            </div>
-            {occData && (() => {
-              const rows = occData.rows || [];
-              const totalBookings = rows.reduce((s, r) => s + r.bookings, 0);
-              const totalRevenue  = rows.reduce((s, r) => s + r.revenue,  0);
-              const totalNights   = rows.reduce((s, r) => s + r.roomNights, 0);
-              return (
-                <>
-                  {/* KPI */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: '全年訂房數', value: totalBookings, color: 'text-indigo-600' },
-                      { label: '住宿房夜', value: `${totalNights} 晚`, color: 'text-teal-600' },
-                      { label: '全年收入', value: `NT$ ${totalRevenue.toLocaleString()}`, color: 'text-emerald-600' },
-                      { label: '平均住宿天數', value: `${totalBookings > 0 ? (totalNights / totalBookings).toFixed(1) : 0} 晚`, color: 'text-amber-600' },
-                    ].map(k => (
-                      <div key={k.label} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                        <div className="text-xs text-gray-400 mb-1">{k.label}</div>
-                        <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {/* monthly bar chart */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-4">月度訂房數與收入</h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="sticky top-0 z-10 bg-white">
-                          <tr className="text-xs text-gray-400 border-b">
-                            <th className="text-left py-2 pr-3 font-medium">月份</th>
-                            <th className="text-right py-2 px-2 font-medium">訂房</th>
-                            <th className="text-right py-2 px-2 font-medium">房夜</th>
-                            <th className="text-right py-2 px-2 font-medium">均住</th>
-                            <th className="text-right py-2 px-2 font-medium">收入</th>
-                            <th className="py-2 pl-3 font-medium w-40">訂房比例</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {rows.map(r => {
-                            const pct = totalBookings > 0 ? Math.round(r.bookings / totalBookings * 100) : 0;
-                            return (
-                              <tr key={r.month} className="hover:bg-gray-50">
-                                <td className="py-2 pr-3 text-gray-600 font-medium">{r.month}</td>
-                                <td className="py-2 px-2 text-right text-indigo-600 font-semibold">{r.bookings}</td>
-                                <td className="py-2 px-2 text-right text-teal-600">{r.roomNights}</td>
-                                <td className="py-2 px-2 text-right text-gray-500">{r.avgStay}</td>
-                                <td className="py-2 px-2 text-right text-emerald-600">NT$ {r.revenue.toLocaleString()}</td>
-                                <td className="py-2 pl-3">
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2">
-                                      <div className="bg-indigo-400 rounded-full h-2 transition-all" style={{ width: `${pct}%` }} />
-                                    </div>
-                                    <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+          <OccupancyTab
+            occYear={occYear} setOccYear={setOccYear}
+            occWarehouse={occWarehouse} setOccWarehouse={setOccWarehouse}
+            occData={occData} occLoading={occLoading}
+            fetchOccupancy={fetchOccupancy} warehouseList={warehouseList}
+          />
         )}
 
         {/* ══ Tab: 付款稽核 ══ */}
-        {activeTab === 'payAudit' && (() => {
-          const unfilled   = auditData.filter(r => !r.paymentFilled);
-          const mismatched = auditData.filter(r => {
-            if (!r.paymentFilled) return false;
-            const pay = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
-            const chg = Number(r.roomCharge) + Number(r.otherCharge);
-            return Math.abs(pay - chg) > 0.01;
-          });
-          const ok = auditData.length - unfilled.length - mismatched.length;
-          return (
-            <div className="space-y-4">
-              {/* toolbar */}
-              <div className="flex flex-wrap items-center gap-3">
-                <input type="month" value={auditMonth} onChange={e => setAuditMonth(e.target.value)} className={inputCls} />
-                <select value={auditWarehouse} onChange={e => setAuditWarehouse(e.target.value)} className={inputCls}>
-                  <option value="">全館</option>
-                  {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-                <WhQuickBtns list={warehouseList} value={auditWarehouse} onChange={setAuditWarehouse} />
-                <button onClick={fetchAudit} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
-                {auditLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
-              </div>
-              {auditData.length > 0 && (
-                <>
-                  {/* summary cards */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
-                      <div className="text-xs text-emerald-600 mb-1">付款完整</div>
-                      <div className="text-2xl font-bold text-emerald-700">{ok}</div>
-                      <div className="text-[10px] text-emerald-400 mt-1">{auditData.length > 0 ? Math.round(ok / auditData.length * 100) : 0}%</div>
-                    </div>
-                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                      <div className="text-xs text-amber-600 mb-1">未填付款</div>
-                      <div className="text-2xl font-bold text-amber-700">{unfilled.length}</div>
-                    </div>
-                    <div className="bg-red-50 rounded-xl p-4 border border-red-100">
-                      <div className="text-xs text-red-600 mb-1">金額不符</div>
-                      <div className="text-2xl font-bold text-red-700">{mismatched.length}</div>
-                    </div>
-                  </div>
-                  {/* problem records */}
-                  {(unfilled.length > 0 || mismatched.length > 0) && (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                      <div className="px-5 py-3 bg-red-50 border-b border-red-100">
-                        <h4 className="text-sm font-semibold text-red-700">需處理記錄</h4>
-                      </div>
-                      <table className="w-full text-sm">
-                        <thead className="sticky top-0 z-10 bg-gray-50">
-                          <tr className="text-xs text-gray-400 border-b bg-gray-50">
-                            <th className="px-4 py-2 text-left font-medium">問題類型</th>
-                            <th className="px-4 py-2 text-left font-medium">館別</th>
-                            <th className="px-4 py-2 text-left font-medium">姓名</th>
-                            <th className="px-4 py-2 text-left font-medium">入住</th>
-                            <th className="px-4 py-2 text-right font-medium">房費</th>
-                            <th className="px-4 py-2 text-right font-medium">已收</th>
-                            <th className="px-4 py-2 text-right font-medium">差額</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {[...unfilled.map(r => ({ ...r, _issue: '未填付款' })), ...mismatched.map(r => ({ ...r, _issue: '金額不符' }))].map(r => {
-                            const pay = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
-                            const chg = Number(r.roomCharge) + Number(r.otherCharge);
-                            return (
-                              <tr key={r.id} className="hover:bg-red-50/30">
-                                <td className="px-4 py-2">
-                                  <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${r._issue === '未填付款' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>{r._issue}</span>
-                                </td>
-                                <td className="px-4 py-2 text-gray-400 text-xs">{r.warehouse}</td>
-                                <td className="px-4 py-2 font-medium text-gray-700">{r.guestName}</td>
-                                <td className="px-4 py-2 text-gray-500 text-xs">{r.checkInDate}</td>
-                                <td className="px-4 py-2 text-right">{chg.toLocaleString()}</td>
-                                <td className="px-4 py-2 text-right text-teal-600">{pay.toLocaleString()}</td>
-                                <td className={`px-4 py-2 text-right font-semibold ${Math.abs(pay - chg) > 0.01 ? 'text-red-500' : 'text-gray-300'}`}>
-                                  {pay - chg !== 0 ? (pay - chg > 0 ? '+' : '') + Math.round(pay - chg).toLocaleString() : '—'}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {unfilled.length === 0 && mismatched.length === 0 && (
-                    <div className="text-center py-10 text-emerald-600 bg-emerald-50 rounded-xl border border-emerald-100">
-                      ✓ {auditMonth} 全部 {auditData.length} 筆付款資料完整，無異常
-                    </div>
-                  )}
-                </>
-              )}
-              {!auditLoading && auditData.length === 0 && (
-                <div className="text-center py-10 text-gray-400">請選擇月份後點擊查詢</div>
-              )}
-            </div>
-          );
-        })()}
+        {activeTab === 'payAudit' && (
+          <PayAuditTab
+            auditMonth={auditMonth} setAuditMonth={setAuditMonth}
+            auditWarehouse={auditWarehouse} setAuditWarehouse={setAuditWarehouse}
+            auditData={auditData} auditLoading={auditLoading}
+            fetchAudit={fetchAudit} warehouseList={warehouseList}
+          />
+        )}
 
         {/* ══ Tab: 來源分析 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'sourceAnalysis' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <input type="number" min="2020" max="2035" value={saYear} onChange={e => setSaYear(e.target.value)}
-                className={inputCls + ' w-24'} />
-              <select value={saWarehouse} onChange={e => setSaWarehouse(e.target.value)} className={inputCls}>
-                <option value="">全館</option>
-                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-              <WhQuickBtns list={warehouseList} value={saWarehouse} onChange={setSaWarehouse} />
-              <button onClick={fetchSourceAnalysis} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
-              {saLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
-            </div>
-            {saData && (() => {
-              const sources = saData.sources || [];
-              const trend   = saData.trend   || [];
-              const colors  = ['bg-indigo-400','bg-amber-400','bg-teal-400','bg-rose-400','bg-purple-400','bg-green-400'];
-              const maxBookings = Math.max(...sources.map(s => s.bookings), 1);
-              return (
-                <>
-                  {/* KPI */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">總訂房數</div>
-                      <div className="text-2xl font-bold text-indigo-600">{saData.totalBookings}</div>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">總收入</div>
-                      <div className="text-2xl font-bold text-emerald-600">NT$ {saData.totalRevenue?.toLocaleString()}</div>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">來源數</div>
-                      <div className="text-2xl font-bold text-teal-600">{sources.length}</div>
-                    </div>
-                  </div>
-                  {/* source breakdown */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-4">來源明細</h4>
-                    <div className="space-y-3">
-                      {sources.map((s, i) => (
-                        <div key={s.source} className="space-y-1">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-gray-700">{s.source}</span>
-                            <span className="text-gray-400 text-xs">{s.bookings} 筆 · {s.bookingPct}% · 均 NT${s.avgRevenue?.toLocaleString()} · 均住 {s.avgStay} 晚</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-gray-100 rounded-full h-2.5">
-                              <div className={`${colors[i % colors.length]} rounded-full h-2.5 transition-all`} style={{ width: `${Math.round(s.bookings / maxBookings * 100)}%` }} />
-                            </div>
-                            <span className="text-xs text-emerald-600 w-28 text-right">NT$ {s.revenue?.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  {/* monthly trend table */}
-                  {trend.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 tbl-wrap">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">月度趨勢（訂房數）</h4>
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 z-10 bg-white">
-                          <tr className="border-b text-gray-400">
-                            <th className="text-left py-1.5 pr-3 font-medium">月份</th>
-                            {sources.map(s => <th key={s.source} className="text-right py-1.5 px-2 font-medium">{s.source}</th>)}
-                            <th className="text-right py-1.5 pl-2 font-medium text-gray-600">合計</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {trend.map(t => {
-                            const total = sources.reduce((sum, s) => sum + (t[s.source] || 0), 0);
-                            return (
-                              <tr key={t.month} className="hover:bg-gray-50">
-                                <td className="py-1.5 pr-3 text-gray-600 font-medium">{t.month}</td>
-                                {sources.map(s => (
-                                  <td key={s.source} className="py-1.5 px-2 text-right text-indigo-600">{t[s.source] || 0}</td>
-                                ))}
-                                <td className="py-1.5 pl-2 text-right font-semibold text-gray-700">{total}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
+          <SourceAnalysisTab
+            saYear={saYear} setSaYear={setSaYear}
+            saWarehouse={saWarehouse} setSaWarehouse={setSaWarehouse}
+            saData={saData} saLoading={saLoading}
+            fetchSourceAnalysis={fetchSourceAnalysis} warehouseList={warehouseList}
+          />
         )}
 
         {/* ══ Tab: OTA收益分析 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'otaAnalytics' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <input type="number" min="2020" max="2035" value={oaYear} onChange={e => setOaYear(e.target.value)}
-                className={inputCls + ' w-24'} />
-              <select value={oaWarehouse} onChange={e => setOaWarehouse(e.target.value)} className={inputCls}>
-                <option value="">全館</option>
-                {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
-              </select>
-              <WhQuickBtns list={warehouseList} value={oaWarehouse} onChange={setOaWarehouse} />
-              <button onClick={fetchOtaAnalytics} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
-              {oaLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
-            </div>
-
-            {oaData && (() => {
-              const { months, bySource, totals } = oaData;
-              return (
-                <>
-                  {/* 年度 KPI */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">OTA 收入</div>
-                      <div className="text-xl font-bold text-indigo-600">NT$ {totals.otaRevenue.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">佔比 {totals.otaPct}%</div>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">傭金支出</div>
-                      <div className="text-xl font-bold text-rose-600">NT$ {totals.commissionTotal.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">均率 {totals.avgCommRate}%</div>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">OTA 淨收入</div>
-                      <div className="text-xl font-bold text-emerald-600">NT$ {totals.netOtaRevenue.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">扣除傭金後</div>
-                    </div>
-                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                      <div className="text-xs text-gray-400 mb-1">待付傭金</div>
-                      <div className="text-xl font-bold text-amber-600">NT$ {totals.commissionPending.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">已付 NT$ {totals.commissionPaid.toLocaleString()}</div>
-                    </div>
-                  </div>
-
-                  {/* 來源分析 */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-4">來源分析（{oaData.year} 年）</h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 z-10 bg-white">
-                          <tr className="border-b text-gray-400">
-                            <th className="text-left py-2 pr-3 font-medium">來源</th>
-                            <th className="text-right py-2 px-2 font-medium">訂房</th>
-                            <th className="text-right py-2 px-2 font-medium">收入</th>
-                            <th className="text-right py-2 px-2 font-medium">傭金</th>
-                            <th className="text-right py-2 px-2 font-medium">淨收入</th>
-                            <th className="text-right py-2 pl-2 font-medium">傭金率</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {bySource.map(s => (
-                            <tr key={s.source} className="hover:bg-gray-50">
-                              <td className="py-2 pr-3">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  s.isOta ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
-                                }`}>{s.source}</span>
-                              </td>
-                              <td className="py-2 px-2 text-right text-gray-600">{s.bookings}</td>
-                              <td className="py-2 px-2 text-right font-semibold text-gray-800">NT$ {s.revenue.toLocaleString()}</td>
-                              <td className="py-2 px-2 text-right text-rose-600">
-                                {s.commission > 0 ? `NT$ ${s.commission.toLocaleString()}` : '—'}
-                              </td>
-                              <td className="py-2 px-2 text-right text-emerald-600 font-semibold">NT$ {s.netRevenue.toLocaleString()}</td>
-                              <td className="py-2 pl-2 text-right text-gray-500">
-                                {s.isOta && s.commissionRate > 0 ? `${s.commissionRate}%` : '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* 月度趨勢 */}
-                  <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 tbl-wrap">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">月度 OTA 收益趨勢</h4>
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 z-10 bg-white">
-                        <tr className="border-b text-gray-400">
-                          <th className="text-left py-1.5 pr-3 font-medium">月份</th>
-                          <th className="text-right py-1.5 px-2 font-medium">OTA訂</th>
-                          <th className="text-right py-1.5 px-2 font-medium">OTA收入</th>
-                          <th className="text-right py-1.5 px-2 font-medium">傭金</th>
-                          <th className="text-right py-1.5 px-2 font-medium">待付</th>
-                          <th className="text-right py-1.5 px-2 font-medium">OTA淨收</th>
-                          <th className="text-right py-1.5 pl-2 font-medium text-gray-600">傭金率</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {months.filter(m => m.totalBookings > 0 || m.commissionTotal > 0).map(m => (
-                          <tr key={m.month} className="hover:bg-gray-50">
-                            <td className="py-1.5 pr-3 text-gray-600 font-medium">{m.month}</td>
-                            <td className="py-1.5 px-2 text-right text-indigo-600">{m.otaBookings}</td>
-                            <td className="py-1.5 px-2 text-right font-semibold text-gray-700">
-                              {m.otaRevenue > 0 ? `NT$ ${m.otaRevenue.toLocaleString()}` : '—'}
-                            </td>
-                            <td className="py-1.5 px-2 text-right text-rose-600">
-                              {m.commissionTotal > 0 ? `NT$ ${m.commissionTotal.toLocaleString()}` : '—'}
-                            </td>
-                            <td className={`py-1.5 px-2 text-right ${m.commissionPending > 0 ? 'text-amber-600 font-semibold' : 'text-gray-300'}`}>
-                              {m.commissionPending > 0 ? `NT$ ${m.commissionPending.toLocaleString()}` : '—'}
-                            </td>
-                            <td className="py-1.5 px-2 text-right text-emerald-600 font-semibold">
-                              {m.netOtaRevenue !== 0 ? `NT$ ${m.netOtaRevenue.toLocaleString()}` : '—'}
-                            </td>
-                            <td className="py-1.5 pl-2 text-right text-gray-500">
-                              {m.effectiveCommRate > 0 ? `${m.effectiveCommRate}%` : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className="bg-gray-50 font-semibold">
-                          <td className="py-2 pr-3 text-gray-700">合計</td>
-                          <td className="py-2 px-2 text-right text-indigo-700">{totals.otaBookings}</td>
-                          <td className="py-2 px-2 text-right text-gray-800">NT$ {totals.otaRevenue.toLocaleString()}</td>
-                          <td className="py-2 px-2 text-right text-rose-700">NT$ {totals.commissionTotal.toLocaleString()}</td>
-                          <td className={`py-2 px-2 text-right ${totals.commissionPending > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
-                            {totals.commissionPending > 0 ? `NT$ ${totals.commissionPending.toLocaleString()}` : '—'}
-                          </td>
-                          <td className="py-2 px-2 text-right text-emerald-700">NT$ {totals.netOtaRevenue.toLocaleString()}</td>
-                          <td className="py-2 pl-2 text-right text-gray-600">{totals.avgCommRate}%</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+          <OtaAnalyticsTab
+            oaYear={oaYear} setOaYear={setOaYear}
+            oaWarehouse={oaWarehouse} setOaWarehouse={setOaWarehouse}
+            oaData={oaData} oaLoading={oaLoading}
+            fetchOtaAnalytics={fetchOtaAnalytics} warehouseList={warehouseList}
+          />
         )}
 
         {/* ══ Tab: 房客歷史 ══ */}
         {activeTab === 'guestHistory' && (
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <input type="text" value={ghSearch} onChange={e => setGhSearch(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && fetchGuestHistory()}
-                placeholder="輸入房客姓名搜尋…" className={inputCls + ' flex-1 max-w-xs'} />
-              <button onClick={fetchGuestHistory} disabled={ghLoading}
-                className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-                {ghLoading ? '搜尋中…' : '搜尋'}
-              </button>
-            </div>
-            {ghSearched && !ghLoading && (
-              ghData.length === 0 ? (
-                <div className="text-center py-10 text-gray-400">找不到「{ghSearch}」的訂房記錄</div>
-              ) : (
-                <>
-                  {/* summary for this guest */}
-                  {(() => {
-                    const nonDel = ghData.filter(r => r.status !== '已刪除');
-                    const rev    = nonDel.reduce((s, r) => s + Number(r.roomCharge) + Number(r.otherCharge), 0);
-                    const nights = nonDel.reduce((s, r) => s + Math.max(0, Math.round((new Date(r.checkOutDate) - new Date(r.checkInDate)) / 86400000)), 0);
-                    return (
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                          <div className="text-xs text-gray-400 mb-1">入住次數</div>
-                          <div className="text-2xl font-bold text-indigo-600">{nonDel.length}</div>
-                        </div>
-                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                          <div className="text-xs text-gray-400 mb-1">總住宿天數</div>
-                          <div className="text-2xl font-bold text-teal-600">{nights} 晚</div>
-                        </div>
-                        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                          <div className="text-xs text-gray-400 mb-1">消費總額</div>
-                          <div className="text-2xl font-bold text-emerald-600">NT$ {rev.toLocaleString()}</div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 z-10 bg-gray-50">
-                        <tr className="bg-gray-50 text-xs text-gray-400 border-b">
-                          <th className="px-4 py-2 text-left font-medium">入住月</th>
-                          <th className="px-4 py-2 text-left font-medium">館別</th>
-                          <th className="px-4 py-2 text-left font-medium">房號</th>
-                          <th className="px-4 py-2 text-left font-medium">入住日</th>
-                          <th className="px-4 py-2 text-left font-medium">退房日</th>
-                          <th className="px-4 py-2 text-right font-medium">房費</th>
-                          <th className="px-4 py-2 text-left font-medium">來源</th>
-                          <th className="px-4 py-2 text-left font-medium">狀態</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {ghData.map(r => (
-                          <tr key={r.id} className={`hover:bg-gray-50 ${r.status === '已刪除' ? 'opacity-40' : ''}`}>
-                            <td className="px-4 py-2 text-gray-500 text-xs">{r.importMonth}</td>
-                            <td className="px-4 py-2 text-gray-400 text-xs">{r.warehouse}</td>
-                            <td className="px-4 py-2 text-gray-600 text-xs">{r.roomNo || '—'}</td>
-                            <td className="px-4 py-2 text-gray-700">{r.checkInDate}</td>
-                            <td className="px-4 py-2 text-gray-500 text-xs">{r.checkOutDate}</td>
-                            <td className="px-4 py-2 text-right font-medium text-emerald-600">
-                              NT$ {(Number(r.roomCharge) + Number(r.otherCharge)).toLocaleString()}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-gray-500">{r.source}</td>
-                            <td className="px-4 py-2">
-                              <span className={`text-[11px] px-1.5 py-0.5 rounded ${getStatusColor(r.status)}`}>{r.status || '—'}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )
-            )}
-            {!ghSearched && <div className="text-center py-10 text-gray-300">輸入房客姓名後按 Enter 或點擊搜尋</div>}
-          </div>
+          <GuestHistoryTab
+            ghSearch={ghSearch} setGhSearch={setGhSearch}
+            ghData={ghData} ghLoading={ghLoading}
+            ghSearched={ghSearched} fetchGuestHistory={fetchGuestHistory}
+          />
         )}
-
       </main>
 
       {/* 付款明細 Modal */}
@@ -5427,4 +4915,10 @@ function BnbPage() {
   );
 }
 
-export default function Page() { return <React.Suspense><BnbPage /></React.Suspense>; }
+export default function Page() {
+  return (
+    <React.Suspense fallback={<div className="p-8 text-center text-gray-400">載入中…</div>}>
+      <BnbPage />
+    </React.Suspense>
+  );
+}
