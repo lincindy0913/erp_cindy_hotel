@@ -106,6 +106,35 @@ function AssetsPageInner() {
   });
   const [accounts, setAccounts] = useState([]);
 
+  // Batch select state
+  const [selectedPropIds, setSelectedPropIds] = useState(new Set());
+  const [batchStatus, setBatchStatus] = useState('');
+  const [batchSavingProps, setBatchSavingProps] = useState(false);
+
+  async function handleBatchStatusChange() {
+    if (!selectedPropIds.size || !batchStatus) return;
+    setBatchSavingProps(true);
+    try {
+      const results = await Promise.all([...selectedPropIds].map(id =>
+        fetch(`/api/rentals/properties/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: batchStatus }),
+        })
+      ));
+      const failed = results.filter(r => !r.ok).length;
+      if (failed > 0) {
+        showToast(`${results.length - failed} 筆成功，${failed} 筆失敗`, 'error');
+      } else {
+        showToast(`已將 ${results.length} 筆物業狀態改為「${PROPERTY_STATUS_LABEL[batchStatus] || batchStatus}」`, 'success');
+      }
+      setSelectedPropIds(new Set());
+      setBatchStatus('');
+      await loadProperties();
+    } catch { showToast('批次更新失敗', 'error'); }
+    finally { setBatchSavingProps(false); }
+  }
+
   // Filter state
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -303,13 +332,33 @@ function AssetsPageInner() {
   }, [filteredRows, assetSortKey, assetSortDir]);
 
   function exportCSV() {
-    const headers = ['序號', '物業', '分類', '狀態', '租客', '月租金',
-      `${year}年租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`];
+    const headers = [
+      '序號', '物業', '戶別', '大樓名稱', '地址', '分類', '狀態',
+      '所有權人', '房屋稅稅籍編號', '收租帳戶', '押金帳戶', '收水電費',
+      '公益出租人', '公益申請人', '公益租約起', '公益租約迄', '公益月租金',
+      '綁定資產名稱',
+      '租客', '月租金',
+      `${year}年租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`,
+    ];
     const rows = sortedRows.map(p => [
       p.sortOrder ?? '',
-      p.name + (p.unitNo ? `(${p.unitNo})` : ''),
+      p.name,
+      p.unitNo || '',
+      p.buildingName || '',
+      p.address || '',
       p.category || '',
       PROPERTY_STATUS_LABEL[p.status] || p.status || '',
+      p.ownerName || '',
+      p.houseTaxRegistrationNo || '',
+      p.rentCollectAccount?.name || '',
+      p.depositAccount?.name || '',
+      p.collectUtilityFee ? '是' : '否',
+      p.publicInterestLandlord ? '是' : '否',
+      p.publicInterestApplicant || '',
+      p.publicInterestStartDate || '',
+      p.publicInterestEndDate || '',
+      p.publicInterestRent ?? '',
+      p.asset?.name || '',
       p.currentTenantName || '',
       p.currentMonthlyRent || '',
       p.rentIncome || 0,
@@ -319,7 +368,7 @@ function AssetsPageInner() {
       p.netProfit || 0,
     ]);
     const csv = [headers, ...rows]
-      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
       .join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -742,6 +791,41 @@ function AssetsPageInner() {
               </button>
             )}
             <span className="text-xs text-gray-400 ml-1">共 {sortedRows.length} 筆</span>
+            <button
+              onClick={exportCSV}
+              className="ml-auto text-xs px-3 py-1.5 border rounded text-gray-600 hover:bg-gray-50"
+              title="匯出含公益出租人、綁定資產等完整欄位">
+              ↓ 匯出 CSV
+            </button>
+          </div>
+        )}
+
+        {/* Batch toolbar — visible when any rows are selected */}
+        {canEdit && selectedPropIds.size > 0 && (
+          <div className="flex items-center gap-3 px-3 py-2 mb-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm">
+            <span className="font-medium text-indigo-700">已選 {selectedPropIds.size} 筆</span>
+            <span className="text-gray-400">|</span>
+            <label className="text-gray-600">批次改為</label>
+            <select
+              value={batchStatus}
+              onChange={e => setBatchStatus(e.target.value)}
+              className="border rounded px-2 py-1 text-sm">
+              <option value="">— 選擇狀態 —</option>
+              {PROPERTY_STATUSES.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleBatchStatusChange}
+              disabled={!batchStatus || batchSavingProps}
+              className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+              {batchSavingProps ? '套用中…' : '套用'}
+            </button>
+            <button
+              onClick={() => setSelectedPropIds(new Set())}
+              className="ml-auto text-xs text-gray-500 hover:text-gray-700">
+              取消選取
+            </button>
           </div>
         )}
 
@@ -753,6 +837,20 @@ function AssetsPageInner() {
             <table className="w-full text-sm">
               <thead className="bg-teal-50 text-xs sticky top-0 z-10">
                 <tr>
+                  {canEdit && (
+                    <th className="px-2 py-2 w-8 text-center" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        checked={sortedRows.length > 0 && sortedRows.every(p => selectedPropIds.has(p.id))}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedPropIds(new Set(sortedRows.map(p => p.id)));
+                          else setSelectedPropIds(new Set());
+                        }}
+                        title="全選/取消全選"
+                      />
+                    </th>
+                  )}
                   <SortableTh label="序號" colKey="sortOrder" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="center" />
                   <SortableTh label="物業" colKey="name" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
                   <SortableTh label="分類" colKey="category" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
@@ -771,10 +869,11 @@ function AssetsPageInner() {
               </thead>
               <tbody>
                 {sortedRows.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 14 : 13} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
+                  <tr><td colSpan={canEdit ? 15 : 13} className="text-center py-10 text-gray-400">無符合條件的物業</td></tr>
                 ) : (
                   sortedRows.map(p => {
                     const isSelected = selected?.id === p.id;
+                    const isBatchSelected = selectedPropIds.has(p.id);
                     const highlight = highlightPropertyId && p.id === parseInt(highlightPropertyId, 10);
                     const hasIncome = p.rentIncome > 0;
                     const hasTax = p.houseTax > 0 || p.landTax > 0;
@@ -789,8 +888,23 @@ function AssetsPageInner() {
                         onClick={() => setSelected(isSelected ? null : p)}
                         className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
                           ${highlight ? 'bg-amber-50' : ''}
-                          ${isSelected ? 'bg-teal-50/70' : ''}`}
+                          ${isSelected ? 'bg-teal-50/70' : ''}
+                          ${isBatchSelected ? 'bg-indigo-50/60' : ''}`}
                       >
+                        {canEdit && (
+                          <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="rounded"
+                              checked={isBatchSelected}
+                              onChange={e => {
+                                const next = new Set(selectedPropIds);
+                                if (e.target.checked) next.add(p.id); else next.delete(p.id);
+                                setSelectedPropIds(next);
+                              }}
+                            />
+                          </td>
+                        )}
                         <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
                           {canEdit && propInlineEdit?.propertyId === p.id && propInlineEdit?.field === 'sortOrder' ? (
                             <input
@@ -964,7 +1078,7 @@ function AssetsPageInner() {
                     <td className={`px-3 py-2 text-right ${summary.totalNet >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                       {fmtMoney(summary.totalNet)}
                     </td>
-                    <td colSpan={canEdit ? 2 : 1} />
+                    <td colSpan={canEdit ? 3 : 1} />
                   </tr>
                 </tfoot>
               )}
@@ -1060,6 +1174,13 @@ function AssetsPageInner() {
                   className="text-xs text-blue-700 hover:underline border border-blue-300 bg-blue-50 px-2 py-1 rounded">
                   維護費
                 </Link>
+                {canEdit && (
+                  <button
+                    onClick={() => openPropertyEdit(selected)}
+                    className="text-xs text-indigo-700 hover:bg-indigo-50 border border-indigo-300 px-2 py-1 rounded">
+                    ✏ 編輯物業設定
+                  </button>
+                )}
                 <Link href={`/rentals?propertyId=${selected.id}&tab=contracts`}
                   className="text-xs text-teal-700 hover:underline border border-teal-300 px-2 py-1 rounded">
                   合約管理
@@ -1177,29 +1298,41 @@ function AssetsPageInner() {
                   </table>
                 )}
 
-                {/* Asset info */}
-                {selected.asset && (
-                  <div className="mt-4 border rounded p-2 bg-gray-50 text-xs space-y-1">
-                    <p className="font-semibold text-gray-700">
-                      資產主檔：{selected.asset.name}
-                      {selected.asset.serialNo && <span className="ml-1 text-gray-400">#{selected.asset.serialNo}</span>}
-                    </p>
-                    <p className="text-gray-500">
+                {/* Asset info card */}
+                {selected.asset ? (
+                  <div className="mt-4 border border-blue-200 rounded-lg p-3 bg-blue-50 text-xs">
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div>
+                        <span className="text-blue-400 font-medium mr-1">📋 資產主檔</span>
+                        <span className="font-semibold text-gray-800">{selected.asset.name}</span>
+                        {selected.asset.serialNo && <span className="ml-1 text-gray-400">#{selected.asset.serialNo}</span>}
+                      </div>
+                      {canEdit && (
+                        <div className="flex gap-2 shrink-0">
+                          <button onClick={() => openEdit(selected.asset)}
+                            className="text-xs text-blue-700 border border-blue-300 px-2 py-0.5 rounded hover:bg-blue-100">
+                            編輯資產
+                          </button>
+                          <button onClick={() => deleteAsset(selected.asset)}
+                            className="text-xs text-red-600 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50">
+                            刪除
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-gray-600">
                       {ASSET_TYPE_OPTIONS.find(o => o.value === selected.asset.assetType)?.label || selected.asset.assetType}
                       {selected.asset.category && ` · ${selected.asset.category}`}
                       {selected.asset.areaSqm && ` · ${selected.asset.areaSqm} ㎡`}
                       {selected.asset.acquisitionDate && ` · 取得：${selected.asset.acquisitionDate}`}
                     </p>
-                    {canEdit && (
-                      <div className="flex gap-2 mt-1">
-                        <button onClick={() => openEdit(selected.asset)} className="text-blue-600 hover:underline">編輯資產</button>
-                        <span className="text-gray-300">|</span>
-                        <button onClick={() => deleteAsset(selected.asset)} className="text-red-600 hover:underline">刪除</button>
-                      </div>
-                    )}
+                    <div className="flex gap-3 mt-1.5 text-gray-500">
+                      {selected.asset.hasHouseTax && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">房屋稅</span>}
+                      {selected.asset.hasLandTax && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">地價稅</span>}
+                      {selected.asset.hasMaintenanceFee && <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">維護費</span>}
+                    </div>
                   </div>
-                )}
-                {!selected.asset && canEdit && (
+                ) : canEdit ? (
                   <button
                     className="mt-3 text-xs px-3 py-1.5 bg-teal-600 text-white rounded hover:bg-teal-700"
                     onClick={() => {
@@ -1210,7 +1343,7 @@ function AssetsPageInner() {
                   >
                     新增資產主檔
                   </button>
-                )}
+                ) : null}
               </div>
 
               {/* Col 3: Maintenance + P&L */}
