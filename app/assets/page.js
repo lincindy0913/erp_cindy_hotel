@@ -417,6 +417,15 @@ function AssetsPageInner() {
   }
 
   async function savePropField(propertyId, field, value) {
+    // Guard 1: race-condition — second blur fires before first setPropInlineSaving(true) settles
+    if (propInlineSaving) return;
+    // Guard 2: value unchanged — Enter→blur then click-elsewhere→blur sends duplicate request
+    const current = properties.find(p => p.id === propertyId);
+    const currentVal = current?.[field] ?? '';
+    if (String(value ?? '') === String(currentVal ?? '')) {
+      setPropInlineEdit(null);
+      return;
+    }
     setPropInlineSaving(true);
     try {
       const body = {};
@@ -495,7 +504,7 @@ function AssetsPageInner() {
         delete body.address;
       }
       const url = editingProp ? `/api/rentals/properties/${editingProp.id}` : '/api/rentals/properties';
-      const method = editingProp ? 'PUT' : 'POST';
+      const method = editingProp ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },

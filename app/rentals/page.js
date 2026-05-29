@@ -1359,7 +1359,7 @@ function RentalsPage() {
         return;
       }
       const url = `/api/rentals/properties/${editingProperty.id}`;
-      const method = 'PUT';
+      const method = 'PATCH';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(propertyForm) });
       const data = await res.json();
       if (!res.ok) return showToast(data.error || '儲存失敗', 'error');

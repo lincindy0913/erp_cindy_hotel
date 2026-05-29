@@ -40,44 +40,50 @@ export async function GET(request, { params }) {
   }
 }
 
-export async function PUT(request, { params }) {
+export async function PATCH(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const { id } = await params;
     const propertyId = parseInt(id);
     const body = await request.json();
+    const data = {};
 
-    const linkedAsset = await prisma.asset.findUnique({
-      where: { rentalPropertyId: propertyId },
-      select: { id: true },
-    });
+    // ── Inline-edit 欄位（原 PATCH）──────────────────────────
+    if (body.category  !== undefined) data.category  = body.category  || null;
+    if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null;
+    if (body.status    !== undefined) data.status    = body.status;
 
-    /** 已連結資產主檔時，名稱／地址由資產端同步，此處僅更新營運欄位 */
-    const data = {
-      buildingName: body.buildingName,
-      unitNo: body.unitNo,
-      ownerName: body.ownerName != null ? body.ownerName || null : undefined,
-      houseTaxRegistrationNo: body.houseTaxRegistrationNo != null ? body.houseTaxRegistrationNo || null : undefined,
-      rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
-      depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
-      status: body.status,
-      note: body.note,
-      publicInterestLandlord: body.publicInterestLandlord === true,
-      publicInterestApplicant: body.publicInterestApplicant || null,
-      publicInterestNote: body.publicInterestNote || null,
-      publicInterestStartDate: body.publicInterestStartDate || null,
-      publicInterestEndDate: body.publicInterestEndDate || null,
-      publicInterestRent: body.publicInterestRent ? parseFloat(body.publicInterestRent) : null,
-      collectUtilityFee: body.collectUtilityFee === true,
-      category: body.category !== undefined ? (body.category || null) : undefined,
-      sortOrder: body.sortOrder !== undefined ? (body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null) : undefined,
-    };
-    if (!linkedAsset) {
-      data.name = body.name;
-      data.address = body.address;
+    // ── 完整編輯欄位（原 PUT）────────────────────────────────
+    if (body.buildingName             !== undefined) data.buildingName             = body.buildingName;
+    if (body.unitNo                   !== undefined) data.unitNo                   = body.unitNo;
+    if (body.ownerName                !== undefined) data.ownerName                = body.ownerName                || null;
+    if (body.houseTaxRegistrationNo   !== undefined) data.houseTaxRegistrationNo   = body.houseTaxRegistrationNo   || null;
+    if (body.rentCollectAccountId     !== undefined) data.rentCollectAccountId     = body.rentCollectAccountId     ? parseInt(body.rentCollectAccountId) : null;
+    if (body.depositAccountId         !== undefined) data.depositAccountId         = body.depositAccountId         ? parseInt(body.depositAccountId)     : null;
+    if (body.note                     !== undefined) data.note                     = body.note;
+    if (body.publicInterestLandlord   !== undefined) data.publicInterestLandlord   = body.publicInterestLandlord   === true;
+    if (body.publicInterestApplicant  !== undefined) data.publicInterestApplicant  = body.publicInterestApplicant  || null;
+    if (body.publicInterestNote       !== undefined) data.publicInterestNote       = body.publicInterestNote       || null;
+    if (body.publicInterestStartDate  !== undefined) data.publicInterestStartDate  = body.publicInterestStartDate  || null;
+    if (body.publicInterestEndDate    !== undefined) data.publicInterestEndDate    = body.publicInterestEndDate    || null;
+    if (body.publicInterestRent       !== undefined) data.publicInterestRent       = body.publicInterestRent       ? parseFloat(body.publicInterestRent) : null;
+    if (body.collectUtilityFee        !== undefined) data.collectUtilityFee        = body.collectUtilityFee        === true;
+
+    // name/address：已連結資產主檔時由資產端同步，此處略過
+    if (body.name !== undefined || body.address !== undefined) {
+      const linkedAsset = await prisma.asset.findUnique({
+        where: { rentalPropertyId: propertyId },
+        select: { id: true },
+      });
+      if (!linkedAsset) {
+        if (body.name    !== undefined) data.name    = body.name;
+        if (body.address !== undefined) data.address = body.address;
+      }
     }
+
+    if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
 
     const property = await prisma.rentalProperty.update({
       where: { id: propertyId },
@@ -86,26 +92,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json(property);
   } catch (error) {
-    console.error('PUT /api/rentals/properties/[id] error:', error.message || error);
-    return handleApiError(error);
-  }
-}
-
-export async function PATCH(request, { params }) {
-  const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
-  if (!auth.ok) return auth.response;
-
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const data = {};
-    if (body.category  !== undefined) data.category  = body.category  || null;
-    if (body.sortOrder !== undefined) data.sortOrder = body.sortOrder !== '' && body.sortOrder !== null ? parseInt(body.sortOrder) : null;
-    if (body.status    !== undefined) data.status    = body.status;
-    if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
-    await prisma.rentalProperty.update({ where: { id: parseInt(id) }, data, select: { id: true } });
-    return NextResponse.json({ ok: true });
-  } catch (error) {
+    console.error('PATCH /api/rentals/properties/[id] error:', error.message || error);
     return handleApiError(error);
   }
 }
