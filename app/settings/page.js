@@ -91,10 +91,9 @@ function NotificationChannelsSection({ showToast }) {
   async function fetchChannelConfig() {
     try {
       const res = await fetch('/api/notification-channels/config');
-      if (res.ok) {
-        const data = await res.json();
-        setChannelConfig(data);
-      }
+      if (!res.ok) { return; }
+      const data = await res.json();
+      setChannelConfig(data);
     } catch { /* ignore */ }
   }
 
@@ -894,7 +893,7 @@ export default function SettingsPage() {
       const payload = {
         name: categoryForm.name.trim(),
         description: categoryForm.description.trim(),
-        sortOrder: categoryForm.sortOrder ? parseInt(categoryForm.sortOrder, 10) : 0,
+        sortOrder: parseInt(categoryForm.sortOrder, 10) || 0,
       };
 
       let res;

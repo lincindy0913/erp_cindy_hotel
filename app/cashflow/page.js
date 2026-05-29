@@ -10,6 +10,7 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { todayStr } from '@/lib/localDate';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 const TX_TYPES = ['收入', '支出', '移轉'];
@@ -66,7 +67,7 @@ export default function CashFlowPage() {
   // Transaction form
   const [showTxForm, setShowTxForm] = useState(false);
   const [txForm, setTxForm] = useState({
-    transactionDate: new Date().toISOString().split('T')[0],
+    transactionDate: todayStr(),
     type: '支出',
     warehouse: '',
     accountId: '',
@@ -90,7 +91,7 @@ export default function CashFlowPage() {
   // Transaction filters
   const [txFilter, setTxFilter] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    endDate: todayStr(),
     warehouse: '',
     type: '',
     accountId: '',
@@ -127,7 +128,7 @@ export default function CashFlowPage() {
   const [reportData, setReportData] = useState(null);
   const [reportFilter, setReportFilter] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    endDate: todayStr(),
     warehouse: '',
     supplierId: '',
     accountingSubject: ''
@@ -136,7 +137,7 @@ export default function CashFlowPage() {
   // Subject query state
   const [subjectFilter, setSubjectFilter] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    endDate: todayStr(),
     warehouse: '',
     accountingSubject: ''
   });
@@ -178,6 +179,7 @@ export default function CashFlowPage() {
       const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const endDate = now.toISOString().split('T')[0];
       const res = await fetch(`/api/cashflow/report?startDate=${startDate}&endDate=${endDate}`);
+      if (!res.ok) { showToast('載入失敗', 'error'); return; }
       const data = await res.json();
       setOverviewCategorySummary(data);
     } catch { setOverviewCategorySummary(null); }
@@ -216,6 +218,7 @@ export default function CashFlowPage() {
   async function fetchAccountingSubjects() {
     try {
       const res = await fetch('/api/accounting-subjects');
+      if (!res.ok) { showToast('載入失敗', 'error'); return; }
       const data = await res.json();
       setAccountingSubjects(Array.isArray(data) ? data : []);
     } catch { setAccountingSubjects([]); }
@@ -295,8 +298,8 @@ export default function CashFlowPage() {
       if (reportFilter.supplierId) params.set('supplierId', reportFilter.supplierId);
       if (reportFilter.accountingSubject) params.set('accountingSubject', reportFilter.accountingSubject);
       const res = await fetch(`/api/cashflow/report?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error?.message || '產生報表失敗', 'error'); setReportData(null); return; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error?.message || data.error || '產生報表失敗', 'error'); setReportData(null); return; }
       setReportData(data);
     } catch (e) { showToast('產生報表失敗: ' + (e.message || ''), 'error'); setReportData(null); }
   }
@@ -526,7 +529,7 @@ export default function CashFlowPage() {
       if (res.ok) {
         setShowTxForm(false);
         setTxForm({
-          transactionDate: new Date().toISOString().split('T')[0],
+          transactionDate: todayStr(),
           type: '支出',
           warehouse: '',
           accountId: '',
@@ -2289,7 +2292,7 @@ function CashCountTab({ accounts, warehouses }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState('');
-  const [countDate, setCountDate] = useState(new Date().toISOString().split('T')[0]);
+  const [countDate, setCountDate] = useState(todayStr());
   const [denominations, setDenominations] = useState([
     { denomination: 1000, quantity: 0 },
     { denomination: 500, quantity: 0 },

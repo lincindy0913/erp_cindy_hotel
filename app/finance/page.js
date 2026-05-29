@@ -199,6 +199,7 @@ export default function PaymentPage() {
   async function fetchOrders() {
     try {
       const response = await fetch('/api/payment-orders');
+      if (!response.ok) { setOrders([]); setLoading(false); return; }
       const data = await response.json();
       setOrders(Array.isArray(data) ? data : []);
       setLoading(false);
@@ -212,6 +213,7 @@ export default function PaymentPage() {
   async function fetchSuppliers() {
     try {
       const response = await fetch('/api/suppliers?all=true');
+      if (!response.ok) { setSuppliers([]); return; }
       const data = await response.json();
       setSuppliers(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -223,6 +225,7 @@ export default function PaymentPage() {
   async function fetchAllInvoices() {
     try {
       const response = await fetch('/api/sales');
+      if (!response.ok) { setAllInvoices([]); return; }
       const data = await response.json();
       setAllInvoices(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -234,6 +237,7 @@ export default function PaymentPage() {
   async function fetchCashAccounts() {
     try {
       const response = await fetch('/api/cashflow/accounts');
+      if (!response.ok) { setCashAccounts([]); return; }
       const data = await response.json();
       setCashAccounts(Array.isArray(data) ? data.filter(a => a.isActive) : []);
     } catch (error) {

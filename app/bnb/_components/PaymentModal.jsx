@@ -82,60 +82,60 @@ export default function PaymentModal({ record, onClose, onSaved }) {
         </div>
         <div className="p-5 space-y-3 max-h-[72vh] overflow-y-auto">
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">訂金匯款</label>
-            <input type="number" min="0" value={form.payDeposit}
+            <label htmlFor="pm-payDeposit" className="w-24 text-sm text-gray-600 shrink-0">訂金匯款</label>
+            <input id="pm-payDeposit" type="number" min="0" value={form.payDeposit}
               onChange={e => setForm(p => ({ ...p, payDeposit: e.target.value }))}
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           {hasDeposit && (
             <div className="ml-2 pl-4 border-l-2 border-blue-200 space-y-2">
               <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-blue-600 shrink-0">匯款日期</label>
-                <input type="date" value={form.depositDate}
+                <label htmlFor="pm-depositDate" className="w-20 text-xs text-blue-600 shrink-0">匯款日期</label>
+                <input id="pm-depositDate" type="date" value={form.depositDate}
                   onChange={e => setForm(p => ({ ...p, depositDate: e.target.value }))}
                   className="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-300 outline-none" />
               </div>
               <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-blue-600 shrink-0">帳號後五碼</label>
-                <input type="text" maxLength={5} placeholder="例：12345" value={form.depositLast5}
+                <label htmlFor="pm-depositLast5" className="w-20 text-xs text-blue-600 shrink-0">帳號後五碼</label>
+                <input id="pm-depositLast5" type="text" maxLength={5} placeholder="例：12345" value={form.depositLast5}
                   onChange={e => setForm(p => ({ ...p, depositLast5: e.target.value.replace(/[^0-9]/g, '').slice(0, 5) }))}
                   className="w-28 border border-blue-200 rounded-lg px-3 py-1.5 text-sm tracking-widest focus:ring-2 focus:ring-blue-300 outline-none" />
               </div>
             </div>
           )}
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">當天匯款</label>
-            <input type="number" min="0" value={form.payTransfer}
+            <label htmlFor="pm-payTransfer" className="w-24 text-sm text-gray-600 shrink-0">當天匯款</label>
+            <input id="pm-payTransfer" type="number" min="0" value={form.payTransfer}
               onChange={e => setForm(p => ({ ...p, payTransfer: e.target.value }))}
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           {hasTransfer && (
             <div className="ml-2 pl-4 border-l-2 border-teal-200 space-y-2">
               <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-teal-600 shrink-0">匯款日期</label>
-                <input type="date" value={form.transferDate}
+                <label htmlFor="pm-transferDate" className="w-20 text-xs text-teal-600 shrink-0">匯款日期</label>
+                <input id="pm-transferDate" type="date" value={form.transferDate}
                   onChange={e => setForm(p => ({ ...p, transferDate: e.target.value }))}
                   className="flex-1 border border-teal-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-teal-300 outline-none" />
               </div>
               <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-teal-600 shrink-0">帳號後五碼</label>
-                <input type="text" maxLength={5} placeholder="例：12345" value={form.transferLast5}
+                <label htmlFor="pm-transferLast5" className="w-20 text-xs text-teal-600 shrink-0">帳號後五碼</label>
+                <input id="pm-transferLast5" type="text" maxLength={5} placeholder="例：12345" value={form.transferLast5}
                   onChange={e => setForm(p => ({ ...p, transferLast5: e.target.value.replace(/[^0-9]/g, '').slice(0, 5) }))}
                   className="w-28 border border-teal-200 rounded-lg px-3 py-1.5 text-sm tracking-widest focus:ring-2 focus:ring-teal-300 outline-none" />
               </div>
             </div>
           )}
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">刷卡金額</label>
-            <input type="number" min="0" value={form.payCard}
+            <label htmlFor="pm-payCard" className="w-24 text-sm text-gray-600 shrink-0">刷卡金額</label>
+            <input id="pm-payCard" type="number" min="0" value={form.payCard}
               onChange={e => setForm(p => ({ ...p, payCard: e.target.value }))}
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           {hasCard && (
             <div className="ml-2 pl-4 border-l-2 border-purple-200 space-y-2">
               <div className="flex items-center gap-3">
-                <label className="w-20 text-xs text-purple-600 shrink-0">刷卡入帳日</label>
-                <input type="date" value={form.cardSettlementDate}
+                <label htmlFor="pm-cardSettlementDate" className="w-20 text-xs text-purple-600 shrink-0">刷卡入帳日</label>
+                <input id="pm-cardSettlementDate" type="date" value={form.cardSettlementDate}
                   onChange={e => setForm(p => ({ ...p, cardSettlementDate: e.target.value }))}
                   className="flex-1 border border-purple-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-300 outline-none" />
                 <span className="text-xs text-purple-400 whitespace-nowrap">刷卡後1-2天入帳</span>
@@ -143,8 +143,8 @@ export default function PaymentModal({ record, onClose, onSaved }) {
             </div>
           )}
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">現金</label>
-            <input type="number" min="0" value={form.payCash}
+            <label htmlFor="pm-payCash" className="w-24 text-sm text-gray-600 shrink-0">現金</label>
+            <input id="pm-payCash" type="number" min="0" value={form.payCash}
               onChange={e => setForm(p => ({ ...p, payCash: e.target.value }))}
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
           </div>
@@ -166,16 +166,16 @@ export default function PaymentModal({ record, onClose, onSaved }) {
               </div>
               {form.cashDestination === '存帳' && (
                 <div className="flex items-center gap-3">
-                  <label className="w-20 text-xs text-green-600 shrink-0">存款日期</label>
-                  <input type="date" value={form.cashDepositDate}
+                  <label htmlFor="pm-cashDepositDate" className="w-20 text-xs text-green-600 shrink-0">存款日期</label>
+                  <input id="pm-cashDepositDate" type="date" value={form.cashDepositDate}
                     onChange={e => setForm(p => ({ ...p, cashDepositDate: e.target.value }))}
                     className="flex-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-300 outline-none" />
                 </div>
               )}
               {form.cashDestination === '老闆收取' && (
                 <div className="flex items-center gap-3">
-                  <label className="w-20 text-xs text-green-600 shrink-0">收取備註</label>
-                  <input type="text" value={form.bossWithdrawNote}
+                  <label htmlFor="pm-bossWithdrawNote" className="w-20 text-xs text-green-600 shrink-0">收取備註</label>
+                  <input id="pm-bossWithdrawNote" type="text" value={form.bossWithdrawNote}
                     onChange={e => setForm(p => ({ ...p, bossWithdrawNote: e.target.value }))}
                     placeholder="選填，例：老闆 4/15 收"
                     className="flex-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-green-300 outline-none" />
@@ -184,21 +184,21 @@ export default function PaymentModal({ record, onClose, onSaved }) {
             </div>
           )}
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">住宿卷</label>
-            <input type="number" min="0" value={form.payVoucher}
+            <label htmlFor="pm-payVoucher" className="w-24 text-sm text-gray-600 shrink-0">住宿卷</label>
+            <input id="pm-payVoucher" type="number" min="0" value={form.payVoucher}
               onChange={e => setForm(p => ({ ...p, payVoucher: e.target.value }))}
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
           </div>
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">手續費率</label>
-            <input type="number" step="0.0001" min="0" max="1" value={form.cardFeeRate}
+            <label htmlFor="pm-cardFeeRate" className="w-24 text-sm text-gray-600 shrink-0">手續費率</label>
+            <input id="pm-cardFeeRate" type="number" step="0.0001" min="0" max="1" value={form.cardFeeRate}
               onChange={e => setForm(p => ({ ...p, cardFeeRate: e.target.value }))}
               className="w-28 border rounded-lg px-3 py-1.5 text-sm" />
             <span className="text-xs text-gray-400">手續費 NT${cardFee.toLocaleString()}</span>
           </div>
           <div className="flex items-center gap-3">
-            <label className="w-24 text-sm text-gray-600 shrink-0">備註</label>
-            <input type="text" value={form.note}
+            <label htmlFor="pm-note" className="w-24 text-sm text-gray-600 shrink-0">備註</label>
+            <input id="pm-note" type="text" value={form.note}
               onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" />
           </div>

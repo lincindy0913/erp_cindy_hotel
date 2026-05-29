@@ -78,14 +78,14 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
         <div className="p-5 space-y-3 max-h-[72vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">館別</label>
-              <select value={form.warehouse} onChange={e => setForm(p => ({ ...p, warehouse: e.target.value }))} className={inp}>
+              <label htmlFor="bf-warehouse" className="block text-xs text-gray-500 mb-1">館別</label>
+              <select id="bf-warehouse" value={form.warehouse} onChange={e => setForm(p => ({ ...p, warehouse: e.target.value }))} className={inp}>
                 {(warehouseList?.length ? warehouseList : ['民宿']).map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">來源</label>
-              <select value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))} className={inp}>
+              <label htmlFor="bf-source" className="block text-xs text-gray-500 mb-1">來源</label>
+              <select id="bf-source" value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))} className={inp}>
                 <option value="電話">電話</option>
                 <option value="Booking">Booking</option>
                 <option value="其他">其他</option>
@@ -94,12 +94,12 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">姓名 <span className="text-red-400">*</span></label>
-              <input type="text" value={form.guestName} onChange={e => setForm(p => ({ ...p, guestName: e.target.value }))} className={inp} placeholder="房客姓名" />
+              <label htmlFor="bf-guestName" className="block text-xs text-gray-500 mb-1">姓名 <span className="text-red-400">*</span></label>
+              <input id="bf-guestName" type="text" value={form.guestName} onChange={e => setForm(p => ({ ...p, guestName: e.target.value }))} className={inp} placeholder="房客姓名" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">房間號碼</label>
-              <input type="text" value={form.roomNo} onChange={e => setForm(p => ({ ...p, roomNo: e.target.value }))}
+              <label htmlFor="bf-roomNo" className="block text-xs text-gray-500 mb-1">房間號碼</label>
+              <input id="bf-roomNo" type="text" value={form.roomNo} onChange={e => setForm(p => ({ ...p, roomNo: e.target.value }))}
                 list="bnb-roomno-list" className={inp} placeholder="例：101" />
               <datalist id="bnb-roomno-list">
                 {roomNoList.map(r => <option key={r} value={r} />)}
@@ -108,12 +108,12 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">入住日期 <span className="text-red-400">*</span></label>
-              <input type="date" value={form.checkInDate} onChange={e => handleCheckIn(e.target.value)} className={inp} />
+              <label htmlFor="bf-checkInDate" className="block text-xs text-gray-500 mb-1">入住日期 <span className="text-red-400">*</span></label>
+              <input id="bf-checkInDate" type="date" value={form.checkInDate} onChange={e => handleCheckIn(e.target.value)} className={inp} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">退房日期 <span className="text-red-400">*</span></label>
-              <input type="date" value={form.checkOutDate} onChange={e => setForm(p => ({ ...p, checkOutDate: e.target.value }))} className={inp} />
+              <label htmlFor="bf-checkOutDate" className="block text-xs text-gray-500 mb-1">退房日期 <span className="text-red-400">*</span></label>
+              <input id="bf-checkOutDate" type="date" value={form.checkOutDate} onChange={e => setForm(p => ({ ...p, checkOutDate: e.target.value }))} className={inp} />
             </div>
           </div>
           {conflictWarning?.length > 0 && (
@@ -127,31 +127,31 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">房費</label>
-              <input type="number" min="0" value={form.roomCharge} onChange={e => setForm(p => ({ ...p, roomCharge: e.target.value }))} className={inp} placeholder="0" />
+              <label htmlFor="bf-roomCharge" className="block text-xs text-gray-500 mb-1">房費</label>
+              <input id="bf-roomCharge" type="number" min="0" value={form.roomCharge} onChange={e => setForm(p => ({ ...p, roomCharge: e.target.value }))} className={inp} placeholder="0" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">其他消費</label>
-              <input type="number" min="0" value={form.otherCharge} onChange={e => setForm(p => ({ ...p, otherCharge: e.target.value }))} className={inp} placeholder="0" />
+              <label htmlFor="bf-otherCharge" className="block text-xs text-gray-500 mb-1">其他消費</label>
+              <input id="bf-otherCharge" type="number" min="0" value={form.otherCharge} onChange={e => setForm(p => ({ ...p, otherCharge: e.target.value }))} className={inp} placeholder="0" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">狀態</label>
-              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} className={inp}>
+              <label htmlFor="bf-status" className="block text-xs text-gray-500 mb-1">狀態</label>
+              <select id="bf-status" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} className={inp}>
                 <option value="已預訂">已預訂</option>
                 <option value="已入住">已入住</option>
                 <option value="已退房">已退房</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">匯入月份</label>
-              <input type="month" value={form.importMonth} onChange={e => setForm(p => ({ ...p, importMonth: e.target.value }))} className={inp} />
+              <label htmlFor="bf-importMonth" className="block text-xs text-gray-500 mb-1">匯入月份</label>
+              <input id="bf-importMonth" type="month" value={form.importMonth} onChange={e => setForm(p => ({ ...p, importMonth: e.target.value }))} className={inp} />
             </div>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">備註</label>
-            <textarea value={form.note} onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
+            <label htmlFor="bf-note" className="block text-xs text-gray-500 mb-1">備註</label>
+            <textarea id="bf-note" value={form.note} onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
               rows={2} className={`${inp} resize-y`} placeholder="選填" />
           </div>
         </div>
