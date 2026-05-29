@@ -11,6 +11,7 @@ import ExportButtons from '@/components/ExportButtons';
 import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
 import { todayStr } from '@/lib/localDate';
+import { useDepositMatch } from './_hooks/useDepositMatch';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const DEFAULT_WAREHOUSE = '民宿';
@@ -292,19 +293,16 @@ function BnbPage() {
   // ── 館別清單 state ────────────────────────────────────────────
   const [warehouseList, setWarehouseList] = useState([]);
 
-  // ── 訂金核對 state ────────────────────────────────────────────
-  const [dmMonth,       setDmMonth]       = useState(() => new Date().toISOString().slice(0, 7));
-  const [dmWarehouse,   setDmWarehouse]   = useState('');
-  const [dmAccountId,   setDmAccountId]   = useState('');
-  const [dmData,        setDmData]        = useState(null);
-  const [dmLoading,     setDmLoading]     = useState(false);
-  const [dmAccounts,    setDmAccounts]    = useState([]);
-  const [dmSelBnb,      setDmSelBnb]      = useState(null);  // selected BNB id
-  const [dmSelLine,     setDmSelLine]     = useState(null);  // selected bank line id
-  const [dmMatching,    setDmMatching]    = useState(false);
-  const [dmPayType,     setDmPayType]     = useState('combined'); // deposit | transfer | card | cash | all | ledger | combined
-  const [dmMarkModal,   setDmMarkModal]   = useState(null);     // { bnbId, skipType }
-  const [dmMarkNote,    setDmMarkNote]    = useState('');
+  // ── 訂金核對（已拆至 _hooks/useDepositMatch）────────────────────
+  const {
+    dmMonth, setDmMonth, dmWarehouse, setDmWarehouse,
+    dmAccountId, setDmAccountId, dmData, setDmData,
+    dmLoading, dmAccounts, dmSelBnb, setDmSelBnb,
+    dmSelLine, setDmSelLine, dmMatching, dmPayType, setDmPayType,
+    dmMarkModal, setDmMarkModal, dmMarkNote, setDmMarkNote,
+    fetchDepositMatch, handleMatch, handleUnmatch,
+    handleMark, handleClearMark, handleAutoMatch,
+  } = useDepositMatch();
 
   // ── 存簿匯入 modal state ──────────────────────────────────────
   const [showBankImport, setShowBankImport] = useState(false);
@@ -407,12 +405,6 @@ function BnbPage() {
   }, [session]);
 
   // ── 銀行帳戶 fetch（mount once）──────────────────────────────
-  useEffect(() => {
-    fetch('/api/cashflow/accounts')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setDmAccounts(data.filter(a => a.type === '銀行存款' && a.isActive)))
-      .catch(() => {});
-  }, []);
 
   // ── 鎖帳 fetch / toggle ──────────────────────────────────────
   const fetchLockStatus = useCallback(async (month, warehouse = DEFAULT_WAREHOUSE) => {
@@ -455,309 +447,6 @@ function BnbPage() {
     } catch { showToast(`${action}失敗`, 'error'); }
     finally { setLockLoading(false); }
   }, [lockStatus, lockLoading, getActiveLockContext]);
-
-  // ── 訂金核對 fetch ────────────────────────────────────────────
-  const fetchDepositMatch = useCallback(async () => {
-    if (dmPayType !== 'all' && dmPayType !== 'combined' && !dmAccountId) { showToast('請先選擇存簿帳戶', 'error'); return; }
-    setDmLoading(true);
-    try {
-      const p = new URLSearchParams({ month: dmMonth, paymentType: dmPayType });
-      if (dmAccountId) p.set('accountId', dmAccountId);
-      if (dmWarehouse) p.set('warehouse', dmWarehouse);
-      const res = await fetch(`/api/bnb/deposit-match?${p}`);
-      if (!res.ok) { showToast('載入核對資料失敗', 'error'); return; }
-      setDmData(await res.json());
-      setDmSelBnb(null);
-      setDmSelLine(null);
-    } catch { showToast('載入核對資料失敗', 'error'); }
-    finally { setDmLoading(false); }
-  }, [dmMonth, dmAccountId, dmWarehouse, dmPayType]);
-
-  // ── 存簿對帳單匯入（土地銀行 XLS / CSV）────────────────────────
-  async function handleBankFileUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setBankImportError('');
-    setBankImportLines([]);
-    setBankImportFileName(file.name);
-    setBankImportParsing(true);
-
-    const isExcel = /\.(xls|xlsx)$/i.test(file.name);
-    const parsed = [];
-
-    try {
-      const parseRocDate = (v) => {
-        if (!v) return '';
-        const s = String(v).replace(/\//g, '-').trim();
-        const m = s.match(/^(\d{2,3})-(\d{1,2})-(\d{1,2})/);
-        if (m) {
-          const y = parseInt(m[1]) + (parseInt(m[1]) < 200 ? 1911 : 0);
-          return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
-        }
-        return s;
-      };
-
-      if (isExcel) {
-        const mod = await import('xlsx');
-        const XLSX = mod.default || mod;
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array', raw: false });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-
-        // 找到表頭列（土地銀行格式：交易日期 or 交易日）
-        let dataStart = 6;
-        for (let r = 0; r < Math.min(matrix.length, 10); r++) {
-          const first = String(matrix[r]?.[0] || '').trim();
-          if (first === '交易日期' || first === '交易日') { dataStart = r + 1; break; }
-        }
-        for (let i = dataStart; i < matrix.length; i++) {
-          const row = matrix[i];
-          const txDate = parseRocDate(row[0]);
-          if (!txDate) continue;
-          const debit = parseAmount(row[3]);
-          const credit = parseAmount(row[4]);
-          if (debit === 0 && credit === 0) continue;
-          const desc = [row[1], row[2]].filter(Boolean).join(' ').trim();
-          const memo = String(row[6] || '').trim();
-          parsed.push({
-            txDate,
-            description: memo ? `${desc} ｜${memo}` : desc,
-            debitAmount: debit,
-            creditAmount: credit,
-            runningBalance: parseAmount(row[5]),
-            referenceNo: memo.slice(0, 100),
-          });
-        }
-      } else {
-        // CSV（Big5 encoding）
-        const reader = new FileReader();
-        await new Promise((resolve, reject) => {
-          reader.onload = (ev) => {
-            try {
-              const text = ev.target.result;
-              const lines = text.split(/\r?\n/);
-              let dataStart = 0;
-              for (let i = 0; i < Math.min(lines.length, 15); i++) {
-                if (lines[i].includes('交易日')) { dataStart = i + 1; break; }
-              }
-              for (let i = dataStart; i < lines.length; i++) {
-                const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
-                if (cols.length < 4) continue;
-                const txDate = parseRocDate(cols[0]);
-                if (!txDate) continue;
-                const debit = parseAmount(cols[2]);
-                const credit = parseAmount(cols[3]);
-                if (debit === 0 && credit === 0) continue;
-                const desc = [cols[1], cols[5]].filter(Boolean).join(' ').trim();
-                parsed.push({
-                  txDate,
-                  description: desc || cols[1],
-                  debitAmount: debit,
-                  creditAmount: credit,
-                  runningBalance: parseAmount(cols[4]),
-                  referenceNo: (cols[5] || '').slice(0, 100),
-                });
-              }
-              resolve();
-            } catch (err) { reject(err); }
-          };
-          reader.onerror = reject;
-          reader.readAsText(file, 'Big5');
-        });
-      }
-
-      if (parsed.length === 0) {
-        setBankImportError('無法解析檔案，請確認為土地銀行的 XLS/CSV 對帳單');
-      } else {
-        setBankImportLines(parsed);
-      }
-    } catch (err) {
-      setBankImportError('解析失敗：' + (err.message || '未知錯誤'));
-    }
-    setBankImportParsing(false);
-    // reset input
-    e.target.value = '';
-  }
-
-  async function submitBankImport() {
-    if (!bankImportLines.length || !dmAccountId) return;
-    setBankImportSubmitting(true);
-    try {
-      const [y, m] = dmMonth.split('-').map(Number);
-      const res = await fetch('/api/reconciliation/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: parseInt(dmAccountId),
-          bankFormatId: 1,          // 土地銀行
-          year: y,
-          month: m,
-          fileName: bankImportFileName,
-          lines: bankImportLines,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setBankImportError(data.error?.message || data.error || '匯入失敗'); return; }
-      showToast(`匯入成功：${bankImportLines.length} 筆`, 'success');
-      setShowBankImport(false);
-      setBankImportLines([]);
-      setBankImportFileName('');
-      fetchDepositMatch();
-    } catch (err) {
-      setBankImportError('匯入失敗：' + (err.message || ''));
-    }
-    setBankImportSubmitting(false);
-  }
-
-  // ── 收款流水帳 fetch ───────────────────────────────────────────
-  async function fetchLedger() {
-    setLedgerLoading(true);
-    try {
-      const p = new URLSearchParams({ monthFrom: ledgerMonthFrom, monthTo: ledgerMonthTo, pageSize: '2000' });
-      if (ledgerWarehouse) p.set('warehouse', ledgerWarehouse);
-      const res = await fetch(`/api/bnb?${p}`);
-      if (!res.ok) { showToast('載入失敗', 'error'); return; }
-      const data = await res.json();
-      setLedgerRows(data.data || []);
-    } catch { showToast('載入失敗', 'error'); }
-    finally { setLedgerLoading(false); }
-  }
-
-  // ── 其他收入 fetch / CRUD ────────────────────────────────────
-  async function fetchOtherIncome() {
-    setOiLoading(true);
-    try {
-      const p = new URLSearchParams({ month: oiMonth });
-      if (oiWarehouse) p.set('warehouse', oiWarehouse);
-      const res = await fetch(`/api/bnb/other-income?${p}`);
-      if (!res.ok) { showToast('載入失敗', 'error'); return; }
-      const data = await res.json();
-      setOiRows(data.data || []);
-    } catch { showToast('載入失敗', 'error'); }
-    finally { setOiLoading(false); }
-  }
-
-  function openOiModal(row = null) {
-    if (row) {
-      setOiForm({ importMonth: row.importMonth, warehouse: row.warehouse, incomeDate: row.incomeDate, category: row.category || '', description: row.description, amount: String(row.amount), note: row.note || '' });
-      setOiEditRow(row);
-    } else {
-      setOiForm({ importMonth: oiMonth, warehouse: oiWarehouse || DEFAULT_WAREHOUSE, incomeDate: todayStr(), category: '', description: '', amount: '', note: '' });
-      setOiEditRow(null);
-    }
-    setOiModalOpen(true);
-  }
-
-  async function saveOtherIncome() {
-    if (!oiForm.incomeDate || !oiForm.description || !oiForm.amount) {
-      showToast('請填寫日期、說明、金額', 'error'); return;
-    }
-    setOiSaving(true);
-    try {
-      const url  = oiEditRow ? `/api/bnb/other-income/${oiEditRow.id}` : '/api/bnb/other-income';
-      const method = oiEditRow ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(oiForm) });
-      if (!res.ok) { const d = await res.json(); showToast(d.message || '儲存失敗', 'error'); return; }
-      showToast(oiEditRow ? '已更新' : '已新增', 'success');
-      setOiModalOpen(false);
-      fetchOtherIncome();
-    } catch { showToast('儲存失敗', 'error'); }
-    finally { setOiSaving(false); }
-  }
-
-  async function deleteOtherIncome(id) {
-    try {
-      const res = await fetch(`/api/bnb/other-income/${id}`, { method: 'DELETE' });
-      if (!res.ok) { showToast('刪除失敗', 'error'); return; }
-      showToast('已刪除', 'success');
-      fetchOtherIncome();
-    } catch { showToast('刪除失敗', 'error'); }
-  }
-
-  // ── 訂金手動配對 ──────────────────────────────────────────────
-  async function handleMatch() {
-    if (!dmSelBnb || !dmSelLine) return;
-    setDmMatching(true);
-    try {
-      const res = await fetch('/api/bnb/deposit-match', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bnbId: dmSelBnb, bankLineId: dmSelLine, paymentType: dmPayType }),
-      });
-      const d = await res.json();
-      if (!res.ok) { showToast(d.message || '配對失敗', 'error'); return; }
-      showToast('配對成功', 'success');
-      setDmSelBnb(null); setDmSelLine(null);
-      fetchDepositMatch();
-    } catch { showToast('配對失敗', 'error'); }
-    finally { setDmMatching(false); }
-  }
-
-  // ── 解除配對 ──────────────────────────────────────────────────
-  async function handleUnmatch(bnbId) {
-    const res = await fetch(`/api/bnb/deposit-match?bnbId=${bnbId}&paymentType=${dmPayType}`, { method: 'DELETE' });
-    if (!res.ok) { showToast('解除配對失敗', 'error'); return; }
-    showToast('已解除配對', 'success');
-    fetchDepositMatch();
-  }
-
-  async function handleMark() {
-    if (!dmMarkModal) return;
-    const { bnbId, skipType, paymentType: modalPayType } = dmMarkModal;
-    const res = await fetch('/api/bnb/deposit-match', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bnbId, paymentType: modalPayType || dmPayType, matchSkip: skipType, matchSkipNote: dmMarkNote || null }),
-    });
-    if (!res.ok) { showToast('標記失敗', 'error'); return; }
-    showToast('已標記', 'success');
-    setDmMarkModal(null);
-    setDmMarkNote('');
-    fetchDepositMatch();
-  }
-
-  async function handleClearMark(bnbId, paymentType) {
-    const res = await fetch('/api/bnb/deposit-match', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bnbId, paymentType: paymentType || dmPayType, matchSkip: null, matchSkipNote: null }),
-    });
-    if (!res.ok) { showToast('清除標記失敗', 'error'); return; }
-    fetchDepositMatch();
-  }
-
-  // ── 自動配對（套用全部建議）──────────────────────────────────
-  async function handleAutoMatch() {
-    const suggestions = dmData?.suggestions || [];
-    if (!suggestions.length) { showToast('目前沒有可自動配對的項目', 'info'); return; }
-    setDmMatching(true);
-    let succeeded = 0;
-    let failed = 0;
-    try {
-      for (const s of suggestions) {
-        const res = await fetch('/api/bnb/deposit-match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bnbId: s.bnbId, bankLineId: s.bankLineId, paymentType: dmPayType }),
-        });
-        if (res.ok) succeeded++; else failed++;
-      }
-      await fetchDepositMatch();
-      if (failed > 0) {
-        showToast(`配對完成：${succeeded} 筆成功，${failed} 筆失敗`, 'error');
-      } else {
-        const totalUnmatched = (dmData?.summary?.unmatchedBnbCount ?? 0) - succeeded;
-        showToast(`已配對 ${succeeded} 筆${totalUnmatched > 0 ? `，仍有 ${totalUnmatched} 筆待處理` : '，全部配對完成！'}`, succeeded > 0 ? 'success' : 'info');
-        if (totalUnmatched > 0) {
-          setTimeout(() => {
-            document.querySelector('[data-first-unmatched]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 300);
-        }
-      }
-    } catch { showToast('自動配對發生錯誤', 'error'); }
-    finally { setDmMatching(false); }
-  }
 
   // ── 訂房明細 fetch ────────────────────────────────────────────
   const fetchRecords = useCallback(async (page = 1) => {
