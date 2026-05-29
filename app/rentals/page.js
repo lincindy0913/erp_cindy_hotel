@@ -11,6 +11,7 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { CONTRACT_STATUSES, getContractDisplayStatus, getTenantDisplayName } from './_lib/rentalHelpers';
 import EditTenantModal from './_components/EditTenantModal';
 import ContractModal   from './_components/ContractModal';
+import PropertyModal   from '@/components/PropertyModal';
 
 const TABS = [
   { key: 'overview', label: '總覽' },
@@ -243,7 +244,7 @@ function RentalsPage() {
 
   const [showPropertyModal, setShowPropertyModal] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
-  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
+  const [propertyForm, setPropertyForm] = useState({ name: '', address: '', buildingName: '', unitNo: '', ownerName: '', houseTaxRegistrationNo: '', status: 'available', category: '', sortOrder: '', rentCollectAccountId: '', depositAccountId: '', note: '', collectUtilityFee: false, publicInterestLandlord: false, publicInterestApplicant: '', publicInterestNote: '', publicInterestStartDate: '', publicInterestEndDate: '', publicInterestRent: '' });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
@@ -1308,6 +1309,7 @@ function RentalsPage() {
       name: property.name || '', address: property.address || '', buildingName: property.buildingName || '',
       unitNo: property.unitNo || '', ownerName: property.ownerName || '', houseTaxRegistrationNo: property.houseTaxRegistrationNo || '',
       status: property.status || 'available',
+      category: property.category || '', sortOrder: property.sortOrder != null ? String(property.sortOrder) : '',
       rentCollectAccountId: property.rentCollectAccountId || '', depositAccountId: property.depositAccountId || '',
       note: property.note || '', collectUtilityFee: property.collectUtilityFee || false, publicInterestLandlord: property.publicInterestLandlord || false,
       publicInterestApplicant: property.publicInterestApplicant || '',
@@ -4619,176 +4621,30 @@ function RentalsPage() {
 
       {/* ==================== MODAL: PROPERTY ==================== */}
       {showPropertyModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowPropertyModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">租屋營運設定</h3>
-              <p className="text-xs text-gray-500 mb-3">
-                名稱與地址以「資產管理」主檔為準（儲存後會同步至租屋物業）；此處為大樓／戶別、收租帳戶、公益出租與備註等營運欄位。
-              </p>
-              {editingProperty?.asset?.id && (
-                <div className="text-xs bg-teal-50 border border-teal-100 rounded px-3 py-2 mb-3 text-teal-800">
-                  已連結資產主檔。
-                  <Link href={`/assets?id=${editingProperty.asset.id}`} className="font-medium underline ml-1">
-                    編輯名稱與地址
-                  </Link>
-                </div>
-              )}
-              <div className="space-y-3">
-                <div>
-                  <label htmlFor="f-40" className="text-sm text-gray-600">名稱 *</label>
-                  <input id="f-40" type="text" value={propertyForm.name} onChange={e => setPropertyForm(f => ({ ...f, name: e.target.value }))}
-                    disabled={!!editingProperty?.asset?.id}
-                    className={`w-full border rounded px-3 py-2 text-sm ${editingProperty?.asset?.id ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`} />
-                </div>
-                <div>
-                  <label htmlFor="f-41" className="text-sm text-gray-600">大樓名稱</label>
-                  <input id="f-41" type="text" value={propertyForm.buildingName} onChange={e => setPropertyForm(f => ({ ...f, buildingName: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label htmlFor="f-42" className="text-sm text-gray-600">類別</label>
-                  <input id="f-42" type="text" value={propertyForm.unitNo} onChange={e => setPropertyForm(f => ({ ...f, unitNo: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label htmlFor="f-43" className="text-sm text-gray-600">地址</label>
-                  <input id="f-43" type="text" value={propertyForm.address} onChange={e => setPropertyForm(f => ({ ...f, address: e.target.value }))}
-                    disabled={!!editingProperty?.asset?.id}
-                    className={`w-full border rounded px-3 py-2 text-sm ${editingProperty?.asset?.id ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`} />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label htmlFor="f-44" className="text-sm text-gray-600">所有權人</label>
-                    <input id="f-44" type="text" value={propertyForm.ownerName || ''} onChange={e => setPropertyForm(f => ({ ...f, ownerName: e.target.value }))}
-                      className="w-full border rounded px-3 py-2 text-sm" placeholder="建物登記所有權人" />
-                  </div>
-                  <div>
-                    <label htmlFor="f-45" className="text-sm text-gray-600">房屋稅稅籍編號</label>
-                    <input id="f-45" type="text" value={propertyForm.houseTaxRegistrationNo || ''} onChange={e => setPropertyForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))}
-                      className="w-full border rounded px-3 py-2 text-sm" placeholder="對應房屋稅單" />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="f-46" className="text-sm text-gray-600">狀態</label>
-                  <select id="f-46" value={propertyForm.status} onChange={e => setPropertyForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    {PROPERTY_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-85" className="text-sm text-gray-600">收租帳戶</label>
-                  <select id="f-85" value={propertyForm.rentCollectAccountId} onChange={e => setPropertyForm(f => ({ ...f, rentCollectAccountId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">無</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-86" className="text-sm text-gray-600">押金帳戶</label>
-                  <select id="f-86" value={propertyForm.depositAccountId} onChange={e => setPropertyForm(f => ({ ...f, depositAccountId: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm">
-                    <option value="">無</option>
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-87" className="text-sm text-gray-600">備註</label>
-                  <textarea id="f-87" value={propertyForm.note} onChange={e => setPropertyForm(f => ({ ...f, note: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 text-sm" rows={2} />
-                </div>
-                <div className="col-span-2">
-                  <div className="flex items-center gap-2 mb-3">
-                    <input type="checkbox" id="collectUtilityFee" checked={propertyForm.collectUtilityFee}
-                      onChange={e => setPropertyForm(f => ({ ...f, collectUtilityFee: e.target.checked }))} className="rounded" />
-                    <label htmlFor="collectUtilityFee" className="text-sm text-gray-700 font-medium">需向租客收取水電費</label>
-                    <span className="text-xs text-gray-400">（勾選後收租工作台將顯示電費欄）</span>
-                  </div>
-                </div>
-                <div className="col-span-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <input type="checkbox" id="publicInterestLandlord" checked={propertyForm.publicInterestLandlord}
-                      onChange={e => setPropertyForm(f => ({ ...f, publicInterestLandlord: e.target.checked }))} className="rounded" />
-                    <label htmlFor="publicInterestLandlord" className="text-sm text-gray-600 font-medium">公益出租人</label>
-                  </div>
-                  {propertyForm.publicInterestLandlord && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
-                      <p className="text-xs text-green-800"><strong>公益出租</strong>之申報金額、預估房屋稅請至「租金申報」分頁依<strong>所得年度</strong>填寫同一張總表。</p>
-                      <button type="button" onClick={() => { setShowPropertyModal(false); switchTab('rentFiling'); }} className="text-xs text-teal-700 underline font-medium">開啟租金申報 →</button>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="f-47" className="text-xs text-green-700 font-medium block mb-1">申請人名稱</label>
-                          <input id="f-47" type="text" value={propertyForm.publicInterestApplicant}
-                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestApplicant: e.target.value }))}
-                            placeholder="申請公益出租人之人名"
-                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
-                        </div>
-                        <div>
-                          <label htmlFor="f-48" className="text-xs text-green-700 font-medium block mb-1">公益月租金</label>
-                          <input id="f-48" type="number" min="0" step="1" value={propertyForm.publicInterestRent}
-                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestRent: e.target.value }))}
-                            placeholder="0"
-                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="f-49" className="text-xs text-green-700 font-medium block mb-1">租約開始日期</label>
-                          <input id="f-49" type="date" value={propertyForm.publicInterestStartDate}
-                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestStartDate: e.target.value }))}
-                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
-                        </div>
-                        <div>
-                          <label htmlFor="f-50" className="text-xs text-green-700 font-medium block mb-1">租約結束日期</label>
-                          <input id="f-50" type="date" value={propertyForm.publicInterestEndDate}
-                            onChange={e => setPropertyForm(f => ({ ...f, publicInterestEndDate: e.target.value }))}
-                            className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" />
-                        </div>
-                      </div>
-                      <div>
-                        <label htmlFor="f-51" className="text-xs text-green-700 font-medium block mb-1">公益出租人備註</label>
-                        <textarea id="f-51" value={propertyForm.publicInterestNote}
-                          onChange={e => setPropertyForm(f => ({ ...f, publicInterestNote: e.target.value }))}
-                          placeholder="申請相關備註"
-                          className="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-white" rows={2} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-between items-center gap-2 mt-6 flex-wrap">
-                <div>
-                  {editingProperty && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const id = editingProperty.id;
-                        confirm('確定要刪除此物業？此操作無法復原。', async () => {
-                          try {
-                            const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
-                            const data = await res.json();
-                            if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-                            setShowPropertyModal(false);
-                            fetchProperties();
-                          } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
-                        }, '刪除物業');
-                      }}
-                      className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded hover:bg-red-50"
-                    >
-                      刪除物業
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2 ml-auto">
-                  <button onClick={() => setShowPropertyModal(false)} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
-                  <button onClick={saveProperty} disabled={propertySaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{propertySaving ? '儲存中…' : '儲存'}</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PropertyModal
+          mode="rentals"
+          open={showPropertyModal}
+          onClose={() => setShowPropertyModal(false)}
+          form={propertyForm}
+          setForm={setPropertyForm}
+          editingProperty={editingProperty}
+          accounts={accounts}
+          saving={propertySaving}
+          onSave={saveProperty}
+          onDelete={editingProperty ? async () => {
+            const id = editingProperty.id;
+            if (!(await confirm('確定要刪除此物業？此操作無法復原。', { title: '刪除物業', danger: true }))) return;
+            try {
+              const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
+              const data = await res.json();
+              if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+              setShowPropertyModal(false);
+              fetchProperties();
+            } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+          } : undefined}
+          onOpenRentFiling={() => { setShowPropertyModal(false); switchTab('rentFiling'); }}
+        />
       )}
-
       {/* ==================== MODAL: CONTRACT ==================== */}
       {showContractModal && (
         <ContractModal
