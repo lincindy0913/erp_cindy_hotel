@@ -156,7 +156,7 @@ function WhQuickBtns({ list = [], value, onChange }) {
 // ── 付款欄位順序（Excel Tab 跳格用）────────────────────────────
 const PAY_FIELDS = ['payDeposit', 'depositDate', 'depositLast5', 'payTransfer', 'transferDate', 'transferLast5', 'payCard', 'payCash', 'payVoucher'];
 
-export default function BnbPage() {
+function BnbPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
   const confirm = useConfirm();
@@ -5736,3 +5736,5 @@ export default function BnbPage() {
     </div>
   );
 }
+
+export default function Page() { return <React.Suspense><BnbPage /></React.Suspense>; }
