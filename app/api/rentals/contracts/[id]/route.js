@@ -6,7 +6,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { nextCashTransactionNo, nextSequence } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
@@ -47,7 +47,7 @@ export async function GET(request, { params }) {
   }
 }
 
-export async function PUT(request, { params }) {
+export async function PATCH(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
   
@@ -66,94 +66,106 @@ export async function PUT(request, { params }) {
 
     // Handle deposit receive action
     if (body.action === 'depositReceive') {
+      if (existing.depositReceived) {
+        return createErrorResponse('ALREADY_RECEIVED', '押金已收取，不可重複建帳', 409);
+      }
+
       const accountId = existing.depositAccountId || existing.rentAccountId;
       const today = todayStr();
       const transactionNo = await nextCashTransactionNo(prisma, today);
-
       const depositInCatId = await getCategoryId(prisma, 'rental_deposit_in');
-      const cashTxRecord = await prisma.cashTransaction.create({
-        data: {
-          transactionNo,
-          transactionDate: today,
-          type: '收入',
-          accountId,
-          categoryId: depositInCatId,
-          amount: Number(existing.depositAmount),
-          description: `押金收取 - 合約 ${existing.contractNo}`,
-          sourceType: 'rental_deposit_in',
-          sourceRecordId: contractId,
-          status: '已確認'
-        },
-        select: { id: true },
-      });
 
-      await prisma.rentalContract.update({
-        where: { id: contractId },
-        data: {
-          depositReceived: true,
-          depositCashTransactionId: cashTxRecord.id
-        }
+      let cashTxId;
+      await prisma.$transaction(async (tx) => {
+        const cashTxRecord = await tx.cashTransaction.create({
+          data: {
+            transactionNo,
+            transactionDate: today,
+            type: '收入',
+            accountId,
+            categoryId: depositInCatId,
+            amount: Number(existing.depositAmount),
+            description: `押金收取 - 合約 ${existing.contractNo}`,
+            sourceType: 'rental_deposit_in',
+            sourceRecordId: contractId,
+            status: '已確認'
+          },
+          select: { id: true },
+        });
+        cashTxId = cashTxRecord.id;
+
+        await tx.rentalContract.update({
+          where: { id: contractId },
+          data: {
+            depositReceived: true,
+            depositCashTransactionId: cashTxRecord.id,
+          },
+        });
       });
 
       await recalcBalance(prisma, accountId);
-
-      return NextResponse.json({ success: true, transactionId: cashTxRecord.id });
+      return NextResponse.json({ success: true, transactionId: cashTxId });
     }
 
     // Handle deposit refund action — create PaymentOrder for cashier to execute
     if (body.action === 'depositRefund') {
+      if (!existing.depositReceived) {
+        return createErrorResponse('NOT_RECEIVED', '押金尚未收取，無法退還', 400);
+      }
+      if (existing.depositRefunded) {
+        return createErrorResponse('ALREADY_REFUNDED', '此合約押金已退還', 409);
+      }
+
       const amt = Number(existing.depositAmount);
       const today = todayStr();
       const dateStr = today.replace(/-/g, '');
       const prefix = `RENT-${dateStr}-`;
-
-      const existingOrders = await prisma.paymentOrder.findMany({
-        where: { orderNo: { startsWith: prefix } },
-        select: { orderNo: true }
-      });
-      let maxSeq = 0;
-      for (const item of existingOrders) {
-        const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
-        if (seq > maxSeq) maxSeq = seq;
-      }
-      const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-
       const summary = `押金退還 - 合約 ${existing.contractNo}`;
       const accountId = existing.depositAccountId || existing.rentAccountId;
 
-      const order = await prisma.paymentOrder.create({
-        data: {
-          orderNo,
-          invoiceIds: [],
-          supplierName: summary,
-          paymentMethod: '轉帳',
-          amount: amt,
-          discount: 0,
-          netAmount: amt,
-          dueDate: today,
-          accountId: accountId || null,
-          summary,
-          sourceType: 'rental_deposit_out',
-          sourceRecordId: contractId,
-          status: '待出納'
-        }
-      });
+      let order;
+      await prisma.$transaction(async (tx) => {
+        const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', prefix);
+        order = await tx.paymentOrder.create({
+          data: {
+            orderNo,
+            invoiceIds: [],
+            supplierName: summary,
+            paymentMethod: '轉帳',
+            amount: amt,
+            discount: 0,
+            netAmount: amt,
+            dueDate: today,
+            accountId: accountId || null,
+            summary,
+            sourceType: 'rental_deposit_out',
+            sourceRecordId: contractId,
+            status: '待出納'
+          }
+        });
 
-      await prisma.rentalContract.update({
-        where: { id: contractId },
-        data: {
-          depositRefunded: true,
-          depositRefundPaymentOrderId: order.id
-        }
+        await tx.rentalContract.update({
+          where: { id: contractId },
+          data: {
+            depositRefunded: true,
+            depositRefundPaymentOrderId: order.id,
+          },
+        });
       });
 
       return NextResponse.json({ success: true, paymentOrderId: order.id, orderNo: order.orderNo });
     }
 
     // Standard update
+    if (body.propertyId !== undefined || body.tenantId !== undefined) {
+      return createErrorResponse(
+        'FORBIDDEN',
+        '合約的物業與承租人不可修改，如需變更請終止此合約並重新建立',
+        403
+      );
+    }
+
     const updateData = {};
-    if (body.propertyId !== undefined) updateData.propertyId = parseInt(body.propertyId);
-    if (body.tenantId !== undefined) updateData.tenantId = parseInt(body.tenantId);
     if (body.startDate !== undefined) updateData.startDate = body.startDate;
     if (body.endDate !== undefined) updateData.endDate = body.endDate;
     if (body.monthlyRent !== undefined) updateData.monthlyRent = parseFloat(body.monthlyRent);

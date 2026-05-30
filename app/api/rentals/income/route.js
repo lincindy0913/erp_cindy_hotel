@@ -66,7 +66,9 @@ export async function GET(request) {
       propertySortOrder: i.property.asset?.sortOrder ?? i.property.sortOrder ?? null,
       contractCategory: i.property?.category ?? null,
       contractSortOrder: i.property.asset?.sortOrder ?? i.property.sortOrder ?? null,
-      tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName
+      tenantName: i.tenant.tenantType === 'company' ? i.tenant.companyName : i.tenant.fullName,
+      // 優先順序：合約帳戶 > 物業預設帳戶，前端統一讀此欄位
+      resolvedAccountId: i.contract?.rentAccountId ?? i.property.rentCollectAccountId ?? null
     }));
 
     return NextResponse.json(result, hasMore ? { headers: { 'X-Has-More': 'true' } } : {});
@@ -100,13 +102,13 @@ export async function POST(request) {
       }
     });
 
-    const result = await prisma.$transaction(async (tx) => {
-      let created = 0;
-      let skipped = 0;
+    let created = 0;
+    let skipped = 0;
+    const failed = [];
 
-      for (const contract of activeContracts) {
-        // Check if already exists
-        const existing = await tx.rentalIncome.findUnique({
+    for (const contract of activeContracts) {
+      try {
+        const existing = await prisma.rentalIncome.findUnique({
           where: {
             contractId_incomeYear_incomeMonth: {
               contractId: contract.id,
@@ -121,11 +123,12 @@ export async function POST(request) {
           continue;
         }
 
-        // Calculate due date
-        const dueDay = Math.min(contract.paymentDueDay, 28);
+        // Calculate due date（依當月實際天數，避免 2 月 / 小月日期越界）
+        const lastDay = new Date(y, m, 0).getDate();
+        const dueDay  = Math.min(contract.paymentDueDay, lastDay);
         const dueDate = `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
 
-        await tx.rentalIncome.create({
+        await prisma.rentalIncome.create({
           data: {
             contractId: contract.id,
             propertyId: contract.propertyId,
@@ -139,24 +142,23 @@ export async function POST(request) {
         });
 
         created++;
+      } catch (err) {
+        failed.push({ contractId: contract.id, error: err.message || String(err) });
       }
-
-      return { created, skipped };
-    });
-
-    const { created, skipped } = result;
+    }
 
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.RENTAL_INCOME_CREATE,
       targetModule: 'rental_income',
-      afterState: { year: y, month: m, created, skipped },
-      note: `批次建立 ${y}/${String(m).padStart(2,'0')} 收款紀錄：新建 ${created} 筆，跳過 ${skipped} 筆`,
+      afterState: { year: y, month: m, created, skipped, failedCount: failed.length },
+      note: `批次建立 ${y}/${String(m).padStart(2,'0')} 收款紀錄：新建 ${created} 筆，跳過 ${skipped} 筆，失敗 ${failed.length} 筆`,
     });
 
     return NextResponse.json({
       success: true,
       created,
       skipped,
+      failed,
       total: activeContracts.length
     });
   } catch (error) {

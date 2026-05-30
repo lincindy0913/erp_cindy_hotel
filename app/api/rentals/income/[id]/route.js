@@ -13,6 +13,8 @@ import { todayStr } from '@/lib/localDate';
 export const dynamic = 'force-dynamic';
 
 
+// NOTE: 確認收款請使用 POST /api/rentals/income/[id]/confirm
+// 以下為舊版 PUT，已廢棄（前端已改用 /confirm sub-route），保留供相容
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
@@ -51,6 +53,15 @@ export async function PUT(request, { params }) {
     }
     if (income.isLocked) {
       return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法新增收款', 423);
+    }
+
+    // R17：付款日期年份不可早於收款年度
+    if (actualDate && parseInt(actualDate.slice(0, 4)) < income.incomeYear) {
+      return createErrorResponse(
+        'INVALID_DATE',
+        `付款日期（${actualDate}）早於收款年度（${income.incomeYear}），請確認`,
+        400
+      );
     }
 
     if (paymentMethod === 'transfer' && matchTransferRef) {
@@ -177,7 +188,8 @@ export async function PATCH(request, { params }) {
         paymentMethod: true, matchTransferRef: true, matchBankAccountName: true,
         expectedAmount: true, cashTransactionId: true, isLocked: true,
         property: { select: { name: true } },
-        tenant: { select: { fullName: true, companyName: true, tenantType: true } }
+        tenant: { select: { fullName: true, companyName: true, tenantType: true } },
+        payments: { select: { id: true, cashTransactionId: true } },
       }
     });
     if (!income) {
@@ -234,6 +246,15 @@ export async function PATCH(request, { params }) {
         },
         select: { id: true },
       });
+      // R16：同步更新對應的 RentalIncomePayment（主子表一致）
+      const matchedPayment = income.payments?.find(p => p.cashTransactionId === income.cashTransactionId);
+      if (matchedPayment) {
+        await tx.rentalIncomePayment.update({
+          where: { id: matchedPayment.id },
+          data: { amount: actualAmount, paymentDate: actualDate, accountId, paymentMethod: paymentMethod || null },
+          select: { id: true },
+        });
+      }
     });
 
     await recalcBalance(prisma, accountId);

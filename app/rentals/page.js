@@ -146,6 +146,7 @@ function RentalsPage() {
   }, [properties]);
   const [taxes, setTaxes] = useState([]);
   const [maintenances, setMaintenances] = useState([]);
+  const [maintenancesHasMore, setMaintenancesHasMore] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [accountingSubjects, setAccountingSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1292,6 +1293,7 @@ function RentalsPage() {
       const res = await fetch(`/api/rentals/maintenance?${params}`);
       const data = await res.json();
       setMaintenances(Array.isArray(data) ? data : []);
+      setMaintenancesHasMore(res.headers.get('X-Has-More') === 'true');
     } catch { setMaintenances([]); }
   }
 
@@ -1629,7 +1631,7 @@ function RentalsPage() {
     setContractSaving(true);
     try {
       const url = editingContract ? `/api/rentals/contracts/${editingContract.id}` : '/api/rentals/contracts';
-      const method = editingContract ? 'PUT' : 'POST';
+      const method = editingContract ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formToSave) });
       const data = await res.json();
       if (!res.ok) {
@@ -1687,7 +1689,7 @@ function RentalsPage() {
     confirm(msg, async () => {
     try {
       const res = await fetch(`/api/rentals/contracts/${contractId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
       const data = await res.json();
@@ -1936,7 +1938,7 @@ function RentalsPage() {
     if (editingMaintenance) {
       try {
         const res = await fetch(`/api/rentals/maintenance/${editingMaintenance.id}`, {
-          method: 'PUT',
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             propertyId: maintenanceForm.propertyId,
@@ -3589,6 +3591,11 @@ function RentalsPage() {
             {/* ==================== TAB: MAINTENANCE ==================== */}
             {activeTab === 'maintenance' && (
               <div>
+                {maintenancesHasMore && (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    目前顯示最近 500 筆，請使用篩選條件（物業／類別／狀態）縮小範圍
+                  </p>
+                )}
                 {/* 維護費分析摘要 */}
                 {maintenances.length > 0 && (
                   <div className="bg-white rounded-lg shadow p-4 mb-4">

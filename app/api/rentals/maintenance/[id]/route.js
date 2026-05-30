@@ -34,8 +34,8 @@ export async function GET(request, { params }) {
   }
 }
 
-// PUT: 編輯維護紀錄（僅待付可編輯）；已付款不可編輯
-export async function PUT(request, { params }) {
+// PATCH: 編輯維護紀錄（僅待付可編輯）；已付款不可編輯
+export async function PATCH(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_EDIT);
   if (!auth.ok) return auth.response;
 
@@ -89,36 +89,40 @@ export async function PUT(request, { params }) {
     if (isCapitalized !== undefined) updateData.isCapitalized = !!isCapitalized;
     if (isRecurring !== undefined) updateData.isRecurring = !!isRecurring;
 
-    const updated = await prisma.rentalMaintenance.update({
-      where: { id: maintenanceId },
-      data: updateData,
-      include: {
-        property: { select: { id: true, name: true, buildingName: true } }
-      }
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const m = await tx.rentalMaintenance.update({
+        where: { id: maintenanceId },
+        data: updateData,
+        include: {
+          property: { select: { id: true, name: true, buildingName: true } }
+        }
+      });
 
-    // Sync linked PaymentOrder when amount/note/category changes
-    if (record.paymentOrderId) {
-      const orderUpdate = {};
-      if (amount != null) {
-        const newAmt = parseFloat(amount);
-        orderUpdate.amount = newAmt;
-        orderUpdate.netAmount = newAmt;
+      // Sync linked PaymentOrder when amount/note/category changes
+      if (record.paymentOrderId) {
+        const orderUpdate = {};
+        if (amount != null) {
+          const newAmt = parseFloat(amount);
+          orderUpdate.amount = newAmt;
+          orderUpdate.netAmount = newAmt;
+        }
+        if (category != null || amount != null || note !== undefined) {
+          const advanceLabel = (m.isEmployeeAdvance && m.advancedBy) ? ` (員工代墊: ${m.advancedBy})` : '';
+          const summary = `租賃維護費 - ${m.property.name} - ${m.category}${advanceLabel}`;
+          orderUpdate.supplierName = m.isEmployeeAdvance ? (m.advancedBy || '員工代墊') : null;
+          orderUpdate.summary = summary;
+        }
+        if (note !== undefined) orderUpdate.note = note || null;
+        if (Object.keys(orderUpdate).length > 0) {
+          await tx.paymentOrder.update({
+            where: { id: record.paymentOrderId },
+            data: orderUpdate
+          });
+        }
       }
-      if (category != null || amount != null || note !== undefined) {
-        const advanceLabel = (updated.isEmployeeAdvance && updated.advancedBy) ? ` (員工代墊: ${updated.advancedBy})` : '';
-        const summary = `租賃維護費 - ${updated.property.name} - ${updated.category}${advanceLabel}`;
-        orderUpdate.supplierName = null;
-        orderUpdate.summary = summary;
-      }
-      if (note !== undefined) orderUpdate.note = note || null;
-      if (Object.keys(orderUpdate).length > 0) {
-        await prisma.paymentOrder.update({
-          where: { id: record.paymentOrderId },
-          data: orderUpdate
-        });
-      }
-    }
+
+      return m;
+    });
 
     return NextResponse.json(updated);
   } catch (error) {

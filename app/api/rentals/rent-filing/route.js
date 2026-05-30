@@ -56,16 +56,39 @@ export async function GET(request) {
       orderBy: [{ propertyId: 'asc' }, { slotIndex: 'asc' }],
     });
 
+    // 批次查詢取代 N+1（各物業合約數 + 各 (propertyId,contractId) 實收合計）
+    const yearStart = `${year}-01-01`;
+    const yearEnd   = `${year}-12-31`;
+    const filingPropertyIds = [...new Set(filings.map(f => f.propertyId))];
+
+    const [contractCounts, incomeSums] = await Promise.all([
+      prisma.rentalContract.groupBy({
+        by: ['propertyId'],
+        where: { startDate: { lte: yearEnd }, endDate: { gte: yearStart } },
+        _count: { id: true },
+      }),
+      prisma.rentalIncome.groupBy({
+        by: ['propertyId', 'contractId'],
+        where: { propertyId: { in: filingPropertyIds }, incomeYear: year },
+        _sum: { actualAmount: true },
+      }),
+    ]);
+
+    const contractCountMap = new Map(contractCounts.map(r => [r.propertyId, r._count.id]));
+    const incomeSumMap     = new Map(
+      incomeSums.map(r => [`${r.propertyId}|${r.contractId ?? 'null'}`, Number(r._sum.actualAmount || 0)])
+    );
+
     const rows = [];
     for (const f of filings) {
-      const multiContracts = await contractsOverlappingYear(f.propertyId, year);
+      const multiContracts = contractCountMap.get(f.propertyId) ?? 0;
       let actualAnnual = 0;
       let incomeSplitHint = null;
 
       if (f.contractId != null) {
-        actualAnnual = await sumActualRentalIncome(f.propertyId, year, f.contractId);
+        actualAnnual = incomeSumMap.get(`${f.propertyId}|${f.contractId}`) ?? 0;
       } else if (f.slotIndex === 0) {
-        actualAnnual = await sumActualRentalIncome(f.propertyId, year, null);
+        actualAnnual = incomeSumMap.get(`${f.propertyId}|null`) ?? 0;
         if (multiContracts > 1) {
           incomeSplitHint =
             '該年度此物業有多份租約交疊，若要分開對照實收請指定「綁定租約」或新增第二列並分別綁約。';

@@ -39,6 +39,16 @@ const BNB_SELECT = {
   // 軟刪除
   deletedAt: true, deletedBy: true, previousStatus: true,
   createdAt: true, updatedAt: true,
+  // B16 子表
+  paymentEntries: {
+    select: {
+      payType: true, amount: true, date: true, last5: true,
+      feeRate: true, fee: true, settlementDate: true,
+      cashDestination: true, withdrawNote: true,
+      bankLineId: true, matchedAt: true, matchedBy: true,
+      skipReason: true, skipNote: true, cashTxId: true,
+    },
+  },
 };
 
 export async function GET(request) {

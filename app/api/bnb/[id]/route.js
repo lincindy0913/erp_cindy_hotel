@@ -9,6 +9,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
+import { PAY_TYPE_KEYS, bookingToPaymentEntry, syncPaymentEntry } from '@/lib/bnb-pay-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -230,6 +231,32 @@ export async function PATCH(request, { params }) {
       select: { id: true, roomCharge: true, paymentFilled: true, isComplimentary: true, cardFee: true,
                 payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true },
     });
+
+    // B16 雙寫：付款欄位有變動時同步更新 BnbPaymentEntry
+    if (Object.keys(updateData).some(k => ['payDeposit','payTransfer','payCard','payCash','payVoucher',
+        'depositDate','transferDate','cardSettlementDate','cashDepositDate',
+        'depositLast5','transferLast5','cashDestination','bossWithdrawNote','cardFeeRate'].includes(k))) {
+      const refreshed = await prisma.bnbBookingRecord.findUnique({
+        where: { id },
+        select: {
+          payDeposit: true, depositDate: true, depositLast5: true, depositBankLineId: true,
+          depositMatchedAt: true, depositMatchedBy: true, depositMatchSkip: true, depositMatchSkipNote: true, depositCashTxId: true,
+          payTransfer: true, transferDate: true, transferLast5: true, transferBankLineId: true,
+          transferMatchedAt: true, transferMatchedBy: true, transferMatchSkip: true, transferMatchSkipNote: true, transferCashTxId: true,
+          payCard: true, cardFeeRate: true, cardFee: true, cardSettlementDate: true, cardBankLineId: true,
+          cardMatchedAt: true, cardMatchedBy: true, cardMatchSkip: true, cardMatchSkipNote: true, cardCashTxId: true,
+          payCash: true, cashDepositDate: true, cashDestination: true, bossWithdrawNote: true, cashBankLineId: true,
+          cashMatchedAt: true, cashMatchedBy: true, cashMatchSkip: true, cashMatchSkipNote: true, cashCashTxId: true,
+          payVoucher: true,
+        },
+      });
+      if (refreshed) {
+        for (const payType of PAY_TYPE_KEYS) {
+          const entryData = bookingToPaymentEntry(refreshed, payType);
+          if (entryData) await syncPaymentEntry(prisma, id, payType, entryData).catch(() => {});
+        }
+      }
+    }
 
     // M1: 改為 await + 失敗時回 207，不再 fire-and-forget
     const paymentChanged = ['payDeposit','depositDate','payTransfer','transferDate','payCash','cashDestination','cashDepositDate','payCard','cardFeeRate','cardSettlementDate'].some(f => f in body);

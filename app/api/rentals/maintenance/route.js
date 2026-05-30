@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,16 +25,19 @@ export async function GET(request) {
     if (status) where.status = status;
     if (category) where.category = category;
 
+    const TAKE = 500;
     const records = await prisma.rentalMaintenance.findMany({
       where,
       include: {
         property: { select: { id: true, name: true, buildingName: true } }
       },
       orderBy: { maintenanceDate: 'desc' },
-      take: 500,
+      take: TAKE + 1,
     });
 
-    return NextResponse.json(records);
+    const hasMore = records.length > TAKE;
+    const slice   = hasMore ? records.slice(0, TAKE) : records;
+    return NextResponse.json(slice, hasMore ? { headers: { 'X-Has-More': 'true' } } : {});
   } catch (error) {
     console.error('GET /api/rentals/maintenance error:', error.message || error);
     return handleApiError(error);
@@ -85,16 +89,7 @@ export async function POST(request) {
       const now = new Date();
       const dateStr = localDateStr(now).replace(/-/g, '');
       const prefix = `RENT-${dateStr}-`;
-      const existing = await tx.paymentOrder.findMany({
-        where: { orderNo: { startsWith: prefix } },
-        select: { orderNo: true }
-      });
-      let maxSeq = 0;
-      for (const item of existing) {
-        const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
-        if (seq > maxSeq) maxSeq = seq;
-      }
-      const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+      const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', prefix);
 
       const advanceLabel = isEmployeeAdvance && advancedBy ? ` (員工代墊: ${advancedBy})` : '';
       const summary = `租賃維護費 - ${record.property.name} - ${record.category}${advanceLabel}`;
@@ -102,17 +97,20 @@ export async function POST(request) {
         data: {
           orderNo,
           invoiceIds: [],
-          supplierId: record.supplierId,
-          supplierName: null,
+          // R18：員工代墊時受款人改為員工（而非廠商），出納用現金/轉帳還員工
+          supplierId:    isEmployeeAdvance ? null : record.supplierId,
+          supplierName:  isEmployeeAdvance ? (advancedBy || '員工代墊') : null,
           warehouse: null,
-          paymentMethod: '轉帳',
+          paymentMethod: isEmployeeAdvance ? (advancePaymentMethod || '現金') : '轉帳',
           amount: amt,
           discount: 0,
           netAmount: amt,
           dueDate: maintenanceDate,
           accountId: parseInt(accountId),
           summary,
-          note: body.note || null,
+          note: isEmployeeAdvance
+            ? `【員工代墊還款】請直接還款給員工 ${advancedBy || ''}，而非廠商。${body.note ? '\n' + body.note : ''}`
+            : (body.note || null),
           status: '待出納',
           createdBy: session?.user?.email || null
         }

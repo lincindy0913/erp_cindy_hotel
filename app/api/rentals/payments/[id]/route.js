@@ -6,6 +6,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertRentalYearOpen } from '@/lib/rental-year-lock';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -146,7 +148,46 @@ export async function DELETE(request, { params }) {
 
     await prisma.$transaction(async (tx) => {
       if (payment.cashTransactionId) {
-        await tx.cashTransaction.delete({ where: { id: payment.cashTransactionId } });
+        const bankMatched = await tx.bankStatementLine.count({
+          where: { matchedTransactionId: payment.cashTransactionId },
+        });
+
+        if (bankMatched > 0) {
+          // 已對帳 → 沖銷，保留對帳關聯
+          const fresh = await tx.cashTransaction.findUnique({
+            where: { id: payment.cashTransactionId },
+            select: { id: true, accountId: true, categoryId: true, amount: true,
+                      description: true, reversedById: true },
+          });
+          if (fresh && !fresh.reversedById) {
+            const revNo = await nextCashTransactionNo(tx, todayStr());
+            const rev = await tx.cashTransaction.create({
+              data: {
+                transactionNo: revNo,
+                transactionDate: todayStr(),
+                type: '支出',
+                accountId: fresh.accountId,
+                categoryId: fresh.categoryId,
+                amount: Number(fresh.amount),
+                description: `沖銷：${fresh.description || ''}`,
+                sourceType: 'reversal',
+                sourceRecordId: fresh.id,
+                status: '已確認',
+                isReversal: true,
+                reversalOfId: fresh.id,
+              },
+              select: { id: true },
+            });
+            await tx.cashTransaction.update({
+              where: { id: fresh.id },
+              data: { reversedById: rev.id },
+              select: { id: true },
+            });
+          }
+        } else {
+          // 未對帳 → 物理刪除
+          await tx.cashTransaction.delete({ where: { id: payment.cashTransactionId } });
+        }
       }
       await tx.rentalIncomePayment.delete({ where: { id: paymentId } });
       await tx.rentalIncome.update({

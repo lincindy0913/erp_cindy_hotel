@@ -606,7 +606,13 @@ function AssetsPageInner() {
       setProperties(prev => prev.map(p => p.id === propertyId ? { ...p, [field]: parsed } : p));
       if (selected?.id === propertyId) setSelected(s => s ? { ...s, [field]: parsed } : s);
     } catch { showToast('儲存失敗', 'error'); }
-    finally { setPropInlineSaving(false); setPropInlineEdit(null); }
+    finally {
+      setPropInlineSaving(false);
+      // 只清自己這筆的 edit 狀態，避免清掉用戶已移到其他列的 edit
+      setPropInlineEdit(prev =>
+        prev?.id === propertyId && prev?.field === field ? null : prev
+      );
+    }
   }
 
   function openNewProperty() {

@@ -6,6 +6,12 @@ import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
+const PROPERTY_SELECT = {
+  id: true, name: true, buildingName: true, unitNo: true,
+  address: true, category: true, sortOrder: true,
+  asset: { select: { sortOrder: true } },
+};
+
 /**
  * GET ?year=2025&propertyId=&category=&startDate=&endDate=
  * Per property: 收租金額, 維修金額, 房務稅/地價稅, 淨利, 淨利率.
@@ -96,7 +102,7 @@ export async function GET(request) {
       }),
       prisma.rentalProperty.findMany({
         where: propertiesWhere,
-        select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true, asset: { select: { sortOrder: true } } }
+        select: PROPERTY_SELECT
       }),
       prisma.asset.findMany({
         where: { rentalPropertyId: { not: null }, areaSqm: { not: null } },
@@ -115,7 +121,7 @@ export async function GET(request) {
       ? properties
       : await prisma.rentalProperty.findMany({
           where: { id: { in: Array.from(propertyIds) } },
-          select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true, asset: { select: { sortOrder: true } } }
+          select: PROPERTY_SELECT
         });
 
     const propMap = new Map(allProperties.map(p => [p.id, p]));
@@ -131,7 +137,7 @@ export async function GET(request) {
       rentByProp.set(i.propertyId, (rentByProp.get(i.propertyId) || 0) + amt);
     }
     for (const u of utilityIncomes) {
-      const amt = (u.status === 'completed') ? Number(u.actualAmount ?? 0) : 0;
+      const amt = (u.status === 'completed' || u.status === 'partial') ? Number(u.actualAmount ?? 0) : 0;
       rentByProp.set(u.propertyId, (rentByProp.get(u.propertyId) || 0) + amt);
     }
     const maintByProp = new Map();

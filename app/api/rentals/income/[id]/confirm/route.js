@@ -54,6 +54,16 @@ export async function POST(request, { params }) {
     }
     await assertRentalYearOpen(income.incomeYear);
 
+    // R17：付款日期年份不可早於收款年度
+    const actualYear = parseInt(rent.actualDate.slice(0, 4));
+    if (actualYear < income.incomeYear) {
+      return createErrorResponse(
+        'INVALID_DATE',
+        `付款日期（${rent.actualDate}）早於收款年度（${income.incomeYear}），請確認`,
+        400
+      );
+    }
+
     const parsedRentActual = parseFloat(rent.actualAmount);
     const acctId = parseInt(rent.accountId);
     const existingPayments = income.payments || [];

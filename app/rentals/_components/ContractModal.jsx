@@ -90,7 +90,7 @@ export default function ContractModal({
             </div>
             <div>
               <label htmlFor="f-2" className="text-sm text-gray-600">繳租日 (每月) *</label>
-              <input id="f-2" type="number" min="1" max="28" value={contractForm.paymentDueDay} onChange={e => setContractForm(f => ({ ...f, paymentDueDay: e.target.value }))}
+              <input id="f-2" type="number" min="1" max="31" value={contractForm.paymentDueDay} onChange={e => setContractForm(f => ({ ...f, paymentDueDay: e.target.value }))}
                 className="w-full border rounded px-3 py-2 text-sm" />
             </div>
             <div>

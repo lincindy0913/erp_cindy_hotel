@@ -19,6 +19,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
+import { PAY_TYPE_KEYS, bookingToPaymentEntry, syncPaymentEntry } from '@/lib/bnb-pay-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +100,13 @@ export async function PATCH(request) {
 
         try {
           await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
+
+          // B16 雙寫：同步 BnbPaymentEntry
+          const refreshed = { ...existing, ...updateData };
+          for (const payType of PAY_TYPE_KEYS) {
+            const entryData = bookingToPaymentEntry(refreshed, payType);
+            if (entryData) await syncPaymentEntry(prisma, id, payType, entryData).catch(() => {});
+          }
 
           // 同步 BnbBossWithdraw
           const finalCash = updateData.payCash          ?? Number(existing.payCash);
