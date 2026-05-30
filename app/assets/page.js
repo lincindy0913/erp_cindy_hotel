@@ -814,12 +814,6 @@ function AssetsPageInner() {
               ↓ 匯出 CSV
             </button>
             {canEdit && (
-              <button type="button" onClick={openNewProperty}
-                className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700">
-                新增物業
-              </button>
-            )}
-            {canEdit && (
               <button type="button" onClick={openCreate}
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
                 新增資產
