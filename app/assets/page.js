@@ -163,7 +163,7 @@ function AssetsPageInner() {
   const [form, setForm] = useState({
     name: '', assetType: 'BUILDING', address: '', areaSqm: '',
     acquisitionDate: '', notes: '', rentalPropertyId: '',
-    serialNo: '', category: '',
+    serialNo: '', category: '', ownerName: '', registeredOwner: '', houseTaxRegistrationNo: '',
     isAvailableForRental: false, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false,
   });
 
@@ -517,6 +517,9 @@ function AssetsPageInner() {
       rentalPropertyId: a.rentalPropertyId != null ? String(a.rentalPropertyId) : '',
       serialNo: a.serialNo || '',
       category: a.category || '',
+      ownerName: a.ownerName || '',
+      registeredOwner: a.registeredOwner || '',
+      houseTaxRegistrationNo: a.houseTaxRegistrationNo || '',
       isAvailableForRental: a.isAvailableForRental || false,
       hasHouseTax: a.hasHouseTax || false,
       hasLandTax: a.hasLandTax || false,
@@ -538,6 +541,9 @@ function AssetsPageInner() {
         notes: form.notes.trim() || null,
         serialNo: form.serialNo.trim() || null,
         category: form.category.trim() || null,
+        ownerName: form.ownerName.trim() || null,
+        registeredOwner: form.registeredOwner.trim() || null,
+        houseTaxRegistrationNo: form.houseTaxRegistrationNo.trim() || null,
         rentalPropertyId: form.rentalPropertyId === '' ? null : form.rentalPropertyId,
         isAvailableForRental: form.isAvailableForRental,
         hasHouseTax: form.hasHouseTax,
@@ -1435,6 +1441,13 @@ function AssetsPageInner() {
                       {selected.asset.areaSqm && ` · ${selected.asset.areaSqm} ㎡`}
                       {selected.asset.acquisitionDate && ` · 取得：${selected.asset.acquisitionDate}`}
                     </p>
+                    {(selected.asset.ownerName || selected.asset.registeredOwner || selected.asset.houseTaxRegistrationNo) && (
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-gray-600">
+                        {selected.asset.ownerName && <span>所有權人：<strong className="text-gray-800">{selected.asset.ownerName}</strong></span>}
+                        {selected.asset.registeredOwner && <span>建物登記：<strong className="text-gray-800">{selected.asset.registeredOwner}</strong></span>}
+                        {selected.asset.houseTaxRegistrationNo && <span>房屋稅籍：<strong className="text-gray-800">{selected.asset.houseTaxRegistrationNo}</strong></span>}
+                      </div>
+                    )}
                     <div className="flex gap-3 mt-1.5 text-gray-500">
                       {selected.asset.hasHouseTax && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">房屋稅</span>}
                       {selected.asset.hasLandTax && <span className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">地價稅</span>}
@@ -1608,6 +1621,26 @@ function AssetsPageInner() {
                       <span>{item.label}</span>
                     </label>
                   ))}
+                </div>
+              </div>
+              <div className="border-t pt-3 mt-1">
+                <p className="text-xs font-medium text-gray-500 mb-2">所有權資訊</p>
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="f-19" className="text-gray-600">所有權人</label>
+                    <input id="f-19" className="w-full border rounded px-3 py-2 mt-1" placeholder="登記所有權人姓名" value={form.ownerName}
+                      onChange={e => setForm(f => ({ ...f, ownerName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label htmlFor="f-20" className="text-gray-600">建物登記所有權人</label>
+                    <input id="f-20" className="w-full border rounded px-3 py-2 mt-1" placeholder="建物謄本所載所有權人" value={form.registeredOwner}
+                      onChange={e => setForm(f => ({ ...f, registeredOwner: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label htmlFor="f-21" className="text-gray-600">房屋稅稅籍編號</label>
+                    <input id="f-21" className="w-full border rounded px-3 py-2 mt-1" placeholder="稅籍編號" value={form.houseTaxRegistrationNo}
+                      onChange={e => setForm(f => ({ ...f, houseTaxRegistrationNo: e.target.value }))} />
+                  </div>
                 </div>
               </div>
               <div>

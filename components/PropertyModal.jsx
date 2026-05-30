@@ -64,10 +64,23 @@ export default function PropertyModal({
           {/* ── Linked asset notice ───────────────────────────────── */}
           {isLinkedAsset && (
             <div className="text-xs bg-teal-50 border border-teal-100 rounded px-3 py-2 mb-3 text-teal-800">
-              已連結資產主檔，名稱與地址由資產端管理。
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>已連結資產主檔，名稱與地址由資產端管理。</span>
+                {editingProperty?.asset?.serialNo && (
+                  <span className="font-mono bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
+                    資產序號：{editingProperty.asset.serialNo}
+                  </span>
+                )}
+                {editingProperty?.asset?.ownerName && (
+                  <span>所有權人：<strong>{editingProperty.asset.ownerName}</strong></span>
+                )}
+                {editingProperty?.asset?.houseTaxRegistrationNo && (
+                  <span>房屋稅籍：<strong className="font-mono">{editingProperty.asset.houseTaxRegistrationNo}</strong></span>
+                )}
+              </div>
               {mode === 'rentals' && linkedAssetId && (
-                <Link href={`/assets?id=${linkedAssetId}`} className="font-medium underline ml-1">
-                  編輯名稱與地址
+                <Link href={`/assets?id=${linkedAssetId}`} className="font-medium underline mt-1 inline-block">
+                  前往資產管理編輯
                 </Link>
               )}
             </div>
