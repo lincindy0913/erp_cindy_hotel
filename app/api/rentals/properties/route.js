@@ -101,6 +101,8 @@ export async function POST(request) {
         houseTaxRegistrationNo: body.houseTaxRegistrationNo || null,
         rentCollectAccountId: body.rentCollectAccountId ? parseInt(body.rentCollectAccountId) : null,
         depositAccountId: body.depositAccountId ? parseInt(body.depositAccountId) : null,
+        category: body.category || null,
+        sortOrder: body.sortOrder != null && body.sortOrder !== '' ? parseInt(body.sortOrder) : null,
         status: body.status || 'available',
         note: body.note || null,
         publicInterestLandlord: body.publicInterestLandlord === true,

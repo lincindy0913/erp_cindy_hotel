@@ -147,14 +147,18 @@ export async function PATCH(request, { params }) {
     await prisma.$transaction(async (tx) => {
       await tx.asset.update({ where: { id }, data });
       const final = await tx.asset.findUnique({ where: { id } });
-      if (final?.rentalPropertyId) {
-        await tx.rentalProperty.update({
+      if (final?.rentalPropertyId && (data.name != null || data.address !== undefined)) {
+        // N4: only sync fields that actually changed — never overwrite if property already diverged
+        const prop = await tx.rentalProperty.findUnique({
           where: { id: final.rentalPropertyId },
-          data: {
-            name: final.name,
-            address: final.address,
-          },
+          select: { name: true, address: true },
         });
+        const syncData = {};
+        if (data.name != null && prop.name === existing.name) syncData.name = final.name;
+        if (data.address !== undefined && prop.address === existing.address) syncData.address = final.address;
+        if (Object.keys(syncData).length > 0) {
+          await tx.rentalProperty.update({ where: { id: final.rentalPropertyId }, data: syncData });
+        }
       }
     });
 

@@ -94,13 +94,17 @@ export async function POST(request) {
         },
       });
       if (created.rentalPropertyId) {
-        await tx.rentalProperty.update({
+        // N4: only fill empty fields — never overwrite an existing property's name/address
+        const prop = await tx.rentalProperty.findUnique({
           where: { id: created.rentalPropertyId },
-          data: {
-            name: created.name,
-            address: created.address,
-          },
+          select: { name: true, address: true },
         });
+        const syncData = {};
+        if (!prop.name && created.name) syncData.name = created.name;
+        if (!prop.address && created.address) syncData.address = created.address;
+        if (Object.keys(syncData).length > 0) {
+          await tx.rentalProperty.update({ where: { id: created.rentalPropertyId }, data: syncData });
+        }
       }
       return tx.asset.findUnique({
         where: { id: created.id },
