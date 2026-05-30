@@ -148,6 +148,20 @@ export async function DELETE(request, { params }) {
       }, { status: 400 });
     }
 
+    // N3: 即使 force=true，已鎖帳的收款紀錄一律拒絕刪除
+    if (force && incomeCount > 0) {
+      const lockedCount = await prisma.rentalIncome.count({
+        where: { propertyId, isLocked: true },
+      });
+      if (lockedCount > 0) {
+        return NextResponse.json({
+          error: `此物業有 ${lockedCount} 筆收款紀錄已鎖帳，無法刪除。請先至月結管理解鎖後再操作。`,
+          code: 'LOCKED_RECORDS_EXIST',
+          lockedCount,
+        }, { status: 400 });
+      }
+    }
+
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.RENTAL_PROPERTY_DELETE,
       targetModule: 'rentals',

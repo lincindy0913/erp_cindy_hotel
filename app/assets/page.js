@@ -696,7 +696,7 @@ function AssetsPageInner() {
           if (incomeCount > 0) lines.push(`收款紀錄 ${incomeCount} 筆`);
           if (taxCount > 0) lines.push(`稅務紀錄 ${taxCount} 筆`);
           if (maintenanceCount > 0) lines.push(`維修紀錄 ${maintenanceCount} 筆`);
-          const lockedWarning = incomeCount > 0 ? '\n\n⚠ 收款紀錄中可能含已鎖帳資料，刪除後帳務記錄將無法還原。' : '';
+          const lockedWarning = incomeCount > 0 ? '\n\n⚠ 若有已鎖帳的收款紀錄，系統將自動拒絕刪除。' : '';
           showConfirm(
             `「${p.name}」尚有關聯資料：${lines.join('、')}。\n確定要連同所有資料一起刪除？此操作無法復原。${lockedWarning}`,
             async () => {
@@ -829,7 +829,7 @@ function AssetsPageInner() {
             <SummaryCard label="已出租" value={`${summary.rentedCount} 間`}
               sub={`空置 ${summary.availableCount} 間`} color="teal" small />
             <SummaryCard
-              label={`${year} 年租金收入`}
+              label={activeRange ? `${activeRange.start}~${activeRange.end} 租金` : `${year} 年租金收入`}
               value={`NT$ ${fmtMoneyShort(summary.totalRent)}`}
               sub={`${fmtMoney(summary.totalRent)}`}
               color="green"
@@ -847,7 +847,7 @@ function AssetsPageInner() {
               color="orange"
             />
             <SummaryCard
-              label={`${year} 年維護費`}
+              label={activeRange ? `${activeRange.start}~${activeRange.end} 維護費` : `${year} 年維護費`}
               value={`NT$ ${fmtMoneyShort(summary.totalMaint)}`}
               sub={fmtMoney(summary.totalMaint)}
               color="blue"
@@ -859,7 +859,7 @@ function AssetsPageInner() {
               color="red"
             />
             <SummaryCard
-              label={`${year} 年淨利`}
+              label={activeRange ? `${activeRange.start}~${activeRange.end} 淨利` : `${year} 年淨利`}
               value={`NT$ ${fmtMoneyShort(summary.totalNet)}`}
               sub={fmtMoney(summary.totalNet)}
               color={summary.totalNet >= 0 ? 'green' : 'red'}
@@ -1532,7 +1532,7 @@ function AssetsPageInner() {
                 </div>
 
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-semibold text-gray-700">{year} 年維護費</h4>
+                  <h4 className="text-sm font-semibold text-gray-700">{activeRange ? `${activeRange.start}~${activeRange.end}` : `${year} 年`} 維護費</h4>
                   {canEdit && (
                     <Link href={`/rentals?tab=maintenance&propertyId=${selected.id}`}
                       className="text-xs text-blue-600 hover:underline">
@@ -1824,9 +1824,11 @@ const ASSET_TYPE_BADGE = {
 function AssetFlagBadges({ asset }) {
   if (!asset) return null;
   const flags = [];
+  const isDisposed = Array.isArray(asset.disposals) && asset.disposals.length > 0;
+  if (isDisposed) flags.push({ label: `已處分 ${asset.disposals[0].disposalDate}`, cls: 'bg-red-100 text-red-700' });
   const typeBadge = ASSET_TYPE_BADGE[asset.assetType];
   if (typeBadge) flags.push(typeBadge);
-  if (asset.isAvailableForRental) flags.push({ label: '可出租', cls: 'bg-teal-100 text-teal-700' });
+  if (!isDisposed && asset.isAvailableForRental) flags.push({ label: '可出租', cls: 'bg-teal-100 text-teal-700' });
   if (asset.hasHouseTax) flags.push({ label: '房屋稅', cls: 'bg-amber-100 text-amber-700' });
   if (asset.hasLandTax) flags.push({ label: '地價稅', cls: 'bg-orange-100 text-orange-700' });
   if (asset.hasMaintenanceFee) flags.push({ label: '維修費', cls: 'bg-blue-100 text-blue-700' });

@@ -27,6 +27,10 @@ export async function GET() {
             status: true,
           },
         },
+        disposals: {
+          select: { id: true, disposalDate: true, salePrice: true },
+          orderBy: { disposalDate: 'desc' },
+        },
       },
     });
     return NextResponse.json(assets);

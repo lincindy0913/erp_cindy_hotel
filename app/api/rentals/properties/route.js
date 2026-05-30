@@ -43,7 +43,7 @@ export async function GET(request) {
         },
         rentCollectAccount: { select: { id: true, name: true } },
         depositAccount: { select: { id: true, name: true } },
-        asset: { select: { id: true, name: true, assetType: true, address: true, areaSqm: true, acquisitionDate: true, notes: true, rentalPropertyId: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true, serialNo: true, category: true, ownerName: true, registeredOwner: true, houseTaxRegistrationNo: true } },
+        asset: { select: { id: true, name: true, assetType: true, address: true, areaSqm: true, acquisitionDate: true, notes: true, rentalPropertyId: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true, isAvailableForRental: true, serialNo: true, category: true, ownerName: true, registeredOwner: true, houseTaxRegistrationNo: true, disposals: { select: { id: true, disposalDate: true }, orderBy: { disposalDate: 'desc' }, take: 1 } } },
       },
       orderBy: [{ sortOrder: 'asc' }, { buildingName: 'asc' }, { name: 'asc' }]
     });
