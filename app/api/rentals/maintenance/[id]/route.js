@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,7 @@ export async function PUT(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到維護紀錄', 404);
     }
 
+    await assertRentalYearOpen(parseInt(record.maintenanceDate?.substring(0, 4)));
     if (record.status === 'paid' || record.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的維護費不可編輯', 400);
     }
@@ -142,6 +144,7 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('NOT_FOUND', '找不到維護紀錄', 404);
     }
 
+    await assertRentalYearOpen(parseInt(record.maintenanceDate?.substring(0, 4)));
     if (record.status === 'paid' || record.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的維護費不可刪除', 400);
     }

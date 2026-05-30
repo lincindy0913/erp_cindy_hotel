@@ -8,6 +8,7 @@ import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,7 @@ export async function PUT(request, { params }) {
     if (!tax) {
       return createErrorResponse('NOT_FOUND', '找不到稅款紀錄', 404);
     }
+    await assertRentalYearOpen(tax.taxYear);
 
     const acctId = parseInt(accountId);
     const txDate = paymentDate || todayStr();
@@ -113,6 +115,7 @@ export async function PATCH(request, { params }) {
     if (tax.status === 'paid' || tax.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '已繳款的稅款不可編輯', 400);
     }
+    await assertRentalYearOpen(tax.taxYear);
 
     const updateData = {};
     if (amount !== undefined) updateData.amount = Number(amount);
@@ -197,6 +200,7 @@ export async function DELETE(request, { params }) {
     if (tax.status === 'paid' || tax.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的稅款不可刪除', 400);
     }
+    await assertRentalYearOpen(tax.taxYear);
 
     // Delete linked PaymentOrder if exists
     if (tax.paymentOrderId) {

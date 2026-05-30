@@ -53,8 +53,10 @@ export async function GET(request) {
     const contracts = await prisma.rentalContract.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
-        tenant: { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } }
+        property:  { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
+        tenant:    { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } },
+        reminders: { orderBy: { createdAt: 'desc' }, take: 1,
+                     select: { id: true, sentAt: true, sentBy: true, channel: true } },
       },
       orderBy: [{ property: { sortOrder: 'asc' } }, { id: 'asc' }],
       take: 500,
@@ -62,8 +64,9 @@ export async function GET(request) {
 
     const result = contracts.map(c => ({
       ...c,
-      propertyName: c.property.name,
-      tenantName: c.tenant.tenantType === 'company' ? c.tenant.companyName : c.tenant.fullName
+      propertyName:   c.property.name,
+      tenantName:     c.tenant.tenantType === 'company' ? c.tenant.companyName : c.tenant.fullName,
+      latestReminder: c.reminders?.[0] ?? null,
     }));
 
     return NextResponse.json(result);

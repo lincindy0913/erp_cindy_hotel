@@ -1686,12 +1686,39 @@ model RentalContract {
   previousContract RentalContract?  @relation("ContractRenewal", fields: [previousContractId], references: [id])
   renewalContracts RentalContract[] @relation("ContractRenewal")
   annualRentFilings RentalAnnualRentFiling[]
+  reminders         ContractReminder[]
 
   @@index([propertyId])
   @@index([tenantId])
   @@index([status])
   @@index([previousContractId])
   @@map("rental_contracts")
+}
+
+model ContractReminder {
+  id         Int            @id @default(autoincrement())
+  contractId Int            @map("contract_id")
+  sentAt     String         @map("sent_at") @db.VarChar(20)
+  sentBy     String?        @map("sent_by") @db.VarChar(255)
+  channel    String?        @db.VarChar(50)
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  contract   RentalContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("contract_reminders")
+}
+
+/// 租屋年度結算鎖定（報稅後防止誤改歷史資料）
+model RentalYearLock {
+  id        Int      @id @default(autoincrement())
+  year      Int      @unique
+  lockedAt  DateTime @map("locked_at")
+  lockedBy  String?  @map("locked_by") @db.VarChar(255)
+  note      String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("rental_year_locks")
 }
 
 model RentalIncome {

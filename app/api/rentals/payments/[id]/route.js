@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function PATCH(request, { params }) {
         matchNote: true, cashTransactionId: true,
         rentalIncome: {
           select: {
-            id: true, expectedAmount: true, cashTransactionId: true, isLocked: true,
+            id: true, incomeYear: true, expectedAmount: true, cashTransactionId: true, isLocked: true,
             property: { select: { name: true } },
             payments: {
               orderBy: { sequenceNo: 'asc' },
@@ -40,6 +41,7 @@ export async function PATCH(request, { params }) {
     if (payment.rentalIncome.isLocked) {
       return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法編輯收款', 423);
     }
+    await assertRentalYearOpen(payment.rentalIncome.incomeYear);
 
     const amount = body.amount != null ? parseFloat(body.amount) : Number(payment.amount);
     const paymentDate = body.paymentDate || payment.paymentDate;
@@ -122,7 +124,7 @@ export async function DELETE(request, { params }) {
         id: true, amount: true, cashTransactionId: true, accountId: true,
         rentalIncome: {
           select: {
-            id: true, expectedAmount: true, isLocked: true,
+            id: true, incomeYear: true, expectedAmount: true, isLocked: true,
             property: { select: { name: true } },
             payments: {
               where: { id: { not: paymentId } },
@@ -136,6 +138,7 @@ export async function DELETE(request, { params }) {
     if (payment.rentalIncome.isLocked) {
       return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法刪除收款', 423);
     }
+    await assertRentalYearOpen(payment.rentalIncome.incomeYear);
 
     const income = payment.rentalIncome;
     const newTotal = income.payments.reduce((s, p) => s + Number(p.amount), 0);

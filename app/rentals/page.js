@@ -6,9 +6,11 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { todayStr, localDateStr } from '@/lib/localDate';
+import { openPrintWindow } from '@/lib/printWindow';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
-import { CONTRACT_STATUSES, getContractDisplayStatus, getTenantDisplayName } from './_lib/rentalHelpers';
+import { CONTRACT_STATUSES, INCOME_STATUSES, TAX_STATUSES, getContractDisplayStatus, getTenantDisplayName } from './_lib/rentalHelpers';
+import StatusBadge from './_components/StatusBadge';
 import EditTenantModal from './_components/EditTenantModal';
 import ContractModal   from './_components/ContractModal';
 import PropertyModal   from '@/components/PropertyModal';
@@ -57,15 +59,8 @@ function resolveRentalsAnalyticsSub(tabParam, sp) {
 }
 
 // PROPERTY_STATUSES → PropertyModal.jsx 從 @/lib/propertyStatus 引入
-// CONTRACT_STATUSES → imported from ./_lib/rentalHelpers
-
-const INCOME_STATUSES = [
-  { value: 'pending', label: '待收', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'completed', label: '已收', color: 'bg-green-100 text-green-800' },
-  { value: 'paid', label: '已收', color: 'bg-green-100 text-green-800' },
-  { value: 'partial', label: '部分收', color: 'bg-orange-100 text-orange-800' },
-  { value: 'overdue', label: '逾期', color: 'bg-red-100 text-red-800' }
-];
+// CONTRACT_STATUSES / INCOME_STATUSES / TAX_STATUSES → imported from ./_lib/rentalHelpers
+// StatusBadge → imported from ./_components/StatusBadge
 
 const MAINTENANCE_CATEGORIES = ['水電', '管線', '油漆', '設備', '清潔', '結構', '其他'];
 
@@ -75,12 +70,6 @@ const fmtPayMethod = (m) => isTransfer(m) ? '轉帳' : (m || '—');
 
 /** 報表「未填類別」篩選值，需與 API category 參數一致 */
 const REPORT_CAT_EMPTY = '__RENTAL_CAT_EMPTY__';
-
-function StatusBadge({ value, list }) {
-  const item = list.find(s => s.value === value);
-  if (!item) return <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{value}</span>;
-  return <span className={`text-xs px-2 py-0.5 rounded ${item.color}`}>{item.label}</span>;
-}
 
 // getContractDisplayStatus → imported from ./_lib/rentalHelpers
 
@@ -106,7 +95,10 @@ function RentalsPage() {
   const [analyticsSub, setAnalyticsSub] = useState(() => resolveRentalsAnalyticsSub(tabParam, searchParams));
 
   // Shared data
-  const [summary, setSummary] = useState(null);
+  const [summary,            setSummary]            = useState(null);
+  const [summaryError,       setSummaryError]       = useState(null);
+  const [summaryLoading,     setSummaryLoading]     = useState(false);
+  const [summaryLastFetched, setSummaryLastFetched] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -177,13 +169,16 @@ function RentalsPage() {
 
   // Search / filter states
   const [tenantSearch, setTenantSearch] = useState('');
-  const [contractFilter, setContractFilter] = useState({ status: '', propertyId: searchParams.get('propertyId') || '' });
+  const [contractFilter, setContractFilter] = useState({
+    status:     searchParams.get('contractStatus') || '',
+    propertyId: searchParams.get('propertyId')     || '',
+  });
   const [incomeFilter, setIncomeFilter] = useState({
-    year: new Date().getFullYear(),
-    month: '',
-    status: '',
-    propertySearch: searchParams.get('propertySearch') || '',
-    category: '',
+    year:          parseInt(searchParams.get('incomeYear'))  || new Date().getFullYear(),
+    month:         searchParams.get('incomeMonth')           || '',
+    status:        '',
+    propertySearch: searchParams.get('propertySearch')      || '',
+    category:      '',
   });
   const sortedIncomes = useMemo(() => {
     const kw = (incomeFilter.propertySearch || '').trim();
@@ -202,18 +197,41 @@ function RentalsPage() {
       actualAmount: (i) => Number(i.actualAmount || 0),
       remaining: (i) => Number(i.expectedAmount || 0) - Number(i.actualAmount || 0),
       dueDate: (i) => i.dueDate || '',
-      status: (i) => (i.status === 'pending' && i.dueDate < todayStr() ? 'overdue' : i.status || ''),
+      status: (i) => (i.status === 'pending' && i.dueDate && new Date(i.dueDate) < new Date(todayStr()) ? 'overdue' : i.status || ''),
       payCount: (i) => (i.payments?.length || (i.actualAmount != null && i.actualAmount > 0 ? 1 : 0)),
     });
   }, [incomes, rentIncKey, rentIncDir, incomeFilter.propertySearch, incomeFilter.category]);
 
-  const expiringContractCount = useMemo(() => {
-    const today = todayStr();
-    const limit = localDateStr(new Date(Date.now() + 60 * 86400000));
-    return contracts.filter(c => c.status === 'active' && c.endDate >= today && c.endDate <= limit).length;
-  }, [contracts]);
+  const expiringContractCount = (summary?.expiringContractDetails || [])
+    .filter(c => c.daysUntilExpiry <= 30).length;
 
-  const [taxFilter, setTaxFilter] = useState({ taxYear: new Date().getFullYear(), status: '', propertyId: tabParam === 'taxes' ? (searchParams.get('propertyId') || '') : '' });
+  const contractMap = useMemo(
+    () => new Map(contracts.map(c => [c.id, c])),
+    [contracts]
+  );
+
+  const getRenewalDepth = (contractId) => {
+    const visited = new Set();
+    let depth = 0;
+    let current = contractId;
+    while (true) {
+      if (visited.has(current)) break;
+      visited.add(current);
+      const c = contractMap.get(current);
+      if (!c?.previousContractId) break;
+      current = c.previousContractId;
+      depth++;
+    }
+    return depth;
+  };
+
+  const [taxFilter, setTaxFilter] = useState({
+    taxYear:    parseInt(searchParams.get('taxYear')) || new Date().getFullYear(),
+    status:     searchParams.get('taxStatus')         || '',
+    propertyId: tabParam === 'taxes' ? (searchParams.get('propertyId') || '') : '',
+  });
+  const [yearLocks,     setYearLocks]     = useState([]);
+  const [yearLockSaving,setYearLockSaving]= useState(false);
   const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
   const [maintenanceFilter, setMaintenanceFilter] = useState({ category: '', status: '', propertyId: tabParam === 'maintenance' ? (searchParams.get('propertyId') || '') : '' });
 
@@ -330,16 +348,17 @@ function RentalsPage() {
   const [vacancyData, setVacancyData] = useState({ rows: [], avgVacancy: 0, fullyRented: 0 });
   const [vacancyLoading, setVacancyLoading] = useState(false);
 
-  // Contract reminders (localStorage-based)
+  // Contract reminders
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderThreshold, setReminderThreshold] = useState(60);
-  const [reminderSentDates, setReminderSentDates] = useState({});
 
   // Batch cashier operations
   const [selectedIncomeIds, setSelectedIncomeIds] = useState(new Set());
   const [showBatchPay, setShowBatchPay] = useState(false);
   const [batchPayForm, setBatchPayForm] = useState({ actualDate: todayStr(), accountId: '', paymentMethod: '匯款' });
   const [batchSaving, setBatchSaving] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(null); // { done, total, failed }
+  const batchAbortRef = useRef(false);
   const [batchLockSaving, setBatchLockSaving] = useState(false);
 
   // Bulk utility input
@@ -387,7 +406,7 @@ function RentalsPage() {
       if (properties.length === 0) fetchProperties();
       if (tenants.length === 0) fetchTenants();
     }
-    if (activeTab === 'taxes') { fetchTaxes(); if (properties.length === 0) fetchProperties(); }
+    if (activeTab === 'taxes') { fetchTaxes(); fetchYearLocks(); if (properties.length === 0) fetchProperties(); }
     // 維護費頁面也需要物業清單供下拉選單使用
     if (activeTab === 'maintenance') {
       fetchMaintenances();
@@ -422,12 +441,121 @@ function RentalsPage() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [activeTab]);
 
+  // ── URL ↔ filter sync ──────────────────────────────────────
   useEffect(() => {
+    if (activeTab !== 'contracts') return;
+    const p = new URLSearchParams({ tab: 'contracts' });
+    if (contractFilter.status)     p.set('contractStatus', contractFilter.status);
+    if (contractFilter.propertyId) p.set('propertyId',     contractFilter.propertyId);
+    router.replace(`/rentals?${p}`, { scroll: false });
+  }, [activeTab, contractFilter.status, contractFilter.propertyId]);
+
+  useEffect(() => {
+    if (activeTab !== 'taxes') return;
+    const p = new URLSearchParams({ tab: 'taxes', taxYear: taxFilter.taxYear });
+    if (taxFilter.status)     p.set('taxStatus',  taxFilter.status);
+    if (taxFilter.propertyId) p.set('propertyId', taxFilter.propertyId);
+    router.replace(`/rentals?${p}`, { scroll: false });
+  }, [activeTab, taxFilter.taxYear, taxFilter.status, taxFilter.propertyId]);
+
+  useEffect(() => {
+    if (activeTab !== 'cashier') return;
+    const p = new URLSearchParams({ tab: 'cashier', incomeYear: incomeFilter.year });
+    if (incomeFilter.month)         p.set('incomeMonth',   incomeFilter.month);
+    if (incomeFilter.propertySearch) p.set('propertySearch', incomeFilter.propertySearch);
+    router.replace(`/rentals?${p}`, { scroll: false });
+  }, [activeTab, incomeFilter.year, incomeFilter.month, incomeFilter.propertySearch]);
+
+  // ── 列印函式 ────────────────────────────────────────────────
+  function printIncomes() {
+    const y = incomeFilter.year || new Date().getFullYear();
+    const m = incomeFilter.month ? String(incomeFilter.month).padStart(2, '0') : '全月';
+    openPrintWindow(
+      `租金收入明細　${y}/${m}`,
+      ['序號', '物業', '分類', '租客', '應收金額', '實收金額', '到期日', '狀態'],
+      sortedIncomes.map((i, idx) => [
+        i.contractSortOrder ?? (idx + 1),
+        i.propertyName,
+        i.contractCategory || '—',
+        i.tenantName,
+        `NT$ ${fmt(i.expectedAmount)}`,
+        `NT$ ${fmt(i.actualAmount || 0)}`,
+        i.dueDate || '—',
+        i.status === 'completed' ? '已收' : i.status === 'partial' ? '部分收' : '待收',
+      ])
+    );
+  }
+
+  async function fetchYearLocks() {
     try {
-      const stored = localStorage.getItem('rental_contract_reminders');
-      if (stored) setReminderSentDates(JSON.parse(stored));
+      const res = await fetch('/api/rentals/year-locks');
+      if (res.ok) setYearLocks(await res.json());
     } catch { /* ignore */ }
-  }, []);
+  }
+
+  async function lockYear(year) {
+    if (!await confirm(`確定鎖定 ${year} 年租屋資料？鎖定後所有 ${year} 年的收租/稅款/維護費不可修改，適合完成報稅後執行。`, { title: '年度結算鎖定', danger: true })) return;
+    setYearLockSaving(true);
+    try {
+      const res = await fetch('/api/rentals/year-locks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year }),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.error || '鎖定失敗', 'error'); return; }
+      showToast(`${year} 年已結算鎖定`, 'success');
+      fetchYearLocks();
+    } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
+    finally { setYearLockSaving(false); }
+  }
+
+  async function unlockYear(year) {
+    if (!await confirm(`確定解除 ${year} 年的結算鎖定？解鎖後可再次修改該年資料。`, { title: '解除年度鎖定', danger: false })) return;
+    setYearLockSaving(true);
+    try {
+      const res = await fetch(`/api/rentals/year-locks/${year}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.error || '解鎖失敗', 'error'); return; }
+      showToast(`${year} 年已解除鎖定`, 'success');
+      fetchYearLocks();
+    } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
+    finally { setYearLockSaving(false); }
+  }
+
+  function printTaxes() {
+    openPrintWindow(
+      `稅款管理　${taxFilter.taxYear} 年`,
+      ['物業', '稅款類型', '稅款年度', '金額', '狀態', '繳納日期', '備註'],
+      taxes.map(t => [
+        t.property?.name || '—',
+        t.taxType,
+        t.taxYear,
+        `NT$ ${fmt(t.amount)}`,
+        t.status === 'paid' ? '已繳' : '待繳',
+        t.paidDate || '—',
+        t.note || '—',
+      ])
+    );
+  }
+
+  function printContracts() {
+    const statusLabel = contractFilter.status ? `（${contractFilter.status}）` : '';
+    openPrintWindow(
+      `合約清單${statusLabel}`,
+      ['合約編號', '物業', '租客', '起始日', '到期日', '月租金', '押金', '狀態'],
+      contracts.map(c => [
+        c.contractNo,
+        c.propertyName,
+        c.tenantName,
+        c.startDate,
+        c.endDate,
+        `NT$ ${fmt(c.monthlyRent)}`,
+        `NT$ ${fmt(c.depositAmount)}`,
+        c.status,
+      ])
+    );
+  }
 
   function buildReportParams() {
     const params = new URLSearchParams();
@@ -664,11 +792,20 @@ function RentalsPage() {
   }
 
   async function fetchSummary() {
+    setSummaryLoading(true);
+    setSummaryError(null);
     try {
       const res = await fetch('/api/rentals/summary');
+      if (!res.ok) throw new Error(`伺服器錯誤（${res.status}）`);
       const data = await res.json();
-      if (!data.error) setSummary(data);
-    } catch { /* ignore */ }
+      if (data.error) throw new Error(data.error);
+      setSummary(data);
+      setSummaryLastFetched(Date.now());
+    } catch (e) {
+      setSummaryError(e.message || '載入失敗');
+    } finally {
+      setSummaryLoading(false);
+    }
   }
 
   async function fetchAccounts() {
@@ -905,11 +1042,18 @@ function RentalsPage() {
     setQuickPayIncome(income);
   }
 
-  async function runChunked(items, fn, limit = 8) {
+  async function runChunked(items, fn, limit = 8, onProgress) {
     const results = [];
+    batchAbortRef.current = false;
     for (let i = 0; i < items.length; i += limit) {
+      if (batchAbortRef.current) break;
       const settled = await Promise.allSettled(items.slice(i, i + limit).map(fn));
       results.push(...settled);
+      onProgress?.({
+        done:   Math.min(results.length, items.length),
+        total:  items.length,
+        failed: results.filter(r => r.status === 'rejected').length,
+      });
     }
     return results;
   }
@@ -917,6 +1061,25 @@ function RentalsPage() {
   async function confirmQuickPay() {
     if (!quickPayForm.actualAmount || Number(quickPayForm.actualAmount) <= 0) return showToast('請填寫實收金額', 'error');
     if (!quickPayForm.accountId) return showToast('請選擇收款帳戶', 'error');
+
+    const actual   = Number(quickPayForm.actualAmount);
+    const expected = Number(quickPayIncome?.expectedAmount || 0);
+    if (expected > 0 && actual > expected * 1.5) {
+      const pct = ((actual / expected - 1) * 100).toFixed(0);
+      const ok = await confirm(
+        `實收 NT$ ${actual.toLocaleString()} 超出應收 NT$ ${expected.toLocaleString()} 的 ${pct}%，確定繼續？`,
+        { title: '金額異常警告', danger: true }
+      );
+      if (!ok) return;
+    }
+    if (expected > 0 && actual < expected * 0.1) {
+      const ok = await confirm(
+        `實收 NT$ ${actual.toLocaleString()} 遠低於應收 NT$ ${expected.toLocaleString()}，確定繼續？`,
+        { title: '金額過小警告', danger: false }
+      );
+      if (!ok) return;
+    }
+
     setQuickPaySaving(true);
     try {
       const res = await fetch(`/api/rentals/income/${quickPayIncome.id}/confirm`, {
@@ -944,19 +1107,25 @@ function RentalsPage() {
     finally { setVacancyLoading(false); }
   }
 
-  function markReminderSent(contractId) {
-    const today = todayStr();
-    const updated = { ...reminderSentDates, [contractId]: today };
-    setReminderSentDates(updated);
-    try { localStorage.setItem('rental_contract_reminders', JSON.stringify(updated)); } catch { /* ignore */ }
-    showToast('已標記為已提醒', 'success');
+  async function markReminderSent(contractId, channel) {
+    try {
+      const res = await fetch(`/api/rentals/contracts/${contractId}/reminder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channel || null }),
+      });
+      if (!res.ok) { showToast('標記失敗', 'error'); return; }
+      showToast('已標記為已提醒', 'success');
+      fetchContracts();
+    } catch (e) { showToast('標記失敗: ' + e.message, 'error'); }
   }
 
-  function clearReminder(contractId) {
-    const updated = { ...reminderSentDates };
-    delete updated[contractId];
-    setReminderSentDates(updated);
-    try { localStorage.setItem('rental_contract_reminders', JSON.stringify(updated)); } catch { /* ignore */ }
+  async function clearReminder(contractId) {
+    try {
+      const res = await fetch(`/api/rentals/contracts/${contractId}/reminder`, { method: 'DELETE' });
+      if (!res.ok) { showToast('清除失敗', 'error'); return; }
+      fetchContracts();
+    } catch (e) { showToast('清除失敗: ' + e.message, 'error'); }
   }
 
   async function batchConfirmIncomes() {
@@ -964,6 +1133,7 @@ function RentalsPage() {
     const ids = Array.from(selectedIncomeIds);
     if (ids.length === 0) return;
     setBatchSaving(true);
+    setBatchProgress({ done: 0, total: ids.length, failed: 0 });
     try {
       const results = await runChunked(ids, async (id) => {
         const income = incomes.find(i => i.id === id);
@@ -974,15 +1144,16 @@ function RentalsPage() {
           body: JSON.stringify({ rent: { actualAmount: String(Number(income.expectedAmount) - Number(income.actualAmount || 0)), actualDate: batchPayForm.actualDate, accountId: batchPayForm.accountId, paymentMethod: batchPayForm.paymentMethod, matchTransferRef: '', matchBankAccountName: '', matchNote: '' } })
         });
         if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `id=${id}`); }
-      });
+      }, 8, setBatchProgress);
       const success = results.filter(r => r.status === 'fulfilled').length;
       const failed  = results.filter(r => r.status === 'rejected').length;
-      showToast(`批次確認完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
+      const aborted = batchAbortRef.current;
+      showToast(`批次確認${aborted ? '已中止：' : '完成：'}${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
       setSelectedIncomeIds(new Set());
       setShowBatchPay(false);
       fetchIncomes(); fetchSummary();
     } catch (e) { showToast('批次操作失敗: ' + e.message, 'error'); }
-    finally { setBatchSaving(false); }
+    finally { setBatchSaving(false); setBatchProgress(null); }
   }
 
   async function batchConfirmOverdueIncomes() {
@@ -991,6 +1162,7 @@ function RentalsPage() {
     const ids = Array.from(overdueSelectedIds);
     if (!ids.length) return;
     setOverdueBatchSaving(true);
+    setBatchProgress({ done: 0, total: ids.length, failed: 0 });
     try {
       const results = await runChunked(ids, async (id) => {
         const income = overdueReportData.find(i => i.id === id);
@@ -1002,15 +1174,16 @@ function RentalsPage() {
           body: JSON.stringify({ rent: { actualAmount: String(remaining || Number(income.expectedAmount)), actualDate: overdueBatchForm.actualDate, accountId: overdueBatchForm.accountId, paymentMethod: overdueBatchForm.paymentMethod, matchTransferRef: '', matchBankAccountName: '', matchNote: '' } })
         });
         if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `id=${id}`); }
-      });
+      }, 8, setBatchProgress);
       const success = results.filter(r => r.status === 'fulfilled').length;
       const failed  = results.filter(r => r.status === 'rejected').length;
-      showToast(`批次收款完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
+      const aborted = batchAbortRef.current;
+      showToast(`批次收款${aborted ? '已中止：' : '完成：'}${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
       setOverdueSelectedIds(new Set());
       setShowOverdueBatch(false);
       fetchOverdueReport();
     } catch (e) { showToast('批次操作失敗: ' + e.message, 'error'); }
-    finally { setOverdueBatchSaving(false); }
+    finally { setOverdueBatchSaving(false); setBatchProgress(null); }
   }
 
   async function batchLockIncomes() {
@@ -1302,6 +1475,7 @@ function RentalsPage() {
       if (tenantId) {
         const freshRes = await fetch(`/api/rentals/tenants/${tenantId}`);
         if (freshRes.ok) openTenantModal(await freshRes.json());
+        else showToast('重新載入租客資料失敗', 'error');
       }
     } catch (e) { showToast('操作失敗: ' + e.message, 'error'); }
   }
@@ -1434,11 +1608,29 @@ function RentalsPage() {
       showToast('請選擇會計科目', 'error');
       return;
     }
+
+    // P15: 新建合約時偵測重複（已設 previousContractId 表示使用者明確選擇續約，跳過）
+    let formToSave = contractForm;
+    if (!editingContract && contractForm.propertyId && !contractForm.previousContractId) {
+      const activeContract = contracts.find(
+        c => String(c.propertyId) === String(contractForm.propertyId) && c.status === 'active'
+      );
+      if (activeContract) {
+        const ok = await confirm(
+          `此物業（${activeContract.propertyName}）已有生效合約（${activeContract.contractNo}，到期 ${activeContract.endDate}）。\n\n是否改為「續約」，自動帶入舊合約編號？`,
+          { title: '偵測到重複合約', danger: false }
+        );
+        if (!ok) return;
+        formToSave = { ...contractForm, previousContractId: String(activeContract.id) };
+        setContractForm(formToSave);
+      }
+    }
+
     setContractSaving(true);
     try {
       const url = editingContract ? `/api/rentals/contracts/${editingContract.id}` : '/api/rentals/contracts';
       const method = editingContract ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractForm) });
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formToSave) });
       const data = await res.json();
       if (!res.ok) {
         if (data?.code === 'ACTIVE_CONTRACT_EXISTS') {
@@ -1846,6 +2038,28 @@ function RentalsPage() {
         ) : (
           <>
             {/* ==================== TAB: OVERVIEW ==================== */}
+            {activeTab === 'overview' && (
+              <>
+                {summaryError && (
+                  <div className="bg-red-50 border border-red-300 rounded-lg p-4 mb-4 flex items-center justify-between">
+                    <span className="text-red-700 text-sm">總覽載入失敗：{summaryError}</span>
+                    <button onClick={fetchSummary} disabled={summaryLoading}
+                      className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 ml-4 disabled:opacity-50">
+                      {summaryLoading ? '載入中…' : '重試'}
+                    </button>
+                  </div>
+                )}
+                {!summaryError && summaryLoading && !summary && (
+                  <div className="text-center py-12 text-gray-500">載入中...</div>
+                )}
+                {!summaryError && summaryLastFetched && (Date.now() - summaryLastFetched > 5 * 60_000) && (
+                  <div className="bg-amber-50 border border-amber-200 rounded px-4 py-2 mb-3 flex items-center justify-between text-xs text-amber-700">
+                    <span>資料為 {Math.floor((Date.now() - summaryLastFetched) / 60000)} 分鐘前載入</span>
+                    <button onClick={fetchSummary} className="underline ml-3">重新載入</button>
+                  </div>
+                )}
+              </>
+            )}
             {activeTab === 'overview' && summary && (() => {
               const thirtyDayCount = (summary.expiringContractDetails || []).filter(c => c.daysUntilExpiry <= 30).length;
               return (
@@ -1892,17 +2106,23 @@ function RentalsPage() {
                       已出租 {summary.rentedCount} / 空置 {summary.availableCount} / 維護 {summary.maintenanceCount}
                     </p>
                   </div>
-                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+                  <div onClick={() => switchTab('cashier')}
+                    className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500 cursor-pointer hover:shadow-md transition-shadow"
+                    title="前往收租工作台">
                     <p className="text-sm text-gray-500">本月應收</p>
                     <p className="text-2xl font-bold text-blue-700">${fmt(summary.thisMonthExpected)}</p>
                     <p className="text-xs text-gray-400 mt-1">待收 {summary.thisMonthPending ?? '-'} 筆</p>
                   </div>
-                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+                  <div onClick={() => switchTab('cashier')}
+                    className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500 cursor-pointer hover:shadow-md transition-shadow"
+                    title="前往收租工作台">
                     <p className="text-sm text-gray-500">本月已收</p>
                     <p className="text-2xl font-bold text-green-700">${fmt(summary.thisMonthCollected)}</p>
                     <p className="text-xs text-gray-400 mt-1">收款率 {summary.collectionRate ?? 0}%</p>
                   </div>
-                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
+                  <div onClick={() => switchAnalyticsSub('overdue')}
+                    className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500 cursor-pointer hover:shadow-md transition-shadow"
+                    title="前往逾期催繳報表">
                     <p className="text-sm text-gray-500">逾期未收</p>
                     <p className="text-2xl font-bold text-red-700">{summary.overdueCount} 筆</p>
                     <p className="text-xs text-gray-400 mt-1">${fmt(summary.overdueAmount)}</p>
@@ -1918,16 +2138,22 @@ function RentalsPage() {
                       <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(summary.collectionRate ?? 0, 100)}%` }} />
                     </div>
                   </div>
-                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
+                  <div onClick={() => switchTab('contracts')}
+                    className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500 cursor-pointer hover:shadow-md transition-shadow"
+                    title="前往合約管理">
                     <p className="text-sm text-gray-500">即將到期合約</p>
                     <p className="text-2xl font-bold text-yellow-700">{summary.expiringContracts}</p>
                     <p className="text-xs text-gray-400 mt-1">60天內</p>
                   </div>
-                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
+                  <div onClick={() => switchTab('taxes')}
+                    className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500 cursor-pointer hover:shadow-md transition-shadow"
+                    title="前往稅款管理">
                     <p className="text-sm text-gray-500">待繳稅款</p>
                     <p className="text-2xl font-bold text-orange-700">{summary.pendingTaxes}</p>
                   </div>
-                  <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+                  <div onClick={() => switchTab('maintenance')}
+                    className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500 cursor-pointer hover:shadow-md transition-shadow"
+                    title="前往維護費">
                     <p className="text-sm text-gray-500">待付維護費</p>
                     <p className="text-2xl font-bold text-purple-700">{summary.pendingMaintenance}</p>
                   </div>
@@ -2123,6 +2349,7 @@ function RentalsPage() {
                       {INCOME_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                     <button onClick={fetchIncomes} className="bg-teal-600 text-white px-3 py-1 rounded text-sm hover:bg-teal-700">查詢</button>
+                    <button onClick={printIncomes} className="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50">🖨️ 列印</button>
                     <button onClick={generateMonthlyIncome} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
                       產生 {incomeFilter.year || new Date().getFullYear()}/{incomeFilter.month || (new Date().getMonth() + 1)} 月租金
                     </button>
@@ -2209,14 +2436,29 @@ function RentalsPage() {
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 mb-3">※ 批次操作將以「應收金額」為實收，適用於全額收款的情境。</p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <button onClick={batchConfirmIncomes} disabled={batchSaving}
                         className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700 disabled:opacity-50">
-                        {batchSaving ? '處理中…' : '確認送出'}
+                        {batchSaving && batchProgress ? `${batchProgress.done}/${batchProgress.total}` : batchSaving ? '處理中…' : '確認送出'}
                       </button>
-                      <button onClick={() => { setShowBatchPay(false); setSelectedIncomeIds(new Set()); }}
-                        className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
+                      {batchSaving && batchProgress
+                        ? <button onClick={() => { batchAbortRef.current = true; }} className="text-xs text-red-500 hover:underline">中止</button>
+                        : <button onClick={() => { setShowBatchPay(false); setSelectedIncomeIds(new Set()); }}
+                            className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm hover:bg-gray-400">取消</button>
+                      }
                     </div>
+                    {batchSaving && batchProgress && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>已完成 {batchProgress.done}/{batchProgress.total}{batchProgress.failed > 0 && <span className="text-red-500 ml-1.5">失敗 {batchProgress.failed}</span>}</span>
+                          <span>{Math.round(batchProgress.done / batchProgress.total * 100)}%</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-green-500 transition-all duration-200"
+                            style={{ width: `${batchProgress.done / batchProgress.total * 100}%` }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2743,6 +2985,7 @@ function RentalsPage() {
                     {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                   <button onClick={fetchContracts} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
+                  <button onClick={printContracts} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">🖨️ 列印</button>
                   <button onClick={() => openContractModal()} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                     新增合約
                   </button>
@@ -2789,7 +3032,11 @@ function RentalsPage() {
                             <tbody>
                               {expiring.map(c => {
                                 const days = Math.ceil((new Date(c.endDate) - new Date(today)) / 86400000);
-                                const lastReminder = reminderSentDates[c.id];
+                                const lastReminder = c.latestReminder;
+                                const daysSince = lastReminder
+                                  ? Math.floor((Date.now() - new Date(lastReminder.sentAt)) / 86400000)
+                                  : null;
+                                const isCooldown = daysSince != null && daysSince < 30;
                                 return (
                                   <tr key={c.id} className="border-b border-yellow-100">
                                     <td className="py-1.5">
@@ -2808,11 +3055,17 @@ function RentalsPage() {
                                       <span className={`text-xs px-1.5 py-0.5 rounded ${days <= 30 ? 'bg-red-100 text-red-700 font-semibold' : 'bg-yellow-100 text-yellow-700'}`}>{days} 天</span>
                                     </td>
                                     <td className="py-1.5 text-center text-xs text-gray-400">
-                                      {lastReminder ? lastReminder : <span className="text-gray-300">—</span>}
+                                      {lastReminder
+                                        ? <span title={lastReminder.sentBy ? `由 ${lastReminder.sentBy} 提醒` : undefined}>{lastReminder.sentAt}</span>
+                                        : <span className="text-gray-300">—</span>}
                                     </td>
                                     <td className="py-1.5 text-center">
                                       <button onClick={() => markReminderSent(c.id)}
-                                        className="text-xs text-teal-600 hover:text-teal-800 mr-2">已提醒</button>
+                                        disabled={isCooldown}
+                                        title={isCooldown ? `${lastReminder?.sentBy || '同事'} 於 ${daysSince} 天前已提醒` : '標記已提醒'}
+                                        className={`text-xs mr-2 ${isCooldown ? 'text-gray-400 cursor-default' : 'text-teal-600 hover:text-teal-800'}`}>
+                                        {isCooldown ? `${daysSince}天前已提醒` : '已提醒'}
+                                      </button>
                                       {lastReminder && <button onClick={() => clearReminder(c.id)} className="text-xs text-gray-400 hover:text-gray-600">清除</button>}
                                     </td>
                                   </tr>
@@ -2893,7 +3146,16 @@ function RentalsPage() {
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">
                               {c.contractNo}
-                              {c.previousContractId && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-teal-100 text-teal-700 font-normal">續</span>}
+                              {c.previousContractId && (() => {
+                                const depth = getRenewalDepth(c.id);
+                                const prev  = contractMap.get(c.previousContractId);
+                                return (
+                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-teal-100 text-teal-700 font-normal cursor-default"
+                                    title={prev ? `續自 ${prev.contractNo}` : '續約'}>
+                                    第 {depth} 次續約
+                                  </span>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 py-2">{c.propertyName}</td>
                             <td className="px-3 py-2">{c.tenantName}</td>
@@ -2946,6 +3208,36 @@ function RentalsPage() {
             {/* ==================== TAB: TAXES ==================== */}
             {activeTab === 'taxes' && (
               <div>
+                {/* 年度結算鎖定 */}
+                <div className="mb-6 bg-white rounded-lg shadow p-4 border border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">年度結算鎖定</h3>
+                    <span className="text-xs text-gray-400">報稅完成後鎖定，防止誤改歷史資料</span>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {[new Date().getFullYear() - 1, new Date().getFullYear()].map(y => {
+                      const lock = yearLocks.find(l => l.year === y);
+                      return (
+                        <div key={y} className={`flex items-center gap-3 px-4 py-2 rounded-lg border text-sm ${lock ? 'bg-orange-50 border-orange-300' : 'bg-gray-50 border-gray-200'}`}>
+                          <span className="font-semibold text-gray-700">{y} 年</span>
+                          {lock ? (
+                            <>
+                              <span className="text-orange-700 text-xs">🔒 {lock.lockedAt ? new Date(lock.lockedAt).toLocaleDateString('zh-TW') : ''} 由 {lock.lockedBy || '系統'}</span>
+                              <button onClick={() => unlockYear(y)} disabled={yearLockSaving}
+                                className="text-xs text-gray-500 hover:text-red-600 underline">解鎖</button>
+                            </>
+                          ) : (
+                            <button onClick={() => lockYear(y)} disabled={yearLockSaving}
+                              className="text-xs bg-orange-600 text-white px-2 py-0.5 rounded hover:bg-orange-700 disabled:opacity-50">
+                              結算鎖定
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* 年度稅額表格 (一年填一次) */}
                 <div className="mb-8">
                   <h3 className="text-base font-semibold text-gray-800 mb-3">年度稅額表格</h3>
@@ -3082,6 +3374,7 @@ function RentalsPage() {
                         <option value="paid">已繳</option>
                       </select>
                       <button onClick={fetchTaxes} className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">查詢</button>
+                      <button onClick={printTaxes} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">🖨️ 列印</button>
                       <button onClick={() => { setEditingTax(null); setTaxForm({ propertyId: taxFilter.propertyId || '', taxYear: taxFilter.taxYear || new Date().getFullYear(), taxType: '房屋稅', dueDate: '', amount: '', certNo: '', paidDate: '', note: '' }); setShowTaxModal(true); }} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto">
                         新增稅款
                       </button>
@@ -3122,9 +3415,7 @@ function RentalsPage() {
                               <td className="px-3 py-2 text-gray-500 text-xs max-w-[100px] truncate" title={tax.certNo || ''}>{tax.certNo || '—'}</td>
                               <td className="px-3 py-2 text-right font-medium">${fmt(tax.amount)}</td>
                               <td className="px-3 py-2 text-center">
-                                <span className={`text-xs px-2 py-0.5 rounded ${tax.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                  {tax.status === 'paid' ? '已繳' : '待繳'}
-                                </span>
+                                <StatusBadge value={tax.status} list={TAX_STATUSES} />
                               </td>
                               <td className="px-3 py-2 text-center">
                                 <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -3871,10 +4162,25 @@ function RentalsPage() {
                           </div>
                           <button onClick={batchConfirmOverdueIncomes} disabled={overdueBatchSaving}
                             className="px-4 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50">
-                            {overdueBatchSaving ? '處理中…' : `確認收款 ${overdueSelectedIds.size} 筆`}
+                            {overdueBatchSaving && batchProgress ? `${batchProgress.done}/${batchProgress.total}` : overdueBatchSaving ? '處理中…' : `確認收款 ${overdueSelectedIds.size} 筆`}
                           </button>
-                          <button onClick={() => { setShowOverdueBatch(false); setOverdueSelectedIds(new Set()); }}
-                            className="text-xs text-gray-500 hover:text-gray-700">取消</button>
+                          {overdueBatchSaving && batchProgress
+                            ? <button onClick={() => { batchAbortRef.current = true; }} className="text-xs text-red-500 hover:underline self-center">中止</button>
+                            : <button onClick={() => { setShowOverdueBatch(false); setOverdueSelectedIds(new Set()); }}
+                                className="text-xs text-gray-500 hover:text-gray-700">取消</button>
+                          }
+                          {overdueBatchSaving && batchProgress && (
+                            <div className="w-full mt-2">
+                              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                <span>已完成 {batchProgress.done}/{batchProgress.total}{batchProgress.failed > 0 && <span className="text-red-500 ml-1.5">失敗 {batchProgress.failed}</span>}</span>
+                                <span>{Math.round(batchProgress.done / batchProgress.total * 100)}%</span>
+                              </div>
+                              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-teal-500 transition-all duration-200"
+                                  style={{ width: `${batchProgress.done / batchProgress.total * 100}%` }} />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

@@ -1,6 +1,13 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { CONTRACT_STATUSES, getTenantDisplayName } from '../_lib/rentalHelpers';
+
+const ACTION_LABELS = {
+  'rental_contract.create': '建立合約',
+  'rental_contract.update': '更新合約',
+  'rental_contract.delete': '刪除合約',
+};
 
 export default function ContractModal({
   editingContract,
@@ -14,6 +21,20 @@ export default function ContractModal({
   accounts,
   accountingSubjects,
 }) {
+  const [history,        setHistory]        = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyOpen,    setHistoryOpen]    = useState(false);
+
+  useEffect(() => {
+    if (!editingContract?.id || !historyOpen) return;
+    setHistoryLoading(true);
+    fetch(`/api/rentals/contracts/${editingContract.id}/history`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setHistory(Array.isArray(data) ? data : []))
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [editingContract?.id, historyOpen]);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -147,6 +168,45 @@ export default function ContractModal({
                 className="w-full border rounded px-3 py-2 text-sm" rows={2} />
             </div>
           </div>
+          {/* 變更歷史 timeline（僅編輯模式顯示） */}
+          {editingContract && (
+            <div className="mt-5 border-t pt-4">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(o => !o)}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700">
+                <span>{historyOpen ? '▼' : '▶'}</span>
+                <span>變更歷史</span>
+              </button>
+              {historyOpen && (
+                <div className="mt-3 space-y-2 border-l-2 border-gray-200 pl-4 max-h-48 overflow-y-auto">
+                  {historyLoading ? (
+                    <p className="text-xs text-gray-400">載入中…</p>
+                  ) : history.length === 0 ? (
+                    <p className="text-xs text-gray-400">尚無變更記錄</p>
+                  ) : history.map(log => (
+                    <div key={log.id} className="text-xs">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-gray-400 shrink-0">
+                          {new Date(log.createdAt).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className="font-medium text-gray-700">
+                          {ACTION_LABELS[log.action] || log.action}
+                        </span>
+                        {log.userName && (
+                          <span className="text-gray-400">by {log.userName}</span>
+                        )}
+                      </div>
+                      {log.note && (
+                        <p className="text-gray-500 mt-0.5 ml-0">{log.note}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 mt-6">
             <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
             <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 text-sm bg-teal-600 text-white rounded hover:bg-teal-700 disabled:opacity-50">{contractSaving ? '儲存中…' : (renewingFromContract ? '建立續約合約' : '儲存')}</button>

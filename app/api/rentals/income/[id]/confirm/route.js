@@ -6,6 +6,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,7 @@ export async function POST(request, { params }) {
     if (!income) {
       return createErrorResponse('NOT_FOUND', '找不到收租紀錄', 404);
     }
+    await assertRentalYearOpen(income.incomeYear);
 
     const parsedRentActual = parseFloat(rent.actualAmount);
     const acctId = parseInt(rent.accountId);

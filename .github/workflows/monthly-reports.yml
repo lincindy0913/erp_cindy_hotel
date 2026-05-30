@@ -1,0 +1,76 @@
+name: Monthly Reports Cron
+
+on:
+  schedule:
+    # 每月 1 日 00:05 UTC（台灣時間 08:05）
+    - cron: '5 0 1 * *'
+  # 允許手動觸發（測試 cron 機制時使用）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (print result only, no side effects)'
+        type: boolean
+        default: false
+
+jobs:
+  monthly-reports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify secrets
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "❌ APP_URL is not set in GitHub Secrets"
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "❌ CRON_SECRET is not set in GitHub Secrets"
+            exit 1
+          fi
+          echo "✅ Secrets verified, calling $APP_URL/api/cron/monthly-reports"
+        env:
+          APP_URL:     ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Trigger monthly reports
+        id: report
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST "$APP_URL/api/cron/monthly-reports" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --max-time 30)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Cron job failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          # 輸出摘要
+          EXPIRING=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['expiringCount'])" 2>/dev/null || echo "?")
+          OVERDUE=$(echo  "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['overdueCount'])"  2>/dev/null || echo "?")
+          MONTH=$(echo    "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['reportMonth'])"              2>/dev/null || echo "?")
+
+          echo "✅ $MONTH — 即將到期合約 $EXPIRING 筆，逾期未收 $OVERDUE 筆"
+          echo "report_month=$MONTH"    >> $GITHUB_OUTPUT
+          echo "expiring_count=$EXPIRING" >> $GITHUB_OUTPUT
+          echo "overdue_count=$OVERDUE"   >> $GITHUB_OUTPUT
+        env:
+          APP_URL:     ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: Summary
+        run: |
+          echo "## 月報摘要 ${{ steps.report.outputs.report_month }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 項目 | 數量 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 即將到期合約（60天內） | ${{ steps.report.outputs.expiring_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 逾期未收租金 | ${{ steps.report.outputs.overdue_count }} |" >> $GITHUB_STEP_SUMMARY

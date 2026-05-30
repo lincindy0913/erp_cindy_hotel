@@ -6,6 +6,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
 
@@ -172,7 +173,7 @@ export async function PATCH(request, { params }) {
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
       select: {
-        id: true, actualAmount: true, actualDate: true, accountId: true,
+        id: true, incomeYear: true, actualAmount: true, actualDate: true, accountId: true,
         paymentMethod: true, matchTransferRef: true, matchBankAccountName: true,
         expectedAmount: true, cashTransactionId: true, isLocked: true,
         property: { select: { name: true } },
@@ -185,6 +186,7 @@ export async function PATCH(request, { params }) {
     if (income.isLocked) {
       return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法編輯', 423);
     }
+    await assertRentalYearOpen(income.incomeYear);
     if (!income.cashTransactionId) {
       return createErrorResponse('VALIDATION_FAILED', '僅可編輯已收款的紀錄', 400);
     }
@@ -265,7 +267,7 @@ export async function DELETE(request, { params }) {
     const income = await prisma.rentalIncome.findUnique({
       where: { id: incomeId },
       select: {
-        id: true, status: true, actualAmount: true, cashTransactionId: true,
+        id: true, incomeYear: true, status: true, actualAmount: true, cashTransactionId: true,
         isLocked: true,
         property: { select: { name: true } },
         tenant: { select: { fullName: true, companyName: true, tenantType: true } },
@@ -281,6 +283,7 @@ export async function DELETE(request, { params }) {
     if (income.isLocked) {
       return createErrorResponse('LOCKED', '此收租紀錄已鎖帳，無法作廢', 423);
     }
+    await assertRentalYearOpen(income.incomeYear);
     // 冪等：若已經是 pending 狀態，視為已作廢完成
     if (income.status === 'pending') {
       return createErrorResponse('VALIDATION_FAILED', '此紀錄已為待收款狀態，無需作廢', 409);
