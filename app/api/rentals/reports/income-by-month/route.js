@@ -106,7 +106,7 @@ export async function GET(request) {
       propertyIds.size > 0
         ? await prisma.rentalProperty.findMany({
             where: { id: { in: Array.from(propertyIds) } },
-            select: { id: true, name: true, buildingName: true, unitNo: true, address: true, sortOrder: true }
+            select: { id: true, name: true, buildingName: true, unitNo: true, address: true, sortOrder: true, asset: { select: { sortOrder: true } } }
           })
         : [];
 
@@ -118,7 +118,7 @@ export async function GET(request) {
       byProperty.set(p.id, {
         propertyId: p.id,
         propertyLabel: propLabel(p),
-        sortOrder: p.sortOrder ?? null,
+        sortOrder: p.asset?.sortOrder ?? p.sortOrder ?? null,
         tenantName: null,
         months: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },
         monthsExpected: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0 },

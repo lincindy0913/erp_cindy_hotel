@@ -3669,7 +3669,7 @@ function RentalsPage() {
                             ];
                             return sorted.map((r, idx) => (
                             <tr key={r.propertyId} className={r.isTerminated ? 'bg-gray-50/60 opacity-70' : 'hover:bg-gray-50'}>
-                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
+                              <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{r.sortOrder ?? (idx + 1)}</td>
                               <td className="px-3 py-2 border border-gray-200">
                                 {r.tenantName ? `${r.propertyLabel}(${r.tenantName})` : r.propertyLabel}
                                 {r.isTerminated && <span className="ml-2 text-xs text-gray-400">（已退租）</span>}
@@ -3897,7 +3897,7 @@ function RentalsPage() {
                                   <input type="checkbox" checked={overdueSelectedIds.has(i.id)}
                                     onChange={e => setOverdueSelectedIds(prev => { const n = new Set(prev); e.target.checked ? n.add(i.id) : n.delete(i.id); return n; })} />
                                 </td>
-                                <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{idx + 1}</td>
+                                <td className="text-center px-2 py-2 border border-gray-200 text-xs text-gray-400">{i.contractSortOrder ?? (idx + 1)}</td>
                                 <td className="px-3 py-2 border border-gray-200">{i.propertyName}</td>
                                 <td className="px-3 py-2 border border-gray-200 font-medium">{tenantName}</td>
                                 <td className="px-3 py-2 border border-gray-200 text-gray-600">{tenantPhone}</td>

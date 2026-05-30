@@ -96,7 +96,7 @@ export async function GET(request) {
       }),
       prisma.rentalProperty.findMany({
         where: propertiesWhere,
-        select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true }
+        select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true, asset: { select: { sortOrder: true } } }
       }),
       prisma.asset.findMany({
         where: { rentalPropertyId: { not: null }, areaSqm: { not: null } },
@@ -115,7 +115,7 @@ export async function GET(request) {
       ? properties
       : await prisma.rentalProperty.findMany({
           where: { id: { in: Array.from(propertyIds) } },
-          select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true }
+          select: { id: true, name: true, buildingName: true, unitNo: true, address: true, category: true, sortOrder: true, asset: { select: { sortOrder: true } } }
         });
 
     const propMap = new Map(allProperties.map(p => [p.id, p]));
@@ -167,7 +167,7 @@ export async function GET(request) {
       return {
         propertyId: pid,
         propertyLabel: label,
-        sortOrder: prop?.sortOrder ?? null,
+        sortOrder: prop?.asset?.sortOrder ?? prop?.sortOrder ?? null,
         category: prop?.category ?? null,
         rentIncome: rent,
         maintenanceAmount: maintenance,
