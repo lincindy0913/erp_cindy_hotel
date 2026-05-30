@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { todayStr } from '@/lib/localDate';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +98,9 @@ export async function POST(request) {
 
     const y = parseInt(incomeYear);
     const m = parseInt(incomeMonth);
+
+    await assertRentalYearOpen(y);
+
     const expected = expectedAmount != null && expectedAmount !== '' ? parseFloat(expectedAmount) : 0;
 
     const created = await prisma.rentalUtilityIncome.upsert({
