@@ -10,14 +10,17 @@ import { useConfirm } from '@/context/ConfirmContext';
 import ExportButtons from '@/components/ExportButtons';
 import PaymentModal from './_components/PaymentModal';
 import BookingFormModal from './_components/BookingFormModal';
+import BnbBatchLockModal from './_components/BnbBatchLockModal';
 import { todayStr } from '@/lib/localDate';
 import { useDepositMatch } from './_hooks/useDepositMatch';
 import { useBnbRecords } from './_hooks/useBnbRecords';
+import { BNB_SOURCES, BNB_SOURCE_COLORS } from './_constants';
 import CalendarTab      from './_tabs/CalendarTab';
 import OccupancyTab     from './_tabs/OccupancyTab';
 import PayAuditTab      from './_tabs/PayAuditTab';
 import SourceAnalysisTab from './_tabs/SourceAnalysisTab';
 import OtaAnalyticsTab  from './_tabs/OtaAnalyticsTab';
+import PaymentSplitTab  from './_tabs/PaymentSplitTab';
 import GuestHistoryTab  from './_tabs/GuestHistoryTab';
 import OtaReconTab      from './_tabs/OtaReconTab';
 import OtaCommissionTab from './_tabs/OtaCommissionTab';
@@ -134,6 +137,7 @@ const ANALYTICS_SUB_TABS = [
   { key: 'declList',       label: '年度申報總表' },
   { key: 'sourceAnalysis', label: '來源分析' },
   { key: 'otaAnalytics',  label: 'OTA收益分析' },
+  { key: 'paymentSplit',  label: '收款分流' },
   { key: 'occupancy',      label: '入住率統計' },
   { key: 'calendar',       label: '訂房日曆' },
 ];
@@ -147,11 +151,7 @@ const STATUS_COLORS = {
   '未入住': 'bg-yellow-100 text-yellow-700',
 };
 function getStatusColor(s) { return STATUS_COLORS[s] ?? 'bg-gray-100 text-gray-600'; }
-const SOURCE_COLORS = {
-  'Booking': 'bg-indigo-100 text-indigo-700',
-  '電話':    'bg-amber-100 text-amber-700',
-  '其他':    'bg-gray-100 text-gray-600',
-};
+const SOURCE_COLORS = BNB_SOURCE_COLORS;
 
 // 民宿快速館別按鈕（點同館別再次點擊可取消選取回到全部）
 function WhQuickBtns({ list = [], value, onChange }) {
@@ -181,6 +181,30 @@ function BnbPage() {
   /** 分析分頁內子分頁 */
   const [analyticsSub, setAnalyticsSub] = useState(() => searchParams.get('sub') || 'dailyRev');
 
+  // ── 出納同步失敗 banner ───────────────────────────────────────
+  const [syncFailures, setSyncFailures] = useState([]);
+  const [syncRetrying, setSyncRetrying] = useState(null);
+  useEffect(() => {
+    fetch('/api/bnb/sync-failures?resolved=false')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setSyncFailures(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+  async function retrySyncFailure(failure) {
+    setSyncRetrying(failure.id);
+    try {
+      const res = await fetch(`/api/bnb/sync-failures/${failure.id}`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        showToast('重試成功，出納已同步', 'success');
+        setSyncFailures(prev => prev.filter(f => f.id !== failure.id));
+      } else {
+        showToast(data.error || '重試失敗', 'error');
+      }
+    } catch { showToast('重試失敗', 'error'); }
+    finally { setSyncRetrying(null); }
+  }
+
   // 是否有鎖帳權限
   const canLock = session?.user?.role === 'admin'
     || (session?.user?.permissions || []).includes('bnb.lock')
@@ -200,7 +224,7 @@ function BnbPage() {
     batchValue, setBatchValue,
     batchApplying,
     inlineEdit, setInlineEdit,
-    editMode, editMap, dirtyIds, batchSaving, locking,
+    editMode, editMap, dirtyIds, batchSaving, locking, rowErrors,
     roomNoList,
     fetchRecords,
     handleBatchApply,
@@ -229,7 +253,15 @@ function BnbPage() {
   const [oaYear,      setOaYear]      = useState(() => new Date().getFullYear().toString());
   const [oaWarehouse, setOaWarehouse] = useState('');
   const [oaData,      setOaData]      = useState(null);
+  const [oaPrevData,  setOaPrevData]  = useState(null);
+  const [oaCompare,   setOaCompare]   = useState(false);
   const [oaLoading,   setOaLoading]   = useState(false);
+
+  // ── 收款分流 state ────────────────────────────────────────────
+  const [psYear,      setPsYear]      = useState(() => new Date().getFullYear().toString());
+  const [psWarehouse, setPsWarehouse] = useState('');
+  const [psData,      setPsData]      = useState(null);
+  const [psLoading,   setPsLoading]   = useState(false);
 
   // ── 付款稽核 state ────────────────────────────────────────────
   const [auditMonth,     setAuditMonth]     = useState(() => todayStr().slice(0, 7));
@@ -275,7 +307,7 @@ function BnbPage() {
   const [importConfirm,   setImportConfirm]   = useState(null);   // { existingCount }
   const [importHistory,   setImportHistory]   = useState(() => {
     if (typeof window === 'undefined') return [];
-    try { return JSON.parse(sessionStorage.getItem('bnb_import_history') || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem('bnb_import_history') || '[]'); } catch { return []; }
   });
 
   // ── 每日收入 state ──────────────────────────────────────────
@@ -323,6 +355,64 @@ function BnbPage() {
   const [ledgerWarehouse, setLedgerWarehouse] = useState('');
   const [ledgerRows,      setLedgerRows]      = useState([]);
   const [ledgerLoading,   setLedgerLoading]   = useState(false);
+
+  // ── 月固定費用模板 state ─────────────────────────────────────
+  const [recurringTemplates, setRecurringTemplates] = useState([]);
+  const [showRecurringMgr,   setShowRecurringMgr]   = useState(false);
+  const [recurringForm,      setRecurringForm]       = useState({ warehouse: '', category: '', description: '', defaultAmt: '' });
+  const [recurringDraftMonth, setRecurringDraftMonth] = useState(thisMonth);
+  const [recurringDrafting,   setRecurringDrafting]   = useState(false);
+
+  async function fetchRecurringTemplates(wh) {
+    const p = new URLSearchParams(wh ? { warehouse: wh } : {});
+    fetch(`/api/bnb/recurring-expenses?${p}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setRecurringTemplates(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }
+
+  async function saveRecurringTemplate() {
+    if (!recurringForm.warehouse || !recurringForm.category || !recurringForm.description || !recurringForm.defaultAmt) {
+      showToast('請填寫所有欄位', 'error'); return;
+    }
+    const res = await fetch('/api/bnb/recurring-expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(recurringForm),
+    });
+    if (res.ok) {
+      showToast('模板已建立', 'success');
+      setRecurringForm({ warehouse: '', category: '', description: '', defaultAmt: '' });
+      fetchRecurringTemplates();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || '建立失敗', 'error');
+    }
+  }
+
+  async function deleteRecurringTemplate(id) {
+    const res = await fetch(`/api/bnb/recurring-expenses/${id}`, { method: 'DELETE' });
+    if (res.ok) { showToast('已停用', 'success'); fetchRecurringTemplates(); }
+    else showToast('操作失敗', 'error');
+  }
+
+  async function createRecurringDrafts() {
+    if (!recurringDraftMonth) { showToast('請選擇月份', 'error'); return; }
+    setRecurringDrafting(true);
+    try {
+      const res = await fetch('/api/bnb/recurring-expenses?action=draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: recurringDraftMonth }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast(data.message || `已建立 ${data.created} 筆草稿`, 'success');
+        fetchOtherIncome();
+      } else showToast(data.error || '建立失敗', 'error');
+    } catch { showToast('建立失敗', 'error'); }
+    finally { setRecurringDrafting(false); }
+  }
 
   // ── 其他收入 state ──────────────────────────────────────────
   const [oiMonth,       setOiMonth]       = useState(thisMonth);
@@ -384,7 +474,10 @@ function BnbPage() {
   const [reconLogsLoading, setReconLogsLoading] = useState(false);
 
   // ── 鎖帳 state ──────────────────────────────────────────────
-  const [lockStatus, setLockStatus]   = useState(null); // { locked, lockedAt, lockedBy }
+  const [lockStatus, setLockStatus]       = useState(null);
+  const [lockAudits, setLockAudits]       = useState([]);
+  const [showLockHistory, setShowLockHistory] = useState(false);
+  const [showBatchLock, setShowBatchLock]     = useState(false);
   const [lockLoading, setLockLoading] = useState(false);
 
   // ── 館別清單（session 載入後才 fetch，否則會 401）────────────
@@ -428,15 +521,33 @@ function BnbPage() {
     }
   }, [activeTab, filterMonth, declMonth, declWarehouse, dmMonth, dmWarehouse]);
 
+  const fetchLockAudits = useCallback(async (month, warehouse) => {
+    if (!month) return;
+    const p = new URLSearchParams({ month, warehouse });
+    fetch(`/api/bnb/lock-audits?${p}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setLockAudits(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
   const toggleLock = useCallback(async () => {
     if (lockLoading) return;
     const { month, warehouse } = getActiveLockContext();
     const isLocked = lockStatus?.locked;
     const action = isLocked ? '解鎖' : '鎖帳';
-    if (!(await confirm(`確定要${action}「${month}（${warehouse}）」的民宿帳嗎？${isLocked ? '' : '\n鎖帳後所有訂房資料、付款明細、匯入、申報都將無法修改。'}`, { title: `${action}確認`, danger: !isLocked }))) return;
+
+    let reason = '';
+    if (isLocked) {
+      reason = window.prompt(`請填寫「${month}（${warehouse}）」解鎖原因（必填）：`);
+      if (reason === null) return; // 取消
+      if (!reason.trim()) { showToast('解鎖原因不可為空', 'error'); return; }
+    } else {
+      if (!(await confirm(`確定要鎖帳「${month}（${warehouse}）」？\n鎖帳後所有訂房資料、付款明細、匯入、申報都將無法修改。`, { title: '鎖帳確認', danger: true }))) return;
+    }
+
     setLockLoading(true);
     try {
-      const p = new URLSearchParams({ month, warehouse });
+      const p = new URLSearchParams({ month, warehouse, ...(isLocked ? { reason } : {}) });
       const res = isLocked
         ? await fetch(`/api/bnb/lock?${p}`, { method: 'DELETE' })
         : await fetch('/api/bnb/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month, warehouse }) });
@@ -444,6 +555,7 @@ function BnbPage() {
         const data = await res.json();
         setLockStatus(data);
         showToast(`${month} 已${data.locked ? '鎖帳' : '解鎖'}`, 'success');
+        fetchLockAudits(month, warehouse);
       } else {
         const err = await res.json().catch(() => ({}));
         showToast(err.error || `${action}失敗`, 'error');
@@ -499,13 +611,33 @@ function BnbPage() {
   const fetchOtaAnalytics = useCallback(async () => {
     setOaLoading(true);
     try {
-      const p = new URLSearchParams({ year: oaYear });
-      if (oaWarehouse) p.set('warehouse', oaWarehouse);
-      const res = await fetch(`/api/bnb/ota-analytics?${p}`);
-      if (res.ok) setOaData(await res.json());
+      const buildUrl = (y) => {
+        const p = new URLSearchParams({ year: y });
+        if (oaWarehouse) p.set('warehouse', oaWarehouse);
+        return `/api/bnb/ota-analytics?${p}`;
+      };
+      const [data, prevData] = await Promise.all([
+        fetch(buildUrl(oaYear)).then(r => r.ok ? r.json() : null),
+        oaCompare
+          ? fetch(buildUrl(parseInt(oaYear) - 1)).then(r => r.ok ? r.json() : null)
+          : Promise.resolve(null),
+      ]);
+      if (data) { setOaData(data); setOaPrevData(prevData); }
     } catch { showToast('載入 OTA 分析失敗', 'error'); }
     finally { setOaLoading(false); }
-  }, [oaYear, oaWarehouse]);
+  }, [oaYear, oaWarehouse, oaCompare]);
+
+  // ── 收款分流 fetch ────────────────────────────────────────────
+  const fetchPaymentSplit = useCallback(async () => {
+    setPsLoading(true);
+    try {
+      const p = new URLSearchParams({ year: psYear });
+      if (psWarehouse) p.set('warehouse', psWarehouse);
+      const res = await fetch(`/api/bnb/payment-split?${p}`);
+      if (res.ok) setPsData(await res.json());
+    } catch { showToast('載入收款分流失敗', 'error'); }
+    finally { setPsLoading(false); }
+  }, [psYear, psWarehouse]);
 
   // ── 付款稽核 fetch（重用訂房 API 撈全月無篩選資料）─────────────
   const fetchAudit = useCallback(async () => {
@@ -528,7 +660,7 @@ function BnbPage() {
     setGhLoading(true);
     setGhSearched(true);
     try {
-      const p = new URLSearchParams({ guestName: ghSearch.trim(), pageSize: '200' });
+      const p = new URLSearchParams({ guestName: ghSearch.trim().replace(/\s+/g, ''), pageSize: '200' });
       const res = await fetch(`/api/bnb?${p}`);
       if (!res.ok) return;
       const json = await res.json();
@@ -608,7 +740,14 @@ function BnbPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data.error || '建立失敗', 'error'); return; }
+      if (!res.ok) {
+        if (res.status === 409) {
+          showToast('此月份傭金已存在，請至「OTA傭金」分頁編輯現有記錄', 'warning');
+        } else {
+          showToast(data.error || '建立失敗', 'error');
+        }
+        return;
+      }
       showToast('傭金草稿已建立，請到「OTA傭金」分頁確認金額後送出出納', 'success');
       // 重新查狀態
       const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
@@ -701,10 +840,29 @@ function BnbPage() {
   // OTA 比對：確認並存檔比對結果
   const confirmReconcile = useCallback(async () => {
     if (!otaResult) return;
+    const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
+    const wh = otaWarehouse || DEFAULT_WAREHOUSE;
+
+    // M13: 確認前檢查是否已有比對記錄，有則提示覆蓋
+    try {
+      const chkP = new URLSearchParams({ source: otaSource, warehouse: wh, year: month.substring(0, 4) });
+      const chkRes = await fetch(`/api/bnb/ota-reconcile-log?${chkP}`);
+      if (chkRes.ok) {
+        const chkData = await chkRes.json();
+        const existing = (chkData.rows || []).find(r => r.reconcileMonth === month && r.otaSource === otaSource && r.warehouse === wh);
+        if (existing) {
+          const confirmed = await confirm(
+            `${month}（${otaSource} / ${wh}）已有比對記錄（${existing.createdBy || ''}，${new Date(existing.createdAt).toLocaleDateString('zh-TW')}）\n確定要覆蓋此記錄嗎？`,
+            { title: '覆蓋確認', danger: false }
+          );
+          if (!confirmed) return;
+        }
+      }
+    } catch { /* 查詢失敗不阻擋，繼續儲存 */ }
+
     setReconcileConfirming(true);
     try {
       const s = otaResult.summary;
-      const month = otaDateFrom ? otaDateFrom.substring(0, 7) : todayStr().slice(0, 7);
       const res = await fetch('/api/bnb/ota-reconcile-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -903,6 +1061,7 @@ function BnbPage() {
     if (activeTab === 'analytics' && analyticsSub === 'occupancy') fetchOccupancy();
     if (activeTab === 'analytics' && analyticsSub === 'sourceAnalysis') fetchSourceAnalysis();
     if (activeTab === 'analytics' && analyticsSub === 'otaAnalytics')  fetchOtaAnalytics();
+    if (activeTab === 'analytics' && analyticsSub === 'paymentSplit')  fetchPaymentSplit();
     if (activeTab === 'payAudit')      fetchAudit();
     if (activeTab === 'analytics' && analyticsSub === 'calendar') fetchCalendar();
   }, [activeTab, analyticsSub]);
@@ -930,7 +1089,10 @@ function BnbPage() {
   }, [saYear, saWarehouse, activeTab, analyticsSub]);
   useEffect(() => {
     if (activeTab === 'analytics' && analyticsSub === 'otaAnalytics') fetchOtaAnalytics();
-  }, [oaYear, oaWarehouse, activeTab, analyticsSub]);
+  }, [oaYear, oaWarehouse, oaCompare, activeTab, analyticsSub]);
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsSub === 'paymentSplit') fetchPaymentSplit();
+  }, [psYear, psWarehouse, activeTab, analyticsSub]);
   useEffect(() => {
     if (activeTab === 'deposit') fetchDepositMatch();
   }, [dmPayType, activeTab]);
@@ -1018,8 +1180,8 @@ function BnbPage() {
         at:        new Date().toLocaleString('zh-TW'),
       };
       setImportHistory(prev => {
-        const next = [entry, ...prev].slice(0, 10);
-        try { sessionStorage.setItem('bnb_import_history', JSON.stringify(next)); } catch {}
+        const next = [entry, ...prev].slice(0, 20);
+        try { localStorage.setItem('bnb_import_history', JSON.stringify(next)); } catch {}
         return next;
       });
     } catch { showToast('匯入失敗', 'error'); }
@@ -1087,13 +1249,14 @@ function BnbPage() {
     acc.cash     += Number(r.payCash);
     acc.voucher  += Number(r.payVoucher);
     acc.cardFee  += Number(r.cardFee);
-    acc.unfilled += r.paymentFilled ? 0 : 1;
-    acc.locked   += r.paymentLocked ? 1 : 0;
+    acc.unfilled      += (!r.paymentFilled && !r.isComplimentary) ? 1 : 0;
+    acc.complimentary += r.isComplimentary ? 1 : 0;
+    acc.locked        += r.paymentLocked ? 1 : 0;
     const pt = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
     const ct = Number(r.roomCharge) + Number(r.otherCharge);
-    if (r.paymentFilled && Math.abs(pt - ct) > 0.01) acc.mismatch++;
+    if (r.paymentFilled && !r.isComplimentary && Math.abs(pt - ct) > 0.01) acc.mismatch++;
     return acc;
-  }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, locked: 0, mismatch: 0 });
+  }, { rooms: 0, revenue: 0, deposit: 0, transfer: 0, card: 0, cash: 0, voucher: 0, cardFee: 0, unfilled: 0, complimentary: 0, locked: 0, mismatch: 0 });
 
   // ── 房號分析（依目前 records 頁面資料計算）────────────────────
   const roomStats = (() => {
@@ -1121,6 +1284,29 @@ function BnbPage() {
           <h2 className="text-2xl font-bold text-gray-900">民宿帳</h2>
           <p className="text-sm text-gray-500 mt-1">訂房收入、付款明細、月收支總表、旅宿網申報</p>
         </div>
+
+        {/* 出納同步失敗 banner */}
+        {syncFailures.length > 0 && (
+          <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-amber-700 font-medium text-sm">⚠ {syncFailures.length} 筆訂房出納同步失敗，帳務可能不一致</span>
+            </div>
+            <div className="space-y-1">
+              {syncFailures.map(f => (
+                <div key={f.id} className="flex items-center gap-3 text-xs text-amber-800">
+                  <span className="font-medium">{f.booking?.guestName} {f.booking?.checkInDate}</span>
+                  <span className="text-amber-600 truncate max-w-xs">{f.errorMsg}</span>
+                  <button
+                    onClick={() => retrySyncFailure(f)}
+                    disabled={syncRetrying === f.id}
+                    className="ml-auto px-2.5 py-1 border border-amber-400 rounded text-amber-700 hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap">
+                    {syncRetrying === f.id ? '重試中…' : '重試同步'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-100 p-1">
@@ -1152,6 +1338,14 @@ function BnbPage() {
                   : 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
               } disabled:opacity-50`}>
               {lockLoading ? '處理中…' : isLocked ? '解鎖此月' : '鎖帳此月'}
+            </button>
+            <button onClick={() => { const { month, warehouse } = getActiveLockContext(); fetchLockAudits(month, warehouse); setShowLockHistory(true); }}
+              className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
+              紀錄
+            </button>
+            <button onClick={() => setShowBatchLock(true)}
+              className="px-3 py-1.5 text-xs rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100">
+              批次鎖帳
             </button>
           </div>
         </div>
@@ -1186,9 +1380,7 @@ function BnbPage() {
                 <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">來源</label>
                 <select id="f-2" value={filterSource} onChange={e => setFilterSource(e.target.value)} className={inputCls}>
                   <option value="">全部</option>
-                  <option value="電話">電話</option>
-                  <option value="Booking">Booking</option>
-                  <option value="其他">其他</option>
+                  {BNB_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
@@ -1381,7 +1573,7 @@ function BnbPage() {
                       <span className="text-xs text-gray-400 font-medium">本次工作階段上傳記錄</span>
                       <button type="button" onClick={() => {
                         setImportHistory([]);
-                        try { sessionStorage.removeItem('bnb_import_history'); } catch {}
+                        try { localStorage.removeItem('bnb_import_history'); } catch {}
                       }} className="text-xs text-gray-300 hover:text-red-500">清除</button>
                     </div>
                     <div className="space-y-1">
@@ -1437,6 +1629,12 @@ function BnbPage() {
                 disabled={recStats.unfilled === 0}>
                 未填 {recStats.unfilled} 筆
               </button>
+              {recStats.complimentary > 0 && (
+                <>
+                  <span className="text-gray-300">|</span>
+                  <span className="text-rose-500">招待 {recStats.complimentary} 筆</span>
+                </>
+              )}
               <span className="text-gray-300">|</span>
               <span className="text-slate-500">已鎖帳 <span className={recStats.locked === recStats.rooms && recStats.rooms > 0 ? 'text-green-600 font-semibold' : 'text-slate-700'}>{recStats.locked}</span></span>
               {recStats.mismatch > 0 && (
@@ -1583,10 +1781,11 @@ function BnbPage() {
                       const isLocked        = isRowLocked || monthLocked;
                       const inExcelMode     = editMode && !isDeleted && !isLocked;
                       const isDirty         = dirtyIds.has(r.id);
-                      const isOverdueUnpaid = !isDeleted && r.status === '已退房' && !r.paymentFilled && r.checkOutDate && r.checkOutDate < today;
+                      const hasRowError     = rowErrors[r.id];
+                      const isOverdueUnpaid = !isDeleted && r.status === '已退房' && !r.paymentFilled && !r.isComplimentary && r.checkOutDate && r.checkOutDate < today;
                       const payTotal        = Number(r.payDeposit) + Number(r.payTransfer) + Number(r.payCard) + Number(r.payCash) + Number(r.payVoucher);
                       const chargeTotal     = Number(r.roomCharge) + Number(r.otherCharge);
-                      const paymentMismatch = !isDeleted && r.paymentFilled && Math.abs(payTotal - chargeTotal) > 0.01;
+                      const paymentMismatch = !isDeleted && r.paymentFilled && !r.isComplimentary && Math.abs(payTotal - chargeTotal) > 0.01;
 
                       // ── 一般模式：點擊式 inline edit ────────────────
                       const editCell = (field, colorCls) => {
@@ -1677,10 +1876,12 @@ function BnbPage() {
                       const isPaymentComplete = !isDeleted && !isLocked && r.paymentFilled && !paymentMismatch;
 
                       return (
-                        <tr key={r.id} className={`
+                        <tr key={r.id}
+                          title={hasRowError || undefined}
+                          className={`
                           ${isSelected ? 'bg-amber-50' : isLocked ? 'bg-slate-50' : paymentMismatch ? 'bg-orange-50' : isOverdueUnpaid ? 'bg-red-50' : isPaymentComplete ? 'bg-gray-100 text-gray-400' : 'hover:bg-gray-50'}
                           ${isDeleted ? 'opacity-40' : ''}
-                          ${editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
+                          ${hasRowError ? 'ring-2 ring-inset ring-red-400' : editMode && isDirty ? 'ring-1 ring-inset ring-emerald-200' : ''}
                         `}>
                           <td className="px-3 py-2">
                             {!isDeleted && (
@@ -1692,7 +1893,10 @@ function BnbPage() {
                           <td className="px-3 py-2 whitespace-nowrap">
                             <span className={`text-xs px-1.5 py-0.5 rounded ${SOURCE_COLORS[r.source] || SOURCE_COLORS['其他']}`}>{r.source}</span>
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap max-w-[140px] truncate">{r.guestName}</td>
+                          <td className="px-3 py-2 whitespace-nowrap max-w-[140px]">
+                            <span className="truncate">{r.guestName}</span>
+                            {r.isComplimentary && <span className="ml-1 text-[10px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded">招待</span>}
+                          </td>
                           <td className="px-3 py-2 text-gray-500 text-xs">{r.roomNo || '—'}</td>
                           <td className="px-3 py-2 text-gray-600 text-xs whitespace-nowrap">
                             {r.checkInDate}
@@ -3439,11 +3643,65 @@ function BnbPage() {
             warehouseList={warehouseList}
             fetchBossWithdraw={fetchBossWithdraw}
             fetchBossWithdrawSummary={fetchBossWithdrawSummary}
+            showToast={showToast}
           />
         )}
         {/* ══ Tab: 其他收入 ══ */}
         {activeTab === 'otherIncome' && (
           <div>
+            {/* 月固定費用模板 */}
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-indigo-800">月固定費用模板</h4>
+                <button onClick={() => { setShowRecurringMgr(!showRecurringMgr); if (!showRecurringMgr) fetchRecurringTemplates(); }}
+                  className="text-xs text-indigo-600 border border-indigo-300 px-2.5 py-1 rounded hover:bg-indigo-100">
+                  {showRecurringMgr ? '收起' : '管理模板'}
+                </button>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-xs text-indigo-700">建立月份草稿：</label>
+                <input type="month" value={recurringDraftMonth} onChange={e => setRecurringDraftMonth(e.target.value)}
+                  className="border border-indigo-300 rounded px-2 py-1 text-sm bg-white" />
+                <button onClick={createRecurringDrafts} disabled={recurringDrafting}
+                  className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+                  {recurringDrafting ? '建立中…' : '建立本月草稿'}
+                </button>
+                <span className="text-xs text-indigo-500">（依模板建立草稿，已存在的自動跳過）</span>
+              </div>
+              {showRecurringMgr && (
+                <div className="mt-4 space-y-3">
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { key: 'warehouse', placeholder: '館別', type: 'text' },
+                      { key: 'category',  placeholder: '科目（如：清潔費）', type: 'text' },
+                      { key: 'description', placeholder: '描述（如：清潔員薪資）', type: 'text' },
+                      { key: 'defaultAmt', placeholder: '預設金額', type: 'number' },
+                    ].map(f => (
+                      <input key={f.key} type={f.type} placeholder={f.placeholder}
+                        value={recurringForm[f.key]} onChange={e => setRecurringForm(p => ({ ...p, [f.key]: e.target.value }))}
+                        className="border rounded px-2 py-1.5 text-sm" />
+                    ))}
+                    <button onClick={saveRecurringTemplate}
+                      className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                      新增
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {recurringTemplates.length === 0 && <p className="text-xs text-indigo-400">尚無模板</p>}
+                    {recurringTemplates.map(t => (
+                      <div key={t.id} className="flex items-center gap-3 bg-white rounded px-3 py-1.5 text-xs border border-indigo-100">
+                        <span className="text-indigo-600 font-medium">{t.warehouse}</span>
+                        <span className="text-gray-600">{t.category}</span>
+                        <span className="text-gray-700 flex-1">{t.description}</span>
+                        <span className="font-semibold text-indigo-700">NT${Number(t.defaultAmt).toLocaleString()}</span>
+                        <button onClick={() => deleteRecurringTemplate(t.id)}
+                          className="text-red-400 hover:text-red-600 hover:underline">停用</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {/* 篩選列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
               <div>
@@ -3641,8 +3899,20 @@ function BnbPage() {
           <OtaAnalyticsTab
             oaYear={oaYear} setOaYear={setOaYear}
             oaWarehouse={oaWarehouse} setOaWarehouse={setOaWarehouse}
-            oaData={oaData} oaLoading={oaLoading}
+            oaData={oaData} oaPrevData={oaPrevData}
+            oaCompare={oaCompare} setOaCompare={setOaCompare}
+            oaLoading={oaLoading}
             fetchOtaAnalytics={fetchOtaAnalytics} warehouseList={warehouseList}
+          />
+        )}
+
+        {/* ══ Tab: 收款分流 ══ */}
+        {activeTab === 'analytics' && analyticsSub === 'paymentSplit' && (
+          <PaymentSplitTab
+            psYear={psYear} setPsYear={setPsYear}
+            psWarehouse={psWarehouse} setPsWarehouse={setPsWarehouse}
+            psData={psData} psLoading={psLoading}
+            fetchPaymentSplit={fetchPaymentSplit} warehouseList={warehouseList}
           />
         )}
 
@@ -3691,6 +3961,45 @@ function BnbPage() {
           existingRecords={records}
           onClose={() => setAddBookingOpen(false)}
           onSaved={() => { setAddBookingOpen(false); fetchRecords(); }}
+        />
+      )}
+
+      {/* ══ M9：鎖帳歷史 Modal ══ */}
+      {showLockHistory && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setShowLockHistory(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-gray-800">鎖帳操作紀錄</h3>
+              <button onClick={() => setShowLockHistory(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            {lockAudits.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">尚無紀錄</p>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {lockAudits.map(a => (
+                  <div key={a.id} className={`rounded-lg px-3 py-2 text-xs border ${a.action === 'lock' ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`font-semibold ${a.action === 'lock' ? 'text-red-700' : 'text-green-700'}`}>
+                        {a.action === 'lock' ? '🔒 鎖帳' : '🔓 解鎖'}
+                      </span>
+                      <span className="text-gray-400">{new Date(a.performedAt).toLocaleString('zh-TW')}</span>
+                    </div>
+                    <div className="text-gray-600 mt-0.5">操作者：{a.performedBy}</div>
+                    {a.reason && <div className="text-gray-700 mt-0.5">原因：{a.reason}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ M10：批次鎖帳 Modal ══ */}
+      {showBatchLock && (
+        <BnbBatchLockModal
+          warehouseList={warehouseList}
+          onClose={() => setShowBatchLock(false)}
+          showToast={showToast}
         />
       )}
 

@@ -5,23 +5,9 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { todayStr } from '@/lib/localDate';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
-
-async function generateTxNo(prismaClient, date) {
-  const dateStr = (date || todayStr()).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-  const existing = await prismaClient.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 async function ensureUtilityIncomeCashTx(prismaClient, record) {
   if (!record.actualAmount || !record.accountId || record.cashTransactionId) return record;
@@ -37,7 +23,7 @@ async function ensureUtilityIncomeCashTx(prismaClient, record) {
   const accountingSubjectLabel = category?.accountingSubject
     ? `${category.accountingSubject.code || ''} ${category.accountingSubject.name || ''}`.trim()
     : null;
-  const txNo = await generateTxNo(prismaClient, record.actualDate);
+  const txNo = await nextCashTransactionNo(prismaClient, record.actualDate);
   const description = `水電收入 - ${record.property?.name || '物業'} - ${record.incomeYear}/${record.incomeMonth}`;
   const tx = await prismaClient.cashTransaction.create({
     data: {

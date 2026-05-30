@@ -41,11 +41,23 @@ export async function PUT(request, { params }) {
     if (data.type !== undefined) updateData.type = data.type;
     if (data.warehouse !== undefined) updateData.warehouse = data.warehouse;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (data.isPrimary !== undefined) updateData.isPrimary = data.isPrimary === true;
     if (data.openingBalance !== undefined) {
       updateData.openingBalance = parseFloat(data.openingBalance);
     }
 
     const account = await prisma.$transaction(async (tx) => {
+      // 設為主要帳戶時，先清除同館別同類型其他帳戶的 isPrimary
+      if (updateData.isPrimary === true) {
+        const wh = updateData.warehouse ?? existing.warehouse;
+        const tp = updateData.type ?? existing.type;
+        if (wh && tp) {
+          await tx.cashAccount.updateMany({
+            where: { warehouse: wh, type: tp, isPrimary: true, id: { not: id } },
+            data: { isPrimary: false },
+          });
+        }
+      }
       const updated = await tx.cashAccount.update({
         where: { id },
         data: updateData,

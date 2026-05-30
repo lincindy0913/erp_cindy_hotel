@@ -24,7 +24,7 @@ const BNB_SELECT = {
   cardSettlementDate: true, cardBankLineId: true,
   payCash: true, payVoucher: true,
   cashDestination: true, cashDepositDate: true, cashBankLineId: true, bossWithdrawNote: true,
-  paymentFilled: true, paymentLocked: true, paymentLockedAt: true, paymentLockedBy: true,
+  paymentFilled: true, isComplimentary: true, paymentLocked: true, paymentLockedAt: true, paymentLockedBy: true,
   depositCashTxId: true, transferCashTxId: true, cashCashTxId: true, cardCashTxId: true,
   createdAt: true, updatedAt: true,
 };
@@ -55,7 +55,7 @@ export async function GET(request) {
     if (warehouse) where.warehouse   = warehouse;
     if (source)    where.source      = source;
     if (status)    where.status      = status;  // explicit status overrides default
-    if (guestName) where.guestName   = { contains: guestName };
+    if (guestName) where.guestName   = { contains: guestName.replace(/\s+/g, ''), mode: 'insensitive' };
 
     const [total, records] = await prisma.$transaction([
       prisma.bnbBookingRecord.count({ where }),
@@ -148,7 +148,8 @@ export async function POST(request) {
         payVoucher:  pVoucher,
         cardFeeRate: feeRate,
         cardFee,
-        paymentFilled: (pDeposit + pCard + pCash + pVoucher) > 0,
+        isComplimentary: body.isComplimentary === true,
+        paymentFilled: body.isComplimentary === true || (pDeposit + pCard + pCash + pVoucher) > 0,
         note: note || null,
       },
       select: BNB_SELECT,

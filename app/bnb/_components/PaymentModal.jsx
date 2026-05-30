@@ -36,6 +36,20 @@ export default function PaymentModal({ record, onClose, onSaved }) {
     note:               record.note                || '',
   });
   const [saving, setSaving] = useState(false);
+
+  // M11: 開啟時從系統設定讀取最新手續費率（若訂房已有費率則保留）
+  useEffect(() => {
+    if (record.cardFeeRate) return; // 已有記錄的費率不覆蓋
+    fetch('/api/bnb/settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.bnb_card_fee_rate) {
+          const rate = parseFloat(data.bnb_card_fee_rate);
+          if (!isNaN(rate)) setForm(f => ({ ...f, cardFeeRate: rate }));
+        }
+      })
+      .catch(() => {});
+  }, [record.cardFeeRate]);
   const [mismatchConfirmed, setMismatchConfirmed] = useState(false);
   const cardFee    = Math.round(Number(form.payCard) * Number(form.cardFeeRate));
   const total      = Number(form.payDeposit) + Number(form.payTransfer) + Number(form.payCard) + Number(form.payCash) + Number(form.payVoucher);

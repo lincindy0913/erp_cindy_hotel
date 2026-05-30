@@ -53,6 +53,7 @@ export async function PATCH(request) {
 
       let saved = 0;
       let skipped = 0;
+      const failures = [];
 
       for (const rec of records) {
         const id = parseInt(rec.id);
@@ -89,36 +90,40 @@ export async function PATCH(request) {
         // 含 0 元（如免費、招待）仍視為已填，不強求金額大於 0
         updateData.paymentFilled = true;
 
-        await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
+        try {
+          await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
 
-        // 同步 BnbBossWithdraw
-        const finalCash = updateData.payCash          ?? Number(existing.payCash);
-        const finalDest = updateData.cashDestination  ?? existing.cashDestination;
-        if (finalDest === '老闆收取' && finalCash > 0) {
-          const exists = await prisma.bnbBossWithdraw.findFirst({ where: { bookingId: id } });
-          if (!exists) {
-            await prisma.bnbBossWithdraw.create({
-              data: {
-                warehouse:    existing.warehouse,
-                withdrawDate: existing.checkOutDate || existing.checkInDate,
-                amount:       finalCash,
-                bookingId:    id,
-                guestName:    existing.guestName,
-                note:         existing.bossWithdrawNote || null,
-              },
-            });
-          } else if (Number(exists.amount) !== finalCash) {
-            await prisma.bnbBossWithdraw.update({ where: { id: exists.id }, data: { amount: finalCash } });
+          // 同步 BnbBossWithdraw
+          const finalCash = updateData.payCash          ?? Number(existing.payCash);
+          const finalDest = updateData.cashDestination  ?? existing.cashDestination;
+          if (finalDest === '老闆收取' && finalCash > 0) {
+            const exists = await prisma.bnbBossWithdraw.findFirst({ where: { bookingId: id } });
+            if (!exists) {
+              await prisma.bnbBossWithdraw.create({
+                data: {
+                  warehouse:    existing.warehouse,
+                  withdrawDate: existing.checkOutDate || existing.checkInDate,
+                  amount:       finalCash,
+                  bookingId:    id,
+                  guestName:    existing.guestName,
+                  note:         existing.bossWithdrawNote || null,
+                },
+              });
+            } else if (Number(exists.amount) !== finalCash) {
+              await prisma.bnbBossWithdraw.update({ where: { id: exists.id }, data: { amount: finalCash } });
+            }
+          } else if (finalDest !== '老闆收取') {
+            // 如果取消老闆收取，刪除對應記錄
+            await prisma.bnbBossWithdraw.deleteMany({ where: { bookingId: id } });
           }
-        } else if (finalDest !== '老闆收取') {
-          // 如果取消老闆收取，刪除對應記錄
-          await prisma.bnbBossWithdraw.deleteMany({ where: { bookingId: id } });
-        }
 
-        saved++;
+          saved++;
+        } catch (err) {
+          failures.push({ id, error: err.message || '儲存失敗' });
+        }
       }
 
-      return NextResponse.json({ ok: true, saved, skipped });
+      return NextResponse.json({ ok: true, saved, skipped, failures });
     }
 
     if (action === 'lock' || action === 'unlock') {

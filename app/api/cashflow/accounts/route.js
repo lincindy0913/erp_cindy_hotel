@@ -58,17 +58,27 @@ export async function POST(request) {
       }
     }
 
-    const account = await prisma.cashAccount.create({
-      data: {
-        accountCode: data.accountCode || null,
-        name: data.name.trim(),
-        type: data.type,
-        warehouse: data.warehouse || null,
-        openingBalance,
-        currentBalance: openingBalance,
-        isActive: true,
-        note: data.note || null
+    const isPrimary = data.isPrimary === true;
+    const account = await prisma.$transaction(async (tx) => {
+      if (isPrimary && data.warehouse && data.type) {
+        await tx.cashAccount.updateMany({
+          where: { warehouse: data.warehouse, type: data.type, isPrimary: true },
+          data: { isPrimary: false },
+        });
       }
+      return tx.cashAccount.create({
+        data: {
+          accountCode: data.accountCode || null,
+          name: data.name.trim(),
+          type: data.type,
+          warehouse: data.warehouse || null,
+          openingBalance,
+          currentBalance: openingBalance,
+          isActive: true,
+          isPrimary,
+          note: data.note || null,
+        },
+      });
     });
 
     await auditFromSession(prisma, auth.session, {

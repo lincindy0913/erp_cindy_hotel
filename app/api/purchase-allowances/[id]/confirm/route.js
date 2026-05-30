@@ -7,23 +7,9 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
-
-// Helper: generate next CF transaction number
-async function generateTxNo(tx, dateStr) {
-  const txPrefix = `CF-${dateStr.replace(/-/g, '')}-`;
-  const existingTx = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: txPrefix } },
-    select: { transactionNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existingTx) {
-    const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 // POST: 確認折讓/全額退貨 → 建立退款交易 + 回沖相關資料
 export async function POST(request, { params }) {
@@ -60,7 +46,7 @@ export async function POST(request, { params }) {
 
       // Enforce period lock
       await assertPeriodOpen(tx, txDate, allowance.warehouse);
-      const txNo = await generateTxNo(tx, txDate);
+      const txNo = await nextCashTransactionNo(tx, txDate);
 
       // Get category
       const categoryId = await getCategoryId(tx, 'purchase_allowance');
@@ -213,7 +199,7 @@ export async function POST(request, { params }) {
             },
           });
           if (originalCashTx) {
-            const reversalNo = await generateTxNo(tx, txDate);
+            const reversalNo = await nextCashTransactionNo(tx, txDate);
             const reversalTx = await tx.cashTransaction.create({
               data: {
                 transactionNo: reversalNo,

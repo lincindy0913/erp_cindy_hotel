@@ -5,7 +5,8 @@ import { inputCls } from '../_constants';
 
 export default function OtaAnalyticsTab({
   oaYear, setOaYear, oaWarehouse, setOaWarehouse,
-  oaData, oaLoading, fetchOtaAnalytics, warehouseList,
+  oaData, oaPrevData, oaCompare, setOaCompare,
+  oaLoading, fetchOtaAnalytics, warehouseList,
 }) {
   return (
     <div className="space-y-4">
@@ -17,27 +18,54 @@ export default function OtaAnalyticsTab({
           {warehouseList.map(w => <option key={w} value={w}>{w}</option>)}
         </select>
         <WhQuickBtns list={warehouseList} value={oaWarehouse} onChange={setOaWarehouse} />
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+          <input type="checkbox" checked={oaCompare} onChange={e => setOaCompare(e.target.checked)}
+            className="rounded" />
+          對比上一年（{parseInt(oaYear) - 1}）
+        </label>
         <button onClick={fetchOtaAnalytics} className="px-4 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">查詢</button>
         {oaLoading && <span className="text-xs text-gray-400 animate-pulse">載入中…</span>}
       </div>
+
       {oaData && (() => {
         const { months, bySource, totals } = oaData;
+        const prevMonths = oaPrevData?.months;
+        const prevTotals = oaPrevData?.totals;
+
+        const yoyPct = (curr, prev) => {
+          if (prev == null || prev === 0) return null;
+          return ((curr - prev) / Math.abs(prev) * 100).toFixed(1);
+        };
+
+        const yoyBadge = (curr, prev) => {
+          const pct = yoyPct(curr, prev);
+          if (pct == null) return null;
+          const up = parseFloat(pct) >= 0;
+          return (
+            <div className={`text-[10px] font-medium mt-0.5 ${up ? 'text-emerald-500' : 'text-red-500'}`}>
+              {up ? `▲ +${pct}%` : `▼ ${pct}%`} vs {parseInt(oaData.year) - 1}年
+            </div>
+          );
+        };
+
         return (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: 'OTA 收入', value: `NT$ ${totals.otaRevenue.toLocaleString()}`, sub: `佔比 ${totals.otaPct}%`, color: 'text-indigo-600' },
-                { label: '傭金支出', value: `NT$ ${totals.commissionTotal.toLocaleString()}`, sub: `均率 ${totals.avgCommRate}%`, color: 'text-rose-600' },
-                { label: 'OTA 淨收入', value: `NT$ ${totals.netOtaRevenue.toLocaleString()}`, sub: '扣除傭金後', color: 'text-emerald-600' },
-                { label: '待付傭金', value: `NT$ ${totals.commissionPending.toLocaleString()}`, sub: `已付 NT$ ${totals.commissionPaid.toLocaleString()}`, color: 'text-amber-600' },
+                { label: 'OTA 收入',   field: 'otaRevenue',        value: totals.otaRevenue,        sub: `佔比 ${totals.otaPct}%`,                                    color: 'text-indigo-600' },
+                { label: '傭金支出',   field: 'commissionTotal',   value: totals.commissionTotal,   sub: `均率 ${totals.avgCommRate}%`,                               color: 'text-rose-600' },
+                { label: 'OTA 淨收入', field: 'netOtaRevenue',     value: totals.netOtaRevenue,     sub: '扣除傭金後',                                                color: 'text-emerald-600' },
+                { label: '待付傭金',   field: 'commissionPending', value: totals.commissionPending, sub: `已付 NT$ ${totals.commissionPaid.toLocaleString()}`,         color: 'text-amber-600' },
               ].map(k => (
                 <div key={k.label} className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
                   <div className="text-xs text-gray-400 mb-1">{k.label}</div>
-                  <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
+                  <div className={`text-xl font-bold ${k.color}`}>NT$ {k.value.toLocaleString()}</div>
                   <div className="text-xs text-gray-400 mt-0.5">{k.sub}</div>
+                  {oaCompare && prevTotals && yoyBadge(k.value, prevTotals[k.field])}
                 </div>
               ))}
             </div>
+
             <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
               <h4 className="text-sm font-semibold text-gray-700 mb-4">來源分析（{oaData.year} 年）</h4>
               <div className="overflow-x-auto">
@@ -69,6 +97,7 @@ export default function OtaAnalyticsTab({
                 </table>
               </div>
             </div>
+
             <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 tbl-wrap">
               <h4 className="text-sm font-semibold text-gray-700 mb-3">月度 OTA 收益趨勢</h4>
               <table className="w-full text-xs">
@@ -80,23 +109,33 @@ export default function OtaAnalyticsTab({
                     <th className="text-right py-1.5 px-2 font-medium">傭金</th>
                     <th className="text-right py-1.5 px-2 font-medium">待付</th>
                     <th className="text-right py-1.5 px-2 font-medium">OTA淨收</th>
+                    {oaCompare && <th className="text-right py-1.5 px-2 font-medium text-gray-500">YoY</th>}
                     <th className="text-right py-1.5 pl-2 font-medium text-gray-600">傭金率</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {months.filter(m => m.totalBookings > 0 || m.commissionTotal > 0).map(m => (
-                    <tr key={m.month} className="hover:bg-gray-50">
-                      <td className="py-1.5 pr-3 text-gray-600 font-medium">{m.month}</td>
-                      <td className="py-1.5 px-2 text-right text-indigo-600">{m.otaBookings}</td>
-                      <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{m.otaRevenue > 0 ? `NT$ ${m.otaRevenue.toLocaleString()}` : '—'}</td>
-                      <td className="py-1.5 px-2 text-right text-rose-600">{m.commissionTotal > 0 ? `NT$ ${m.commissionTotal.toLocaleString()}` : '—'}</td>
-                      <td className={`py-1.5 px-2 text-right ${m.commissionPending > 0 ? 'text-amber-600 font-semibold' : 'text-gray-300'}`}>
-                        {m.commissionPending > 0 ? `NT$ ${m.commissionPending.toLocaleString()}` : '—'}
-                      </td>
-                      <td className="py-1.5 px-2 text-right text-emerald-600 font-semibold">{m.netOtaRevenue !== 0 ? `NT$ ${m.netOtaRevenue.toLocaleString()}` : '—'}</td>
-                      <td className="py-1.5 pl-2 text-right text-gray-500">{m.effectiveCommRate > 0 ? `${m.effectiveCommRate}%` : '—'}</td>
-                    </tr>
-                  ))}
+                  {months.filter(m => m.totalBookings > 0 || m.commissionTotal > 0).map(m => {
+                    const prev = prevMonths?.find(p => p.month.slice(5) === m.month.slice(5));
+                    const yoy  = oaCompare && prev != null ? yoyPct(m.netOtaRevenue, prev.netOtaRevenue) : null;
+                    return (
+                      <tr key={m.month} className="hover:bg-gray-50">
+                        <td className="py-1.5 pr-3 text-gray-600 font-medium">{m.month}</td>
+                        <td className="py-1.5 px-2 text-right text-indigo-600">{m.otaBookings}</td>
+                        <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{m.otaRevenue > 0 ? `NT$ ${m.otaRevenue.toLocaleString()}` : '—'}</td>
+                        <td className="py-1.5 px-2 text-right text-rose-600">{m.commissionTotal > 0 ? `NT$ ${m.commissionTotal.toLocaleString()}` : '—'}</td>
+                        <td className={`py-1.5 px-2 text-right ${m.commissionPending > 0 ? 'text-amber-600 font-semibold' : 'text-gray-300'}`}>
+                          {m.commissionPending > 0 ? `NT$ ${m.commissionPending.toLocaleString()}` : '—'}
+                        </td>
+                        <td className="py-1.5 px-2 text-right text-emerald-600 font-semibold">{m.netOtaRevenue !== 0 ? `NT$ ${m.netOtaRevenue.toLocaleString()}` : '—'}</td>
+                        {oaCompare && (
+                          <td className={`py-1.5 px-2 text-right font-semibold ${yoy == null ? 'text-gray-300' : parseFloat(yoy) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {yoy == null ? '—' : parseFloat(yoy) >= 0 ? `+${yoy}%` : `${yoy}%`}
+                          </td>
+                        )}
+                        <td className="py-1.5 pl-2 text-right text-gray-500">{m.effectiveCommRate > 0 ? `${m.effectiveCommRate}%` : '—'}</td>
+                      </tr>
+                    );
+                  })}
                   <tr className="bg-gray-50 font-semibold">
                     <td className="py-2 pr-3 text-gray-700">合計</td>
                     <td className="py-2 px-2 text-right text-indigo-700">{totals.otaBookings}</td>
@@ -106,6 +145,14 @@ export default function OtaAnalyticsTab({
                       {totals.commissionPending > 0 ? `NT$ ${totals.commissionPending.toLocaleString()}` : '—'}
                     </td>
                     <td className="py-2 px-2 text-right text-emerald-700">NT$ {totals.netOtaRevenue.toLocaleString()}</td>
+                    {oaCompare && (() => {
+                      const pct = prevTotals ? yoyPct(totals.netOtaRevenue, prevTotals.netOtaRevenue) : null;
+                      return (
+                        <td className={`py-2 px-2 text-right font-semibold ${pct == null ? 'text-gray-300' : parseFloat(pct) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {pct == null ? '—' : parseFloat(pct) >= 0 ? `+${pct}%` : `${pct}%`}
+                        </td>
+                      );
+                    })()}
                     <td className="py-2 pl-2 text-right text-gray-600">{totals.avgCommRate}%</td>
                   </tr>
                 </tbody>

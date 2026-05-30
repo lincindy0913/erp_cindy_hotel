@@ -6,6 +6,7 @@ import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { todayStr } from '@/lib/localDate';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,7 +121,7 @@ export async function POST(request) {
           });
         } else {
           // AR: 收入 — directly create cashflow (no cashier needed for income)
-          const txNo = await generateTxNo(tx, transactionDate);
+          const txNo = await nextCashTransactionNo(tx, transactionDate);
           const commCatId = await getCategoryId(tx, 'pms_manual_commission');
           await tx.cashTransaction.create({
             data: {
@@ -177,20 +178,4 @@ export async function POST(request) {
   } catch (error) {
     return handleApiError(error);
   }
-}
-
-// Generate transaction number
-async function generateTxNo(tx, date) {
-  const dateStr = (date || todayStr()).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-  let maxSeq = 0;
-  for (const t of existing) {
-    const seq = parseInt(t.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
 }

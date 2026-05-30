@@ -46,22 +46,24 @@ export async function POST(request) {
   if (!auth.ok) return auth.response;
 
   try {
-    const { month, warehouse = '民宿' } = await request.json();
+    const body = await request.json();
+    const { month, warehouse = '民宿', reason } = body;
     if (!month) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 month', 400);
 
     const userName = auth.session.user.name || auth.session.user.email || 'unknown';
 
-    const report = await prisma.bnbMonthlyReport.upsert({
-      where: { reportMonth_warehouse: { reportMonth: month, warehouse } },
-      update: { lockedAt: new Date(), lockedBy: userName },
-      create: { reportMonth: month, warehouse, lockedAt: new Date(), lockedBy: userName },
-    });
+    const [report] = await prisma.$transaction([
+      prisma.bnbMonthlyReport.upsert({
+        where: { reportMonth_warehouse: { reportMonth: month, warehouse } },
+        update: { lockedAt: new Date(), lockedBy: userName },
+        create: { reportMonth: month, warehouse, lockedAt: new Date(), lockedBy: userName },
+      }),
+      prisma.bnbLockAudit.create({
+        data: { reportMonth: month, warehouse, action: 'lock', performedBy: userName, reason: reason || null },
+      }),
+    ]);
 
-    return NextResponse.json({
-      locked: true,
-      lockedAt: report.lockedAt,
-      lockedBy: report.lockedBy,
-    });
+    return NextResponse.json({ locked: true, lockedAt: report.lockedAt, lockedBy: report.lockedBy });
   } catch (error) {
     return handleApiError(error);
   }
@@ -74,21 +76,28 @@ export async function DELETE(request) {
   const { searchParams } = new URL(request.url);
   const month     = searchParams.get('month');
   const warehouse = searchParams.get('warehouse') || '民宿';
+  const reason    = searchParams.get('reason');
 
   if (!month) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 month', 400);
+  if (!reason?.trim()) return createErrorResponse('REQUIRED_FIELD_MISSING', '解鎖需填寫原因', 400);
 
   try {
     const existing = await prisma.bnbMonthlyReport.findUnique({
       where: { reportMonth_warehouse: { reportMonth: month, warehouse } },
     });
-    if (!existing) {
-      return NextResponse.json({ locked: false });
-    }
+    if (!existing) return NextResponse.json({ locked: false });
 
-    await prisma.bnbMonthlyReport.update({
-      where: { id: existing.id },
-      data: { lockedAt: null, lockedBy: null },
-    });
+    const userName = auth.session.user.name || auth.session.user.email || 'unknown';
+
+    await prisma.$transaction([
+      prisma.bnbMonthlyReport.update({
+        where: { id: existing.id },
+        data: { lockedAt: null, lockedBy: null },
+      }),
+      prisma.bnbLockAudit.create({
+        data: { reportMonth: month, warehouse, action: 'unlock', performedBy: userName, reason: reason.trim() },
+      }),
+    ]);
 
     return NextResponse.json({ locked: false });
   } catch (error) {

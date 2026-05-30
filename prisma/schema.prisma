@@ -418,6 +418,7 @@ model CashAccount {
   openingBalance           Decimal   @default(0) @map("opening_balance") @db.Decimal(12, 2)
   currentBalance           Decimal   @default(0) @map("current_balance") @db.Decimal(12, 2)
   isActive                 Boolean   @default(true) @map("is_active")
+  isPrimary                Boolean   @default(false) @map("is_primary")
   isConfidential           Boolean   @default(false) @map("is_confidential")
   // spec6 v10: auto transaction tracking
   autoTransactionCount     Int?      @map("auto_transaction_count")
@@ -1935,6 +1936,7 @@ model BankStatementLine {
   matchedBy             String?  @map("matched_by") @db.VarChar(20)
   reconciliationId      Int?     @map("reconciliation_id")
   note                  String?  @db.Text
+  rowHash               String?  @map("row_hash") @db.VarChar(64)
 
   import BankStatementImport @relation(fields: [importId], references: [id], onDelete: Cascade)
 
@@ -1944,6 +1946,7 @@ model BankStatementLine {
   @@index([matchStatus])
   @@index([accountId, txDate]) // spec24
   @@index([reconciliationId])  // filter by recon session
+  @@index([rowHash])
   @@map("bank_statement_lines")
 }
 
@@ -2976,6 +2979,7 @@ model BnbBookingRecord {
   cardFeeRate   Decimal  @default(0) @map("card_fee_rate") @db.Decimal(5, 4)
   cardFee       Decimal  @default(0) @map("card_fee") @db.Decimal(12, 2)
   paymentFilled        Boolean  @default(false) @map("payment_filled")
+  isComplimentary      Boolean  @default(false) @map("is_complimentary")
   // 付款鎖帳（行級別，由主管鎖定）
   paymentLocked        Boolean  @default(false) @map("payment_locked")
   paymentLockedAt      DateTime? @map("payment_locked_at")
@@ -3026,6 +3030,7 @@ model BnbBookingRecord {
   @@index([transferBankLineId])
   @@index([cardBankLineId])
   @@index([cashBankLineId])
+  syncFailures BnbSyncFailure[]
   @@map("bnb_booking_records")
 }
 
@@ -3038,13 +3043,32 @@ model BnbBossWithdraw {
   bookingId    Int?     @map("booking_id")                     // 關聯訂房（可 null 表示整批）
   guestName    String?  @map("guest_name") @db.VarChar(255)    // 快速顯示用
   note         String?  @db.VarChar(500)
-  createdBy    String?  @map("created_by") @db.VarChar(255)
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdBy    String?   @map("created_by") @db.VarChar(255)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  confirmedAt  DateTime? @map("confirmed_at")
+  confirmedBy  String?   @map("confirmed_by") @db.VarChar(255)
 
   @@index([warehouse])
   @@index([withdrawDate])
   @@index([bookingId])
+  @@index([confirmedAt])
   @@map("bnb_boss_withdraws")
+}
+
+/// 民宿月固定費用模板（網路費、清潔員薪、瓦斯等每月重複項目）
+model BnbRecurringExpense {
+  id          Int      @id @default(autoincrement())
+  warehouse   String   @db.VarChar(100)
+  category    String   @db.VarChar(100)
+  description String   @db.VarChar(500)
+  defaultAmt  Decimal  @map("default_amt") @db.Decimal(12, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   String?  @map("created_by") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([warehouse])
+  @@map("bnb_recurring_expenses")
 }
 
 /// 民宿其他收入（不綁訂房的獨立收入，如停車費、清潔費、設備租借）
@@ -3096,6 +3120,21 @@ model BnbMonthlyReport {
   @@unique([reportMonth, warehouse])
   @@index([reportMonth])
   @@map("bnb_monthly_reports")
+}
+
+/// 民宿鎖帳操作歷史（每次鎖／解各一筆，不覆蓋）
+model BnbLockAudit {
+  id           Int      @id @default(autoincrement())
+  reportMonth  String   @map("report_month") @db.VarChar(7)
+  warehouse    String   @db.VarChar(100)
+  action       String   @db.VarChar(10)     // lock | unlock
+  performedBy  String   @map("performed_by") @db.VarChar(255)
+  performedAt  DateTime @default(now()) @map("performed_at")
+  reason       String?  @db.Text
+
+  @@index([reportMonth, warehouse])
+  @@index([performedAt])
+  @@map("bnb_lock_audits")
 }
 
 // ============================================
@@ -3196,6 +3235,21 @@ model BnbOtaReconcileLog {
   @@index([otaSource])
   @@index([createdAt])
   @@map("bnb_ota_reconcile_logs")
+}
+
+model BnbSyncFailure {
+  id          Int      @id @default(autoincrement())
+  bookingId   Int      @map("booking_id")
+  failedAt    DateTime @default(now()) @map("failed_at")
+  errorMsg    String   @map("error_msg") @db.Text
+  resolved    Boolean  @default(false)
+  resolvedAt  DateTime? @map("resolved_at")
+
+  booking BnbBookingRecord @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([resolved])
+  @@map("bnb_sync_failures")
 }
 
 // ============================================

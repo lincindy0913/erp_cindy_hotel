@@ -1,8 +1,21 @@
 import { NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+
+function computeRowHash(accountId, line) {
+  const raw = [
+    String(accountId),
+    line.txDate || '',
+    String(parseFloat(line.creditAmount) || 0),
+    String(parseFloat(line.debitAmount)  || 0),
+    (line.description  || '').trim(),
+    (line.referenceNo  || '').trim(),
+  ].join('|');
+  return createHash('sha256').update(raw).digest('hex').substring(0, 64);
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -198,6 +211,16 @@ export async function POST(request) {
       : [];
     const bnbMap = new Map(bnbBookings.map((b) => [b.id, b]));
 
+    // M12: 計算每行 hash，查詢已存在的，過濾重複
+    const incomingHashes = lines.map(l => computeRowHash(accountId, l));
+    const existingHashes = new Set(
+      (await prisma.bankStatementLine.findMany({
+        where: { rowHash: { in: incomingHashes } },
+        select: { rowHash: true },
+      })).map(r => r.rowHash)
+    );
+    let skippedCount = 0;
+
     // Create BankStatementLine records and attempt auto-match
     let matchedCount = 0;
     const matchedTxIds = new Set();
@@ -205,6 +228,8 @@ export async function POST(request) {
     const lineRecords = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      const rowHash = incomingHashes[i];
+      if (existingHashes.has(rowHash)) { skippedCount++; continue; }
       const debitAmount = parseFloat(line.debitAmount) || 0;
       const creditAmount = parseFloat(line.creditAmount) || 0;
       const netAmount = creditAmount - debitAmount;
@@ -269,6 +294,7 @@ export async function POST(request) {
         runningBalance: line.runningBalance ? parseFloat(line.runningBalance) : null,
         referenceNo: line.referenceNo || null,
         note: noteVal,
+        rowHash,
         matchStatus: matchedTxId ? 'matched' : 'unprocessed',
         matchedTransactionId: matchedTxId,
         matchedBy,
@@ -302,10 +328,14 @@ export async function POST(request) {
         importNo: importRecord.importNo,
         reconciliationId: reconciliation.id,
         totalLines: lines.length,
+        insertedCount: lineRecords.length,
+        skippedCount,
         matchedCount,
         bankOnlyCount: bankOnlyLines,
         systemOnlyCount,
-        message: `成功匯入 ${lines.length} 筆銀行對帳單，自動比對 ${matchedCount} 筆（含備註輔助比對者標記為 auto_rmk / auto_rmk_d）`,
+        message: skippedCount > 0
+          ? `匯入 ${lineRecords.length} 筆，跳過 ${skippedCount} 筆重複；自動比對 ${matchedCount} 筆`
+          : `成功匯入 ${lines.length} 筆銀行對帳單，自動比對 ${matchedCount} 筆`,
       },
       { status: 201 }
     );

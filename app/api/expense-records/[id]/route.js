@@ -8,21 +8,7 @@ import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { todayStr } from '@/lib/localDate';
-
-// Helper: generate transaction number CF-YYYYMMDD-XXXX
-async function generateTxNo(tx, dateStr) {
-  const prefix = `CF-${dateStr.replace(/-/g, '')}-`;
-  const existing = await tx.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true }
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = parseInt(item.transactionNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 
 // Helper: recalculate account balance from all transactions
 async function recalcAccountBalance(tx, accountId) {
@@ -115,7 +101,7 @@ async function syncMonthlyAggregation(tx, record, sign, directDiff) {
 // Helper: create CashTransaction for expense and update account balance
 async function createExpenseCashTransaction(tx, record, template) {
   const transactionDate = `${record.expenseMonth}-01`;
-  const txNo = await generateTxNo(tx, transactionDate);
+  const txNo = await nextCashTransactionNo(tx, transactionDate);
 
   // Find the matching cash account by warehouse, prefer 銀行存款 type
   let account = null;
@@ -166,7 +152,7 @@ async function reverseExpenseCashTransaction(tx, recordId) {
   if (!cashTx) return null; // 找不到或已被沖銷
 
   const transactionDate = todayStr();
-  const reversalTxNo = await generateTxNo(tx, transactionDate);
+  const reversalTxNo = await nextCashTransactionNo(tx, transactionDate);
 
   const reversalTx = await tx.cashTransaction.create({
     data: {

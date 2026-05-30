@@ -48,7 +48,7 @@ export default function CashFlowPage() {
 
   // Account form
   const [showAccountForm, setShowAccountForm] = useState(false);
-  const [accountForm, setAccountForm] = useState({ name: '', type: '現金', warehouse: '', openingBalance: '' });
+  const [accountForm, setAccountForm] = useState({ name: '', type: '現金', warehouse: '', openingBalance: '', isPrimary: false });
 
   // Category form
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -363,13 +363,25 @@ export default function CashFlowPage() {
       });
       if (res.ok) {
         setShowAccountForm(false);
-        setAccountForm({ name: '', type: '現金', warehouse: '', openingBalance: '' });
+        setAccountForm({ name: '', type: '現金', warehouse: '', openingBalance: '', isPrimary: false });
         fetchAccounts();
       } else {
         const err = await res.json();
         showToast(err.error || '建立失敗', 'error');
       }
     } catch { showToast('建立帳戶失敗', 'error'); }
+  }
+
+  async function handleSetPrimaryAccount(id, warehouse, type) {
+    try {
+      const res = await fetch(`/api/cashflow/accounts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPrimary: true }),
+      });
+      if (res.ok) { fetchAccounts(); showToast('已設為主要帳戶', 'success'); }
+      else { const err = await res.json(); showToast(err.error || '設定失敗', 'error'); }
+    } catch { showToast('設定失敗', 'error'); }
   }
 
   async function handleDeleteAccount(id) {
@@ -841,6 +853,16 @@ export default function CashFlowPage() {
                       />
                     </div>
                   </div>
+                  {accountForm.type === '銀行存款' && (
+                    <div className="mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                        <input type="checkbox" checked={accountForm.isPrimary}
+                          onChange={e => setAccountForm({ ...accountForm, isPrimary: e.target.checked })}
+                          className="rounded" />
+                        設為此館別的主要收款銀行帳戶（民宿出納同步優先使用）
+                      </label>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <button type="submit" className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 text-sm">儲存</button>
                     <button type="button" onClick={() => setShowAccountForm(false)} className="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 text-sm">取消</button>
@@ -874,7 +896,10 @@ export default function CashFlowPage() {
                           return (
                             <tr key={acc.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 text-sm">{acc.warehouse}</td>
-                              <td className="px-4 py-3 text-sm font-medium">{acc.name}</td>
+                              <td className="px-4 py-3 text-sm font-medium">
+                                {acc.name}
+                                {acc.isPrimary && <span className="ml-1.5 text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">主要</span>}
+                              </td>
                               <td className="px-4 py-3 text-sm text-right">{formatMoney(acc.openingBalance)}</td>
                               <td className={`px-4 py-3 text-sm text-right font-semibold ${acc.currentBalance >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                                 {formatMoney(acc.currentBalance)}
@@ -883,7 +908,15 @@ export default function CashFlowPage() {
                                 {diff >= 0 ? '+' : ''}{formatMoney(diff)}
                               </td>
                               {isLoggedIn && (
-                                <td className="px-4 py-3 text-center">
+                                <td className="px-4 py-3 text-center whitespace-nowrap">
+                                  {acc.type === '銀行存款' && !acc.isPrimary && (
+                                    <button
+                                      onClick={() => handleSetPrimaryAccount(acc.id, acc.warehouse, acc.type)}
+                                      className="text-indigo-600 hover:underline text-sm mr-3"
+                                    >
+                                      設為主要
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => handleDeleteAccount(acc.id)}
                                     className="text-red-600 hover:underline text-sm"

@@ -42,6 +42,7 @@ export function useBnbRecords() {
   const [dirtyIds,    setDirtyIds]    = useState(new Set());
   const [batchSaving, setBatchSaving] = useState(false);
   const [locking,     setLocking]     = useState(false);
+  const [rowErrors,   setRowErrors]   = useState({});  // { [id]: errorMsg }
 
   // ── roomNoList useMemo ────────────────────────────────────────
   const roomNoList = useMemo(
@@ -153,6 +154,7 @@ export function useBnbRecords() {
     setEditMode(false);
     setEditMap({});
     setDirtyIds(new Set());
+    setRowErrors({});
   }
 
   function updateCell(id, field, value) {
@@ -198,10 +200,21 @@ export function useBnbRecords() {
       });
       if (!res.ok) { showToast('批次儲存失敗', 'error'); return; }
       const d = await res.json();
-      const msg = d.skipped > 0 ? `已儲存 ${d.saved} 筆（${d.skipped} 筆鎖定跳過）` : `已儲存 ${d.saved} 筆`;
-      showToast(msg, 'success');
-      cancelEditMode();
-      fetchRecords();
+      if (d.failures?.length > 0) {
+        setRowErrors(Object.fromEntries(d.failures.map(f => [f.id, f.error])));
+        const parts = [];
+        if (d.saved   > 0) parts.push(`已儲存 ${d.saved} 筆`);
+        if (d.skipped > 0) parts.push(`${d.skipped} 筆鎖定跳過`);
+        parts.push(`${d.failures.length} 筆失敗（見紅框）`);
+        showToast(parts.join('，'), 'warning');
+        fetchRecords();
+      } else {
+        setRowErrors({});
+        const msg = d.skipped > 0 ? `已儲存 ${d.saved} 筆（${d.skipped} 筆鎖定跳過）` : `已儲存 ${d.saved} 筆`;
+        showToast(msg, 'success');
+        cancelEditMode();
+        fetchRecords();
+      }
     } catch { showToast('儲存失敗', 'error'); }
     finally { setBatchSaving(false); }
   }
@@ -229,7 +242,7 @@ export function useBnbRecords() {
 
   // ── 月底批次鎖帳（全部已填付款）────────────────────────────────
   async function lockAllFilled() {
-    const eligible = records.filter(r => r.paymentFilled && !r.paymentLocked && r.status !== '已刪除');
+    const eligible = records.filter(r => (r.paymentFilled || r.isComplimentary) && !r.paymentLocked && r.status !== '已刪除');
     if (eligible.length === 0) {
       showToast('無可鎖定的記錄（已全部鎖帳或無已填付款記錄）', 'error');
       return;
@@ -325,7 +338,7 @@ export function useBnbRecords() {
     batchValue, setBatchValue,
     batchApplying,
     inlineEdit, setInlineEdit,
-    editMode, editMap, dirtyIds, batchSaving, locking,
+    editMode, editMap, dirtyIds, batchSaving, locking, rowErrors,
     roomNoList,
     // actions
     fetchRecords,

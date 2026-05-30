@@ -9,65 +9,10 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
-import { todayStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
-// ── 產生 CF- 交易單號 ───────────────────────────────────────────
-async function generateTxNo(date) {
-  const dateStr = (date || todayStr()).replace(/-/g, '');
-  const prefix = `CF-${dateStr}-`;
-  const existing = await prisma.cashTransaction.findMany({
-    where: { transactionNo: { startsWith: prefix } },
-    select: { transactionNo: true },
-  });
-  let max = 0;
-  for (const e of existing) {
-    const seq = parseInt(e.transactionNo.substring(prefix.length)) || 0;
-    if (seq > max) max = seq;
-  }
-  return `${prefix}${String(max + 1).padStart(4, '0')}`;
-}
-
-// ── 建立或更新單筆民宿收入 CashTransaction ──────────────────────
-async function upsertBnbTx({ sourceType, sourceRecordId, txDate, amount, description, accountId, categoryId, warehouse }) {
-  if (!accountId || !txDate || amount <= 0) return null;
-
-  const existing = await prisma.cashTransaction.findFirst({
-    where: { sourceType, sourceRecordId },
-    select: { id: true, transactionNo: true, amount: true, transactionDate: true },
-  });
-
-  if (existing) {
-    // 若金額或日期有變更才 update
-    if (Number(existing.amount) !== amount || existing.transactionDate !== txDate) {
-      await prisma.cashTransaction.update({
-        where: { id: existing.id },
-        data: { amount, transactionDate: txDate, description },
-      });
-    }
-    return existing.id;
-  }
-
-  const txNo = await generateTxNo(txDate);
-  const tx = await prisma.cashTransaction.create({
-    data: {
-      transactionNo: txNo,
-      transactionDate: txDate,
-      type: '收入',
-      warehouse,
-      accountId,
-      categoryId: categoryId || null,
-      amount,
-      description,
-      sourceType,
-      sourceRecordId,
-    },
-  });
-  return tx.id;
-}
-
-// ── 同步民宿收款 → CashTransaction ────────────────────────────
+// ── 同步民宿收款 → CashTransaction（實作在 lib/syncBnbPaymentTx.js）────
 async function syncBnbPaymentTx(bookingId) {
   const booking = await prisma.bnbBookingRecord.findUnique({
     where: { id: bookingId },
@@ -231,41 +176,17 @@ export async function PATCH(request, { params }) {
       if (!lockAuth.ok) return createErrorResponse('FORBIDDEN', '需有鎖帳權限才能解鎖', 403);
     }
 
-    const {
-      payDeposit, depositDate, depositLast5,
-      payTransfer, transferDate, transferLast5,
-      payCard, payCash, payVoucher, cardFeeRate,
-      status, note, roomCharge, otherCharge, source, guestName,
-      roomNo, checkInDate, checkOutDate, paymentLocked,
-      // 新增金流欄位
-      cashDestination, cashDepositDate, bossWithdrawNote, cardSettlementDate,
-    } = body;
+    const NUM_FIELDS      = ['payDeposit','payTransfer','payCard','payCash','payVoucher','cardFeeRate','roomCharge','otherCharge'];
+    const STR_NULL_FIELDS = ['depositDate','depositLast5','transferDate','transferLast5','roomNo',
+                              'cashDestination','cashDepositDate','bossWithdrawNote','cardSettlementDate'];
+    const STR_FIELDS      = ['status','note','source','guestName','checkInDate','checkOutDate'];
 
     const updateData = {};
-    if (payDeposit        !== undefined) updateData.payDeposit        = parseFloat(payDeposit);
-    if (depositDate       !== undefined) updateData.depositDate       = depositDate || null;
-    if (depositLast5      !== undefined) updateData.depositLast5      = depositLast5 || null;
-    if (payTransfer       !== undefined) updateData.payTransfer       = parseFloat(payTransfer);
-    if (transferDate      !== undefined) updateData.transferDate      = transferDate || null;
-    if (transferLast5     !== undefined) updateData.transferLast5     = transferLast5 || null;
-    if (payCard           !== undefined) updateData.payCard           = parseFloat(payCard);
-    if (payCash           !== undefined) updateData.payCash           = parseFloat(payCash);
-    if (payVoucher        !== undefined) updateData.payVoucher        = parseFloat(payVoucher);
-    if (cardFeeRate       !== undefined) updateData.cardFeeRate       = parseFloat(cardFeeRate);
-    if (status            !== undefined) updateData.status            = status;
-    if (note              !== undefined) updateData.note              = note;
-    if (roomCharge        !== undefined) updateData.roomCharge        = parseFloat(roomCharge);
-    if (otherCharge       !== undefined) updateData.otherCharge       = parseFloat(otherCharge);
-    if (source            !== undefined) updateData.source            = source;
-    if (guestName         !== undefined) updateData.guestName         = guestName;
-    if (roomNo            !== undefined) updateData.roomNo            = roomNo || null;
-    if (checkInDate       !== undefined) updateData.checkInDate       = checkInDate;
-    if (checkOutDate      !== undefined) updateData.checkOutDate      = checkOutDate;
-    if (cashDestination   !== undefined) updateData.cashDestination   = cashDestination || null;
-    if (cashDepositDate   !== undefined) updateData.cashDepositDate   = cashDepositDate || null;
-    if (bossWithdrawNote  !== undefined) updateData.bossWithdrawNote  = bossWithdrawNote || null;
-    if (cardSettlementDate !== undefined) updateData.cardSettlementDate = cardSettlementDate || null;
-    if (paymentLocked === false) {
+    for (const f of NUM_FIELDS)      if (f in body) updateData[f] = parseFloat(body[f]);
+    for (const f of STR_NULL_FIELDS) if (f in body) updateData[f] = body[f] || null;
+    for (const f of STR_FIELDS)      if (f in body) updateData[f] = body[f];
+
+    if (body.paymentLocked === false) {
       updateData.paymentLocked   = false;
       updateData.paymentLockedAt = null;
       updateData.paymentLockedBy = null;
@@ -279,47 +200,68 @@ export async function PATCH(request, { params }) {
       updateData.cardFee = card * rate;
     }
 
-    // 自動標記付款已填
-    if (updateData.payDeposit  !== undefined || updateData.payTransfer !== undefined ||
-        updateData.payCard     !== undefined || updateData.payCash     !== undefined ||
-        updateData.payVoucher  !== undefined) {
+    // M8: accept isComplimentary
+    if (body.isComplimentary !== undefined) updateData.isComplimentary = body.isComplimentary === true;
+
+    // 自動標記付款已填：金額 > 0 OR 標記為招待才算 filled
+    if (updateData.payDeposit !== undefined || updateData.payTransfer !== undefined ||
+        updateData.payCard    !== undefined || updateData.payCash     !== undefined ||
+        updateData.payVoucher !== undefined || updateData.isComplimentary !== undefined) {
       const existing = await prisma.bnbBookingRecord.findUnique({
         where: { id },
-        select: { payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true },
+        select: { payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true, isComplimentary: true },
       });
-      const dep = updateData.payDeposit  ?? Number(existing.payDeposit);
-      const trn = updateData.payTransfer ?? Number(existing.payTransfer);
-      const crd = updateData.payCard     ?? Number(existing.payCard);
-      const csh = updateData.payCash     ?? Number(existing.payCash);
-      const vch = updateData.payVoucher  ?? Number(existing.payVoucher);
-      // 使用者明確儲存付款欄位即視為已填（含 0 元的免費/招待情形）
-      updateData.paymentFilled = true;
+      const dep  = updateData.payDeposit    ?? Number(existing.payDeposit);
+      const trn  = updateData.payTransfer   ?? Number(existing.payTransfer);
+      const crd  = updateData.payCard       ?? Number(existing.payCard);
+      const csh  = updateData.payCash       ?? Number(existing.payCash);
+      const vch  = updateData.payVoucher    ?? Number(existing.payVoucher);
+      const comp = updateData.isComplimentary ?? existing.isComplimentary;
+      updateData.paymentFilled = comp || (dep + trn + crd + csh + vch) > 0;
     }
 
     const updated = await prisma.bnbBookingRecord.update({
       where: { id },
       data: updateData,
-      select: { id: true, roomCharge: true, paymentFilled: true, cardFee: true,
+      select: { id: true, roomCharge: true, paymentFilled: true, isComplimentary: true, cardFee: true,
                 payDeposit: true, payTransfer: true, payCard: true, payCash: true, payVoucher: true },
     });
 
-    // 若付款相關欄位有變動，異步同步 CashTransaction（fire-and-forget）
+    // M1: 改為 await + 失敗時回 207，不再 fire-and-forget
     const paymentChanged = ['payDeposit','depositDate','payTransfer','transferDate','payCash','cashDestination','cashDepositDate','payCard','cardFeeRate','cardSettlementDate'].some(f => f in body);
+    let syncWarning = null;
     if (paymentChanged) {
-      syncBnbPaymentTx(id).catch(() => {});
+      try {
+        await syncBnbPaymentTx(id);
+        // 同步成功：清除該訂單的未解決失敗記錄
+        await prisma.bnbSyncFailure.updateMany({
+          where: { bookingId: id, resolved: false },
+          data: { resolved: true, resolvedAt: new Date() },
+        });
+      } catch (syncErr) {
+        const msg = syncErr?.message || String(syncErr);
+        console.error('[syncBnbPaymentTx] 同步失敗 bookingId=%d:', id, msg);
+        await prisma.bnbSyncFailure.create({
+          data: { bookingId: id, errorMsg: msg },
+        });
+        syncWarning = '付款資料已儲存，但出納現金流同步失敗，請至出納管理手動確認。';
+      }
     }
 
-    return NextResponse.json({
-      id:            updated.id,
-      roomCharge:    Number(updated.roomCharge),
-      paymentFilled: updated.paymentFilled,
-      cardFee:       Number(updated.cardFee),
+    const responseBody = {
+      id:              updated.id,
+      roomCharge:      Number(updated.roomCharge),
+      paymentFilled:   updated.paymentFilled,
+      isComplimentary: updated.isComplimentary,
+      cardFee:         Number(updated.cardFee),
       payDeposit:    Number(updated.payDeposit),
       payTransfer:   Number(updated.payTransfer),
       payCard:       Number(updated.payCard),
       payCash:       Number(updated.payCash),
       payVoucher:    Number(updated.payVoucher),
-    });
+      ...(syncWarning ? { syncWarning } : {}),
+    };
+    return NextResponse.json(responseBody, { status: syncWarning ? 207 : 200 });
   } catch (error) {
     return handleApiError(error);
   }
@@ -337,7 +279,15 @@ export async function DELETE(request, { params }) {
     await assertBnbMonthOpen(record.importMonth, record.warehouse);
     if (record.paymentLocked) return createErrorResponse('FORBIDDEN', '此筆已鎖帳，無法刪除，請先解除鎖帳', 403);
 
-    await prisma.bnbBookingRecord.delete({ where: { id } });
+    // M5: transaction 清關聯資料再刪 booking，避免孤兒記錄
+    await prisma.$transaction(async (tx) => {
+      await tx.bnbBossWithdraw.deleteMany({ where: { bookingId: id } });
+      await tx.cashTransaction.deleteMany({
+        where: { sourceType: { in: ['bnb_deposit', 'bnb_transfer', 'bnb_cash', 'bnb_card'] }, sourceRecordId: id },
+      });
+      // bnbSyncFailure 已有 onDelete: Cascade，交由 DB 處理
+      await tx.bnbBookingRecord.delete({ where: { id } });
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

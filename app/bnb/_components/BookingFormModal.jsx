@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
+import { BNB_SOURCES } from '../_constants';
 
 export default function BookingFormModal({ record, onClose, onSaved, warehouseList, roomNoList = [], existingRecords = [] }) {
   const { showToast } = useToast();
@@ -19,8 +20,9 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
     checkOutDate: record?.checkOutDate || '',
     roomCharge:   record?.roomCharge   > 0 ? String(record.roomCharge) : '',
     otherCharge:  record?.otherCharge  > 0 ? String(record.otherCharge) : '',
-    status:       record?.status       || '已入住',
-    note:         record?.note         || '',
+    status:          record?.status          || '已入住',
+    isComplimentary: record?.isComplimentary || false,
+    note:            record?.note            || '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -60,7 +62,12 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
         showToast(err.message || err.error || '儲存失敗', 'error');
         return;
       }
-      showToast(isEdit ? '訂房已更新' : '訂房已新增', 'success');
+      const data = await res.json().catch(() => ({}));
+      if (data.syncWarning) {
+        showToast(`${isEdit ? '訂房已更新' : '訂房已新增'}，但出納同步失敗，請至出納管理手動確認。`, 'warning');
+      } else {
+        showToast(isEdit ? '訂房已更新' : '訂房已新增', 'success');
+      }
       onSaved();
     } finally { setSaving(false); }
   }
@@ -86,9 +93,10 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
             <div>
               <label htmlFor="bf-source" className="block text-xs text-gray-500 mb-1">來源</label>
               <select id="bf-source" value={form.source} onChange={e => setForm(p => ({ ...p, source: e.target.value }))} className={inp}>
-                <option value="電話">電話</option>
-                <option value="Booking">Booking</option>
-                <option value="其他">其他</option>
+                {BNB_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                {form.source && !BNB_SOURCES.includes(form.source) && (
+                  <option value={form.source}>{form.source}（匯入值）</option>
+                )}
               </select>
             </div>
           </div>
@@ -148,6 +156,17 @@ export default function BookingFormModal({ record, onClose, onSaved, warehouseLi
               <label htmlFor="bf-importMonth" className="block text-xs text-gray-500 mb-1">匯入月份</label>
               <input id="bf-importMonth" type="month" value={form.importMonth} onChange={e => setForm(p => ({ ...p, importMonth: e.target.value }))} className={inp} />
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 select-none">
+              <input type="checkbox" checked={form.isComplimentary}
+                onChange={e => setForm(p => ({ ...p, isComplimentary: e.target.checked }))}
+                className="rounded" />
+              招待訂房（免費，付款欄可全填 $0）
+            </label>
+            {form.isComplimentary && (
+              <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded">招待</span>
+            )}
           </div>
           <div>
             <label htmlFor="bf-note" className="block text-xs text-gray-500 mb-1">備註</label>
