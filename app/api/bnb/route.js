@@ -11,21 +11,33 @@ import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 
 export const dynamic = 'force-dynamic';
 
-// Explicit select — excludes transferBankLineId/MatchedAt/By, cashMatchedAt/By, cardMatchedAt/By
-// which were added later and may not exist in the Railway DB yet.
 const BNB_SELECT = {
   id: true, importMonth: true, warehouse: true, source: true,
   guestName: true, roomNo: true, checkInDate: true, checkOutDate: true,
   roomCharge: true, otherCharge: true, status: true, note: true,
+  // 訂金
   payDeposit: true, depositDate: true, depositLast5: true,
   depositBankLineId: true, depositMatchedAt: true, depositMatchedBy: true,
+  depositMatchSkip: true, depositMatchSkipNote: true,
+  // 當天匯款
   payTransfer: true, transferDate: true, transferLast5: true,
+  transferBankLineId: true, transferMatchedAt: true, transferMatchedBy: true,
+  transferMatchSkip: true, transferMatchSkipNote: true,
+  // 刷卡
   payCard: true, cardFeeRate: true, cardFee: true,
-  cardSettlementDate: true, cardBankLineId: true,
+  cardSettlementDate: true, cardBankLineId: true, cardMatchedAt: true, cardMatchedBy: true,
+  cardMatchSkip: true, cardMatchSkipNote: true,
+  // 現金
   payCash: true, payVoucher: true,
-  cashDestination: true, cashDepositDate: true, cashBankLineId: true, bossWithdrawNote: true,
+  cashDestination: true, cashDepositDate: true, cashBankLineId: true,
+  cashMatchedAt: true, cashMatchedBy: true,
+  cashMatchSkip: true, cashMatchSkipNote: true, bossWithdrawNote: true,
+  // 付款狀態
   paymentFilled: true, isComplimentary: true, paymentLocked: true, paymentLockedAt: true, paymentLockedBy: true,
+  // 出納連動
   depositCashTxId: true, transferCashTxId: true, cashCashTxId: true, cardCashTxId: true,
+  // 軟刪除
+  deletedAt: true, deletedBy: true, previousStatus: true,
   createdAt: true, updatedAt: true,
 };
 
@@ -45,7 +57,7 @@ export async function GET(request) {
     const page       = Math.max(1, parseInt(searchParams.get('page')     || '1'));
     const pageSize   = Math.min(2000, Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
 
-    const where = { status: { notIn: ['已刪除'] } };
+    const where = { deletedAt: null };
     if (month)     where.importMonth = month;
     if (monthFrom || monthTo) {
       where.importMonth = {};
@@ -55,7 +67,7 @@ export async function GET(request) {
     if (warehouse) where.warehouse   = warehouse;
     if (source)    where.source      = source;
     if (status)    where.status      = status;  // explicit status overrides default
-    if (guestName) where.guestName   = { contains: guestName.replace(/\s+/g, ''), mode: 'insensitive' };
+    if (guestName) where.guestName   = { contains: guestName.replace(/\s+/g, '').replace(/[%_\\]/g, '\\$&'), mode: 'insensitive' };
 
     const [total, records] = await prisma.$transaction([
       prisma.bnbBookingRecord.count({ where }),
@@ -127,6 +139,26 @@ export async function POST(request) {
     const safeFloat = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 
     await assertBnbMonthOpen(importMonth, warehouse);
+
+    if (roomNo) {
+      const overlap = await prisma.bnbBookingRecord.findFirst({
+        where: {
+          warehouse, roomNo,
+          deletedAt: null,
+          status: { notIn: ['取消'] },
+          checkInDate: { lt: checkOutDate },
+          checkOutDate: { gt: checkInDate },
+        },
+        select: { id: true, guestName: true, checkInDate: true, checkOutDate: true },
+      });
+      if (overlap) {
+        return createErrorResponse(
+          'ROOM_OVERLAP',
+          `房號 ${roomNo} 此時段已有訂房（${overlap.guestName}，${overlap.checkInDate}～${overlap.checkOutDate}）`,
+          409
+        );
+      }
+    }
 
     const pDeposit = safeFloat(payDeposit);
     const pCard    = safeFloat(payCard);

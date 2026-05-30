@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
 
 export default function BnbBatchLockModal({ warehouseList, onClose, showToast }) {
+  const confirm = useConfirm();
   const now = new Date();
   const [year, setYear] = useState(String(now.getFullYear()));
   const [selectedWh, setSelectedWh] = useState(new Set(warehouseList));
@@ -29,7 +31,7 @@ export default function BnbBatchLockModal({ warehouseList, onClose, showToast })
         targets.push({ month: `${year}-${m}`, warehouse: w });
       }
     }
-    if (!window.confirm(`確定要批次鎖帳 ${targets.length} 個月份？此操作無法一鍵還原。`)) return;
+    if (!(await confirm(`確定要批次鎖帳 ${targets.length} 個月份？此操作無法一鍵還原。`, { title: '批次鎖帳確認', danger: true }))) return;
 
     setRunning(true);
     setResults(null);

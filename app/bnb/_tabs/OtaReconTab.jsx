@@ -8,7 +8,8 @@ export default function OtaReconTab({
   otaDateFrom, setOtaDateFrom,
   otaDateTo, setOtaDateTo,
   otaWarehouse, setOtaWarehouse,
-  otaFile, setOtaFile,
+  otaFile, onOtaFileChange,
+  otaPreview, otaPreviewLoading, previewOta,
   otaResult,
   otaLoading,
   otaMonth, setOtaMonth,
@@ -80,12 +81,19 @@ export default function OtaReconTab({
           <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">上傳對帳單</label>
           <input id="f-7" type="file" accept=".xls,.xlsx,.csv"
             className="border rounded-lg px-2 py-1 text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-            onChange={e => setOtaFile(e.target.files?.[0] || null)} />
+            onChange={e => onOtaFileChange(e.target.files?.[0] || null)} />
         </div>
-        <button onClick={runOtaReconcile} disabled={otaLoading || !otaFile}
-          className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
-          {otaLoading ? '比對中…' : '開始比對'}
-        </button>
+        {otaPreview && !otaResult ? (
+          <button onClick={runOtaReconcile} disabled={otaLoading || !otaFile}
+            className="px-5 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+            {otaLoading ? '比對中…' : '確認執行比對'}
+          </button>
+        ) : (
+          <button onClick={previewOta} disabled={otaPreviewLoading || otaLoading || !otaFile}
+            className="px-5 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+            {otaPreviewLoading ? '解析中…' : '解析預覽'}
+          </button>
+        )}
         {otaResult && (
           <ExportButtons
             data={[
@@ -128,6 +136,44 @@ export default function OtaReconTab({
           />
         )}
       </div>
+
+      {/* 解析預覽 panel */}
+      {otaPreview && !otaResult && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-semibold text-blue-800 text-sm">
+              解析預覽 — 共 {otaPreview.parsedCount} 筆，請確認格式正確後再執行比對
+            </span>
+            <button onClick={() => onOtaFileChange(null)}
+              className="text-xs text-blue-600 hover:underline">重新上傳</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-blue-600 border-b border-blue-200">
+                  <th className="px-2 py-1 text-left">入住日</th>
+                  <th className="px-2 py-1 text-left">退房日</th>
+                  <th className="px-2 py-1 text-left">房客姓名</th>
+                  <th className="px-2 py-1 text-right">金額</th>
+                  <th className="px-2 py-1 text-center">狀態</th>
+                </tr>
+              </thead>
+              <tbody>
+                {otaPreview.sample.map((r, i) => (
+                  <tr key={i} className="border-t border-blue-100">
+                    <td className="px-2 py-1">{r.arrival || <span className="text-red-500">（空）</span>}</td>
+                    <td className="px-2 py-1">{r.departure || <span className="text-red-500">（空）</span>}</td>
+                    <td className="px-2 py-1">{r.guestName || <span className="text-red-500">（空）</span>}</td>
+                    <td className="px-2 py-1 text-right">{r.finalAmount}</td>
+                    <td className="px-2 py-1 text-center">{r.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-blue-600">若日期、姓名、金額看起來正確，請按「確認執行比對」。若欄位錯亂，請重新上傳正確格式的檔案。</p>
+        </div>
+      )}
 
       {/* 比對結果 */}
       {otaResult && (() => {

@@ -163,6 +163,10 @@ export async function PATCH(request, { params }) {
 
     const body = await request.json();
 
+    if (body.status === '已刪除') {
+      return createErrorResponse('FORBIDDEN', '刪除請使用 DELETE，不可直接設定「已刪除」狀態', 400);
+    }
+
     // 鎖定的付款列，只允許有 BNB_LOCK 權限的人修改付款欄位
     const isPaymentField = ['payDeposit','depositLast5','payTransfer','transferLast5','payCard','payCash','payVoucher','cardFeeRate'].some(f => f in body);
     if (record.paymentLocked && isPaymentField) {
@@ -274,19 +278,36 @@ export async function DELETE(request, { params }) {
 
   try {
     const id = parseInt(params.id);
-    const record = await prisma.bnbBookingRecord.findUnique({ where: { id }, select: { importMonth: true, warehouse: true, paymentLocked: true } });
+    const { searchParams } = new URL(request.url);
+    const restore = searchParams.get('restore') === 'true';
+
+    const record = await prisma.bnbBookingRecord.findUnique({
+      where: { id },
+      select: { importMonth: true, warehouse: true, paymentLocked: true, status: true, previousStatus: true, deletedAt: true },
+    });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到該筆紀錄', 404);
     await assertBnbMonthOpen(record.importMonth, record.warehouse);
+
+    // 還原軟刪除
+    if (restore) {
+      if (!record.deletedAt) return createErrorResponse('VALIDATION_FAILED', '此筆並未被刪除', 400);
+      await prisma.bnbBookingRecord.update({
+        where: { id },
+        data: { deletedAt: null, deletedBy: null, previousStatus: null, status: record.previousStatus ?? '已入住' },
+      });
+      return NextResponse.json({ ok: true, restored: true });
+    }
+
     if (record.paymentLocked) return createErrorResponse('FORBIDDEN', '此筆已鎖帳，無法刪除，請先解除鎖帳', 403);
 
-    // M5: transaction 清關聯資料再刪 booking，避免孤兒記錄
-    await prisma.$transaction(async (tx) => {
-      await tx.bnbBossWithdraw.deleteMany({ where: { bookingId: id } });
-      await tx.cashTransaction.deleteMany({
-        where: { sourceType: { in: ['bnb_deposit', 'bnb_transfer', 'bnb_cash', 'bnb_card'] }, sourceRecordId: id },
-      });
-      // bnbSyncFailure 已有 onDelete: Cascade，交由 DB 處理
-      await tx.bnbBookingRecord.delete({ where: { id } });
+    // 軟刪除：保留記錄與稽核軌跡，僅標記 deletedAt
+    await prisma.bnbBookingRecord.update({
+      where: { id },
+      data: {
+        deletedAt:      new Date(),
+        deletedBy:      auth.user?.email ?? auth.user?.name ?? 'unknown',
+        previousStatus: record.status,
+      },
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

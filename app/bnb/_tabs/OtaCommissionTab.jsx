@@ -5,6 +5,7 @@ import WhQuickBtns from '../_components/WhQuickBtns';
 
 export default function OtaCommissionTab({
   otaWarehouse, setOtaWarehouse,
+  commSource, setCommSource,
   commHistRows, commHistLoading,
   commEditId, setCommEditId,
   commEditData, setCommEditData,
@@ -67,6 +68,16 @@ export default function OtaCommissionTab({
       })()}
 
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
+        <div>
+          <label htmlFor="cs" className="block text-xs text-gray-500 mb-1">OTA 來源</label>
+          <select id="cs" className="border rounded-lg px-3 py-1.5 text-sm"
+            value={commSource} onChange={e => setCommSource(e.target.value)}>
+            <option value="">全部</option>
+            <option value="Booking">Booking.com</option>
+            <option value="Agoda">Agoda</option>
+            <option value="Expedia">Expedia</option>
+          </select>
+        </div>
         <div>
           <label htmlFor="f" className="block text-xs text-gray-500 mb-1">館別</label>
           <select id="f" className="border rounded-lg px-3 py-1.5 text-sm"

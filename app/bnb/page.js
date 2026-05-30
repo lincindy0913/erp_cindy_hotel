@@ -236,6 +236,7 @@ function BnbPage() {
   const [auditWarehouse, setAuditWarehouse] = useState('');
   const [auditData,      setAuditData]      = useState([]);
   const [auditLoading,   setAuditLoading]   = useState(false);
+  const [auditOverflow,  setAuditOverflow]  = useState(false);
 
   // ── 房客歷史 state ────────────────────────────────────────────
   const [ghSearch,   setGhSearch]   = useState('');
@@ -249,6 +250,7 @@ function BnbPage() {
   const [calWarehouse, setCalWarehouse] = useState('');
   const [calData,      setCalData]      = useState([]);
   const [calLoading,   setCalLoading]   = useState(false);
+  const [calOverflow,  setCalOverflow]  = useState(false);
 
   // ── 老闆收取 state ────────────────────────────────────────────
   const [bwData,        setBwData]        = useState(null);
@@ -418,9 +420,11 @@ function BnbPage() {
   const [otaDateFrom,  setOtaDateFrom]  = useState('');
   const [otaDateTo,    setOtaDateTo]    = useState('');
   const [otaWarehouse, setOtaWarehouse] = useState(DEFAULT_WAREHOUSE);
-  const [otaFile,      setOtaFile]      = useState(null);
-  const [otaResult,    setOtaResult]    = useState(null);
-  const [otaLoading,   setOtaLoading]   = useState(false);
+  const [otaFile,           setOtaFile]           = useState(null);
+  const [otaPreview,        setOtaPreview]        = useState(null);
+  const [otaPreviewLoading, setOtaPreviewLoading] = useState(false);
+  const [otaResult,         setOtaResult]         = useState(null);
+  const [otaLoading,        setOtaLoading]        = useState(false);
   const [otaMonth,     setOtaMonth]     = useState('');
   const [otaViewTab,   setOtaViewTab]   = useState('matched'); // matched | unmatchedOta | unmatchedBnb | cancelled
   // OTA 傭金確認
@@ -432,6 +436,7 @@ function BnbPage() {
   const [reconcileConfirmed, setReconcileConfirmed] = useState(false); // 是否已確認存檔
   const [reconcileConfirming, setReconcileConfirming] = useState(false);
   // OTA 傭金歷史列表
+  const [commSource,     setCommSource]     = useState('');
   const [commHistRows,   setCommHistRows]   = useState([]);
   const [commHistLoading,setCommHistLoading]= useState(false);
   const [commEditId,    setCommEditId]    = useState(null);   // 正在編輯的傭金 id
@@ -534,6 +539,7 @@ function BnbPage() {
 
   // ── 月彙整 fetch ──────────────────────────────────────────────
   const fetchSummary = useCallback(async () => {
+    setSummaryRows([]);
     setSummaryLoading(true);
     try {
       const p = new URLSearchParams({ year: summaryYear, mode: summaryMode });
@@ -618,6 +624,7 @@ function BnbPage() {
       const json = await res.json();
       const rows = (json.data ?? json).filter(r => r.status !== '已刪除');
       setAuditData(rows);
+      setAuditOverflow(rows.length >= 500);
     } catch { showToast('載入付款稽核失敗', 'error'); }
     finally { setAuditLoading(false); }
   }, [auditMonth, auditWarehouse]);
@@ -647,17 +654,41 @@ function BnbPage() {
       const res = await fetch(`/api/bnb?${p}`);
       if (!res.ok) return;
       const json = await res.json();
-      setCalData(json.data ?? json);
+      const rows = json.data ?? json;
+      setCalData(rows);
+      setCalOverflow(rows.length >= 500);
     } catch { showToast('載入日曆失敗', 'error'); }
     finally { setCalLoading(false); }
   }, [calYear, calMonth, calWarehouse]);
 
   // ── 每日收入 fetch ──────────────────────────────────────────
+  // ── OTA 比對 解析預覽 ──────────────────────────────────────
+  const previewOta = useCallback(async () => {
+    if (!otaFile) { showToast('請先上傳 OTA 對帳單', 'error'); return; }
+    setOtaPreviewLoading(true);
+    setOtaPreview(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', otaFile);
+      fd.append('source', otaSource);
+      fd.append('preview', 'true');
+      const res = await fetch('/api/bnb/ota-reconcile', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || '解析失敗', 'error');
+        return;
+      }
+      setOtaPreview(await res.json());
+    } catch { showToast('解析失敗', 'error'); }
+    finally { setOtaPreviewLoading(false); }
+  }, [otaFile, otaSource]);
+
   // ── OTA 比對 執行 ──────────────────────────────────────────
   const runOtaReconcile = useCallback(async () => {
     if (!otaFile) { showToast('請先上傳 OTA 對帳單', 'error'); return; }
     setOtaLoading(true);
     setOtaResult(null);
+    setOtaPreview(null);
     setReconcileConfirmed(false);
     try {
       const fd = new FormData();
@@ -682,7 +713,7 @@ function BnbPage() {
         const p = new URLSearchParams({ month, source: otaSource, warehouse: otaWarehouse || DEFAULT_WAREHOUSE });
         const chk = await fetch(`/api/bnb/ota-commission?${p}`);
         if (chk.ok) setCommExisting(await chk.json());
-      } catch {}
+      } catch { showToast('傭金狀態查詢失敗，請手動到「OTA傭金」分頁確認', 'warning'); }
     } catch { showToast('OTA 比對失敗', 'error'); }
     finally { setOtaLoading(false); }
   }, [otaFile, otaSource, otaDateFrom, otaDateTo, otaWarehouse]);
@@ -731,6 +762,7 @@ function BnbPage() {
     try {
       const p = new URLSearchParams();
       if (otaWarehouse) p.set('warehouse', otaWarehouse);
+      if (commSource)   p.set('source', commSource);
       const res = await fetch(`/api/bnb/ota-commission?${p}`);
       if (res.ok) {
         const data = await res.json();
@@ -738,7 +770,7 @@ function BnbPage() {
       }
     } catch {}
     finally { setCommHistLoading(false); }
-  }, [otaWarehouse]);
+  }, [otaWarehouse, commSource]);
 
   // OTA 傭金：確認送出出納（草稿 → 待出納，建立 PaymentOrder）
   const confirmCommission = useCallback(async (id) => {
@@ -3559,7 +3591,9 @@ function BnbPage() {
             otaDateFrom={otaDateFrom} setOtaDateFrom={setOtaDateFrom}
             otaDateTo={otaDateTo} setOtaDateTo={setOtaDateTo}
             otaWarehouse={otaWarehouse} setOtaWarehouse={setOtaWarehouse}
-            otaFile={otaFile} setOtaFile={setOtaFile}
+            otaFile={otaFile}
+            onOtaFileChange={f => { setOtaFile(f); setOtaPreview(null); setOtaResult(null); }}
+            otaPreview={otaPreview} otaPreviewLoading={otaPreviewLoading} previewOta={previewOta}
             otaResult={otaResult}
             otaLoading={otaLoading}
             otaMonth={otaMonth} setOtaMonth={setOtaMonth}
@@ -3585,6 +3619,7 @@ function BnbPage() {
         {activeTab === 'otaCommission' && (
           <OtaCommissionTab
             otaWarehouse={otaWarehouse} setOtaWarehouse={setOtaWarehouse}
+            commSource={commSource} setCommSource={setCommSource}
             commHistRows={commHistRows} commHistLoading={commHistLoading}
             commEditId={commEditId} setCommEditId={setCommEditId}
             commEditData={commEditData} setCommEditData={setCommEditData}
@@ -3823,13 +3858,20 @@ function BnbPage() {
 
         {/* ══ Tab: 訂房日曆 ══ */}
         {activeTab === 'analytics' && analyticsSub === 'calendar' && (
-          <CalendarTab
-            calYear={calYear} setCalYear={setCalYear}
-            calMonth={calMonth} setCalMonth={setCalMonth}
-            calWarehouse={calWarehouse} setCalWarehouse={setCalWarehouse}
-            calData={calData} calLoading={calLoading}
-            warehouseList={warehouseList}
-          />
+          <>
+            {calOverflow && (
+              <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
+                <span className="text-amber-700 font-medium text-sm">⚠ 資料超過 500 筆，部分訂房可能未顯示，請縮小篩選條件（選擇單一館別）</span>
+              </div>
+            )}
+            <CalendarTab
+              calYear={calYear} setCalYear={setCalYear}
+              calMonth={calMonth} setCalMonth={setCalMonth}
+              calWarehouse={calWarehouse} setCalWarehouse={setCalWarehouse}
+              calData={calData} calLoading={calLoading}
+              warehouseList={warehouseList}
+            />
+          </>
         )}
         {/* ══ Tab: 入住率統計 ══ */}
         {/* ══ Tab: 入住率統計 ══ */}
@@ -3844,12 +3886,19 @@ function BnbPage() {
 
         {/* ══ Tab: 付款稽核 ══ */}
         {activeTab === 'payAudit' && (
-          <PayAuditTab
-            auditMonth={auditMonth} setAuditMonth={setAuditMonth}
-            auditWarehouse={auditWarehouse} setAuditWarehouse={setAuditWarehouse}
-            auditData={auditData} auditLoading={auditLoading}
-            fetchAudit={fetchAudit} warehouseList={warehouseList}
-          />
+          <>
+            {auditOverflow && (
+              <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
+                <span className="text-amber-700 font-medium text-sm">⚠ 資料超過 500 筆，部分記錄可能未顯示，請縮小篩選條件（選擇單一館別）</span>
+              </div>
+            )}
+            <PayAuditTab
+              auditMonth={auditMonth} setAuditMonth={setAuditMonth}
+              auditWarehouse={auditWarehouse} setAuditWarehouse={setAuditWarehouse}
+              auditData={auditData} auditLoading={auditLoading}
+              fetchAudit={fetchAudit} warehouseList={warehouseList}
+            />
+          </>
         )}
 
         {/* ══ Tab: 來源分析 ══ */}

@@ -3049,11 +3049,16 @@ model BnbBookingRecord {
   note          String?  @db.VarChar(500)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
+  // 軟刪除
+  deletedAt      DateTime? @map("deleted_at")
+  deletedBy      String?   @map("deleted_by") @db.VarChar(255)
+  previousStatus String?   @map("previous_status") @db.VarChar(20)
 
   @@index([importMonth])
   @@index([warehouse])
   @@index([checkInDate])
   @@index([status])
+  @@index([deletedAt])
   @@index([depositBankLineId])
   @@index([transferBankLineId])
   @@index([cardBankLineId])

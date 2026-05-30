@@ -33,10 +33,9 @@ function parseDate(raw) {
   const s = String(raw).trim();
   // 已是 YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // Excel serial date number
+  // Excel serial date number（UTC 組裝，避免 server 時區差 1 天）
   if (/^\d+$/.test(s)) {
-    const d = new Date((parseInt(s) - 25569) * 86400 * 1000);
-    return localDateStr(d);
+    return new Date((parseInt(s) - 25569) * 86400 * 1000).toISOString().slice(0, 10);
   }
   // YYYY/MM/DD
   const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
@@ -147,24 +146,108 @@ export async function POST(request) {
     }
 
     // ── 正式匯入 ──
-    // replace 模式：先刪同月舊資料
+    // replace 模式：先檢查是否有已對帳／已建帳資料，有則封鎖刪除
     let deleted = 0;
     if (replace) {
+      const linked = await prisma.bnbBookingRecord.count({
+        where: {
+          importMonth, warehouse,
+          OR: [
+            { paymentLocked: true },
+            { depositBankLineId: { not: null } },
+            { transferBankLineId: { not: null } },
+            { cashBankLineId: { not: null } },
+            { cardBankLineId: { not: null } },
+            { depositCashTxId: { not: null } },
+            { transferCashTxId: { not: null } },
+            { cashCashTxId: { not: null } },
+            { cardCashTxId: { not: null } },
+          ],
+        },
+      });
+      if (linked > 0) {
+        return createErrorResponse(
+          'REPLACE_BLOCKED',
+          `此月份有 ${linked} 筆已對帳或已建帳資料，無法覆蓋匯入。請改用 Append 模式或先解除對帳。`,
+          409
+        );
+      }
+
+      const existingIds = await prisma.bnbBookingRecord.findMany({
+        where: { importMonth, warehouse },
+        select: { id: true },
+      });
+      const ids = existingIds.map(r => r.id);
+      if (ids.length > 0) {
+        const withdrawLinked = await prisma.bnbBossWithdraw.count({
+          where: { bookingId: { in: ids } },
+        });
+        if (withdrawLinked > 0) {
+          return createErrorResponse(
+            'REPLACE_BLOCKED',
+            `此月份有 ${withdrawLinked} 筆老闆收現記錄已關聯訂房，無法覆蓋匯入。`,
+            409
+          );
+        }
+      }
+
       const del = await prisma.bnbBookingRecord.deleteMany({ where: { importMonth, warehouse } });
       deleted = del.count;
     }
 
-    // append 模式：略過重複（以 guestName + checkInDate + checkOutDate 比對）
+    // append 模式：略過重複（以 guestName + checkInDate + checkOutDate + roomNo 比對，跨月全查）
     let skipped = 0;
     let toInsert = records;
     if (!replace) {
+      const checkInDates = [...new Set(records.map(r => r.checkInDate))];
       const existing = await prisma.bnbBookingRecord.findMany({
-        where: { importMonth, warehouse },
-        select: { guestName: true, checkInDate: true, checkOutDate: true },
+        where: { warehouse, checkInDate: { in: checkInDates } },
+        select: { guestName: true, checkInDate: true, checkOutDate: true, roomNo: true },
       });
-      const existKeys = new Set(existing.map(r => `${r.guestName}|${r.checkInDate}|${r.checkOutDate}`));
-      toInsert = records.filter(r => !existKeys.has(`${r.guestName}|${r.checkInDate}|${r.checkOutDate}`));
+      const existKeys = new Set(existing.map(r => `${r.guestName}|${r.checkInDate}|${r.checkOutDate}|${r.roomNo ?? ''}`));
+      toInsert = records.filter(r => !existKeys.has(`${r.guestName}|${r.checkInDate}|${r.checkOutDate}|${r.roomNo ?? ''}`));
       skipped  = records.length - toInsert.length;
+    }
+
+    // 房號重疊檢查（只對有 roomNo 的記錄，含 batch 內互相衝突）
+    let conflicts = [];
+    const withRoom = toInsert.filter(r => r.roomNo);
+    if (withRoom.length > 0) {
+      const roomNos = [...new Set(withRoom.map(r => r.roomNo))];
+      const minDate = withRoom.reduce((a, r) => r.checkInDate < a ? r.checkInDate : a, withRoom[0].checkInDate);
+      const maxDate = withRoom.reduce((a, r) => r.checkOutDate > a ? r.checkOutDate : a, withRoom[0].checkOutDate);
+      const existingOverlap = await prisma.bnbBookingRecord.findMany({
+        where: {
+          warehouse,
+          roomNo: { in: roomNos },
+          deletedAt: null,
+          status: { notIn: ['取消'] },
+          checkInDate: { lt: maxDate },
+          checkOutDate: { gt: minDate },
+        },
+        select: { id: true, guestName: true, roomNo: true, checkInDate: true, checkOutDate: true },
+      });
+      const confirmed = [];
+      for (const r of toInsert) {
+        if (!r.roomNo) { confirmed.push(r); continue; }
+        const blocking = [...existingOverlap, ...confirmed.filter(c => c.roomNo)];
+        const hit = blocking.find(e =>
+          e.roomNo === r.roomNo &&
+          e.checkInDate < r.checkOutDate &&
+          e.checkOutDate > r.checkInDate
+        );
+        if (hit) {
+          conflicts.push({
+            guestName: r.guestName, roomNo: r.roomNo,
+            checkInDate: r.checkInDate, checkOutDate: r.checkOutDate,
+            conflictWith: hit.guestName,
+          });
+        } else {
+          confirmed.push(r);
+        }
+      }
+      toInsert = confirmed;
+      skipped += conflicts.length;
     }
 
     if (toInsert.length > 0) {
@@ -175,6 +258,7 @@ export async function POST(request) {
       imported: toInsert.length,
       deleted,
       skipped,
+      conflicts,
       detectedMonth,
       importMonth,
       warehouse,

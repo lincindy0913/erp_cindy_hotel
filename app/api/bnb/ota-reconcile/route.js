@@ -141,6 +141,21 @@ export async function POST(request) {
       return createErrorResponse('PARSE_ERROR', '未解析到有效的 OTA 資料', 400);
     }
 
+    // preview 模式：只回傳解析結果，不查 DB、不寫 log
+    if (formData.get('preview') === 'true') {
+      return NextResponse.json({
+        preview:     true,
+        parsedCount: otaRows.length,
+        sample:      otaRows.slice(0, 5).map(r => ({
+          guestName:   r.guestName,
+          arrival:     r.arrival,
+          departure:   r.departure,
+          finalAmount: r.finalAmount,
+          status:      r.status,
+        })),
+      });
+    }
+
     const allArrivals = otaRows.map(r => r.arrival).filter(Boolean);
     const minDate = dateFrom || allArrivals.sort()[0];
     const maxDate = dateTo   || allArrivals.sort().reverse()[0];

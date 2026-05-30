@@ -63,7 +63,8 @@ export async function PATCH(request) {
           where: { id },
           select: { paymentLocked: true, payCard: true, cardFeeRate: true,
                     payCash: true, cashDestination: true, guestName: true,
-                    warehouse: true, checkInDate: true, checkOutDate: true, bossWithdrawNote: true },
+                    warehouse: true, checkInDate: true, checkOutDate: true, bossWithdrawNote: true,
+                    payDeposit: true, payTransfer: true, payVoucher: true, isComplimentary: true },
         });
         if (!existing) continue;
         if (existing.paymentLocked) { skipped++; continue; }
@@ -86,9 +87,15 @@ export async function PATCH(request) {
           updateData.cardFee = updateData.payCard * rate;
         }
 
-        // 自動標記付款已填：Excel 模式儲存代表使用者已明確審核付款
-        // 含 0 元（如免費、招待）仍視為已填，不強求金額大於 0
-        updateData.paymentFilled = true;
+        if (rec.isComplimentary !== undefined) updateData.isComplimentary = rec.isComplimentary === true;
+
+        const dep  = updateData.payDeposit  ?? Number(existing.payDeposit);
+        const trn  = updateData.payTransfer ?? Number(existing.payTransfer);
+        const crd  = updateData.payCard     ?? Number(existing.payCard);
+        const csh  = updateData.payCash     ?? Number(existing.payCash);
+        const vch  = updateData.payVoucher  ?? Number(existing.payVoucher);
+        const comp = updateData.isComplimentary ?? existing.isComplimentary;
+        updateData.paymentFilled = comp || (dep + trn + crd + csh + vch) > 0;
 
         try {
           await prisma.bnbBookingRecord.update({ where: { id }, data: updateData });
