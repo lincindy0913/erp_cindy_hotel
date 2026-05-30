@@ -866,11 +866,10 @@ function RentalsPage() {
   async function fetchOverdueReport() {
     setOverdueReportLoading(true);
     try {
-      const res = await fetch('/api/rentals/income?status=pending');
-      const data = await res.json();
       const today = todayStr();
+      const res = await fetch(`/api/rentals/income?status=pending&dueBefore=${today}`);
+      const data = await res.json();
       const overdue = (Array.isArray(data) ? data : [])
-        .filter(i => i.dueDate && i.dueDate < today)
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
       setOverdueReportData(overdue);
     } catch { setOverdueReportData([]); }

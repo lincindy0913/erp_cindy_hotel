@@ -13,16 +13,18 @@ export async function GET(request) {
   
   try {
     const { searchParams } = new URL(request.url);
-    const year = searchParams.get('year');
-    const month = searchParams.get('month');
-    const status = searchParams.get('status');
+    const year       = searchParams.get('year');
+    const month      = searchParams.get('month');
+    const status     = searchParams.get('status');
     const propertyId = searchParams.get('propertyId');
+    const dueBefore  = searchParams.get('dueBefore');
 
     const where = {};
-    if (year) where.incomeYear = parseInt(year);
-    if (month) where.incomeMonth = parseInt(month);
-    if (status) where.status = status;
-    if (propertyId) where.propertyId = parseInt(propertyId);
+    if (year)       where.incomeYear  = parseInt(year);
+    if (month)      where.incomeMonth = parseInt(month);
+    if (status)     where.status      = status;
+    if (propertyId) where.propertyId  = parseInt(propertyId);
+    if (dueBefore)  where.dueDate     = { lt: dueBefore };
 
     const TAKE = 1200;
     const incomes = await prisma.rentalIncome.findMany({

@@ -1731,6 +1731,7 @@ model RentalIncome {
   @@index([tenantId])
   @@index([incomeYear, incomeMonth])
   @@index([status])
+  @@index([status, dueDate])
   @@map("rental_incomes")
 }
 
