@@ -905,6 +905,15 @@ function RentalsPage() {
     setQuickPayIncome(income);
   }
 
+  async function runChunked(items, fn, limit = 8) {
+    const results = [];
+    for (let i = 0; i < items.length; i += limit) {
+      const settled = await Promise.allSettled(items.slice(i, i + limit).map(fn));
+      results.push(...settled);
+    }
+    return results;
+  }
+
   async function confirmQuickPay() {
     if (!quickPayForm.actualAmount || Number(quickPayForm.actualAmount) <= 0) return showToast('請填寫實收金額', 'error');
     if (!quickPayForm.accountId) return showToast('請選擇收款帳戶', 'error');
@@ -955,19 +964,20 @@ function RentalsPage() {
     const ids = Array.from(selectedIncomeIds);
     if (ids.length === 0) return;
     setBatchSaving(true);
-    let success = 0; let failed = 0;
     try {
-      for (const id of ids) {
+      const results = await runChunked(ids, async (id) => {
         const income = incomes.find(i => i.id === id);
-        if (!income) continue;
+        if (!income) throw new Error(`id=${id}`);
         const res = await fetch(`/api/rentals/income/${id}/confirm`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rent: { actualAmount: String(Number(income.expectedAmount) - Number(income.actualAmount || 0)), actualDate: batchPayForm.actualDate, accountId: batchPayForm.accountId, paymentMethod: batchPayForm.paymentMethod, matchTransferRef: '', matchBankAccountName: '', matchNote: '' } })
         });
-        if (res.ok) success++; else failed++;
-      }
-      showToast(`批次確認完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, 'success');
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `id=${id}`); }
+      });
+      const success = results.filter(r => r.status === 'fulfilled').length;
+      const failed  = results.filter(r => r.status === 'rejected').length;
+      showToast(`批次確認完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
       setSelectedIncomeIds(new Set());
       setShowBatchPay(false);
       fetchIncomes(); fetchSummary();
@@ -981,20 +991,21 @@ function RentalsPage() {
     const ids = Array.from(overdueSelectedIds);
     if (!ids.length) return;
     setOverdueBatchSaving(true);
-    let success = 0; let failed = 0;
     try {
-      for (const id of ids) {
+      const results = await runChunked(ids, async (id) => {
         const income = overdueReportData.find(i => i.id === id);
-        if (!income) continue;
+        if (!income) throw new Error(`id=${id}`);
         const remaining = Math.max(0, Number(income.expectedAmount || 0) - Number(income.actualAmount || 0));
         const res = await fetch(`/api/rentals/income/${id}/confirm`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rent: { actualAmount: String(remaining || Number(income.expectedAmount)), actualDate: overdueBatchForm.actualDate, accountId: overdueBatchForm.accountId, paymentMethod: overdueBatchForm.paymentMethod, matchTransferRef: '', matchBankAccountName: '', matchNote: '' } })
         });
-        if (res.ok) success++; else failed++;
-      }
-      showToast(`批次收款完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, success > 0 ? 'success' : 'error');
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `id=${id}`); }
+      });
+      const success = results.filter(r => r.status === 'fulfilled').length;
+      const failed  = results.filter(r => r.status === 'rejected').length;
+      showToast(`批次收款完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, failed > 0 ? 'warning' : 'success');
       setOverdueSelectedIds(new Set());
       setShowOverdueBatch(false);
       fetchOverdueReport();
@@ -1009,13 +1020,15 @@ function RentalsPage() {
     });
     if (ids.length === 0) return showToast('沒有可鎖帳的紀錄', 'error');
     setBatchLockSaving(true);
-    let success = 0; let failed = 0;
     try {
-      for (const id of ids) {
-        const res = await fetch(`/api/rentals/income/${id}/lock`, { method: 'PATCH' });
-        if (res.ok) success++; else failed++;
-      }
-      showToast(`批次鎖帳完成：${success} 筆成功${failed > 0 ? `，${failed} 筆失敗` : ''}`, 'success');
+      const res = await fetch('/api/rentals/income/batch-lock', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return showToast(d.error || '批次鎖帳失敗', 'error');
+      showToast(`已鎖帳 ${d.locked} 筆`, 'success');
       setSelectedIncomeIds(new Set());
       fetchIncomes();
     } catch (e) { showToast('批次鎖帳失敗: ' + e.message, 'error'); }
@@ -1053,17 +1066,18 @@ function RentalsPage() {
   async function saveBulkUtility() {
     setBulkUtilitySaving(true);
     try {
-      const toSave = bulkUtilityEntries.filter(e => e.expectedAmount !== '' && !isNaN(parseFloat(e.expectedAmount)));
-      let saved = 0;
-      for (const entry of toSave) {
-        const res = await fetch('/api/rentals/utility-income', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ propertyId: entry.propertyId, incomeYear: bulkUtilityYear, incomeMonth: bulkUtilityMonth, expectedAmount: entry.expectedAmount })
-        });
-        if (res.ok) saved++;
-      }
-      showToast(`已儲存 ${saved} 筆電費應收`, 'success');
+      const entries = bulkUtilityEntries
+        .filter(e => e.expectedAmount !== '' && !isNaN(parseFloat(e.expectedAmount)))
+        .map(e => ({ propertyId: e.propertyId, incomeYear: bulkUtilityYear, incomeMonth: bulkUtilityMonth, expectedAmount: e.expectedAmount }));
+      if (entries.length === 0) { showToast('無資料可儲存', 'error'); return; }
+      const res = await fetch('/api/rentals/utility-income/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return showToast(d.error || '儲存失敗', 'error');
+      showToast(`已儲存 ${d.saved} 筆電費應收`, 'success');
       setShowBulkUtility(false);
       fetchUtilityList();
     } catch (e) { showToast('儲存失敗: ' + e.message, 'error'); }
