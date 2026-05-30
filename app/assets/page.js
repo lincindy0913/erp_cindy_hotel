@@ -2,7 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
@@ -60,6 +60,7 @@ function SummaryCard({ label, value, sub, color = 'gray', small = false }) {
 function AssetsPageInner() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const linkOpenedRef = useRef(false);
 
@@ -87,6 +88,15 @@ function AssetsPageInner() {
   // Confirmation modal (replaces browser confirm() which gets blocked in production)
   const [confirmState, setConfirmState] = useState(null); // { message, onConfirm, confirmLabel }
   const showConfirm = (message, onConfirm, confirmLabel = '確定刪除') => setConfirmState({ message, onConfirm, confirmLabel });
+
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
+  // Asset disposal
+  const [disposals, setDisposals] = useState([]);        // disposals for selected asset
+  const [showDisposalModal, setShowDisposalModal] = useState(false);
+  const [editingDisposal, setEditingDisposal] = useState(null);
+  const [disposalSaving, setDisposalSaving] = useState(false);
+  const [disposalForm, setDisposalForm] = useState({ disposalDate: '', salePrice: '', stampTax: '', landValueIncrementTax: '', notes: '' });
 
   // Property inline edit (序號/分類/狀態)
   const [propInlineEdit, setPropInlineEdit] = useState(null); // { propertyId, field, value }
@@ -234,14 +244,23 @@ function AssetsPageInner() {
     setEditing(null);
     setForm(f => ({ ...f, rentalPropertyId: linkProperty }));
     setShowModal(true);
-  }, [linkProperty, properties.length]);
+    router.replace('/assets'); // A9: clear param so refresh doesn't re-trigger
+  }, [linkProperty, properties.length, router]);
+
+  // B2: ESC closes detail panel
+  useEffect(() => {
+    if (!selected) return;
+    const handler = e => { if (e.key === 'Escape') setSelected(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selected]);
 
   // Load detail incomes when a property is selected
   useEffect(() => {
     if (!selected) { setDetailIncomes([]); return; }
     let cancelled = false;
     setDetailLoading(true);
-    setDetailIncomes([]);
+    // B3: keep old data visible (dimmed) while new data loads — don't clear immediately
     fetch(`/api/rentals/income?propertyId=${selected.id}&year=${year}`)
       .then(r => r.json())
       .then(data => { if (!cancelled) setDetailIncomes(Array.isArray(data) ? data : []); })
@@ -249,6 +268,75 @@ function AssetsPageInner() {
       .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
   }, [selected?.id, year]);
+
+  // Load disposals when selected asset changes
+  useEffect(() => {
+    const assetId = selected?.asset?.id;
+    if (!assetId) { setDisposals([]); return; }
+    let cancelled = false;
+    fetch(`/api/assets/${assetId}/disposals`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (!cancelled) setDisposals(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setDisposals([]); });
+    return () => { cancelled = true; };
+  }, [selected?.asset?.id]);
+
+  function openDisposalCreate() {
+    setEditingDisposal(null);
+    setDisposalForm({ disposalDate: '', salePrice: '', stampTax: '', landValueIncrementTax: '', notes: '' });
+    setShowDisposalModal(true);
+  }
+
+  function openDisposalEdit(d) {
+    setEditingDisposal(d);
+    setDisposalForm({
+      disposalDate: d.disposalDate || '',
+      salePrice: d.salePrice != null ? String(d.salePrice) : '',
+      stampTax: d.stampTax != null ? String(d.stampTax) : '',
+      landValueIncrementTax: d.landValueIncrementTax != null ? String(d.landValueIncrementTax) : '',
+      notes: d.notes || '',
+    });
+    setShowDisposalModal(true);
+  }
+
+  async function saveDisposal() {
+    if (!disposalForm.disposalDate) { showToast('請填寫處分日期', 'error'); return; }
+    const assetId = selected?.asset?.id;
+    if (!assetId) return;
+    setDisposalSaving(true);
+    try {
+      const body = {
+        disposalDate: disposalForm.disposalDate,
+        salePrice: disposalForm.salePrice !== '' ? disposalForm.salePrice : null,
+        stampTax: disposalForm.stampTax !== '' ? disposalForm.stampTax : null,
+        landValueIncrementTax: disposalForm.landValueIncrementTax !== '' ? disposalForm.landValueIncrementTax : null,
+        notes: disposalForm.notes || null,
+      };
+      const url = editingDisposal
+        ? `/api/assets/${assetId}/disposals/${editingDisposal.id}`
+        : `/api/assets/${assetId}/disposals`;
+      const method = editingDisposal ? 'PATCH' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { showToast(data?.error?.message || data?.error || '儲存失敗', 'error'); return; }
+      showToast(editingDisposal ? '已更新' : '已建立', 'success');
+      setShowDisposalModal(false);
+      const refreshed = await fetch(`/api/assets/${assetId}/disposals`).then(r => r.ok ? r.json() : []);
+      setDisposals(Array.isArray(refreshed) ? refreshed : []);
+    } catch { showToast('儲存失敗', 'error'); }
+    finally { setDisposalSaving(false); }
+  }
+
+  async function deleteDisposal(d) {
+    const assetId = selected?.asset?.id;
+    if (!assetId) return;
+    showConfirm(`確定刪除「${d.disposalDate}」的處分記錄？`, async () => {
+      const res = await fetch(`/api/assets/${assetId}/disposals/${d.id}`, { method: 'DELETE' });
+      if (!res.ok) { showToast('刪除失敗', 'error'); return; }
+      showToast('已刪除', 'success');
+      setDisposals(prev => prev.filter(x => x.id !== d.id));
+    });
+  }
 
   // Merged rows: properties + report + taxes split by type
   const { mergedRows, summary } = useMemo(() => {
@@ -264,10 +352,8 @@ function AssetsPageInner() {
         houseTaxByPid.set(pid, (houseTaxByPid.get(pid) || 0) + amt);
       } else if (t.taxType?.includes('地價') || t.taxType?.includes('land')) {
         landTaxByPid.set(pid, (landTaxByPid.get(pid) || 0) + amt);
-      } else {
-        // Unknown type — count in house tax bucket
-        houseTaxByPid.set(pid, (houseTaxByPid.get(pid) || 0) + amt);
       }
+      // unknown types (e.g. 印花稅, 土地增值稅) are capital events — skip from operating buckets
     }
 
     let totalRent = 0, totalHouse = 0, totalLand = 0, totalMaint = 0;
@@ -332,13 +418,14 @@ function AssetsPageInner() {
   }, [filteredRows, assetSortKey, assetSortDir]);
 
   function exportCSV() {
+    const periodLabel = activeRange ? `${activeRange.start}~${activeRange.end}` : `${year}年`;
     const headers = [
       '序號', '物業', '戶別', '大樓名稱', '地址', '分類', '狀態',
       '所有權人', '房屋稅稅籍編號', '收租帳戶', '押金帳戶', '收水電費',
       '公益出租人', '公益申請人', '公益租約起', '公益租約迄', '公益月租金',
       '綁定資產名稱',
       '租客', '月租金',
-      `${year}年租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${year}年維護費`, `${year}年淨利`,
+      `${periodLabel}租金+水電實收`, `${year}年房屋稅`, `${year}年地價稅`, `${periodLabel}維護費`, `${periodLabel}淨利`,
     ];
     const rows = sortedRows.map(p => [
       p.sortOrder ?? '',
@@ -374,7 +461,7 @@ function AssetsPageInner() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `資產管理_${year}年_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.csv`;
+    a.download = `資產管理_${periodLabel}_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '-')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -387,12 +474,25 @@ function AssetsPageInner() {
 
   // Unlinked properties for the modal dropdown
   const propertyOptions = useMemo(() => {
-    return properties.filter(p => {
-      if (!p.asset) return true;
-      if (editing && p.asset.id === editing.id) return true;
-      return false;
-    });
+    return properties
+      .filter(p => {
+        if (!p.asset) return true;
+        if (editing && p.asset.id === editing.id) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const sa = a.sortOrder ?? Infinity;
+        const sb = b.sortOrder ?? Infinity;
+        if (sa !== sb) return sa - sb;
+        return (a.name || '').localeCompare(b.name || '', 'zh-TW');
+      });
   }, [properties, editing]);
+
+  function openCreateFromProperty(p) {
+    setEditing(null);
+    setForm(f => ({ ...f, name: p.name || '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: p.category || '', rentalPropertyId: String(p.id), isAvailableForRental: true, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
+    setShowModal(true);
+  }
 
   function openCreate() {
     setEditing(null);
@@ -433,7 +533,7 @@ function AssetsPageInner() {
         name: form.name.trim(),
         assetType: form.assetType,
         address: form.address.trim() || null,
-        areaSqm: form.areaSqm === '' ? null : form.areaSqm,
+        areaSqm: form.areaSqm === '' ? null : (isNaN(parseFloat(form.areaSqm)) ? null : parseFloat(form.areaSqm)),
         acquisitionDate: form.acquisitionDate || null,
         notes: form.notes.trim() || null,
         serialNo: form.serialNo.trim() || null,
@@ -533,7 +633,7 @@ function AssetsPageInner() {
   }
 
   async function savePropertyEdit() {
-    if (!propForm.name.trim() && !editingProp) { showToast('請填寫物業名稱', 'error'); return; }
+    if (!propForm.name.trim() && !editingProp?.asset) { showToast('請填寫物業名稱', 'error'); return; }
     setPropSaving(true);
     try {
       const body = {
@@ -699,6 +799,10 @@ function AssetsPageInner() {
                   className="text-xs text-gray-500 hover:text-red-500 whitespace-nowrap">✕ 清除</button>
               )}
             </div>
+            <button type="button" onClick={() => setShowHelpModal(true)}
+              className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-200">
+              ? 說明
+            </button>
             <button type="button" onClick={exportCSV}
               className="px-3 py-1.5 bg-gray-100 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-200">
               ↓ 匯出 CSV
@@ -857,10 +961,21 @@ function AssetsPageInner() {
                   <SortableTh label="狀態" colKey="status" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
                   <SortableTh label="租客" colKey="tenantName" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" />
                   <SortableTh label="月租金" colKey="monthlyRent" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <th className="text-center px-3 py-2 whitespace-nowrap">本月<br/>收款</th>
+                  <th className={`text-center px-3 py-2 whitespace-nowrap ${year !== currentYear ? 'text-gray-400' : ''}`}
+                    title={year !== currentYear ? `本欄固定顯示當前月份（${currentYear}/${String(new Date().getMonth()+1).padStart(2,'0')}），切換年度不影響` : undefined}>
+                    本月<br/>收款{year !== currentYear && <span className="block text-[10px] font-normal text-gray-400">({currentYear}年)</span>}
+                  </th>
                   <SortableTh label="租金+水電實收" colKey="rentIncome" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <SortableTh label="房屋稅" colKey="houseTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
-                  <SortableTh label="地價稅" colKey="landTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
+                  <SortableTh
+                    label={activeRange ? `房屋稅 ⓘ` : '房屋稅'}
+                    colKey="houseTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort}
+                    className={`px-3 py-2 ${activeRange ? 'text-gray-400' : ''}`} align="right"
+                    title={activeRange ? `稅款固定以 ${year} 年度為主，區間模式不適用` : undefined} />
+                  <SortableTh
+                    label={activeRange ? `地價稅 ⓘ` : '地價稅'}
+                    colKey="landTax" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort}
+                    className={`px-3 py-2 ${activeRange ? 'text-gray-400' : ''}`} align="right"
+                    title={activeRange ? `稅款固定以 ${year} 年度為主，區間模式不適用` : undefined} />
                   <SortableTh label="維護費" colKey="maintenanceAmount" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
                   <SortableTh label="淨利" colKey="netProfit" sortKey={assetSortKey} sortDir={assetSortDir} onSort={assetToggleSort} className="px-3 py-2" align="right" />
                   <th className="text-left px-3 py-2 whitespace-nowrap">標記</th>
@@ -879,7 +994,7 @@ function AssetsPageInner() {
                     const hasTax = p.houseTax > 0 || p.landTax > 0;
                     const hasMaint = p.maintenanceAmount > 0;
                     const expiryDays = p.currentContractEnd
-                      ? Math.ceil((new Date(p.currentContractEnd) - new Date()) / 86400000)
+                      ? Math.ceil((new Date(p.currentContractEnd) - new Date(todayStr())) / 86400000)
                       : null;
                     const hasUnpaidTax = taxesData.some(t => t.propertyId === p.id && t.status !== 'paid');
                     return (
@@ -998,7 +1113,7 @@ function AssetsPageInner() {
                         <td className="px-3 py-2 text-right text-gray-700">
                           {p.currentMonthlyRent ? fmtMoney(p.currentMonthlyRent) : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
+                        <td className={`px-3 py-2 text-center ${year !== currentYear ? 'opacity-40' : ''}`} onClick={e => e.stopPropagation()}>
                           {(() => {
                             const inc = currentMonthIncomeMap.get(p.id);
                             if (!inc) return <span className="text-gray-300 text-xs">—</span>;
@@ -1050,11 +1165,7 @@ function AssetsPageInner() {
                               {p.asset ? (
                                 <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p.asset)}>資產</button>
                               ) : (
-                                <button className="text-teal-600 hover:underline text-xs" onClick={() => {
-                                  setEditing(null);
-                                  setForm(f => ({ ...f, name: p.name || '', assetType: 'BUILDING', address: p.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: p.category || '', rentalPropertyId: String(p.id), isAvailableForRental: true, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
-                                  setShowModal(true);
-                                }}>+資產</button>
+                                <button className="text-teal-600 hover:underline text-xs" onClick={() => openCreateFromProperty(p)}>+資產</button>
                               )}
                               <button className="text-red-500 hover:underline text-xs" onClick={() => deleteProperty(p)}>刪除</button>
                             </div>
@@ -1196,12 +1307,10 @@ function AssetsPageInner() {
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">
                   {year} 年各月收租紀錄
                 </h4>
-                {detailLoading ? (
-                  <p className="text-xs text-gray-400">載入中…</p>
-                ) : detailIncomes.length === 0 ? (
-                  <p className="text-xs text-gray-400">{year} 年無收租紀錄</p>
+                {detailIncomes.length === 0 ? (
+                  <p className="text-xs text-gray-400">{detailLoading ? '載入中…' : `${year} 年無收租紀錄`}</p>
                 ) : (
-                  <div className="tbl-wrap">
+                  <div className={`tbl-wrap transition-opacity duration-150 ${detailLoading ? 'opacity-40 pointer-events-none' : ''}`}>
                     <table className="w-full text-xs border">
                       <thead className="bg-gray-50">
                         <tr>
@@ -1335,15 +1444,57 @@ function AssetsPageInner() {
                 ) : canEdit ? (
                   <button
                     className="mt-3 text-xs px-3 py-1.5 bg-teal-600 text-white rounded hover:bg-teal-700"
-                    onClick={() => {
-                      setEditing(null);
-                      setForm(f => ({ ...f, name: selected.name || '', assetType: 'BUILDING', address: selected.address || '', areaSqm: '', acquisitionDate: '', notes: '', serialNo: '', category: selected.category || '', rentalPropertyId: String(selected.id), isAvailableForRental: true, hasHouseTax: false, hasLandTax: false, hasMaintenanceFee: false }));
-                      setShowModal(true);
-                    }}
+                    onClick={() => openCreateFromProperty(selected)}
                   >
                     新增資產主檔
                   </button>
                 ) : null}
+
+                {/* 資產處分記錄 */}
+                {selected.asset && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h4 className="text-xs font-semibold text-gray-700">資產處分記錄</h4>
+                      {canEdit && (
+                        <button onClick={openDisposalCreate}
+                          className="text-xs text-red-600 border border-red-200 px-2 py-0.5 rounded hover:bg-red-50">
+                          + 新增處分
+                        </button>
+                      )}
+                    </div>
+                    {disposals.length === 0 ? (
+                      <p className="text-xs text-gray-400">尚無處分記錄</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {disposals.map(d => (
+                          <div key={d.id} className="border border-red-200 rounded-lg p-2.5 bg-red-50 text-xs">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <span className="font-semibold text-gray-800">{d.disposalDate}</span>
+                                {d.salePrice != null && (
+                                  <span className="ml-2 text-teal-700 font-medium">成交 NT$ {fmtMoney(d.salePrice)}</span>
+                                )}
+                              </div>
+                              {canEdit && (
+                                <div className="flex gap-2 shrink-0">
+                                  <button onClick={() => openDisposalEdit(d)}
+                                    className="text-indigo-600 hover:underline">編輯</button>
+                                  <button onClick={() => deleteDisposal(d)}
+                                    className="text-red-600 hover:underline">刪除</button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-gray-600">
+                              {d.stampTax != null && <span>印花稅 NT$ {fmtMoney(d.stampTax)}</span>}
+                              {d.landValueIncrementTax != null && <span>土地增值稅 NT$ {fmtMoney(d.landValueIncrementTax)}</span>}
+                              {d.notes && <span className="text-gray-500">{d.notes}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Col 3: Maintenance + P&L */}
@@ -1527,6 +1678,60 @@ function AssetsPageInner() {
           onSave={savePropertyEdit}
         />
       )}
+
+      {/* Disposal Modal */}
+      {showDisposalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => !disposalSaving && setShowDisposalModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-gray-800 mb-4">{editingDisposal ? '編輯處分記錄' : '新增處分記錄'}</h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="text-gray-600 block mb-1">處分日期 *</label>
+                <input type="date" className="w-full border rounded px-3 py-2"
+                  value={disposalForm.disposalDate}
+                  onChange={e => setDisposalForm(f => ({ ...f, disposalDate: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-gray-600 block mb-1">成交價格（選填）</label>
+                <input type="text" inputMode="decimal" placeholder="NT$" className="w-full border rounded px-3 py-2"
+                  value={disposalForm.salePrice}
+                  onChange={e => setDisposalForm(f => ({ ...f, salePrice: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-gray-600 block mb-1">印花稅</label>
+                  <input type="text" inputMode="decimal" placeholder="NT$" className="w-full border rounded px-3 py-2"
+                    value={disposalForm.stampTax}
+                    onChange={e => setDisposalForm(f => ({ ...f, stampTax: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-gray-600 block mb-1">土地增值稅</label>
+                  <input type="text" inputMode="decimal" placeholder="NT$" className="w-full border rounded px-3 py-2"
+                    value={disposalForm.landValueIncrementTax}
+                    onChange={e => setDisposalForm(f => ({ ...f, landValueIncrementTax: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="text-gray-600 block mb-1">備註</label>
+                <textarea className="w-full border rounded px-3 py-2" rows={2}
+                  value={disposalForm.notes}
+                  onChange={e => setDisposalForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button disabled={disposalSaving} onClick={() => setShowDisposalModal(false)}
+                className="px-4 py-2 text-sm bg-gray-200 rounded hover:bg-gray-300">取消</button>
+              <button disabled={disposalSaving} onClick={saveDisposal}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">
+                {disposalSaving ? '儲存中…' : '儲存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Help Modal */}
+      {showHelpModal && <AssetsHelpModal onClose={() => setShowHelpModal(false)} />}
     </div>
   );
 }
@@ -1583,9 +1788,17 @@ function MaintenanceList({ propertyId, year }) {
   );
 }
 
+const ASSET_TYPE_BADGE = {
+  LAND:  { label: '土地', cls: 'bg-orange-100 text-orange-700' },
+  MIXED: { label: '混合', cls: 'bg-blue-100 text-blue-700' },
+  OTHER: { label: '其他', cls: 'bg-gray-100 text-gray-600' },
+};
+
 function AssetFlagBadges({ asset }) {
   if (!asset) return null;
   const flags = [];
+  const typeBadge = ASSET_TYPE_BADGE[asset.assetType];
+  if (typeBadge) flags.push(typeBadge);
   if (asset.isAvailableForRental) flags.push({ label: '可出租', cls: 'bg-teal-100 text-teal-700' });
   if (asset.hasHouseTax) flags.push({ label: '房屋稅', cls: 'bg-amber-100 text-amber-700' });
   if (asset.hasLandTax) flags.push({ label: '地價稅', cls: 'bg-orange-100 text-orange-700' });
@@ -1597,6 +1810,75 @@ function AssetFlagBadges({ asset }) {
         <span key={f.label} className={`text-xs px-1.5 py-0.5 rounded ${f.cls}`}>{f.label}</span>
       ))}
     </span>
+  );
+}
+
+function AssetsHelpModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] py-6 px-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h3 className="text-base font-bold text-gray-800">資產管理說明</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+        <div className="p-5 space-y-5 text-sm">
+          <section>
+            <h4 className="font-semibold text-gray-800 mb-2">1. 「物業」vs「資產」是什麼差別？</h4>
+            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 space-y-1">
+              <p><span className="font-medium text-teal-700">物業（RentalProperty）</span>→ 出租管理角度：租客、合約、收款、稅款</p>
+              <p><span className="font-medium text-blue-700">資產（Asset）</span>→ 財務管理角度：取得成本、折舊、設備分類</p>
+              <p className="pt-1 text-gray-500">兩者可以綁定（1 對 1），綁定後：名稱、地址以資產端為主；房屋稅旗標影響稅款管理分類。</p>
+            </div>
+          </section>
+          <section>
+            <h4 className="font-semibold text-gray-800 mb-2">2. 為什麼要綁定？</h4>
+            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 space-y-1">
+              <p><span className="text-gray-400">不綁定：</span>物業和資產各自獨立，無法交叉核對。</p>
+              <p className="pt-1"><span className="font-medium">綁定後：</span></p>
+              <ul className="ml-3 space-y-0.5 text-gray-600 list-disc list-inside">
+                <li>資產頁看到租客、月租金、收款狀態</li>
+                <li>物業頁看到資產類型、面積、取得日</li>
+                <li>稅款自動對應（房屋稅 / 地價稅旗標）</li>
+              </ul>
+            </div>
+          </section>
+          <section>
+            <h4 className="font-semibold text-gray-800 mb-2">3. 「公益出租人」影響什麼？</h4>
+            <div className="bg-purple-50 rounded-lg p-3 text-xs text-purple-800 space-y-1">
+              <p>公益出租人認定 → 租金申報金額不同（優惠稅率）。</p>
+              <p>打勾後：</p>
+              <ul className="ml-3 space-y-0.5 list-disc list-inside">
+                <li>物業清單顯示「公益出租人」標記</li>
+                <li>CSV 匯出包含申請人、起迄日、公益月租金</li>
+              </ul>
+            </div>
+          </section>
+          <section>
+            <h4 className="font-semibold text-gray-800 mb-2">4. 表格欄位定義</h4>
+            <div className="rounded-lg border overflow-hidden text-xs">
+              <table className="w-full">
+                <tbody>
+                  {[
+                    ['月租金', '當前有效合約的合約金額（唯讀，在租屋→合約管理修改）'],
+                    ['本月收款', '當月實際收款狀態（待收 / 已收 / 逾期）'],
+                    ['租金+水電實收', '本年度累計實際入帳（含水電費），不含未收款'],
+                    ['淨利', '租金+水電實收 − 房屋稅 − 地價稅 − 維護費'],
+                  ].map(([col, desc]) => (
+                    <tr key={col} className="border-t first:border-t-0">
+                      <td className="px-3 py-2 font-medium text-gray-800 bg-gray-50 whitespace-nowrap w-32">{col}</td>
+                      <td className="px-3 py-2 text-gray-600">{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        <div className="px-5 py-3 border-t flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm bg-gray-100 rounded hover:bg-gray-200 text-gray-700">關閉</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

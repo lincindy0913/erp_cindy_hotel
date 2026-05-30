@@ -1550,11 +1550,30 @@ model Asset {
   hasMaintenanceFee    Boolean          @default(false) @map("has_maintenance_fee")
   rentalPropertyId     Int?             @unique @map("rental_property_id")
   rentalProperty       RentalProperty?  @relation(fields: [rentalPropertyId], references: [id], onDelete: SetNull)
+  disposals            AssetDisposal[]
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
   @@index([assetType])
   @@map("assets")
+}
+
+/// 資產處分記錄（賣出時的印花稅、土地增值稅等資本事件）
+model AssetDisposal {
+  id                    Int      @id @default(autoincrement())
+  assetId               Int      @map("asset_id")
+  disposalDate          String   @map("disposal_date") @db.VarChar(20)
+  salePrice             Decimal? @map("sale_price") @db.Decimal(14, 2)
+  stampTax              Decimal? @map("stamp_tax") @db.Decimal(12, 2)
+  landValueIncrementTax Decimal? @map("land_value_increment_tax") @db.Decimal(12, 2)
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("asset_disposals")
 }
 
 /// 租金／租賃所得年度申報（同一報表列可區分公益與否、同址多承租）

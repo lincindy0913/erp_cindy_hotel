@@ -63,7 +63,7 @@ export function useColumnSort(defaultKey = null, defaultDir = 'desc', storageKey
 }
 
 /** Tailwind 表格抬頭 */
-export function SortableTh({ label, colKey, sortKey, sortDir, onSort, className = '', align = 'left' }) {
+export function SortableTh({ label, colKey, sortKey, sortDir, onSort, className = '', align = 'left', title }) {
   const asc = sortKey === colKey && sortDir === 'asc';
   const desc = sortKey === colKey && sortDir === 'desc';
   const alignCls =
@@ -73,7 +73,7 @@ export function SortableTh({ label, colKey, sortKey, sortDir, onSort, className 
       ? 'inline-flex flex-row-reverse items-center gap-1'
       : 'inline-flex items-center gap-1';
   return (
-    <th className={`${className} ${alignCls} text-sm font-medium text-gray-700 whitespace-nowrap`}>
+    <th title={title} className={`${className} ${alignCls} text-sm font-medium text-gray-700 whitespace-nowrap`}>
       <button
         type="button"
         onClick={() => onSort(colKey)}
