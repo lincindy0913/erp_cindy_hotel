@@ -76,8 +76,9 @@ function AssetsPageInner() {
   // Core data
   const [properties, setProperties] = useState([]);
   const [reportData, setReportData] = useState([]);   // operating report rows
-  const [taxesData, setTaxesData] = useState([]);     // all taxes for year
+  const [detailTaxes, setDetailTaxes] = useState([]);   // taxes for selected property (lazy)
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [currentMonthIncomeMap, setCurrentMonthIncomeMap] = useState(new Map()); // propertyId → income
 
   // Selected property for detail panel
@@ -130,11 +131,15 @@ function AssetsPageInner() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: batchStatus }),
-        })
+        }).then(async r => ({ ok: r.ok, error: r.ok ? null : (await r.json().catch(() => ({}))).error }))
       ));
-      const failed = results.filter(r => !r.ok).length;
-      if (failed > 0) {
-        showToast(`${results.length - failed} 筆成功，${failed} 筆失敗`, 'error');
+      const failed = results.filter(r => !r.ok);
+      if (failed.length > 0) {
+        const contractBlocked = failed.filter(r => r.error?.includes('活躍合約'));
+        const msg = contractBlocked.length > 0
+          ? `${results.length - failed.length} 筆成功，${contractBlocked.length} 筆因有活躍合約無法變更`
+          : `${results.length - failed.length} 筆成功，${failed.length} 筆失敗`;
+        showToast(msg, 'error');
       } else {
         showToast(`已將 ${results.length} 筆物業狀態改為「${PROPERTY_STATUS_LABEL[batchStatus] || batchStatus}」`, 'success');
       }
@@ -173,8 +178,9 @@ function AssetsPageInner() {
   // Load properties (static — no year dependency)
   const loadProperties = useCallback(async () => {
     const res = await fetch('/api/rentals/properties');
+    if (!res.ok) throw new Error(`物業載入失敗（${res.status}）`);
     const data = await res.json();
-    const arr = res.ok && Array.isArray(data) ? data : [];
+    const arr = Array.isArray(data) ? data : [];
     setProperties(arr);
     return arr;
   }, []);
@@ -185,14 +191,10 @@ function AssetsPageInner() {
     const opUrl = (sd && ed)
       ? `/api/rentals/reports/operating?startDate=${sd}&endDate=${ed}`
       : `/api/rentals/reports/operating?year=${y}`;
-    const [repRes, taxRes] = await Promise.all([
-      fetch(opUrl),
-      fetch(`/api/rentals/taxes?taxYear=${y}`),
-    ]);
+    const repRes = await fetch(opUrl);
+    if (!repRes.ok) throw new Error(`營運報表載入失敗（${repRes.status}）`);
     const repData = await repRes.json();
-    const taxData = await taxRes.json();
-    setReportData(repRes.ok && repData.rows ? repData.rows : []);
-    setTaxesData(taxRes.ok && Array.isArray(taxData) ? taxData : []);
+    setReportData(repData.rows ? repData.rows : []);
   }, []);
 
   // Initial load
@@ -203,25 +205,37 @@ function AssetsPageInner() {
     const curMonth = now.getMonth() + 1;
     (async () => {
       setLoading(true);
-      const [, , acctRes, incomeRes] = await Promise.all([
-        loadProperties(),
-        loadYearData(year),
-        fetch('/api/cashflow/accounts').then(r => r.ok ? r.json() : []),
-        fetch(`/api/rentals/income?year=${curYear}&month=${curMonth}`).then(r => r.ok ? r.json() : []),
-      ]);
-      if (!cancelled) {
-        setLoading(false);
-        if (Array.isArray(acctRes)) setAccounts(acctRes);
-        if (Array.isArray(incomeRes)) {
-          const today = todayStr();
-          const map = new Map();
-          incomeRes.forEach(i => {
-            const existing = map.get(i.propertyId);
-            if (!existing || i.status === 'completed' || (i.status === 'partial' && existing.status === 'pending')) {
-              map.set(i.propertyId, { ...i, isOverdue: i.status === 'pending' && i.dueDate < today });
-            }
-          });
-          setCurrentMonthIncomeMap(map);
+      setLoadError(false);
+      try {
+        const [, , acctData, incomeData] = await Promise.all([
+          loadProperties(),
+          loadYearData(year),
+          fetch('/api/cashflow/accounts').then(r => r.ok ? r.json() : null),
+          fetch(`/api/rentals/income?year=${curYear}&month=${curMonth}`).then(r => r.ok ? r.json() : null),
+        ]);
+        if (!cancelled) {
+          setLoading(false);
+          if (Array.isArray(acctData)) setAccounts(acctData);
+          else if (acctData === null) showToast('收款帳戶載入失敗，部分功能受限', 'error');
+          if (Array.isArray(incomeData)) {
+            const today = todayStr();
+            const map = new Map();
+            incomeData.forEach(i => {
+              const existing = map.get(i.propertyId);
+              if (!existing || i.status === 'completed' || (i.status === 'partial' && existing.status === 'pending')) {
+                map.set(i.propertyId, { ...i, isOverdue: i.status === 'pending' && i.dueDate < today });
+              }
+            });
+            setCurrentMonthIncomeMap(map);
+          } else if (incomeData === null) {
+            showToast('本月收款狀態載入失敗', 'error');
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadError(true);
+          showToast(err.message || '頁面載入失敗，請重新整理', 'error');
         }
       }
     })();
@@ -343,26 +357,13 @@ function AssetsPageInner() {
     const reportByPid = new Map();
     for (const r of reportData) reportByPid.set(r.propertyId, r);
 
-    const houseTaxByPid = new Map();
-    const landTaxByPid = new Map();
-    for (const t of taxesData) {
-      const pid = t.propertyId;
-      const amt = Number(t.amount || 0);
-      if (t.taxType?.includes('房屋') || t.taxType?.includes('house')) {
-        houseTaxByPid.set(pid, (houseTaxByPid.get(pid) || 0) + amt);
-      } else if (t.taxType?.includes('地價') || t.taxType?.includes('land')) {
-        landTaxByPid.set(pid, (landTaxByPid.get(pid) || 0) + amt);
-      }
-      // unknown types (e.g. 印花稅, 土地增值稅) are capital events — skip from operating buckets
-    }
-
     let totalRent = 0, totalHouse = 0, totalLand = 0, totalMaint = 0;
     let rentedCount = 0, availableCount = 0;
 
     const rows = properties.map(p => {
       const r = reportByPid.get(p.id) || {};
-      const houseTax = houseTaxByPid.get(p.id) || 0;
-      const landTax = landTaxByPid.get(p.id) || 0;
+      const houseTax = r.houseTaxAmount || 0;
+      const landTax  = r.landTaxAmount  || 0;
       const maint = r.maintenanceAmount || 0;
       const rent = r.rentIncome || 0;
       const netProfit = rent - houseTax - landTax - maint;
@@ -372,7 +373,7 @@ function AssetsPageInner() {
       totalHouse += houseTax;
       totalLand += landTax;
       totalMaint += maint;
-      return { ...p, rentIncome: rent, houseTax, landTax, maintenanceAmount: maint, netProfit };
+      return { ...p, rentIncome: rent, houseTax, landTax, maintenanceAmount: maint, netProfit, hasUnpaidTax: r.hasUnpaidTax || false };
     });
 
     const totalNet = totalRent - totalHouse - totalLand - totalMaint;
@@ -381,7 +382,7 @@ function AssetsPageInner() {
       mergedRows: rows,
       summary: { rentedCount, availableCount, totalRent, totalHouse, totalLand, totalMaint, totalNet },
     };
-  }, [properties, reportData, taxesData]);
+  }, [properties, reportData]);
 
   // Filtered rows (search + status + category)
   const filteredRows = useMemo(() => {
@@ -466,11 +467,16 @@ function AssetsPageInner() {
     URL.revokeObjectURL(url);
   }
 
-  // Taxes for the selected property (detail panel)
-  const selectedTaxes = useMemo(() => {
-    if (!selected) return [];
-    return taxesData.filter(t => t.propertyId === selected.id);
-  }, [selected, taxesData]);
+  // Taxes for the selected property — lazy-load per selection
+  useEffect(() => {
+    if (!selected) { setDetailTaxes([]); return; }
+    let cancelled = false;
+    fetch(`/api/rentals/taxes?taxYear=${year}&propertyId=${selected.id}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (!cancelled) setDetailTaxes(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setDetailTaxes([]); });
+    return () => { cancelled = true; };
+  }, [selected?.id, year]);
 
   // Unlinked properties for the modal dropdown
   const propertyOptions = useMemo(() => {
@@ -589,7 +595,11 @@ function AssetsPageInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) { showToast('儲存失敗', 'error'); return; }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        showToast(errData?.error || '儲存失敗', 'error');
+        return;
+      }
       const parsed = field === 'sortOrder'
         ? (value !== '' && value !== null ? parseInt(value) : null)
         : value || null;
@@ -793,8 +803,13 @@ function AssetsPageInner() {
                   if (dateStart > dateEnd) { showToast('結束日期不可早於開始日期', 'error'); return; }
                   setLoading(true);
                   setActiveRange({ start: dateStart, end: dateEnd });
-                  await loadYearData(year, dateStart, dateEnd);
-                  setLoading(false);
+                  try {
+                    await loadYearData(year, dateStart, dateEnd);
+                  } catch (err) {
+                    showToast(err.message || '區間資料載入失敗', 'error');
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
                 className="px-3 py-1 bg-teal-600 text-white text-sm rounded hover:bg-teal-700 disabled:opacity-40 whitespace-nowrap">
                 查詢
@@ -936,6 +951,15 @@ function AssetsPageInner() {
         {/* Main Table */}
         {loading ? (
           <p className="text-gray-500 py-8">載入中…</p>
+        ) : loadError ? (
+          <div className="py-12 text-center">
+            <p className="text-red-500 mb-1 font-medium">資料載入失敗</p>
+            <p className="text-sm text-gray-400 mb-4">請確認網路連線後重試</p>
+            <button onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700">
+              重新整理
+            </button>
+          </div>
         ) : (
           <div className="bg-white rounded-lg shadow tbl-wrap">
             <table className="w-full text-sm">
@@ -996,7 +1020,7 @@ function AssetsPageInner() {
                     const expiryDays = p.currentContractEnd
                       ? Math.ceil((new Date(p.currentContractEnd) - new Date(todayStr())) / 86400000)
                       : null;
-                    const hasUnpaidTax = taxesData.some(t => t.propertyId === p.id && t.status !== 'paid');
+                    const hasUnpaidTax = p.hasUnpaidTax;
                     return (
                       <tr
                         key={p.id}
@@ -1362,7 +1386,7 @@ function AssetsPageInner() {
                     </Link>
                   )}
                 </div>
-                {selectedTaxes.length === 0 ? (
+                {detailTaxes.length === 0 ? (
                   <p className="text-xs text-gray-400">
                     {(selected.asset?.hasHouseTax || selected.asset?.hasLandTax) ? (
                       <>已標記稅費，請至{' '}
@@ -1384,7 +1408,7 @@ function AssetsPageInner() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedTaxes.map(t => (
+                      {detailTaxes.map(t => (
                         <tr key={t.id} className="border-t">
                           <td className="px-2 py-1">{t.taxType || '—'}</td>
                           <td className="px-2 py-1 text-right font-medium text-amber-700">{fmtMoney(t.amount)}</td>
@@ -1400,7 +1424,7 @@ function AssetsPageInner() {
                     <tfoot className="bg-gray-50 font-semibold">
                       <tr>
                         <td className="px-2 py-1">合計</td>
-                        <td className="px-2 py-1 text-right text-amber-700">{fmtMoney(selectedTaxes.reduce((s, t) => s + Number(t.amount || 0), 0))}</td>
+                        <td className="px-2 py-1 text-right text-amber-700">{fmtMoney(detailTaxes.reduce((s, t) => s + Number(t.amount || 0), 0))}</td>
                         <td colSpan={2} />
                       </tr>
                     </tfoot>
@@ -1763,20 +1787,29 @@ function AssetsPageInner() {
   );
 }
 
+// Cache: propertyId → raw all-years maintenance array
+const _maintenanceCache = new Map();
+
 // Lazy maintenance list — only fetches when parent property is selected
 function MaintenanceList({ propertyId, year }) {
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!_maintenanceCache.has(propertyId));
 
   useEffect(() => {
     let cancelled = false;
+    const cached = _maintenanceCache.get(propertyId);
+    if (cached) {
+      setItems(cached.filter(m => m.maintenanceDate?.startsWith(String(year))));
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     fetch(`/api/rentals/maintenance?propertyId=${propertyId}`)
       .then(r => r.json())
       .then(data => {
         if (cancelled) return;
         const arr = Array.isArray(data) ? data : [];
-        // Filter to current year
+        _maintenanceCache.set(propertyId, arr);
         setItems(arr.filter(m => m.maintenanceDate?.startsWith(String(year))));
       })
       .catch(() => { if (!cancelled) setItems([]); })

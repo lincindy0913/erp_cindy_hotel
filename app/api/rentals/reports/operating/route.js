@@ -92,7 +92,7 @@ export async function GET(request) {
       }),
       prisma.propertyTax.findMany({
         where: { ...taxYearFilter, ...propFilter },
-        select: { propertyId: true, amount: true }
+        select: { propertyId: true, amount: true, taxType: true, status: true }
       }),
       prisma.rentalProperty.findMany({
         where: propertiesWhere,
@@ -138,18 +138,28 @@ export async function GET(request) {
     for (const m of maintenances) {
       maintByProp.set(m.propertyId, (maintByProp.get(m.propertyId) || 0) + Number(m.amount));
     }
-    const taxByProp = new Map();
+    const houseTaxByProp = new Map();
+    const landTaxByProp  = new Map();
+    const unpaidTaxByProp = new Set();
     for (const t of taxes) {
-      taxByProp.set(t.propertyId, (taxByProp.get(t.propertyId) || 0) + Number(t.amount));
+      const amt = Number(t.amount || 0);
+      if (t.taxType?.includes('房屋') || t.taxType?.includes('house')) {
+        houseTaxByProp.set(t.propertyId, (houseTaxByProp.get(t.propertyId) || 0) + amt);
+      } else if (t.taxType?.includes('地價') || t.taxType?.includes('land')) {
+        landTaxByProp.set(t.propertyId, (landTaxByProp.get(t.propertyId) || 0) + amt);
+      }
+      if (t.status !== 'paid') unpaidTaxByProp.add(t.propertyId);
     }
 
     const rows = Array.from(propertyIds).map(pid => {
       const prop = propMap.get(pid);
       const label = prop ? (prop.name || [prop.buildingName, prop.unitNo].filter(Boolean).join(' ') || prop.address || `物業#${pid}`) : `物業#${pid}`;
-      const rent = rentByProp.get(pid) || 0;
+      const rent        = rentByProp.get(pid) || 0;
       const maintenance = maintByProp.get(pid) || 0;
-      const tax = taxByProp.get(pid) || 0;
-      const totalExpense = maintenance + tax;
+      const houseTax    = houseTaxByProp.get(pid) || 0;
+      const landTax     = landTaxByProp.get(pid) || 0;
+      const taxAmount   = houseTax + landTax;
+      const totalExpense = maintenance + taxAmount;
       const netProfit = rent - totalExpense;
       const profitMargin = rent > 0 ? (netProfit / rent) * 100 : null;
       const areaSqm = areaSqmByProp.get(pid) || null;
@@ -161,7 +171,10 @@ export async function GET(request) {
         category: prop?.category ?? null,
         rentIncome: rent,
         maintenanceAmount: maintenance,
-        taxAmount: tax,
+        houseTaxAmount: houseTax,
+        landTaxAmount: landTax,
+        taxAmount,
+        hasUnpaidTax: unpaidTaxByProp.has(pid),
         totalExpense,
         netProfit,
         profitMarginPercent: profitMargin != null ? Math.round(profitMargin * 100) / 100 : null,

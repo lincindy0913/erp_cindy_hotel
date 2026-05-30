@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,6 +111,15 @@ export async function POST(request) {
         data: { paymentOrderId: order.id }
       });
       return { ...tax, paymentOrderId: order.id, paymentOrderNo: order.orderNo };
+    });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PROPERTY_TAX_CREATE,
+      targetModule: 'property_tax',
+      targetRecordId: result.id,
+      targetRecordNo: `${result.property?.name} ${result.taxYear} ${result.taxType}`,
+      afterState: { propertyId: result.propertyId, taxYear: result.taxYear, taxType: result.taxType, amount: result.amount },
+      note: `建立稅款：${result.property?.name} ${result.taxYear} ${result.taxType} NT$${result.amount}`,
     });
 
     return NextResponse.json(result, { status: 201 });

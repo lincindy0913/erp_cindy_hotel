@@ -86,6 +86,22 @@ export async function PATCH(request, { params }) {
 
     if (Object.keys(data).length === 0) return NextResponse.json({ ok: true });
 
+    // N23: 改為非出租狀態前，確認無活躍合約
+    if (data.status !== undefined && data.status !== 'rented') {
+      const activeContract = await prisma.rentalContract.findFirst({
+        where: { propertyId, status: 'active' },
+        select: { id: true, contractNo: true },
+      });
+      if (activeContract) {
+        return NextResponse.json({
+          error: `物業仍有活躍合約（${activeContract.contractNo}），請先終止合約再變更狀態`,
+          code: 'ACTIVE_CONTRACT_EXISTS',
+          conflictContractId: activeContract.id,
+          conflictContractNo: activeContract.contractNo,
+        }, { status: 400 });
+      }
+    }
+
     // 先讀舊值（只取要追蹤的欄位）
     const before = await prisma.rentalProperty.findUnique({
       where: { id: propertyId },

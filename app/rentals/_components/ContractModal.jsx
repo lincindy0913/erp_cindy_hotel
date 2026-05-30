@@ -74,8 +74,18 @@ export default function ContractModal({
             </div>
             <div>
               <label htmlFor="f-3" className="text-sm text-gray-600">押金金額</label>
-              <input id="f-3" type="number" value={contractForm.depositAmount} onChange={e => setContractForm(f => ({ ...f, depositAmount: e.target.value }))}
-                className="w-full border rounded px-3 py-2 text-sm" />
+              <div className="flex gap-1.5 mt-1">
+                <input id="f-3" type="number" value={contractForm.depositAmount} onChange={e => setContractForm(f => ({ ...f, depositAmount: e.target.value }))}
+                  className="flex-1 border rounded px-3 py-2 text-sm" />
+                {[1, 2].map(n => (
+                  <button key={n} type="button"
+                    disabled={!contractForm.monthlyRent}
+                    onClick={() => setContractForm(f => ({ ...f, depositAmount: String(Math.round(Number(f.monthlyRent) * n)) }))}
+                    className="text-xs px-2.5 py-1 border rounded text-gray-600 hover:bg-gray-100 disabled:opacity-30 whitespace-nowrap">
+                    ×{n}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label htmlFor="f-4" className="text-sm text-gray-600">押金帳戶</label>

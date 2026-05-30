@@ -273,11 +273,9 @@ export default function PropertyModal({
 
               {form.publicInterestLandlord && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
-                  {mode === 'rentals' && (
-                    <p className="text-xs text-green-800">
-                      <strong>公益出租</strong>之申報金額、預估房屋稅請至「租金申報」分頁依<strong>所得年度</strong>填寫同一張總表。
-                    </p>
-                  )}
+                  <p className="text-xs text-green-800">
+                    <strong>公益出租</strong>之每年申報金額、預估房屋稅請至「租金申報」分頁依所得年度填寫。
+                  </p>
                   {mode === 'rentals' && onOpenRentFiling && (
                     <button
                       type="button"

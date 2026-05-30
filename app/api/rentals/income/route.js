@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,6 +143,13 @@ export async function POST(request) {
     });
 
     const { created, skipped } = result;
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.RENTAL_INCOME_CREATE,
+      targetModule: 'rental_income',
+      afterState: { year: y, month: m, created, skipped },
+      note: `批次建立 ${y}/${String(m).padStart(2,'0')} 收款紀錄：新建 ${created} 筆，跳過 ${skipped} 筆`,
+    });
 
     return NextResponse.json({
       success: true,

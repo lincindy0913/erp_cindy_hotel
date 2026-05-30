@@ -1427,7 +1427,14 @@ function RentalsPage() {
       const method = editingContract ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(contractForm) });
       const data = await res.json();
-      if (!res.ok) return showToast(data?.error?.message || data?.error || '儲存失敗', 'error');
+      if (!res.ok) {
+        if (data?.code === 'ACTIVE_CONTRACT_EXISTS') {
+          showToast(`${data.error}，請先終止舊合約或透過「續約」功能新增`, 'error');
+        } else {
+          showToast(data?.error?.message || data?.error || '儲存失敗', 'error');
+        }
+        return;
+      }
       setShowContractModal(false);
       setRenewingFromContract(null);
       fetchContracts();
@@ -3240,7 +3247,14 @@ function RentalsPage() {
                           <td className="px-3 py-2 text-center">{r.monthsInScope ?? '—'}</td>
                           <td className="px-3 py-2 text-right font-medium">{r.declaredAnnualIncome != null ? `$${fmt(r.declaredAnnualIncome)}` : '—'}</td>
                           <td className="px-3 py-2 text-right text-amber-800">{r.estimatedHouseTax != null ? `$${fmt(r.estimatedHouseTax)}` : '—'}</td>
-                          <td className="px-3 py-2 text-right text-indigo-700">${fmt(r.actualAnnualIncome)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className="text-indigo-700">${fmt(r.actualAnnualIncome)}</span>
+                            {r.declaredAnnualIncome != null && r.actualAnnualIncome > 0 && r.declaredAnnualIncome !== r.actualAnnualIncome && (
+                              <span className={`block text-xs ${r.actualAnnualIncome > r.declaredAnnualIncome ? 'text-amber-600' : 'text-green-600'}`}>
+                                {r.actualAnnualIncome > r.declaredAnnualIncome ? '▲' : '▼'} ${fmt(Math.abs(r.actualAnnualIncome - r.declaredAnnualIncome))}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-xs text-gray-500 max-w-[120px]">
                             {r.incomeSplitHint && <span className="text-amber-700 block">{r.incomeSplitHint}</span>}
                             {r.note || ''}
@@ -4578,9 +4592,32 @@ function RentalsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="f-36" className="text-gray-600">全年申報金額</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label htmlFor="f-36" className="text-gray-600">全年申報金額</label>
+                      <div className="flex items-center gap-1.5">
+                        {editingRentFiling?.actualAnnualIncome > 0 && (
+                          <span className="text-xs text-indigo-600">
+                            系統實收 ${Number(editingRentFiling.actualAnnualIncome).toLocaleString('zh-TW')}
+                          </span>
+                        )}
+                        {editingRentFiling?.actualAnnualIncome > 0 && (
+                          <button type="button"
+                            onClick={() => setRentFilingForm((f) => ({ ...f, declaredAnnualIncome: String(editingRentFiling.actualAnnualIncome) }))}
+                            className="text-xs px-1.5 py-0.5 border border-indigo-300 text-indigo-600 rounded hover:bg-indigo-50">
+                            帶入
+                          </button>
+                        )}
+                        {rentFilingForm.declaredMonthlyRent && rentFilingForm.monthsInScope && (
+                          <button type="button"
+                            onClick={() => setRentFilingForm((f) => ({ ...f, declaredAnnualIncome: String(Math.round(Number(f.declaredMonthlyRent) * Number(f.monthsInScope))) }))}
+                            className="text-xs px-1.5 py-0.5 border border-gray-300 text-gray-600 rounded hover:bg-gray-50">
+                            月租×月數
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     <input id="f-36" type="number" min="0" value={rentFilingForm.declaredAnnualIncome} onChange={(e) => setRentFilingForm((f) => ({ ...f, declaredAnnualIncome: e.target.value }))}
-                      className="w-full border rounded px-3 py-2 mt-1 text-right" />
+                      className="w-full border rounded px-3 py-2 text-right" />
                   </div>
                   <div>
                     <label htmlFor="f-37" className="text-gray-600">預估房屋稅</label>

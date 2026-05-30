@@ -7,6 +7,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,15 @@ export async function PUT(request, { params }) {
 
     // Recalculate balance
     await recalcBalance(prisma, acctId);
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PROPERTY_TAX_PAY,
+      targetModule: 'property_tax',
+      targetRecordId: taxId,
+      targetRecordNo: `${tax.property.name} ${tax.taxYear} ${tax.taxType}`,
+      afterState: { status: 'paid', accountId: acctId, paymentDate: txDate },
+      note: `繳納稅款：${tax.property.name} ${tax.taxYear} ${tax.taxType} NT$${tax.amount}`,
+    });
 
     return NextResponse.json({ success: true, transactionId: tx.id });
   } catch (error) {
@@ -149,6 +159,17 @@ export async function PATCH(request, { params }) {
       where: { id: taxId },
       include: { property: { select: { name: true } } }
     });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PROPERTY_TAX_UPDATE,
+      targetModule: 'property_tax',
+      targetRecordId: taxId,
+      targetRecordNo: `${tax.property.name} ${tax.taxYear} ${tax.taxType}`,
+      beforeState: { amount: tax.amount, dueDate: tax.dueDate, taxType: tax.taxType },
+      afterState: updateData,
+      note: `修改稅款：${tax.property.name} ${tax.taxYear} ${tax.taxType}`,
+    });
+
     return NextResponse.json(updated);
   } catch (error) {
     console.error('PATCH /api/rentals/taxes/[id] error:', error.message || error);
@@ -182,8 +203,14 @@ export async function DELETE(request, { params }) {
       await prisma.paymentOrder.delete({ where: { id: tax.paymentOrderId } }).catch(() => {});
     }
 
-    await prisma.propertyTax.delete({
-      where: { id: taxId }
+    await prisma.propertyTax.delete({ where: { id: taxId } });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.PROPERTY_TAX_DELETE,
+      targetModule: 'property_tax',
+      targetRecordId: taxId,
+      beforeState: { propertyId: tax.propertyId, taxYear: tax.taxYear, taxType: tax.taxType, amount: tax.amount },
+      note: `刪除稅款：${tax.taxYear} ${tax.taxType} NT$${tax.amount}`,
     });
 
     return NextResponse.json({ message: '已刪除' });

@@ -93,18 +93,25 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '合約結束日期必須晚於開始日期', 400);
     }
 
-    // Validate no overlapping active contract for same property
+    // N15: validate no overlapping active/pending contract (excluding the previousContract for renewals)
     const overlapping = await prisma.rentalContract.findFirst({
       where: {
         propertyId: parseInt(propertyId),
-        status: 'active',
+        status: { in: ['active', 'pending'] },
         startDate: { lte: endDate },
-        endDate: { gte: startDate }
-      }
+        endDate: { gte: startDate },
+        ...(body.previousContractId ? { id: { not: parseInt(body.previousContractId) } } : {}),
+      },
+      select: { id: true, contractNo: true, status: true },
     });
 
     if (overlapping) {
-      return createErrorResponse('CONFLICT_UNIQUE', '此物業在該期間已有有效合約', 409);
+      return NextResponse.json({
+        error: `此物業在該期間已有${overlapping.status === 'active' ? '有效' : '待生效'}合約（${overlapping.contractNo}）`,
+        code: 'ACTIVE_CONTRACT_EXISTS',
+        conflictContractId: overlapping.id,
+        conflictContractNo: overlapping.contractNo,
+      }, { status: 409 });
     }
 
     const contractNo = await generateContractNo();
