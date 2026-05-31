@@ -165,6 +165,33 @@ export async function PATCH(request, { params }) {
       );
     }
 
+    // 日期變更時檢查是否與同物業其他有效/待生效合約重疊
+    if (body.startDate !== undefined || body.endDate !== undefined) {
+      const newStart = body.startDate ?? existing.startDate;
+      const newEnd   = body.endDate   ?? existing.endDate;
+      if (newStart >= newEnd) {
+        return createErrorResponse('VALIDATION_FAILED', '合約結束日期必須晚於開始日期', 400);
+      }
+      const overlapping = await prisma.rentalContract.findFirst({
+        where: {
+          propertyId: existing.propertyId,
+          status: { in: ['active', 'pending'] },
+          startDate: { lte: newEnd },
+          endDate:   { gte: newStart },
+          id: { not: contractId },
+        },
+        select: { id: true, contractNo: true, status: true },
+      });
+      if (overlapping) {
+        return NextResponse.json({
+          error: `此物業在該期間已有${overlapping.status === 'active' ? '有效' : '待生效'}合約（${overlapping.contractNo}）`,
+          code: 'ACTIVE_CONTRACT_EXISTS',
+          conflictContractId: overlapping.id,
+          conflictContractNo: overlapping.contractNo,
+        }, { status: 409 });
+      }
+    }
+
     const updateData = {};
     if (body.startDate !== undefined) updateData.startDate = body.startDate;
     if (body.endDate !== undefined) updateData.endDate = body.endDate;

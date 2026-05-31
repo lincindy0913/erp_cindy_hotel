@@ -50,17 +50,21 @@ export async function GET(request) {
     if (propertyId) where.propertyId = parseInt(propertyId);
     if (tenantId) where.tenantId = parseInt(tenantId);
 
-    const contracts = await prisma.rentalContract.findMany({
-      where,
-      include: {
-        property:  { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
-        tenant:    { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } },
-        reminders: { orderBy: { createdAt: 'desc' }, take: 1,
-                     select: { id: true, sentAt: true, sentBy: true, channel: true } },
-      },
-      orderBy: [{ property: { sortOrder: 'asc' } }, { id: 'asc' }],
-      take: 500,
-    });
+    const LIMIT = 2000;
+    const [contracts, total] = await Promise.all([
+      prisma.rentalContract.findMany({
+        where,
+        include: {
+          property:  { select: { id: true, name: true, buildingName: true, sortOrder: true, category: true } },
+          tenant:    { select: { id: true, fullName: true, companyName: true, tenantType: true, phone: true } },
+          reminders: { orderBy: { createdAt: 'desc' }, take: 1,
+                       select: { id: true, sentAt: true, sentBy: true, channel: true } },
+        },
+        orderBy: [{ property: { sortOrder: 'asc' } }, { id: 'asc' }],
+        take: LIMIT,
+      }),
+      prisma.rentalContract.count({ where }),
+    ]);
 
     const result = contracts.map(c => ({
       ...c,
@@ -69,7 +73,10 @@ export async function GET(request) {
       latestReminder: c.reminders?.[0] ?? null,
     }));
 
-    return NextResponse.json(result);
+    const res = NextResponse.json(result);
+    res.headers.set('X-Total-Count', String(total));
+    if (total > LIMIT) res.headers.set('X-Truncated', 'true');
+    return res;
   } catch (error) {
     console.error('GET /api/rentals/contracts error:', error.message || error);
     return handleApiError(error);

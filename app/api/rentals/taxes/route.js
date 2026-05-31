@@ -23,21 +23,28 @@ export async function GET(request) {
     if (status) where.status = status;
     if (propertyId) where.propertyId = parseInt(propertyId);
 
-    const taxes = await prisma.propertyTax.findMany({
-      where,
-      include: {
-        property: {
-          select: {
-            id: true, name: true, buildingName: true,
-            asset: { select: { id: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true } },
+    const LIMIT = 2000;
+    const [taxes, total] = await Promise.all([
+      prisma.propertyTax.findMany({
+        where,
+        include: {
+          property: {
+            select: {
+              id: true, name: true, buildingName: true,
+              asset: { select: { id: true, hasHouseTax: true, hasLandTax: true, hasMaintenanceFee: true } },
+            },
           },
         },
-      },
-      orderBy: [{ taxYear: 'desc' }, { dueDate: 'asc' }],
-      take: 500,
-    });
+        orderBy: [{ taxYear: 'desc' }, { dueDate: 'asc' }],
+        take: LIMIT,
+      }),
+      prisma.propertyTax.count({ where }),
+    ]);
 
-    return NextResponse.json(taxes);
+    const res = NextResponse.json(taxes);
+    res.headers.set('X-Total-Count', String(total));
+    if (total > LIMIT) res.headers.set('X-Truncated', 'true');
+    return res;
   } catch (error) {
     console.error('GET /api/rentals/taxes error:', error.message || error);
     return handleApiError(error);
