@@ -22,6 +22,7 @@ import ContractsTab from '@/components/engineering/ContractsTab';
 import ProjectMgmtTab from '@/components/engineering/ProjectMgmtTab';
 import PaymentsTab from '@/components/engineering/PaymentsTab';
 import ProgressClaimsTab from '@/components/engineering/ProgressClaimsTab';
+import BudgetReportTab from '@/components/engineering/BudgetReportTab';
 
 function makeCompanyInvPeriods() {
   const today = new Date();
@@ -46,6 +47,7 @@ const TABS = [
   { key: 'inputInvoices', label: '廠商進項發票' },
   { key: 'outputInvoices', label: '業主銷項發票' },
   { key: 'companyInvoices', label: '分業進項' },
+  { key: 'budgetReport', label: '預算報表' },
 ];
 
 const INPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
@@ -251,6 +253,7 @@ function EngineeringPageInner() {
     }
     if (activeTab === 'progressClaims') fetchProgressClaims(signal);
     if (activeTab === 'income') { fetchProgressClaims(signal); fetchOutputInvoicesList(signal); }
+    if (activeTab === 'budgetReport') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchProgressClaims(signal); }
     if (activeTab === 'outputInvoices') fetchProgressClaims(signal);
     return () => ctrl.abort();
   }, [activeTab, filterProjectId]);
@@ -1031,6 +1034,17 @@ ${projectRows.map(p => `<tr>
             </div>
           </div>
         </div>
+      )}
+
+      {/* ===== 預算報表 Tab ===== */}
+      {activeTab === 'budgetReport' && (
+        <BudgetReportTab
+          projects={projects}
+          contracts={contracts}
+          paymentOrders={paymentOrders}
+          progressClaims={progressClaims}
+          dashStats={dashStats}
+        />
       )}
 
       {/* ===== 分業進項 Tab ===== */}
