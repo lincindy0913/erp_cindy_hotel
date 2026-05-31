@@ -212,6 +212,12 @@ function EngineeringPageInner() {
 
   const [termSaving, setTermSaving] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [editingPaymentOrder, setEditingPaymentOrder] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: todayStr(), summary: '', note: '', materials: [] });
+  const [paymentMethodOptions, setPaymentMethodOptions] = useState(['轉帳', '票據', '現金']);
+  const [accounts, setAccounts] = useState([]);
 
 
   const { data: session } = useSession();
