@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 import { serializeContract } from '@/lib/engineering-serializers';
+import { snapshotContract } from '@/lib/contract-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +125,8 @@ export async function POST(request) {
       }
       contractId = contract.id;
     });
+    // 建立 v1 初始快照（合約建立時的原始狀態）
+    await snapshotContract(contractId, { reason: '合約建立（原始版本）' });
     const updated = await prisma.engineeringContract.findUnique({
       where: { id: contractId },
       include: { project: true, supplier: true, terms: { orderBy: { termNo: 'asc' } }, materials: true },

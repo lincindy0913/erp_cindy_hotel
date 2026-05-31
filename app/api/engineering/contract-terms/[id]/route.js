@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 import { serializeTerm } from '@/lib/engineering-serializers';
+import { snapshotContract } from '@/lib/contract-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,7 @@ export async function DELETE(request, { params }) {
     if (term.status === 'paid') {
       return createErrorResponse('VALIDATION_FAILED', '已付款的期數不可刪除，請先取消付款狀態', 400);
     }
+    await snapshotContract(term.contractId, { reason: `刪除期數：${term.termName || `第${term.termNo}期`}` });
     await prisma.engineeringContractTerm.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -47,6 +49,12 @@ export async function PUT(request, { params }) {
     await assertEngineeringProjectOpen(existing.contract?.projectId);
     if (existing.status === 'paid' && data.status !== 'pending') {
       return createErrorResponse('VALIDATION_FAILED', '已付款的期數不可修改，如需修改請先取消付款狀態', 400);
+    }
+
+    // 結構性欄位異動才快照（不含付款狀態更新）
+    const TERM_STRUCTURAL = ['amount', 'retentionAmount', 'termName', 'termType', 'content', 'dueDate', 'note'];
+    if (TERM_STRUCTURAL.some(f => data[f] !== undefined)) {
+      await snapshotContract(existing.contractId, { reason: data.changeReason || `修改期數：${existing.termName || `第${existing.termNo}期`}` });
     }
 
     const term = await prisma.$transaction(async (tx) => {

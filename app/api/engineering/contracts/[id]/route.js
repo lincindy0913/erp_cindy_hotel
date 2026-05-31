@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 import { serializeContract } from '@/lib/engineering-serializers';
+import { snapshotContract } from '@/lib/contract-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,14 @@ export async function PUT(request, { params }) {
     if (data.note !== undefined && !String(data.note).trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫備註後再存檔', 400);
     }
+
+    // 結構性欄位有異動時先快照（排除純付款狀態更新）
+    const STRUCTURAL_FIELDS = ['contractNo', 'totalAmount', 'retentionRate', 'signDate', 'content', 'note', 'materials'];
+    const hasStructuralChange = STRUCTURAL_FIELDS.some(f => data[f] !== undefined);
+    if (hasStructuralChange) {
+      await snapshotContract(id, { reason: data.changeReason || null });
+    }
+
     const contract = await prisma.engineeringContract.update({
       where: { id },
       data: {

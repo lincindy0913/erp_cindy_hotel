@@ -28,10 +28,16 @@ export default function ContractsTab({
   const [editingContract, setEditingContract] = useState(null);
   const emptyContractForm = {
     projectId: '', supplierId: '', contractNo: '', totalAmount: '', retentionRate: '',
-    signDate: '', content: '', note: '', terms: [], materials: [],
+    signDate: '', content: '', note: '', changeReason: '', terms: [], materials: [],
   };
   const [contractForm, setContractForm] = useState(emptyContractForm);
   const [contractSaving, setContractSaving] = useState(false);
+
+  // 版本歷史 modal
+  const [historyContract, setHistoryContract] = useState(null);
+  const [historyVersions, setHistoryVersions] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(null);
 
   const [showContractUploadModal, setShowContractUploadModal] = useState(false);
   const [contractForUpload, setContractForUpload] = useState(null);
@@ -86,7 +92,7 @@ export default function ContractsTab({
       projectId: String(c.projectId), supplierId: String(c.supplierId),
       contractNo: c.contractNo, totalAmount: String(c.totalAmount ?? ''),
       retentionRate: c.retentionRate > 0 ? String(Number(c.retentionRate) * 100) : '',
-      signDate: c.signDate || '', content: c.content || '', note: c.note || '',
+      signDate: c.signDate || '', content: c.content || '', note: c.note || '', changeReason: '',
       terms: (c.terms || []).map(t => ({
         id: t.id, termType: t.termType || 'regular',
         termName: t.termName || `第${t.termNo}期`,
@@ -99,6 +105,19 @@ export default function ContractsTab({
   }
 
   function openUploadContract(c) { setContractForUpload(c); setShowContractUploadModal(true); }
+
+  async function openHistory(c) {
+    setHistoryContract(c);
+    setHistoryVersions([]);
+    setHistoryExpanded(null);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/engineering/contracts/${c.id}/versions`);
+      const data = await res.json();
+      setHistoryVersions(Array.isArray(data) ? data : []);
+    } catch { setHistoryVersions([]); }
+    finally { setHistoryLoading(false); }
+  }
 
   function addContractTermRow(type = 'regular') {
     const n = contractForm.terms.length + 1;
@@ -178,6 +197,7 @@ export default function ContractsTab({
         projectId: parseInt(contractForm.projectId), supplierId: parseInt(contractForm.supplierId),
         contractNo: contractForm.contractNo.trim(), totalAmount: parseFloat(contractForm.totalAmount) || 0,
         retentionRate: retentionRateDecimal,
+        changeReason: contractForm.changeReason?.trim() || null,
         signDate: contractForm.signDate || null, content: contractForm.content?.trim() || null, note: contractForm.note?.trim() || null,
         terms: contractForm.terms.filter(t => !t.id).map((t, i) => ({
           termType: t.termType || 'regular',
@@ -211,6 +231,7 @@ export default function ContractsTab({
               amount: parseFloat(t.amount) || 0,
               retentionAmount: parseFloat(t.retentionAmount) || 0,
               dueDate: t.dueDate || null, content: t.content?.trim() || null, note: t.note?.trim() || null,
+              changeReason: contractForm.changeReason?.trim() || null,
             }),
           });
           if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || '更新期數失敗'); }
@@ -225,7 +246,7 @@ export default function ContractsTab({
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contractNo: body.contractNo, totalAmount: body.totalAmount,
-            retentionRate: retentionRateDecimal,
+            retentionRate: retentionRateDecimal, changeReason: body.changeReason,
             signDate: body.signDate, content: body.content, note: body.note, materials: body.materials,
           }),
         });
@@ -306,6 +327,9 @@ export default function ContractsTab({
                         <span className="ml-1 text-[10px] text-orange-500 font-normal">
                           留{(Number(c.retentionRate) * 100).toFixed(0)}%
                         </span>
+                      )}
+                      {(c.currentVersion ?? 1) > 1 && (
+                        <span className="ml-1 text-[10px] text-indigo-500 font-normal">v{c.currentVersion}</span>
                       )}
                     </td>
                     <td className="px-4 py-2">
@@ -432,6 +456,9 @@ export default function ContractsTab({
                     </td>
                     <td className="px-4 py-2 text-center">
                       <button onClick={() => openUploadContract(c)} className="text-blue-600 hover:underline mr-2">上傳</button>
+                      {(c.currentVersion ?? 1) > 1 && (
+                        <button onClick={() => openHistory(c)} className="text-indigo-600 hover:underline mr-2">歷史</button>
+                      )}
                       {!isCompleted && <button onClick={() => openEditContract(c)} className="text-amber-600 hover:underline mr-2">編輯</button>}
                       {!hasPaidTerms && <button onClick={() => deleteContract(c)} className="text-red-600 hover:underline">刪除</button>}
                       {isCompleted && <span className="text-xs text-gray-400 ml-1">已鎖定</span>}
@@ -596,11 +623,114 @@ export default function ContractsTab({
                 {(contractForm.materials || []).map((m, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={m.materialName} onChange={e => updateContractMaterial(i, 'materialName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="材料名稱" /></td><td className="px-2 py-1"><input type="number" value={m.quantity} onChange={e => updateContractMaterial(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="any" min="0" /></td><td className="px-2 py-1"><input type="number" value={m.amount} onChange={e => updateContractMaterial(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" min="0" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractMaterialRow(i)} className="text-red-500">×</button></td></tr>))}
               </tbody></table></div>
               <div><label className="block text-xs text-gray-500 mb-1">備註 *</label><textarea value={contractForm.note} onChange={e => setContractForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="請填寫備註（必填）" /></div>
+              {editingContract && (
+                <div className="border-t pt-3">
+                  <label className="block text-xs text-gray-500 mb-1">修約原因（選填，將記入版本歷史）</label>
+                  <input value={contractForm.changeReason} onChange={e => setContractForm(f => ({ ...f, changeReason: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：業主要求追加防水工程，合約金額調整" />
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowContractModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={contractSaving}>取消</button>
               <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{contractSaving ? '儲存中…' : '儲存'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 版本歷史 Modal */}
+      {historyContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-4" onClick={() => setHistoryContract(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4 p-6 my-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold">合約版本歷史</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {historyContract.contractNo} · {historyContract.supplier?.name} · 目前版本 v{historyContract.currentVersion ?? 1}
+                </p>
+              </div>
+              <button onClick={() => setHistoryContract(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+
+            {historyLoading ? (
+              <div className="flex justify-center py-10">
+                <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+              </div>
+            ) : historyVersions.length === 0 ? (
+              <p className="text-center text-gray-400 py-8">尚無版本歷史記錄</p>
+            ) : (
+              <div className="space-y-3">
+                {historyVersions.map(v => {
+                  const snap = v.snapshot;
+                  const isOpen = historyExpanded === v.id;
+                  return (
+                    <div key={v.id} className="border rounded-lg overflow-hidden">
+                      <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-indigo-50 text-left transition-colors"
+                        onClick={() => setHistoryExpanded(isOpen ? null : v.id)}>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded">v{v.version}</span>
+                          <span className="text-sm font-medium text-gray-700">{v.changeReason || '（無說明）'}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400">
+                          <span>{new Date(v.createdAt).toLocaleString('zh-TW', { year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit' })}</span>
+                          <span>{isOpen ? '▲' : '▼'}</span>
+                        </div>
+                      </button>
+                      {isOpen && snap && (
+                        <div className="px-4 py-3 text-sm bg-white">
+                          <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div><span className="text-xs text-gray-400">合約金額</span><div className="font-medium">{formatNum(snap.totalAmount)}</div></div>
+                            <div><span className="text-xs text-gray-400">保留比例</span><div className="font-medium">{snap.retentionRate > 0 ? `${(Number(snap.retentionRate) * 100).toFixed(1)}%` : '無'}</div></div>
+                            <div><span className="text-xs text-gray-400">簽約日</span><div className="font-medium">{snap.signDate || '—'}</div></div>
+                          </div>
+                          {snap.terms?.length > 0 && (
+                            <table className="w-full text-xs border-collapse mb-3">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-2 py-1 text-left font-medium text-gray-500">期別</th>
+                                  <th className="px-2 py-1 text-right font-medium text-gray-500">請款</th>
+                                  <th className="px-2 py-1 text-right font-medium text-gray-500">扣留</th>
+                                  <th className="px-2 py-1 text-left font-medium text-gray-500">到期日</th>
+                                  <th className="px-2 py-1 text-left font-medium text-gray-500">狀態</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {snap.terms.map((t, i) => (
+                                  <tr key={i} className={t.termType === 'retention_release' ? 'bg-orange-50' : ''}>
+                                    <td className="px-2 py-1">{t.termName || `第${t.termNo}期`}</td>
+                                    <td className="px-2 py-1 text-right">{formatNum(t.amount)}</td>
+                                    <td className="px-2 py-1 text-right text-orange-500">{t.retentionAmount > 0 ? formatNum(t.retentionAmount) : '—'}</td>
+                                    <td className="px-2 py-1">{t.dueDate || '—'}</td>
+                                    <td className="px-2 py-1">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${t.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{t.status === 'paid' ? '已付' : '待付'}</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                          {snap.content && (
+                            <div className="mb-2">
+                              <span className="text-xs text-gray-400">合約內容：</span>
+                              <p className="text-gray-600 mt-0.5 whitespace-pre-wrap text-xs bg-gray-50 rounded px-2 py-1">{snap.content}</p>
+                            </div>
+                          )}
+                          {snap.note && <div className="text-xs text-gray-400">備註：{snap.note}</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* 目前版本說明 */}
+                <div className="border border-indigo-200 rounded-lg px-4 py-3 bg-indigo-50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-indigo-700 bg-indigo-200 px-2 py-0.5 rounded">v{historyContract.currentVersion ?? 1}（目前）</span>
+                    <span className="text-sm text-indigo-600">現行合約版本（請在「合約與期數」頁面查閱）</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

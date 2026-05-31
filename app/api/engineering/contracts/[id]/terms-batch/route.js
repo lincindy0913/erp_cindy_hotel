@@ -11,6 +11,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 import { serializeTerm } from '@/lib/engineering-serializers';
+import { snapshotContract } from '@/lib/contract-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,7 @@ export async function POST(request, { params }) {
     });
     if (!contract) return createErrorResponse('NOT_FOUND', '找不到合約', 404);
     await assertEngineeringProjectOpen(contract.projectId);
+    await snapshotContract(contractId, { reason: `追加 ${terms.length} 個期數` });
 
     const created = await prisma.$transaction(async (tx) => {
       const maxTerm = await tx.engineeringContractTerm.findFirst({

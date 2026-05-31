@@ -2817,6 +2817,7 @@ model EngineeringContract {
   status         String   @default("active") @db.VarChar(20)
   content        String?  @db.Text
   note           String?  @db.Text
+  currentVersion Int      @default(1) @map("current_version")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -2825,11 +2826,27 @@ model EngineeringContract {
   terms         EngineeringContractTerm[]
   materials     EngineeringMaterial[]
   inputInvoices EngineeringInputInvoice[]
+  versions      EngineeringContractVersion[]
 
   @@unique([projectId, contractNo])
   @@index([projectId])
   @@index([supplierId])
   @@map("engineering_contracts")
+}
+
+model EngineeringContractVersion {
+  id           Int      @id @default(autoincrement())
+  contractId   Int      @map("contract_id")
+  version      Int
+  changeReason String?  @map("change_reason") @db.VarChar(500)
+  snapshot     String   @db.LongText
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  contract EngineeringContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, version])
+  @@index([contractId])
+  @@map("engineering_contract_versions")
 }
 
 model EngineeringContractTerm {
