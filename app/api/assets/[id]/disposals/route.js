@@ -52,6 +52,12 @@ export async function POST(request, { params }) {
 
     const disposal = await prisma.assetDisposal.create({ data });
 
+    // 處分後資產標記為不供出租
+    await prisma.asset.update({
+      where: { id: assetId },
+      data: { isAvailableForRental: false },
+    });
+
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.ASSET_DISPOSAL_CREATE,
       targetModule: 'asset_disposal',

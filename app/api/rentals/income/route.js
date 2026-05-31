@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,8 @@ export async function POST(request) {
 
     const y = parseInt(year);
     const m = parseInt(month);
+
+    await assertRentalYearOpen(y);
 
     // Find all active contracts
     const activeContracts = await prisma.rentalContract.findMany({

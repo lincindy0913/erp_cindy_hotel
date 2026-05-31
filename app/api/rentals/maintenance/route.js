@@ -7,6 +7,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,11 +20,13 @@ export async function GET(request) {
     const propertyId = searchParams.get('propertyId');
     const status = searchParams.get('status');
     const category = searchParams.get('category');
+    const year = searchParams.get('year');
 
     const where = {};
     if (propertyId) where.propertyId = parseInt(propertyId);
     if (status) where.status = status;
     if (category) where.category = category;
+    if (year) where.maintenanceDate = { startsWith: String(year) };
 
     const TAKE = 500;
     const records = await prisma.rentalMaintenance.findMany({
@@ -56,6 +59,8 @@ export async function POST(request) {
     if (!propertyId || !maintenanceDate || !category || !amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
+
+    await assertRentalYearOpen(parseInt(maintenanceDate.substring(0, 4)));
     if (!accountingSubjectId) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇會計科目', 400);
     }

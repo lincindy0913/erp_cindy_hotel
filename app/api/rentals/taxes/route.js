@@ -5,6 +5,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertRentalYearOpen } from '@/lib/rental-year-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,8 @@ export async function POST(request) {
     if (!propertyId || !taxYear || !taxType || !dueDate || !amount) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位', 400);
     }
+
+    await assertRentalYearOpen(parseInt(taxYear));
 
     const result = await prisma.$transaction(async (tx) => {
       const tax = await tx.propertyTax.create({

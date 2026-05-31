@@ -234,7 +234,7 @@ function RentalsPage() {
   const [yearLocks,     setYearLocks]     = useState([]);
   const [yearLockSaving,setYearLockSaving]= useState(false);
   const [taxView, setTaxView] = useState('list'); // 'list' | 'calendar'
-  const [maintenanceFilter, setMaintenanceFilter] = useState({ category: '', status: '', propertyId: tabParam === 'maintenance' ? (searchParams.get('propertyId') || '') : '' });
+  const [maintenanceFilter, setMaintenanceFilter] = useState({ year: new Date().getFullYear(), category: '', status: '', propertyId: tabParam === 'maintenance' ? (searchParams.get('propertyId') || '') : '' });
 
   // Modal states
   const [showTenantModal, setShowTenantModal] = useState(false);
@@ -1287,6 +1287,7 @@ function RentalsPage() {
   async function fetchMaintenances() {
     try {
       const params = new URLSearchParams();
+      if (maintenanceFilter.year) params.set('year', maintenanceFilter.year);
       if (maintenanceFilter.category) params.set('category', maintenanceFilter.category);
       if (maintenanceFilter.status) params.set('status', maintenanceFilter.status);
       if (maintenanceFilter.propertyId) params.set('propertyId', maintenanceFilter.propertyId);
@@ -3644,6 +3645,13 @@ function RentalsPage() {
                   </div>
                 )}
                 <div className="flex items-center gap-3 mb-4 flex-wrap">
+                  <select value={maintenanceFilter.year} onChange={e => setMaintenanceFilter(f => ({ ...f, year: e.target.value }))}
+                    className="border rounded px-2 py-1.5 text-sm">
+                    <option value="">全部年份</option>
+                    {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                      <option key={y} value={y}>{y} 年</option>
+                    ))}
+                  </select>
                   <select value={maintenanceFilter.propertyId} onChange={e => setMaintenanceFilter(f => ({ ...f, propertyId: e.target.value }))}
                     className="border rounded px-2 py-1.5 text-sm">
                     <option value="">全部物業</option>
