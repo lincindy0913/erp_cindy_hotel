@@ -24,6 +24,7 @@ export async function PUT(request, { params }) {
         clientName: body.clientName?.trim() || null,
         invoiceNo: body.invoiceNo?.trim() || null,
         invoiceDate: body.invoiceDate,
+        dueDate: body.dueDate || null,
         amount,
         taxAmount,
         totalAmount: body.totalAmount ? parseFloat(body.totalAmount) : amount + taxAmount,
@@ -34,9 +35,11 @@ export async function PUT(request, { params }) {
       include: {
         project: { select: { id: true, code: true, name: true, clientName: true } },
         progressClaim: { select: { id: true, termName: true, claimNo: true, status: true } },
+        incomes: { select: { id: true, termName: true, receivedDate: true, amount: true }, orderBy: { receivedDate: 'asc' } },
       },
     });
-    return NextResponse.json({ ...inv, amount: Number(inv.amount), taxAmount: Number(inv.taxAmount), totalAmount: Number(inv.totalAmount) });
+    const received = (inv.incomes || []).reduce((s, r) => s + Number(r.amount), 0);
+    return NextResponse.json({ ...inv, amount: Number(inv.amount), taxAmount: Number(inv.taxAmount), totalAmount: Number(inv.totalAmount), receivedAmount: received, incomes: (inv.incomes || []).map(r => ({ ...r, amount: Number(r.amount) })) });
   } catch (e) { return handleApiError(e); }
 }
 

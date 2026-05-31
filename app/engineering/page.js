@@ -95,6 +95,7 @@ function EngineeringPageInner() {
   const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
   const [paymentOrders, setPaymentOrders] = useState([]);
   const [progressClaims, setProgressClaims] = useState([]);
+  const [outputInvoicesList, setOutputInvoicesList] = useState([]);
   /** 儀表板用：全工程案收款累計（不受收款 tab 篩選影響） */
   const [dashStats, setDashStats] = useState({ totalIncome: 0, totalInputInvoices: 0, totalOutputInvoices: 0, byProject: {} });
 
@@ -248,7 +249,7 @@ function EngineeringPageInner() {
       fetch('/api/settings/payment-methods', { signal }).then(res => res.ok ? res.json() : Promise.reject()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(e => { if (e?.name !== 'AbortError') console.error(e); });
     }
     if (activeTab === 'progressClaims') fetchProgressClaims(signal);
-    if (activeTab === 'income') fetchProgressClaims(signal);
+    if (activeTab === 'income') { fetchProgressClaims(signal); fetchOutputInvoicesList(signal); }
     if (activeTab === 'outputInvoices') fetchProgressClaims(signal);
     return () => ctrl.abort();
   }, [activeTab, filterProjectId]);
@@ -317,6 +318,14 @@ function EngineeringPageInner() {
       const data = await res.json();
       setProgressClaims(Array.isArray(data) ? data : []);
     } catch (e) { if (e?.name !== 'AbortError') setProgressClaims([]); }
+  }
+
+  async function fetchOutputInvoicesList(signal) {
+    try {
+      const res = await fetch('/api/engineering/output-invoices', signal ? { signal } : undefined);
+      const data = await res.json();
+      setOutputInvoicesList(Array.isArray(data) ? data : []);
+    } catch (e) { if (e?.name !== 'AbortError') setOutputInvoicesList([]); }
   }
 
   async function fetchWarrantyRecords(signal) {
@@ -716,7 +725,7 @@ ${projectRows.map(p => `<tr>
         {activeTab === 'progressClaims' && <ProgressClaimsTab projects={projects} />}
 
         {/* ===== 收款管理 TAB ===== */}
-        {activeTab === 'income' && <IncomeTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />}
+        {activeTab === 'income' && <IncomeTab projects={projects} progressClaims={progressClaims} outputInvoices={outputInvoicesList} onDashStatsChanged={refreshDashStats} />}
 
       {/* ===== 廠商進項發票 Tab ===== */}
       {activeTab === 'inputInvoices' && <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />}

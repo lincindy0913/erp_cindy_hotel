@@ -2780,6 +2780,8 @@ model EngineeringProject {
   milestones           EngineeringMilestone[]
   progressClaims       EngineeringProgressClaim[]
   warrantyRecords      EngineeringWarrantyRecord[]
+  materialReturns      EngineeringMaterialReturn[]
+  stockCounts          EngineeringStockCount[]
 
   @@index([status])
   @@index([warehouse])
@@ -2890,10 +2892,12 @@ model EngineeringMaterial {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  project  EngineeringProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contract EngineeringContract?     @relation(fields: [contractId], references: [id], onDelete: SetNull)
-  term     EngineeringContractTerm? @relation(fields: [termId], references: [id], onDelete: SetNull)
-  product  Product?                 @relation(fields: [productId], references: [id])
+  project    EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contract   EngineeringContract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  term       EngineeringContractTerm?  @relation(fields: [termId], references: [id], onDelete: SetNull)
+  product    Product?                  @relation(fields: [productId], references: [id])
+  returns    EngineeringMaterialReturn[]
+  countItems EngineeringStockCountItem[]
 
   @@index([projectId])
   @@index([contractId])
@@ -2902,10 +2906,70 @@ model EngineeringMaterial {
   @@map("engineering_materials")
 }
 
+model EngineeringMaterialReturn {
+  id          Int      @id @default(autoincrement())
+  projectId   Int      @map("project_id")
+  materialId  Int?     @map("material_id")
+  productId   Int?     @map("product_id")
+  description String?  @db.VarChar(500)
+  quantity    Decimal  @db.Decimal(12, 4)
+  unit        String?  @db.VarChar(20)
+  returnDate  String   @map("return_date") @db.VarChar(20)
+  reason      String?  @db.VarChar(500)
+  status      String   @default("pending") @db.VarChar(20)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project  EngineeringProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  material EngineeringMaterial?   @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  product  Product?               @relation(fields: [productId], references: [id])
+
+  @@index([projectId])
+  @@index([materialId])
+  @@map("engineering_material_returns")
+}
+
+model EngineeringStockCount {
+  id        Int      @id @default(autoincrement())
+  projectId Int      @map("project_id")
+  countDate String   @map("count_date") @db.VarChar(20)
+  counter   String?  @db.VarChar(100)
+  status    String   @default("draft") @db.VarChar(20)
+  note      String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items   EngineeringStockCountItem[]
+
+  @@index([projectId])
+  @@map("engineering_stock_counts")
+}
+
+model EngineeringStockCountItem {
+  id          Int     @id @default(autoincrement())
+  countId     Int     @map("count_id")
+  materialId  Int?    @map("material_id")
+  description String? @db.VarChar(500)
+  unit        String? @db.VarChar(20)
+  expectedQty Decimal @map("expected_qty") @db.Decimal(12, 4)
+  actualQty   Decimal @map("actual_qty")   @db.Decimal(12, 4)
+  note        String? @db.Text
+
+  count    EngineeringStockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  material EngineeringMaterial?  @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
+  @@index([countId])
+  @@index([materialId])
+  @@map("engineering_stock_count_items")
+}
+
 model EngineeringIncome {
   id                Int      @id @default(autoincrement())
   projectId         Int      @map("project_id")
   progressClaimId   Int?     @map("progress_claim_id")
+  outputInvoiceId   Int?     @map("output_invoice_id")
   termName          String   @map("term_name") @db.VarChar(100)
   amount            Decimal  @db.Decimal(14, 2)
   receivedDate      String   @map("received_date") @db.VarChar(20)
@@ -2916,11 +2980,13 @@ model EngineeringIncome {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  progressClaim EngineeringProgressClaim? @relation(fields: [progressClaimId], references: [id], onDelete: SetNull)
-  account       CashAccount?              @relation(fields: [accountId], references: [id])
+  project        EngineeringProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  progressClaim  EngineeringProgressClaim?  @relation(fields: [progressClaimId], references: [id], onDelete: SetNull)
+  outputInvoice  EngineeringOutputInvoice?  @relation(fields: [outputInvoiceId], references: [id], onDelete: SetNull)
+  account        CashAccount?               @relation(fields: [accountId], references: [id])
 
   @@index([projectId])
+  @@index([outputInvoiceId])
   @@index([progressClaimId])
   @@map("engineering_incomes")
 }
@@ -2958,6 +3024,7 @@ model EngineeringOutputInvoice {
   clientName      String?  @map("client_name") @db.VarChar(255)
   invoiceNo       String?  @map("invoice_no") @db.VarChar(100)
   invoiceDate     String   @map("invoice_date") @db.VarChar(20)
+  dueDate         String?  @map("due_date") @db.VarChar(20)
   amount          Decimal  @db.Decimal(14, 2)
   taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
   totalAmount     Decimal  @map("total_amount") @db.Decimal(14, 2)
@@ -2969,6 +3036,7 @@ model EngineeringOutputInvoice {
 
   project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   progressClaim EngineeringProgressClaim? @relation(fields: [progressClaimId], references: [id], onDelete: SetNull)
+  incomes       EngineeringIncome[]
 
   @@index([projectId])
   @@index([progressClaimId])

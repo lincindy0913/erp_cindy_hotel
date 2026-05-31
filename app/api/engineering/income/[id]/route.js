@@ -33,6 +33,7 @@ export async function PUT(request, { params }) {
         where: { id: incomeId },
         data: {
           ...(data.progressClaimId !== undefined && { progressClaimId: data.progressClaimId ? parseInt(data.progressClaimId) : null }),
+          ...(data.outputInvoiceId !== undefined && { outputInvoiceId: data.outputInvoiceId ? parseInt(data.outputInvoiceId) : null }),
           termName,
           amount,
           receivedDate,

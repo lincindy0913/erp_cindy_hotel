@@ -4,11 +4,11 @@ import { useToast } from '@/context/ToastContext';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
 
-export default function IncomeTab({ projects, progressClaims = [], onDashStatsChanged }) {
+export default function IncomeTab({ projects, progressClaims = [], outputInvoices = [], onDashStatsChanged }) {
   const [incomes, setIncomes] = useState([]);
   const [incomeSaving, setIncomeSaving] = useState(false);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
-  const emptyForm = { projectId: '', progressClaimId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' };
+  const emptyForm = { projectId: '', progressClaimId: '', outputInvoiceId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' };
   const [incomeForm, setIncomeForm] = useState(emptyForm);
   const [incomeFilterProjectId, setIncomeFilterProjectId] = useState('');
   const [editingIncome, setEditingIncome] = useState(null);
@@ -155,18 +155,36 @@ export default function IncomeTab({ projects, progressClaims = [], onDashStatsCh
             {(() => {
               const pid = incomeForm.projectId ? parseInt(incomeForm.projectId) : null;
               const claimsForProject = pid ? progressClaims.filter(c => c.projectId === pid) : [];
-              return claimsForProject.length > 0 ? (
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">連結估驗單</label>
-                  <select value={incomeForm.progressClaimId} onChange={e => setIncomeForm(f => ({ ...f, progressClaimId: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm">
-                    <option value="">不連結</option>
-                    {claimsForProject.map(c => (
-                      <option key={c.id} value={c.id}>{c.termName}{c.claimNo ? ` (${c.claimNo})` : ''}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : null;
+              const invoicesForProject = pid ? outputInvoices.filter(i => i.projectId === pid && i.status === '已開立') : [];
+              return (
+                <>
+                  {claimsForProject.length > 0 && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">連結估驗單</label>
+                      <select value={incomeForm.progressClaimId} onChange={e => setIncomeForm(f => ({ ...f, progressClaimId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">不連結</option>
+                        {claimsForProject.map(c => <option key={c.id} value={c.id}>{c.termName}{c.claimNo ? ` (${c.claimNo})` : ''}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {invoicesForProject.length > 0 && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">連結銷項發票（應收帳款）</label>
+                      <select value={incomeForm.outputInvoiceId} onChange={e => {
+                        const inv = invoicesForProject.find(i => String(i.id) === e.target.value);
+                        const unpaid = inv ? Math.max(0, Number(inv.totalAmount) - Number(inv.receivedAmount || 0)) : '';
+                        setIncomeForm(f => ({ ...f, outputInvoiceId: e.target.value, amount: unpaid ? String(unpaid) : f.amount, termName: inv ? (inv.invoiceNo ? `發票 ${inv.invoiceNo}` : f.termName) : f.termName }));
+                      }} className="w-full border rounded-lg px-3 py-2 text-sm">
+                        <option value="">不連結（一般收款）</option>
+                        {invoicesForProject.map(i => {
+                          const unpaid = Math.max(0, Number(i.totalAmount) - Number(i.receivedAmount || 0));
+                          return <option key={i.id} value={i.id}>{i.invoiceNo ? `${i.invoiceNo} ` : ''}{i.invoiceDate} 含稅{Number(i.totalAmount).toLocaleString('zh-TW')}{unpaid > 0.01 ? ` 未收${unpaid.toLocaleString('zh-TW')}` : ' 已收清'}</option>;
+                        })}
+                      </select>
+                    </div>
+                  )}
+                </>
+              );
             })()}
             <div>
               <label htmlFor="inc-f-3" className="block text-xs text-gray-500 mb-1">期數名稱 *</label>
@@ -274,6 +292,7 @@ export default function IncomeTab({ projects, progressClaims = [], onDashStatsCh
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款日期</th>
                         <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500">收款金額</th>
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">連結估驗</th>
+                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">連結發票</th>
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款帳戶</th>
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">備註</th>
                         <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500">現金流</th>
@@ -315,9 +334,11 @@ export default function IncomeTab({ projects, progressClaims = [], onDashStatsCh
                             <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
                             <td className="px-5 py-3 text-right font-bold text-green-700 text-base">NT$ {Number(inc.amount).toLocaleString()}</td>
                             <td className="px-5 py-3 text-xs">
-                              {inc.progressClaim
-                                ? <span className="text-indigo-600">{inc.progressClaim.termName}{inc.progressClaim.claimNo ? ` (${inc.progressClaim.claimNo})` : ''}</span>
-                                : <span className="text-gray-300">—</span>
+                              {inc.outputInvoice
+                                ? <span className="text-green-700 font-mono">{inc.outputInvoice.invoiceNo || `發票#${inc.outputInvoiceId}`}</span>
+                                : inc.progressClaim
+                                  ? <span className="text-indigo-500">{inc.progressClaim.termName}</span>
+                                  : <span className="text-gray-300">—</span>
                               }
                             </td>
                             <td className="px-5 py-3 text-gray-500 text-xs">{inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}</td>
@@ -339,7 +360,7 @@ export default function IncomeTab({ projects, progressClaims = [], onDashStatsCh
                       <tr>
                         <td colSpan={3} className="px-5 py-2.5 text-xs font-semibold text-gray-600">共 {projIncomes.length} 筆收款</td>
                         <td className="px-5 py-2.5 text-right font-bold text-green-800">NT$ {received.toLocaleString()}</td>
-                        <td colSpan={5} />
+                        <td colSpan={6} />
                       </tr>
                     </tfoot>
                   </table>

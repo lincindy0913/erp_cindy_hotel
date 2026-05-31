@@ -10,10 +10,22 @@ export const dynamic = 'force-dynamic';
 const OUTPUT_INV_INCLUDE = {
   project: { select: { id: true, code: true, name: true, clientName: true } },
   progressClaim: { select: { id: true, termName: true, claimNo: true, status: true } },
+  incomes: {
+    select: { id: true, termName: true, receivedDate: true, amount: true },
+    orderBy: { receivedDate: 'asc' },
+  },
 };
 
 function serializeInv(i) {
-  return { ...i, amount: Number(i.amount), taxAmount: Number(i.taxAmount), totalAmount: Number(i.totalAmount) };
+  const received = (i.incomes || []).reduce((s, r) => s + Number(r.amount), 0);
+  return {
+    ...i,
+    amount: Number(i.amount),
+    taxAmount: Number(i.taxAmount),
+    totalAmount: Number(i.totalAmount),
+    receivedAmount: received,
+    incomes: (i.incomes || []).map(r => ({ ...r, amount: Number(r.amount) })),
+  };
 }
 
 export async function GET(request) {
@@ -50,6 +62,7 @@ export async function POST(request) {
         clientName: body.clientName?.trim() || null,
         invoiceNo: body.invoiceNo?.trim() || null,
         invoiceDate: body.invoiceDate,
+        dueDate: body.dueDate || null,
         amount,
         taxAmount,
         totalAmount: body.totalAmount ? parseFloat(body.totalAmount) : amount + taxAmount,
