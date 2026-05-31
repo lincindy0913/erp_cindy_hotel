@@ -3,16 +3,20 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
+import { serializeTerm } from '@/lib/engineering-serializers';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_CREATE);
   if (!auth.ok) return auth.response;
-  const contractId = parseInt(params.id);
+  const { id: rawId } = await params; const contractId = parseInt(rawId);
   if (Number.isNaN(contractId)) return createErrorResponse('BAD_REQUEST', '無效的 ID', 400);
   try {
     const data = await request.json();
+    const contract = await prisma.engineeringContract.findUnique({ where: { id: contractId }, select: { projectId: true } });
+    if (contract) await assertEngineeringProjectOpen(contract.projectId);
     const maxTerm = await prisma.engineeringContractTerm.findFirst({
       where: { contractId },
       orderBy: { termNo: 'desc' },
@@ -31,12 +35,7 @@ export async function POST(request, { params }) {
         note: data.note?.trim() || null,
       },
     });
-    return NextResponse.json({
-      ...term,
-      amount: Number(term.amount),
-      createdAt: term.createdAt.toISOString(),
-      updatedAt: term.updatedAt.toISOString(),
-    }, { status: 201 });
+    return NextResponse.json(serializeTerm(term), { status: 201 });
   } catch (e) {
     return handleApiError(e);
   }

@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,19 +16,23 @@ export async function PUT(request, { params }) {
     const incomeId = parseInt(id);
     const data = await request.json();
 
-    const existing = await prisma.engineeringIncome.findUnique({ where: { id: incomeId } });
+    const existing = await prisma.engineeringIncome.findUnique({
+      where: { id: incomeId },
+      include: { project: { select: { code: true, name: true } } },
+    });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到收款紀錄', 404);
+    await assertEngineeringProjectOpen(existing.projectId);
 
-    const amount = parseFloat(data.amount);
+    const amount      = parseFloat(data.amount);
     const receivedDate = data.receivedDate;
-    const accountId = data.accountId ? parseInt(data.accountId) : null;
+    const accountId   = data.accountId ? parseInt(data.accountId) : null;
+    const termName    = data.termName?.trim() || existing.termName;
 
     await prisma.$transaction(async (tx) => {
-      // Update income record
       await tx.engineeringIncome.update({
         where: { id: incomeId },
         data: {
-          termName: data.termName?.trim() || existing.termName,
+          termName,
           amount,
           receivedDate,
           accountId,
@@ -36,8 +41,8 @@ export async function PUT(request, { params }) {
         },
       });
 
-      // Update linked cash transaction if exists
       if (existing.cashTransactionId) {
+        const description = `工程收款 ${existing.project.code} ${existing.project.name} ${termName}`;
         await tx.cashTransaction.update({
           where: { id: existing.cashTransactionId },
           data: {
@@ -45,6 +50,7 @@ export async function PUT(request, { params }) {
             transactionDate: receivedDate,
             accountId: accountId || existing.accountId,
             accountingSubject: data.accountingSubject?.trim() || '41000 工程收入',
+            description,
             note: data.note?.trim() || null,
           },
         });
@@ -79,14 +85,16 @@ export async function DELETE(request, { params }) {
       where: { id: incomeId },
     });
     if (!income) return createErrorResponse('NOT_FOUND', '找不到收款紀錄', 404);
+    await assertEngineeringProjectOpen(income.projectId);
 
-    // Delete linked cash transaction first
-    if (income.cashTransactionId) {
-      await prisma.cashTransaction.delete({ where: { id: income.cashTransactionId } });
-      if (income.accountId) await recalcBalance(prisma, income.accountId);
-    }
+    await prisma.$transaction(async (tx) => {
+      if (income.cashTransactionId) {
+        await tx.cashTransaction.delete({ where: { id: income.cashTransactionId } });
+      }
+      await tx.engineeringIncome.delete({ where: { id: incomeId } });
+    });
 
-    await prisma.engineeringIncome.delete({ where: { id: incomeId } });
+    if (income.accountId) await recalcBalance(prisma, income.accountId);
     return NextResponse.json({ success: true });
   } catch (e) {
     return handleApiError(e);

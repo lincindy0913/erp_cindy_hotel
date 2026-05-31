@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +31,9 @@ export async function POST(request) {
   if (!auth.ok) return auth.response;
   try {
     const body = await request.json();
-    if (!body.projectId) return NextResponse.json({ error: '請選擇工程案' }, { status: 400 });
-    if (!body.invoiceDate) return NextResponse.json({ error: '請填寫發票日期' }, { status: 400 });
+    if (!body.projectId) return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇工程案', 400);
+    if (!body.invoiceDate) return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫發票日期', 400);
+    await assertEngineeringProjectOpen(body.projectId);
     const amount = parseFloat(body.amount || 0);
     const taxAmount = parseFloat(body.taxAmount || 0);
     const inv = await prisma.engineeringOutputInvoice.create({

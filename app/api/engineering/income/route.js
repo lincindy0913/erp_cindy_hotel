@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,6 @@ export async function GET(request) {
         account: { select: { id: true, name: true, type: true, warehouse: true } },
       },
       orderBy: [{ projectId: 'asc' }, { receivedDate: 'desc' }],
-      take: 500,
     });
 
     return NextResponse.json(incomes.map(i => ({
@@ -57,50 +57,53 @@ export async function POST(request) {
       select: { id: true, code: true, name: true, warehouse: true },
     });
     if (!project) return createErrorResponse('NOT_FOUND', '找不到工程案', 404);
+    await assertEngineeringProjectOpen(projectId);
 
-    const income = await prisma.engineeringIncome.create({
-      data: {
-        projectId,
-        termName: data.termName.trim(),
-        amount,
-        receivedDate: data.receivedDate,
-        accountId,
-        accountingSubject: data.accountingSubject?.trim() || null,
-        note: data.note?.trim() || null,
-      },
-    });
-
-    // Create cash transaction if account is specified
-    if (accountId) {
-      const txNo = await nextCashTransactionNo(prisma, data.receivedDate);
-      const cashTx = await prisma.cashTransaction.create({
+    let incomeId;
+    await prisma.$transaction(async (tx) => {
+      const income = await tx.engineeringIncome.create({
         data: {
-          transactionNo: txNo,
-          transactionDate: data.receivedDate,
-          type: '收入',
-          warehouse: project.warehouse || null,
-          accountId,
+          projectId,
+          termName: data.termName.trim(),
           amount,
-          fee: 0,
-          hasFee: false,
-          accountingSubject: data.accountingSubject?.trim() || '41000 工程收入',
-          description: `工程收款 ${project.code} ${project.name} ${data.termName.trim()}`,
-          sourceType: 'engineering_income',
-          sourceRecordId: income.id,
-          status: '已確認',
+          receivedDate: data.receivedDate,
+          accountId,
+          accountingSubject: data.accountingSubject?.trim() || null,
+          note: data.note?.trim() || null,
         },
       });
+      incomeId = income.id;
 
-      await prisma.engineeringIncome.update({
-        where: { id: income.id },
-        data: { cashTransactionId: cashTx.id },
-      });
+      if (accountId) {
+        const txNo = await nextCashTransactionNo(tx, data.receivedDate);
+        const cashTx = await tx.cashTransaction.create({
+          data: {
+            transactionNo: txNo,
+            transactionDate: data.receivedDate,
+            type: '收入',
+            warehouse: project.warehouse || null,
+            accountId,
+            amount,
+            fee: 0,
+            hasFee: false,
+            accountingSubject: data.accountingSubject?.trim() || '41000 工程收入',
+            description: `工程收款 ${project.code} ${project.name} ${data.termName.trim()}`,
+            sourceType: 'engineering_income',
+            sourceRecordId: income.id,
+            status: '已確認',
+          },
+        });
+        await tx.engineeringIncome.update({
+          where: { id: income.id },
+          data: { cashTransactionId: cashTx.id },
+        });
+      }
+    });
 
-      await recalcBalance(prisma, accountId);
-    }
+    if (accountId) await recalcBalance(prisma, accountId);
 
     const result = await prisma.engineeringIncome.findUnique({
-      where: { id: income.id },
+      where: { id: incomeId },
       include: {
         project: { select: { id: true, code: true, name: true, clientName: true, clientContractAmount: true, warehouse: true } },
         account: { select: { id: true, name: true, type: true, warehouse: true } },

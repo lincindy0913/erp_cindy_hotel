@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,19 +51,10 @@ export async function POST(request) {
     const now = new Date();
 
     const result = await prisma.$transaction(async (tx) => {
-      // Generate PAY-YYYYMMDD-XXXX order number
+      // Generate PAY-YYYYMMDD-XXXX order number（SELECT FOR UPDATE 防競態）
       const dateStr = localDateStr(now).replace(/-/g, '');
       const prefix = `PAY-${dateStr}-`;
-      const existing = await tx.paymentOrder.findMany({
-        where: { orderNo: { startsWith: prefix } },
-        select: { orderNo: true },
-      });
-      let maxSeq = 0;
-      for (const item of existing) {
-        const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
-        if (seq > maxSeq) maxSeq = seq;
-      }
-      const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+      const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', prefix);
 
       const order = await tx.paymentOrder.create({
         data: {
@@ -126,13 +118,8 @@ export async function POST(request) {
             if (qty >= 1) {
               const wh = proj?.warehouse || warehouse;
               const date = localDateStr(now);
-              const reqPrefix = `REQ-${date.replace(/-/g, '')}`;
-              const lastReq = await tx.inventoryRequisition.findFirst({
-                where: { requisitionNo: { startsWith: reqPrefix } },
-                orderBy: { requisitionNo: 'desc' },
-              });
-              const seq = lastReq ? parseInt(lastReq.requisitionNo.slice(-4), 10) + 1 : 1;
-              const requisitionNo = `${reqPrefix}-${String(seq).padStart(4, '0')}`;
+              const reqPrefix = `REQ-${date.replace(/-/g, '')}-`;
+              const requisitionNo = await nextSequence(tx, 'inventoryRequisition', 'requisitionNo', reqPrefix);
               await tx.inventoryRequisition.create({
                 data: {
                   requisitionNo,
@@ -143,6 +130,8 @@ export async function POST(request) {
                   requisitionDate: date,
                   status: '已領用',
                   note: `工程材料領用（工程案 ID: ${matProjectId}）`,
+                  sourceType: 'engineering_material',
+                  sourceRecordId: created.id,
                 },
               });
             }

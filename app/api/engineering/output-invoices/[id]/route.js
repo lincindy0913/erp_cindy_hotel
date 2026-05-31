@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,8 +11,10 @@ export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_EDIT);
   if (!auth.ok) return auth.response;
   try {
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await params; const id = parseInt(rawId, 10);
     const body = await request.json();
+    const existing = await prisma.engineeringOutputInvoice.findUnique({ where: { id }, select: { projectId: true } });
+    if (existing) await assertEngineeringProjectOpen(existing.projectId);
     const amount = parseFloat(body.amount || 0);
     const taxAmount = parseFloat(body.taxAmount || 0);
     const inv = await prisma.engineeringOutputInvoice.update({
@@ -39,7 +42,9 @@ export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_EDIT);
   if (!auth.ok) return auth.response;
   try {
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await params; const id = parseInt(rawId, 10);
+    const existing = await prisma.engineeringOutputInvoice.findUnique({ where: { id }, select: { projectId: true } });
+    if (existing) await assertEngineeringProjectOpen(existing.projectId);
     await prisma.engineeringOutputInvoice.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) { return handleApiError(e); }

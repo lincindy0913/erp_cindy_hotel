@@ -4,13 +4,16 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
+import { nextSequence } from '@/lib/sequence-generator';
+import { serializeMaterial } from '@/lib/engineering-serializers';
 
 export const dynamic = 'force-dynamic';
 
 export async function PUT(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_EDIT);
   if (!auth.ok) return auth.response;
-  const id = parseInt(params.id);
+  const { id: rawId } = await params; const id = parseInt(rawId);
   if (Number.isNaN(id)) return createErrorResponse('BAD_REQUEST', '無效的 ID', 400);
   try {
     const data = await request.json();
@@ -21,6 +24,7 @@ export async function PUT(request, { params }) {
       include: { project: { select: { id: true, warehouse: true, departmentRef: { select: { name: true } } } } },
     });
     if (!oldMaterial) return createErrorResponse('NOT_FOUND', '找不到材料', 404);
+    await assertEngineeringProjectOpen(oldMaterial.projectId);
 
     const material = await prisma.engineeringMaterial.update({
       where: { id },
@@ -46,31 +50,26 @@ export async function PUT(request, { params }) {
       if (diff !== 0 && oldMaterial.project?.warehouse) {
         const product = await prisma.product.findUnique({ where: { id: oldMaterial.productId }, select: { isInStock: true } });
         if (product?.isInStock) {
-          // Find existing requisition for this material
+          // 優先用 sourceRecordId 精確查詢，fallback 到舊 note 比對
           const existingReq = await prisma.inventoryRequisition.findFirst({
-            where: {
-              productId: oldMaterial.productId,
-              warehouse: oldMaterial.project.warehouse,
-              note: { contains: `工程案 ID: ${oldMaterial.projectId}` },
-            },
+            where: oldMaterial.id
+              ? { sourceType: 'engineering_material', sourceRecordId: oldMaterial.id }
+              : {
+                  productId: oldMaterial.productId,
+                  warehouse: oldMaterial.project.warehouse,
+                  note: { contains: `工程案 ID: ${oldMaterial.projectId}` },
+                },
             orderBy: { id: 'desc' },
           });
           if (existingReq) {
-            // Update existing requisition quantity
             await prisma.inventoryRequisition.update({
               where: { id: existingReq.id },
               data: { quantity: newQty },
             });
           } else if (diff > 0) {
-            // Create new requisition for additional quantity
             const date = data.usedAt || oldMaterial.usedAt || todayStr();
-            const prefix = `REQ-${date.replace(/-/g, '')}`;
-            const last = await prisma.inventoryRequisition.findFirst({
-              where: { requisitionNo: { startsWith: prefix } },
-              orderBy: { requisitionNo: 'desc' },
-            });
-            const seq = last ? parseInt(last.requisitionNo.slice(-4), 10) + 1 : 1;
-            const requisitionNo = `${prefix}-${String(seq).padStart(4, '0')}`;
+            const prefix = `REQ-${date.replace(/-/g, '')}-`;
+            const requisitionNo = await nextSequence(prisma, 'inventoryRequisition', 'requisitionNo', prefix);
             await prisma.inventoryRequisition.create({
               data: {
                 requisitionNo,
@@ -81,6 +80,8 @@ export async function PUT(request, { params }) {
                 requisitionDate: date,
                 status: '已領用',
                 note: `工程材料領用（工程案 ID: ${oldMaterial.projectId}）`,
+                sourceType: 'engineering_material',
+                sourceRecordId: oldMaterial.id,
               },
             });
           }
@@ -88,13 +89,7 @@ export async function PUT(request, { params }) {
       }
     }
 
-    return NextResponse.json({
-      ...material,
-      quantity: Number(material.quantity),
-      unitPrice: Number(material.unitPrice),
-      createdAt: material.createdAt.toISOString(),
-      updatedAt: material.updatedAt.toISOString(),
-    });
+    return NextResponse.json(serializeMaterial(material));
   } catch (e) {
     return handleApiError(e);
   }
@@ -103,7 +98,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_EDIT);
   if (!auth.ok) return auth.response;
-  const id = parseInt(params.id);
+  const { id: rawId } = await params; const id = parseInt(rawId);
   if (Number.isNaN(id)) return createErrorResponse('BAD_REQUEST', '無效的 ID', 400);
   try {
     // Fetch material before deletion to clean up inventory
@@ -112,15 +107,19 @@ export async function DELETE(request, { params }) {
       include: { project: { select: { id: true, warehouse: true } } },
     });
     if (!material) return createErrorResponse('NOT_FOUND', '找不到材料', 404);
+    await assertEngineeringProjectOpen(material.projectId);
 
     // Delete associated inventory requisition
-    if (material.productId && material.project?.warehouse) {
+    if (material.productId) {
+      // 優先用 sourceRecordId 精確查詢，fallback 到舊 note 比對
       const existingReq = await prisma.inventoryRequisition.findFirst({
-        where: {
-          productId: material.productId,
-          warehouse: material.project.warehouse,
-          note: { contains: `工程案 ID: ${material.projectId}` },
-        },
+        where: material.id
+          ? { sourceType: 'engineering_material', sourceRecordId: material.id }
+          : {
+              productId: material.productId,
+              warehouse: material.project?.warehouse,
+              note: { contains: `工程案 ID: ${material.projectId}` },
+            },
         orderBy: { id: 'desc' },
       });
       if (existingReq) {

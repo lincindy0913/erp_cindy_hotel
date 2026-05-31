@@ -13,12 +13,26 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr, localDateStr } from '@/lib/localDate';
+import IncomeTab from '@/components/engineering/IncomeTab';
+import MaterialsTab from '@/components/engineering/MaterialsTab';
+import InputInvoicesTab from '@/components/engineering/InputInvoicesTab';
+import OutputInvoicesTab from '@/components/engineering/OutputInvoicesTab';
+import CompanyInvoicesTab from '@/components/engineering/CompanyInvoicesTab';
+import ContractsTab from '@/components/engineering/ContractsTab';
+import ProjectMgmtTab from '@/components/engineering/ProjectMgmtTab';
+import PaymentsTab from '@/components/engineering/PaymentsTab';
 
-const COMPANY_INV_PERIODS = [
-  '113.3-4','113.5-6','113.7-8','113.9-10','113.11-12',
-  '114.1-2','114.3-4','114.5-6','114.7-8','114.9-10','114.11-12',
-  '115.1-2','115.3-4','115.5-6',
-];
+function makeCompanyInvPeriods() {
+  const today = new Date();
+  const minRoc = (today.getFullYear() - 1911) - 2;
+  const maxRoc = (today.getFullYear() - 1911) + 1;
+  const result = [];
+  for (let y = minRoc; y <= maxRoc; y++) {
+    result.push(`${y}.1-2`, `${y}.3-4`, `${y}.5-6`, `${y}.7-8`, `${y}.9-10`, `${y}.11-12`);
+  }
+  return result;
+}
+const COMPANY_INV_PERIODS = makeCompanyInvPeriods();
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -38,7 +52,6 @@ const OUTPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一�
 const OUTPUT_INVOICE_STATUSES = ['已開立', '已作廢'];
 
 const VALID_TAB_KEYS = new Set(TABS.map((t) => t.key));
-const PAY_PAGE_SIZE = 40;
 
 const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
 
@@ -62,59 +75,24 @@ function EngineeringPageInner() {
   const [activeTab, setActiveTab] = useState(() => (VALID_TAB_KEYS.has(tabParam) ? tabParam : 'projects'));
   const [projects, setProjects] = useState([]);
   const [contracts, setContracts] = useState([]);
-  const [materials, setMaterials] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showContractModal, setShowContractModal] = useState(false);
-  const [showMaterialModal, setShowMaterialModal] = useState(false);
   const [showTermModal, setShowTermModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
-  const [editingContract, setEditingContract] = useState(null);
-  const [editingMaterial, setEditingMaterial] = useState(null);
   const [editingTerm, setEditingTerm] = useState(null);
 
   const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
-  const [contractForm, setContractForm] = useState({ projectId: '', supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '', terms: [], materials: [] });
-  const [materialForm, setMaterialForm] = useState({ projectId: '', productId: '', contractId: '', termId: '', description: '', quantity: '', unit: '', unitPrice: '', usedAt: '', note: '' });
   const [termForm, setTermForm] = useState({ termName: '', amount: '', dueDate: '', status: 'pending', paidAt: '', paymentOrderId: '', note: '' });
 
-  // 分業進項 state
-  const [companyInvoices, setCompanyInvoices] = useState([]);
-  const [companyInvLoading, setCompanyInvLoading] = useState(false);
-  const [companyInvProjectFilter, setCompanyInvProjectFilter] = useState('');
-  const [companyInvUpdating, setCompanyInvUpdating] = useState({});
-  const [companyInvPeriodFilter, setCompanyInvPeriodFilter] = useState('');
-  const [companyInvVendorFilter, setCompanyInvVendorFilter] = useState('');
   const [unassignedInvCount, setUnassignedInvCount] = useState(0);
 
-  // 發票 state
-  const [inputInvoices, setInputInvoices] = useState([]);
-  const [outputInvoices, setOutputInvoices] = useState([]);
-  const [invProjectFilter, setInvProjectFilter] = useState('');
-  const [showInputModal, setShowInputModal] = useState(false);
-  const [showOutputModal, setShowOutputModal] = useState(false);
-  const [editingInputInv, setEditingInputInv] = useState(null);
-  const [editingOutputInv, setEditingOutputInv] = useState(null);
-  const [inputInvSaving, setInputInvSaving] = useState(false);
-  const [outputInvSaving, setOutputInvSaving] = useState(false);
-  const emptyInputForm = { projectId: '', contractId: '', supplierName: '', invoiceNo: '', invoiceDate: '', amount: '', taxAmount: '', totalAmount: '', invoiceType: '電子發票', status: '已取得', note: '' };
-  const emptyOutputForm = { projectId: '', clientName: '', invoiceNo: '', invoiceDate: '', amount: '', taxAmount: '', totalAmount: '', invoiceType: '電子發票', status: '已開立', note: '' };
-  const [inputForm, setInputForm] = useState(emptyInputForm);
-  const [outputForm, setOutputForm] = useState(emptyOutputForm);
-
   const [filterProjectId, setFilterProjectId] = useState('');
-  const [mgmtStatusFilter, setMgmtStatusFilter] = useState('進行中'); // 全部/進行中/已結案/暫停
-  const [expandedProjects, setExpandedProjects] = useState(new Set()); // project IDs that are expanded
-  const [mgmtView, setMgmtView] = useState('card'); // 'card' | 'table' | 'supplier'
   const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
   const [paymentOrders, setPaymentOrders] = useState([]);
   /** 儀表板用：全工程案收款累計（不受收款 tab 篩選影響） */
-  const [allIncomesForDash, setAllIncomesForDash] = useState([]);
-  const [allInputInvsForDash, setAllInputInvsForDash] = useState([]);
-  const [allOutputInvsForDash, setAllOutputInvsForDash] = useState([]);
+  const [dashStats, setDashStats] = useState({ totalIncome: 0, totalInputInvoices: 0, totalOutputInvoices: 0, byProject: {} });
 
   // 搜尋篩選
   const [searchDateFrom, setSearchDateFrom] = useState('');
@@ -166,76 +144,6 @@ function EngineeringPageInner() {
     [filteredProjects, engProjKey, engProjDir]
   );
 
-  const { sortKey: engConKey, sortDir: engConDir, toggleSort: engConToggle } = useColumnSort('signDate', 'desc');
-  const sortedContracts = useMemo(
-    () =>
-      sortRows(contracts, engConKey, engConDir, {
-        projectLabel: (c) => `${c.project?.code || ''} ${c.project?.name || ''}`,
-        contractNo: (c) => c.contractNo || '',
-        supplier: (c) => c.supplier?.name || '',
-        totalAmount: (c) => Number(c.totalAmount || 0),
-        conStatus: (c) => (c.status === 'completed' ? '已完成' : '進行中'),
-        signDate: (c) => c.signDate || '',
-      }),
-    [contracts, engConKey, engConDir]
-  );
-
-  // 付款單搜尋篩選
-  const [paySearchDateFrom, setPaySearchDateFrom] = useState('');
-  const [paySearchDateTo, setPaySearchDateTo] = useState('');
-  const [paySearchSupplierId, setPaySearchSupplierId] = useState('');
-  const [paySearchWarehouse, setPaySearchWarehouse] = useState('');
-  const [payTab, setPayTab] = useState('draft'); // 草稿 / pending / executed / rejected
-
-  // 付款單依狀態分組
-  const draftPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '草稿'), [paymentOrders]);
-  const pendingPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '待出納'), [paymentOrders]);
-  const executedPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '已執行'), [paymentOrders]);
-  const rejectedPaymentOrders = useMemo(() => paymentOrders.filter(o => o.status === '已拒絕'), [paymentOrders]);
-
-  const filteredPaymentOrders = useMemo(() => {
-    const statusMap = { draft: '草稿', pending: '待出納', executed: '已執行', rejected: '已拒絕' };
-    const targetStatus = statusMap[payTab];
-    const base = targetStatus ? paymentOrders.filter(o => o.status === targetStatus) : paymentOrders;
-    return base.filter(o => {
-      if (paySearchDateFrom) {
-        const d = (o.createdAt || '').slice(0, 10);
-        if (d < paySearchDateFrom) return false;
-      }
-      if (paySearchDateTo) {
-        const d = (o.createdAt || '').slice(0, 10);
-        if (d > paySearchDateTo) return false;
-      }
-      if (paySearchSupplierId && String(o.supplierId) !== paySearchSupplierId) return false;
-      if (paySearchWarehouse && (o.warehouse || '') !== paySearchWarehouse) return false;
-      return true;
-    });
-  }, [paymentOrders, payTab, paySearchDateFrom, paySearchDateTo, paySearchSupplierId, paySearchWarehouse]);
-
-  const { sortKey: engPayKey, sortDir: engPayDir, toggleSort: engPayToggle } = useColumnSort('orderNo', 'asc');
-  const sortedPaymentOrders = useMemo(
-    () =>
-      sortRows(filteredPaymentOrders, engPayKey, engPayDir, {
-        orderNo: (o) => o.orderNo || '',
-        summary: (o) => o.summary || '',
-        supplierName: (o) => o.supplierName || '',
-        warehouse: (o) => o.warehouse || '',
-        netAmount: (o) => Number(o.netAmount || 0),
-        poStatus: (o) => o.status || '',
-        createdAt: (o) => o.createdAt || '',
-      }),
-    [filteredPaymentOrders, engPayKey, engPayDir]
-  );
-
-  const [payPage, setPayPage] = useState(1);
-  useEffect(() => {
-    setPayPage(1);
-  }, [payTab, paySearchDateFrom, paySearchDateTo, paySearchSupplierId, paySearchWarehouse]);
-
-  const pagedPaymentOrders = useMemo(() => {
-    const start = (payPage - 1) * PAY_PAGE_SIZE;
-    return sortedPaymentOrders.slice(start, start + PAY_PAGE_SIZE);
-  }, [sortedPaymentOrders, payPage]);
 
   const dashboardStats = useMemo(() => {
     const activeProjects = projects.filter((p) => p.status === '進行中').length;
@@ -246,21 +154,29 @@ function EngineeringPageInner() {
     for (const o of paymentOrders) {
       if (o.status === '已執行') paidExecuted += getActualPaid(o);
     }
-    const sumIncome = allIncomesForDash.reduce((s, i) => s + Number(i.amount || 0), 0);
-    const sumInputInvoices = allInputInvsForDash.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-    const sumOutputInvoices = allOutputInvsForDash.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+    const sumIncome         = dashStats.totalIncome;
+    const sumInputInvoices  = dashStats.totalInputInvoices;
+    const sumOutputInvoices = dashStats.totalOutputInvoices;
     const today = todayStr();
     const weekLater = new Date();
     weekLater.setDate(weekLater.getDate() + 7);
     const weekEnd = localDateStr(weekLater);
+    // O(N) 預先建 Map，避免巢狀 O(N×M×K) filter
+    const poByTermId = new Map();
+    for (const po of paymentOrders) {
+      if (po.status !== '已執行') continue;
+      const key = String(po.sourceRecordId);
+      const arr = poByTermId.get(key) || [];
+      arr.push(po);
+      poByTermId.set(key, arr);
+    }
     let overdueTerms = 0;
     let dueThisWeek = 0;
     for (const c of contracts) {
       for (const t of c.terms || []) {
         const amt = Number(t.amount || 0);
         if (amt <= 0) continue;
-        const paid = paymentOrders
-          .filter((po) => String(po.sourceRecordId) === String(t.id) && po.status === '已執行')
+        const paid = (poByTermId.get(String(t.id)) || [])
           .reduce((s, po) => s + getActualPaid(po), 0);
         const remaining = amt - paid;
         if (remaining <= 0.005) continue;
@@ -283,136 +199,11 @@ function EngineeringPageInner() {
       dueThisWeek,
       projectCount: projects.length,
     };
-  }, [projects, contracts, paymentOrders, allIncomesForDash, allInputInvsForDash, allOutputInvsForDash]);
+  }, [projects, contracts, paymentOrders, dashStats]);
 
-  function handlePayPrint() {
-    const rows = sortedPaymentOrders;
-    if (rows.length === 0) return;
-    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const filterInfo = [];
-    if (paySearchDateFrom || paySearchDateTo) filterInfo.push(`日期: ${esc(paySearchDateFrom || '~')} ~ ${esc(paySearchDateTo || '~')}`);
-    if (paySearchWarehouse) filterInfo.push(`館別: ${esc(paySearchWarehouse)}`);
-    if (paySearchSupplierId) { const s = suppliers.find(s => String(s.id) === paySearchSupplierId); filterInfo.push(`廠商: ${esc(s?.name || paySearchSupplierId)}`); }
-    const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>工程付款單</title>
-      <style>body{font-family:'Microsoft JhengHei',sans-serif;padding:20px}
-      table{width:100%;border-collapse:collapse;font-size:12px}
-      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
-      th{background:#f5f5f5;font-weight:600}
-      .right{text-align:right}
-      h2{margin:0 0 4px} .info{color:#666;font-size:12px;margin-bottom:12px}
-      @media print{button{display:none}}</style></head><body>
-      <h2>工程付款單</h2>
-      <div class="info">${filterInfo.length ? filterInfo.join('　') + '<br>' : ''}列印時間: ${esc(new Date().toLocaleString('zh-TW'))}</div>
-      <table><thead><tr>
-        <th>付款單號</th><th>摘要</th><th>廠商</th><th>館別</th><th class="right">金額</th><th>狀態</th><th>建立日期</th>
-      </tr></thead><tbody>`);
-    let total = 0;
-    rows.forEach(o => {
-      const amt = Number(o.netAmount || 0);
-      total += amt;
-      w.document.write(`<tr>
-        <td>${esc(o.orderNo)}</td><td>${esc(o.summary) || '－'}</td><td>${esc(o.supplierName) || '－'}</td>
-        <td>${esc(o.warehouse) || '－'}</td><td class="right">${amt.toLocaleString()}</td><td>${esc(o.status)}</td>
-        <td>${o.createdAt ? esc(new Date(o.createdAt).toLocaleDateString('zh-TW')) : '－'}</td>
-      </tr>`);
-    });
-    w.document.write(`</tbody><tfoot><tr>
-      <td colspan="4" class="right"><strong>合計 (${rows.length} 筆)</strong></td>
-      <td class="right"><strong>${total.toLocaleString()}</strong></td><td colspan="2"></td>
-    </tr></tfoot></table>
-    <button onclick="window.print()" style="margin-top:12px;padding:8px 20px;font-size:14px;cursor:pointer">列印</button>
-    </body></html>`);
-    w.document.close();
-  }
-
-  function handlePayExportExcel() {
-    const rows = sortedPaymentOrders;
-    if (rows.length === 0) return;
-    const csvEsc = (v) => { const s = String(v == null ? '' : v); return `"${s.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`; };
-    const header = ['付款單號', '摘要', '廠商', '館別', '金額', '狀態', '建立日期'];
-    const csvRows = [header.map(csvEsc).join(',')];
-    rows.forEach(o => {
-      csvRows.push([
-        o.orderNo || '',
-        o.summary || '',
-        o.supplierName || '',
-        o.warehouse || '',
-        Number(o.netAmount || 0),
-        o.status || '',
-        o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '',
-      ].map(csvEsc).join(','));
-    });
-    const blob = new Blob(['\uFEFF' + csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `工程付款單_${todayStr()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  const { sortKey: engMatKey, sortDir: engMatDir, toggleSort: engMatToggle } = useColumnSort('usedAt', 'desc');
-  const { sortKey: inputInvKey, sortDir: inputInvDir, toggleSort: inputInvToggle } = useColumnSort('invoiceDate', 'desc');
-  const { sortKey: outputInvKey, sortDir: outputInvDir, toggleSort: outputInvToggle } = useColumnSort('invoiceDate', 'desc');
-  // 計算每個材料的已領用數量（依 projectId + contractId + description/productId 分組）
-  const materialUsedMap = useMemo(() => {
-    const map = {};
-    // 用於辨識同一材料的 key
-    const getMatKey = (m) => `${m.projectId}_${m.contractId || ''}_${m.productId || ''}_${m.description || ''}`;
-    // 先算每個 key 的已領用總量（有 usedAt 的行 = 領用記錄）
-    materials.forEach(m => {
-      if (!m.usedAt) return;
-      const key = getMatKey(m);
-      map[key] = (map[key] || 0) + Number(m.quantity || 0);
-    });
-    return map;
-  }, [materials]);
-
-  function getMaterialUsed(m) {
-    const key = `${m.projectId}_${m.contractId || ''}_${m.productId || ''}_${m.description || ''}`;
-    return materialUsedMap[key] || 0;
-  }
-
-  const sortedMaterials = useMemo(
-    () =>
-      sortRows(materials, engMatKey, engMatDir, {
-        projectCode: (m) => m.project?.code || '',
-        contractNo: (m) => m.contractNo || '',
-        termName: (m) => m.termName || '',
-        itemDesc: (m) =>
-          m.product ? `${m.product.code || ''} ${m.product.name || ''}`.trim() : m.description || '',
-        quantity: (m) => Number(m.quantity || 0),
-        unit: (m) => m.unit || '',
-        unitPrice: (m) => Number(m.unitPrice || 0),
-        subtotal: (m) => Number(m.quantity || 0) * Number(m.unitPrice || 0),
-        usedQty: (m) => m.usedAt ? Number(m.quantity || 0) : getMaterialUsed(m),
-        remaining: (m) => m.usedAt ? 0 : Math.max(0, Number(m.quantity || 0) - getMaterialUsed(m)),
-        usedAt: (m) => m.usedAt || '',
-      }),
-    [materials, engMatKey, engMatDir, materialUsedMap]
-  );
-  const [accounts, setAccounts] = useState([]);
-  const [paymentMethodOptions, setPaymentMethodOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡']);
-  const [showContractUploadModal, setShowContractUploadModal] = useState(false);
-  const [contractForUpload, setContractForUpload] = useState(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [editingPaymentOrder, setEditingPaymentOrder] = useState(null);
-  const [paymentForm, setPaymentForm] = useState({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: '', summary: '', note: '', materials: [] });
-  const [projectSaving, setProjectSaving] = useState(false);
-  const [contractSaving, setContractSaving] = useState(false);
   const [termSaving, setTermSaving] = useState(false);
-  const [materialSaving, setMaterialSaving] = useState(false);
   const [paymentSaving, setPaymentSaving] = useState(false);
 
-  // Income tab state
-  const [incomes, setIncomes] = useState([]);
-  const [incomeSaving, setIncomeSaving] = useState(false);
-  const [showIncomeForm, setShowIncomeForm] = useState(false);
-  const [incomeForm, setIncomeForm] = useState({ projectId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' });
-  const [incomeFilterProjectId, setIncomeFilterProjectId] = useState('');
-  const [editingIncome, setEditingIncome] = useState(null); // { id, form }
-  const [incomeEditSaving, setIncomeEditSaving] = useState(false);
 
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -432,7 +223,7 @@ function EngineeringPageInner() {
   useEffect(() => {
     fetchProjects();
     fetchSuppliers();
-    refreshDashInvoices();
+    refreshDashStats();
     fetch('/api/company-expenses?type=invoice&projectId=null')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setUnassignedInvCount(Array.isArray(data) ? data.length : 0))
@@ -440,60 +231,38 @@ function EngineeringPageInner() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'projects') { fetchContracts(); fetchPaymentOrders(); refreshDashIncomes(); fetchWarehouseDepartments(); }
-    if (activeTab === 'contracts') fetchContracts(filterProjectId || undefined);
-    if (activeTab === 'materials') { fetchMaterials(filterProjectId || undefined); fetchContracts(); fetchProducts(); }
-    if (activeTab === 'projectMgmt') { fetchContracts(); fetchPaymentOrders(); fetchWarehouseDepartments(); }
+    const ctrl = new AbortController();
+    const { signal } = ctrl;
+    if (activeTab === 'projects') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); refreshDashStats(signal); fetchWarehouseDepartments(signal); }
+    if (activeTab === 'contracts') fetchContracts(filterProjectId || undefined, signal);
+    if (activeTab === 'materials') fetchContracts(undefined, signal);
+    if (activeTab === 'projectMgmt') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchWarehouseDepartments(signal); }
     if (activeTab === 'payments') {
-      fetchPaymentOrders();
-      fetchAccounts();
-      fetchContracts();
-      fetch('/api/settings/payment-methods').then(res => res.ok ? res.json() : Promise.reject()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(() => null);
+      fetchPaymentOrders(signal);
+      fetchAccounts(signal);
+      fetchContracts(undefined, signal);
+      fetch('/api/settings/payment-methods', { signal }).then(res => res.ok ? res.json() : Promise.reject()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(e => { if (e?.name !== 'AbortError') console.error(e); });
     }
-    if (activeTab === 'income') {
-      fetchIncomes();
-      fetchAccounts();
-    }
-    if (activeTab === 'inputInvoices') {
-      fetchInputInvoices(invProjectFilter || undefined);
-      if (projects.length === 0) fetchProjects();
-    }
-    if (activeTab === 'outputInvoices') {
-      fetchOutputInvoices(invProjectFilter || undefined);
-      if (projects.length === 0) fetchProjects();
-    }
-    if (activeTab === 'companyInvoices') {
-      fetchCompanyInvoices(companyInvProjectFilter || undefined);
-      if (projects.length === 0) fetchProjects();
-    }
+    return () => ctrl.abort();
   }, [activeTab, filterProjectId]);
 
-  async function fetchProjects() {
+  async function fetchProjects(signal) {
     setLoading(true);
     try {
-      const res = await fetch('/api/engineering/projects');
+      const res = await fetch('/api/engineering/projects', signal ? { signal } : undefined);
       const data = await res.json();
       setProjects(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); setProjects([]); }
+    } catch (e) { if (e?.name !== 'AbortError') { console.error(e); setProjects([]); } }
     setLoading(false);
   }
 
-  async function fetchContracts(projectId) {
+  async function fetchContracts(projectId, signal) {
     try {
       const url = projectId ? `/api/engineering/contracts?projectId=${projectId}` : '/api/engineering/contracts';
-      const res = await fetch(url);
+      const res = await fetch(url, signal ? { signal } : undefined);
       const data = await res.json();
       setContracts(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); setContracts([]); }
-  }
-
-  async function fetchMaterials(projectId) {
-    try {
-      const url = projectId ? `/api/engineering/materials?projectId=${projectId}` : '/api/engineering/materials';
-      const res = await fetch(url);
-      const data = await res.json();
-      setMaterials(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); setMaterials([]); }
+    } catch (e) { if (e?.name !== 'AbortError') { console.error(e); setContracts([]); } }
   }
 
   async function fetchSuppliers() {
@@ -504,252 +273,38 @@ function EngineeringPageInner() {
     } catch { setSuppliers([]); }
   }
 
-  async function fetchProducts() {
+  async function fetchWarehouseDepartments(signal) {
     try {
-      const res = await fetch('/api/products?all=true');
-      const data = await res.json();
-      setProducts(Array.isArray(data) ? data : []);
-    } catch { setProducts([]); }
-  }
-
-  async function fetchWarehouseDepartments() {
-    try {
-      const res = await fetch('/api/warehouse-departments');
+      const res = await fetch('/api/warehouse-departments', signal ? { signal } : undefined);
       const data = await res.json();
       setWarehouseDepartments({ list: data.list || [], byName: data.byName || {} });
-    } catch { setWarehouseDepartments({ list: [], byName: {} }); }
+    } catch (e) { if (e?.name !== 'AbortError') setWarehouseDepartments({ list: [], byName: {} }); }
   }
 
-  async function fetchPaymentOrders() {
+  async function fetchPaymentOrders(signal) {
     try {
-      const res = await fetch('/api/payment-orders?sourceType=engineering');
+      const res = await fetch('/api/payment-orders?sourceType=engineering', signal ? { signal } : undefined);
       const data = await res.json();
       setPaymentOrders(Array.isArray(data) ? data : []);
-    } catch { setPaymentOrders([]); }
+    } catch (e) { if (e?.name !== 'AbortError') setPaymentOrders([]); }
   }
 
-  async function fetchIncomes(projectId) {
+  async function refreshDashStats(signal) {
     try {
-      const pid = projectId !== undefined ? projectId : incomeFilterProjectId;
-      const url = pid ? `/api/engineering/income?projectId=${pid}` : '/api/engineering/income';
-      const res = await fetch(url);
-      const data = await res.json();
-      setIncomes(Array.isArray(data) ? data : []);
-    } catch { setIncomes([]); }
+      const res = await fetch('/api/engineering/dashboard-stats', signal ? { signal } : undefined);
+      if (res.ok) setDashStats(await res.json());
+    } catch (e) { if (e?.name === 'AbortError') return; }
   }
 
-  async function refreshDashIncomes() {
+  async function fetchAccounts(signal) {
     try {
-      const res = await fetch('/api/engineering/income');
-      const data = await res.json();
-      setAllIncomesForDash(Array.isArray(data) ? data : []);
-    } catch {
-      setAllIncomesForDash([]);
-    }
-  }
-
-  async function refreshDashInvoices() {
-    try {
-      const [iRes, oRes] = await Promise.all([
-        fetch('/api/engineering/input-invoices'),
-        fetch('/api/engineering/output-invoices'),
-      ]);
-      if (!iRes.ok || !oRes.ok) throw new Error();
-      const [iData, oData] = await Promise.all([iRes.json(), oRes.json()]);
-      setAllInputInvsForDash(Array.isArray(iData) ? iData : []);
-      setAllOutputInvsForDash(Array.isArray(oData) ? oData : []);
-    } catch {
-      setAllInputInvsForDash([]);
-      setAllOutputInvsForDash([]);
-    }
-  }
-
-  async function handleCreateIncome(e) {
-    e.preventDefault();
-    if (!incomeForm.projectId || !incomeForm.termName || !incomeForm.amount || !incomeForm.receivedDate) {
-      showToast('請填寫工程案、期數名稱、收款金額、收款日期', 'error');
-      return;
-    }
-    setIncomeSaving(true);
-    try {
-      const res = await fetch('/api/engineering/income', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(incomeForm),
-      });
-      const resData = await res.json();
-      if (!res.ok) { showToast(resData.error?.message || '建立失敗', 'error'); return; }
-      showToast('收款紀錄已建立', 'success');
-      setShowIncomeForm(false);
-      setIncomeForm({ projectId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' });
-      fetchIncomes();
-      refreshDashIncomes();
-    } catch { showToast('建立收款紀錄失敗', 'error'); }
-    setIncomeSaving(false);
-  }
-
-  function handleDeleteIncome(id) {
-    askConfirm('確定要刪除此收款紀錄？對應的現金流交易也會一併刪除。', async () => {
-      try {
-        const res = await fetch(`/api/engineering/income/${id}`, { method: 'DELETE' });
-        if (res.ok) { showToast('已刪除', 'success'); fetchIncomes(); refreshDashIncomes(); }
-        else { const err = await res.json(); showToast(err.error?.message || '刪除失敗', 'error'); }
-      } catch { showToast('刪除失敗', 'error'); }
-    });
-  }
-
-  function openEditIncome(inc) {
-    setEditingIncome({
-      id: inc.id,
-      form: {
-        termName: inc.termName || '',
-        amount: String(inc.amount),
-        receivedDate: inc.receivedDate || '',
-        accountId: inc.accountId ? String(inc.accountId) : '',
-        accountingSubject: inc.accountingSubject || '41000 工程收入',
-        note: inc.note || '',
-      },
-    });
-  }
-
-  async function handleUpdateIncome(e) {
-    e.preventDefault();
-    if (!editingIncome) return;
-    setIncomeEditSaving(true);
-    try {
-      const res = await fetch(`/api/engineering/income/${editingIncome.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingIncome.form),
-      });
-      if (res.ok) {
-        showToast('收款紀錄已更新', 'success');
-        setEditingIncome(null);
-        fetchIncomes();
-        refreshDashIncomes();
-      } else {
-        const err = await res.json();
-        showToast(err.error?.message || '更新失敗', 'error');
-      }
-    } catch { showToast('更新失敗', 'error'); }
-    setIncomeEditSaving(false);
-  }
-
-  async function fetchAccounts() {
-    try {
-      const res = await fetch('/api/cashflow/accounts');
+      const res = await fetch('/api/cashflow/accounts', signal ? { signal } : undefined);
       const data = await res.json();
       setAccounts(Array.isArray(data) ? data : []);
-    } catch { setAccounts([]); }
+    } catch (e) { if (e?.name !== 'AbortError') setAccounts([]); }
   }
 
-  async function fetchCompanyInvoices(pid, period) {
-    setCompanyInvLoading(true);
-    try {
-      const params = new URLSearchParams({ type: 'invoice' });
-      if (pid) params.set('projectId', pid);
-      if (period) params.set('period', period);
-      const data = await fetch(`/api/company-expenses?${params}`).then(r => r.ok ? r.json() : Promise.reject(r));
-      setCompanyInvoices(Array.isArray(data) ? data : []);
-    } catch { setCompanyInvoices([]); }
-    finally { setCompanyInvLoading(false); }
-  }
 
-  async function updateInvoiceProject(invoiceId, projectId) {
-    setCompanyInvUpdating(prev => ({ ...prev, [invoiceId]: true }));
-    try {
-      const res = await fetch(`/api/company-expenses/input-invoice/${invoiceId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: projectId ? Number(projectId) : null }),
-      });
-      if (!res.ok) throw new Error();
-      const updated = await res.json();
-      setCompanyInvoices(prev => {
-        const next = prev.map(r => r.id === invoiceId ? { ...r, projectId: updated.projectId, project: updated.project } : r);
-        setUnassignedInvCount(next.filter(r => !r.projectId).length);
-        return next;
-      });
-    } catch {
-      showToast('案件更新失敗', 'error');
-    } finally {
-      setCompanyInvUpdating(prev => ({ ...prev, [invoiceId]: false }));
-    }
-  }
-
-  async function fetchInputInvoices(pid) {
-    try {
-      const url = pid ? `/api/engineering/input-invoices?projectId=${pid}` : '/api/engineering/input-invoices';
-      const data = await fetch(url).then(r => r.ok ? r.json() : Promise.reject(r));
-      setInputInvoices(Array.isArray(data) ? data : []);
-    } catch { setInputInvoices([]); }
-  }
-
-  async function fetchOutputInvoices(pid) {
-    try {
-      const url = pid ? `/api/engineering/output-invoices?projectId=${pid}` : '/api/engineering/output-invoices';
-      const data = await fetch(url).then(r => r.ok ? r.json() : Promise.reject(r));
-      setOutputInvoices(Array.isArray(data) ? data : []);
-    } catch { setOutputInvoices([]); }
-  }
-
-  function calcTotal(form, setForm) {
-    const a = parseFloat(form.amount || 0);
-    const t = parseFloat(form.taxAmount || 0);
-    setForm(f => ({ ...f, totalAmount: String((a + t).toFixed(0)) }));
-  }
-
-  async function saveInputInvoice() {
-    if (!inputForm.projectId) { showToast('請選擇工程案', 'error'); return; }
-    if (!inputForm.invoiceDate) { showToast('請填寫發票日期', 'error'); return; }
-    setInputInvSaving(true);
-    try {
-      const url = editingInputInv ? `/api/engineering/input-invoices/${editingInputInv.id}` : '/api/engineering/input-invoices';
-      const method = editingInputInv ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(inputForm) });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || '儲存失敗', 'error'); return; }
-      showToast(editingInputInv ? '已更新' : '已新增', 'success');
-      setShowInputModal(false);
-      fetchInputInvoices(invProjectFilter || undefined);
-      refreshDashInvoices();
-    } catch { showToast('儲存失敗', 'error'); }
-    finally { setInputInvSaving(false); }
-  }
-
-  async function deleteInputInvoice(inv) {
-    if (!(await confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`, { title: '刪除確認', danger: true }))) return;
-    const res = await fetch(`/api/engineering/input-invoices/${inv.id}`, { method: 'DELETE' });
-    if (!res.ok) { showToast('刪除失敗', 'error'); return; }
-    fetchInputInvoices(invProjectFilter || undefined);
-    refreshDashInvoices();
-  }
-
-  async function saveOutputInvoice() {
-    if (!outputForm.projectId) { showToast('請選擇工程案', 'error'); return; }
-    if (!outputForm.invoiceDate) { showToast('請填寫發票日期', 'error'); return; }
-    setOutputInvSaving(true);
-    try {
-      const url = editingOutputInv ? `/api/engineering/output-invoices/${editingOutputInv.id}` : '/api/engineering/output-invoices';
-      const method = editingOutputInv ? 'PUT' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(outputForm) });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || '儲存失敗', 'error'); return; }
-      showToast(editingOutputInv ? '已更新' : '已新增', 'success');
-      setShowOutputModal(false);
-      fetchOutputInvoices(invProjectFilter || undefined);
-      refreshDashInvoices();
-    } catch { showToast('儲存失敗', 'error'); }
-    finally { setOutputInvSaving(false); }
-  }
-
-  async function deleteOutputInvoice(inv) {
-    if (!(await confirm(`確定刪除發票「${inv.invoiceNo || inv.id}」？`, { title: '刪除確認', danger: true }))) return;
-    const res = await fetch(`/api/engineering/output-invoices/${inv.id}`, { method: 'DELETE' });
-    if (!res.ok) { showToast('刪除失敗', 'error'); return; }
-    fetchOutputInvoices(invProjectFilter || undefined);
-    refreshDashInvoices();
-  }
 
   function openAddProject() {
     setEditingProject(null);
@@ -812,110 +367,12 @@ function EngineeringPageInner() {
     });
   }
 
-  function openAddContract() {
-    setEditingContract(null);
-    setContractForm({
-      projectId: filterProjectId || (projects[0]?.id ? String(projects[0].id) : ''),
-      supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '',
-      terms: [{ termName: '第1期', amount: '', dueDate: '', content: '', note: '' }],
-      materials: [{ materialName: '', quantity: '', amount: '' }],
-    });
-    setShowContractModal(true);
-  }
-
-  function openEditContract(c) {
-    setEditingContract(c);
-    const matList = (c.materials || []).length ? (c.materials || []).map(m => ({
-      materialName: m.description || '', quantity: String(m.quantity ?? ''),
-      amount: String((Number(m.quantity) || 0) * (Number(m.unitPrice) || 0)),
-    })) : [{ materialName: '', quantity: '', amount: '' }];
-    setContractForm({
-      projectId: String(c.projectId), supplierId: String(c.supplierId),
-      contractNo: c.contractNo, totalAmount: String(c.totalAmount ?? ''),
-      signDate: c.signDate || '', content: c.content || '', note: c.note || '',
-      terms: [],
-      materials: matList,
-    });
-    setShowContractModal(true);
-  }
-
-  function addContractMaterialRow() { setContractForm(f => ({ ...f, materials: [...f.materials, { materialName: '', quantity: '', amount: '' }] })); }
-  function removeContractMaterialRow(i) { setContractForm(f => ({ ...f, materials: f.materials.filter((_, idx) => idx !== i) })); }
-  function updateContractMaterial(i, field, value) {
-    setContractForm(f => ({ ...f, materials: f.materials.map((m, idx) => (idx === i ? { ...m, [field]: value } : m)) }));
-  }
-  function openUploadContract(c) { setContractForUpload(c); setShowContractUploadModal(true); }
-  function addContractTermRow() {
-    const existingCount = editingContract ? (editingContract.terms || []).length : 0;
-    const n = existingCount + contractForm.terms.length + 1;
-    setContractForm(f => ({ ...f, terms: [...f.terms, { termName: `第${n}期`, amount: '', dueDate: '', content: '', note: '' }] }));
-  }
-  function removeContractTermRow(i) { setContractForm(f => ({ ...f, terms: f.terms.filter((_, idx) => idx !== i) })); }
-  function updateContractTerm(i, field, value) {
-    setContractForm(f => ({ ...f, terms: f.terms.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)) }));
-  }
-
-  async function saveContract() {
-    if (!contractForm.projectId || !contractForm.supplierId || !contractForm.contractNo?.trim()) { showToast('請填寫工程案、廠商、合約編號', 'error'); return; }
-    if (!contractForm.content?.trim()) { showToast('請填寫合約內容後再存檔', 'error'); return; }
-    if (!contractForm.note?.trim()) { showToast('請填寫備註後再存檔', 'error'); return; }
-    // 驗證期數合計 = 合約總金額
-    const _contractTotal = parseFloat(contractForm.totalAmount) || 0;
-    if (_contractTotal > 0 && contractForm.terms.length > 0) {
-      const _existingSum = editingContract ? (editingContract.terms || []).reduce((s, t) => s + Number(t.amount || 0), 0) : 0;
-      const _newSum = contractForm.terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-      if (Math.abs(_existingSum + _newSum - _contractTotal) > 0.01) {
-        showToast(`期數合計 ${(_existingSum + _newSum).toLocaleString()} 與合約總金額 ${_contractTotal.toLocaleString()} 不符，請修正後再存檔`, 'error');
-        return;
-      }
-    }
-    setContractSaving(true);
-    try {
-      const body = {
-        projectId: parseInt(contractForm.projectId), supplierId: parseInt(contractForm.supplierId),
-        contractNo: contractForm.contractNo.trim(), totalAmount: parseFloat(contractForm.totalAmount) || 0,
-        signDate: contractForm.signDate || null, content: contractForm.content?.trim() || null, note: contractForm.note?.trim() || null,
-        terms: contractForm.terms.map((t, i) => ({
-          termName: t.termName || `第${i + 1}期`, amount: parseFloat(t.amount) || 0,
-          dueDate: t.dueDate || null, content: t.content?.trim() || null, note: t.note?.trim() || null,
-        })).filter(t => t.amount > 0),
-        materials: (contractForm.materials || []).map(m => ({
-          materialName: (m.materialName || '').trim(), quantity: parseFloat(m.quantity) || 0,
-          amount: parseFloat(m.amount) || 0,
-        })).filter(m => m.materialName && m.quantity > 0),
-      };
-      if (editingContract) {
-        const res = await fetch(`/api/engineering/contracts/${editingContract.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractNo: body.contractNo, totalAmount: body.totalAmount, signDate: body.signDate, content: body.content, note: body.note, materials: body.materials }) });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error?.message || '更新失敗'); }
-        // Add new terms (追加款)
-        const newTerms = body.terms.filter(t => t.amount > 0);
-        for (const t of newTerms) {
-          const tRes = await fetch(`/api/engineering/contracts/${editingContract.id}/terms`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t)
-          });
-          if (!tRes.ok) { const d = await tRes.json(); showToast(`追加期數失敗: ${d.error?.message || ''}`, 'error'); }
-        }
-        showToast(newTerms.length > 0 ? `合約已更新，追加 ${newTerms.length} 期` : '合約已更新', 'success');
-      } else {
-        const res = await fetch('/api/engineering/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error?.message || '新增失敗'); }
-        showToast('已新增合約', 'success');
-      }
-      setShowContractModal(false);
-      fetchContracts(filterProjectId || undefined);
-      if (activeTab === 'materials' || !editingContract) fetchMaterials(filterProjectId || undefined);
-    } catch (e) { showToast(e.message || '儲存失敗', 'error'); }
-    finally { setContractSaving(false); }
-  }
-
-  function deleteContract(c) {
-    askConfirm(`確定刪除合約「${c.contractNo}」？`, async () => {
-      try {
-        const res = await fetch(`/api/engineering/contracts/${c.id}`, { method: 'DELETE' });
-        if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '刪除失敗', 'error'); return; }
-        fetchContracts(filterProjectId || undefined);
-      } catch (e) { showToast('刪除失敗', 'error'); }
-    });
+  function openPaymentModal(formData) {
+    const editingId = formData?._editingId || null;
+    const { _editingId, ...cleanForm } = formData || {};
+    setEditingPaymentOrder(editingId ? { id: editingId } : null);
+    setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: todayStr(), summary: '', note: '', materials: [], ...cleanForm });
+    setShowPaymentModal(true);
   }
 
   function openMarkTermPaid(term) {
@@ -951,65 +408,6 @@ function EngineeringPageInner() {
       fetchContracts(filterProjectId || undefined);
     } catch (e) { showToast('更新失敗', 'error'); }
     finally { setTermSaving(false); }
-  }
-
-  function openAddMaterial() {
-    setEditingMaterial(null);
-    setMaterialForm({ projectId: filterProjectId || (projects[0]?.id ? String(projects[0].id) : ''),
-      productId: '', contractId: '', termId: '', description: '', quantity: '', unit: '', unitPrice: '',
-      usedAt: todayStr(), note: '' });
-    setShowMaterialModal(true);
-  }
-
-  function openEditMaterial(m) {
-    setEditingMaterial(m);
-    setMaterialForm({
-      projectId: String(m.projectId), productId: m.productId ? String(m.productId) : '',
-      contractId: m.contractId ? String(m.contractId) : '', termId: m.termId ? String(m.termId) : '',
-      description: m.description || '', quantity: String(m.quantity), unit: m.unit || '',
-      unitPrice: String(m.unitPrice ?? ''), usedAt: m.usedAt || '', note: m.note || '',
-    });
-    setShowMaterialModal(true);
-  }
-
-  async function saveMaterial() {
-    if (!materialForm.projectId || !materialForm.quantity || parseFloat(materialForm.quantity) <= 0) { showToast('請選擇工程案並填寫數量', 'error'); return; }
-    setMaterialSaving(true);
-    try {
-      const body = {
-        projectId: parseInt(materialForm.projectId),
-        productId: materialForm.productId ? parseInt(materialForm.productId) : null,
-        contractId: materialForm.contractId ? parseInt(materialForm.contractId) : null,
-        termId: materialForm.termId ? parseInt(materialForm.termId) : null,
-        description: materialForm.description?.trim() || null, quantity: parseFloat(materialForm.quantity),
-        unit: materialForm.unit?.trim() || null, unitPrice: parseFloat(materialForm.unitPrice) || 0,
-        usedAt: materialForm.usedAt || null, note: materialForm.note?.trim() || null,
-      };
-      if (editingMaterial) {
-        await fetch(`/api/engineering/materials/${editingMaterial.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        showToast('已更新', 'success');
-      } else {
-        await fetch('/api/engineering/materials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        showToast('已新增', 'success');
-      }
-      setShowMaterialModal(false);
-      fetchMaterials(filterProjectId || undefined);
-    } catch (e) { showToast('儲存失敗', 'error'); }
-    finally { setMaterialSaving(false); }
-  }
-
-  async function deleteMaterial(m) {
-    if (!(await confirm('確定刪除此筆材料？', { title: '刪除確認', danger: true }))) return;
-    try {
-      await fetch(`/api/engineering/materials/${m.id}`, { method: 'DELETE' });
-      fetchMaterials(filterProjectId || undefined);
-    } catch (e) { showToast('刪除失敗', 'error'); }
-  }
-
-  function getTermsForContract(contractId) {
-    if (!contractId) return [];
-    const c = contracts.find(x => x.id === parseInt(contractId));
-    return c?.terms || [];
   }
 
   // 列印篩選後的工程案
@@ -1238,1327 +636,59 @@ ${projectRows.map(p => `<tr>
 
         {/* ===== 合約與期數 TAB ===== */}
         {activeTab === 'contracts' && (
-          <>
-            <div className="flex gap-3 mb-4 items-center">
-              <label htmlFor="f-4" className="text-sm text-gray-600">篩選工程案</label>
-              <select id="f-4" value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
-                <option value="">全部</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-              </select>
-              <button onClick={openAddContract} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 新增合約</button>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr>
-                      <SortableTh label="工程案" colKey="projectLabel" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
-                      <SortableTh label="合約編號" colKey="contractNo" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
-                      <SortableTh label="廠商" colKey="supplier" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
-                      <SortableTh label="合約金額" colKey="totalAmount" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="狀態" colKey="conStatus" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
-                      <SortableTh label="簽約日" colKey="signDate" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
-                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">期數／付款</th>
-                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {contracts.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無合約或請選擇工程案</td></tr>
-                    ) : sortedContracts.map(c => {
-                      const hasPaidTerms = (c.terms || []).some(t => t.status === 'paid');
-                      const isCompleted = c.status === 'completed';
-                      return (
-                        <tr key={c.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2">{c.project?.code} {c.project?.name}</td>
-                          <td className="px-4 py-2 font-mono">{c.contractNo}</td>
-                          <td className="px-4 py-2">{c.supplier?.name}</td>
-                          <td className="px-4 py-2 text-right font-medium">{formatNum(c.totalAmount)}</td>
-                          <td className="px-4 py-2">
-                            <span className={`px-2 py-0.5 rounded text-xs ${isCompleted ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {isCompleted ? '已完成' : '進行中'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2">{c.signDate || '－'}</td>
-                          <td className="px-4 py-2">
-                            {(c.terms || []).length > 0 && (
-                            <table className="w-full text-xs border-collapse">
-                              <thead className="sticky top-0 z-10 bg-white">
-                                <tr className="text-gray-400 border-b border-gray-200">
-                                  <th className="text-left py-1 pr-2 font-normal whitespace-nowrap">期別</th>
-                                  <th className="text-right py-1 px-2 font-normal whitespace-nowrap">期款</th>
-                                  <th className="text-right py-1 px-2 font-normal whitespace-nowrap">已付</th>
-                                  <th className="text-right py-1 px-2 font-normal whitespace-nowrap">未付</th>
-                                  <th className="text-center py-1 px-2 font-normal whitespace-nowrap">狀態</th>
-                                  <th className="text-center py-1 pl-2 font-normal whitespace-nowrap">操作</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                              {(c.terms || []).map(t => {
-                                const termMaterials = (c.materials || []).filter(m => m.termId === t.id);
-                                const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
-                                const paidPOs = termPOs.filter(po => po.status === '已執行');
-                                const pendingPOs = termPOs.filter(po => po.status === '待出納');
-                                const paidAmount = paidPOs.reduce((s, po) => s + getActualPaid(po), 0);
-                                const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
-                                const termAmt = Number(t.amount);
-                                const unpaidAmount = Math.max(0, termAmt - paidAmount);
-                                const isFullyPaid = paidAmount >= termAmt && termAmt > 0;
-                                const isPartial = paidAmount > 0 && !isFullyPaid;
-                                const hasDetails = paidPOs.length > 0 || pendingPOs.length > 0 || t.content || t.note || termMaterials.length > 0;
-                                return (
-                                <Fragment key={t.id}>
-                                  <tr className="border-b border-gray-50 hover:bg-gray-50/50">
-                                    <td className="py-1.5 pr-2 font-medium whitespace-nowrap">{t.termName || `第${t.termNo}期`}</td>
-                                    <td className="py-1.5 px-2 text-right whitespace-nowrap">{formatNum(termAmt)}</td>
-                                    <td className={`py-1.5 px-2 text-right whitespace-nowrap ${paidAmount > 0 ? 'text-green-600 font-medium' : 'text-gray-300'}`}>{paidAmount > 0 ? formatNum(paidAmount) : '—'}</td>
-                                    <td className={`py-1.5 px-2 text-right whitespace-nowrap ${isFullyPaid ? 'text-gray-300' : unpaidAmount > 0 ? 'text-amber-600 font-medium' : 'text-gray-300'}`}>{isFullyPaid ? '—' : formatNum(unpaidAmount)}</td>
-                                    <td className="py-1.5 px-2 text-center whitespace-nowrap">
-                                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] leading-tight ${isFullyPaid ? 'bg-green-100 text-green-700' : isPartial ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                                        {isFullyPaid ? '已付清' : isPartial ? '部分' : '待付'}
-                                      </span>
-                                      {pendingAmount > 0 && <span className="inline-block ml-1 px-1.5 py-0.5 rounded text-[10px] leading-tight bg-orange-50 text-orange-500">待出納 {formatNum(pendingAmount)}</span>}
-                                    </td>
-                                    <td className="py-1.5 pl-2 text-center whitespace-nowrap">
-                                      {!isFullyPaid && <button onClick={() => openMarkTermPaid(t)} className="text-amber-600 hover:underline">付款</button>}
-                                      {isFullyPaid && <button onClick={() => openUnmarkTermPaid(t)} className="text-gray-400 hover:text-red-600 hover:underline">取消</button>}
-                                    </td>
-                                  </tr>
-                                  {/* 付款進度條 */}
-                                  {(isPartial || isFullyPaid) && (
-                                    <tr><td colSpan="6" className="pb-1 pt-0">
-                                      <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                                        <div className={`h-full rounded-full ${isFullyPaid ? 'bg-green-400' : 'bg-blue-400'}`} style={{ width: `${Math.min((paidAmount / (termAmt || 1)) * 100, 100)}%` }} />
-                                      </div>
-                                    </td></tr>
-                                  )}
-                                  {/* 付款紀錄展開 */}
-                                  {hasDetails && (
-                                    <tr><td colSpan="6" className="pb-2 pt-0">
-                                      <div className="pl-3 space-y-0.5">
-                                        {paidPOs.map((po, pi) => (
-                                          <div key={pi} className="flex items-center gap-2 text-[11px] text-gray-500">
-                                            <span className="text-green-600">✓</span>
-                                            <span>{po.dueDate || po.createdAt?.slice(0,10) || ''}</span>
-                                            <span className="text-green-600 font-medium">{formatNum(getActualPaid(po))}</span>
-                                            <span className="text-gray-400">{po.paymentMethod || ''}</span>
-                                            {po.paymentNo && <span className="font-mono text-gray-300">{po.paymentNo}</span>}
-                                          </div>
-                                        ))}
-                                        {pendingPOs.map((po, pi) => (
-                                          <div key={`p${pi}`} className="flex items-center gap-2 text-[11px] text-orange-500">
-                                            <span>⏳</span>
-                                            <span>{po.dueDate || ''}</span>
-                                            <span className="font-medium">{formatNum(Number(po.amount))}</span>
-                                            <span className="text-orange-400">待出納</span>
-                                            {po.paymentNo && <span className="font-mono text-orange-300">{po.paymentNo}</span>}
-                                          </div>
-                                        ))}
-                                        {t.content && <div className="text-[11px] text-gray-500">📋 {t.content}</div>}
-                                        {t.note && <div className="text-[11px] text-gray-400">💬 {t.note}</div>}
-                                        {termMaterials.length > 0 && (
-                                          <div className="text-[11px] text-blue-600">
-                                            📦 {termMaterials.map(m => `${m.description || (m.product ? `${m.product.code} ${m.product.name}` : '—')} ×${Number(m.quantity)}`).join('、')}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </td></tr>
-                                  )}
-                                </Fragment>
-                              )})}
-                              </tbody>
-                            </table>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            <button onClick={() => openUploadContract(c)} className="text-blue-600 hover:underline mr-2">上傳</button>
-                            {!isCompleted && <button onClick={() => openEditContract(c)} className="text-amber-600 hover:underline mr-2">編輯</button>}
-                            {!hasPaidTerms && <button onClick={() => deleteContract(c)} className="text-red-600 hover:underline">刪除</button>}
-                            {isCompleted && <span className="text-xs text-gray-400 ml-1">已鎖定</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
+          <ContractsTab
+            projects={projects}
+            suppliers={suppliers}
+            contracts={contracts}
+            paymentOrders={paymentOrders}
+            filterProjectId={filterProjectId}
+            onFilterChange={setFilterProjectId}
+            onMarkTermPaid={openMarkTermPaid}
+            onUnmarkTermPaid={openUnmarkTermPaid}
+            onRefresh={() => fetchContracts(filterProjectId || undefined)}
+            session={session}
+          />
         )}
 
         {/* ===== 專案管理 TAB (含預算追蹤) ===== */}
-        {activeTab === 'projectMgmt' && (() => {
-          // KPI 計算
-          const activeProjects = projects.filter(p => p.status === '進行中');
-          const kpiTotalBudget = projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
-          const kpiTotalContracted = contracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
-          const kpiTotalPaid = contracts.reduce((s, c) =>
-            s + (c.terms || []).reduce((ts, t) => {
-              const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行')
-                .reduce((ps, po) => ps + getActualPaid(po), 0);
-              return ts + paid;
-            }, 0), 0);
-
-          // 狀態篩選
-          const mgmtFiltered = mgmtStatusFilter === '全部'
-            ? projects
-            : projects.filter(p => p.status === mgmtStatusFilter);
-          const statusCounts = { 全部: projects.length, 進行中: 0, 已結案: 0, 暫停: 0 };
-          projects.forEach(p => { if (statusCounts[p.status] !== undefined) statusCounts[p.status]++; });
-
-          return (
-            <div className="space-y-4">
-              {/* KPI Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-                  <p className="text-xs text-gray-500 mb-1">進行中工程案</p>
-                  <p className="text-2xl font-bold text-amber-700">{activeProjects.length}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">共 {projects.length} 件</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-                  <p className="text-xs text-gray-500 mb-1">總預算</p>
-                  <p className="text-lg font-bold text-gray-800">NT$ {formatNum(kpiTotalBudget)}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">含所有工程案</p>
-                </div>
-                <div className="bg-white rounded-xl border border-blue-100 px-4 py-3">
-                  <p className="text-xs text-blue-600 mb-1">合約承諾金額</p>
-                  <p className="text-lg font-bold text-blue-700">NT$ {formatNum(kpiTotalContracted)}</p>
-                  <p className="text-xs text-blue-400 mt-0.5">{kpiTotalBudget > 0 ? `預算使用 ${((kpiTotalContracted / kpiTotalBudget) * 100).toFixed(1)}%` : '－'}</p>
-                </div>
-                <div className="bg-white rounded-xl border border-green-100 px-4 py-3">
-                  <p className="text-xs text-green-600 mb-1">已付款</p>
-                  <p className="text-lg font-bold text-green-700">NT$ {formatNum(kpiTotalPaid)}</p>
-                  <p className="text-xs text-green-400 mt-0.5">{kpiTotalContracted > 0 ? `合約執行 ${((kpiTotalPaid / kpiTotalContracted) * 100).toFixed(1)}%` : '－'}</p>
-                </div>
-              </div>
-
-              {/* 狀態篩選 + 視圖切換 */}
-              <div className="flex items-center justify-between border-b border-gray-200">
-                <div className="flex gap-1">
-                  {['全部', '進行中', '已結案', '暫停'].map(s => (
-                    <button key={s} onClick={() => setMgmtStatusFilter(s)}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${mgmtStatusFilter === s ? 'border-amber-500 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                      {s}
-                      <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${mgmtStatusFilter === s ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>{statusCounts[s] ?? 0}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-1 pb-1">
-                  {[
-                    { key: 'card',     label: '卡片', icon: '⊞' },
-                    { key: 'table',    label: '列表', icon: '☰' },
-                    { key: 'supplier', label: '廠商', icon: '🏭' },
-                  ].map(v => (
-                    <button key={v.key} onClick={() => setMgmtView(v.key)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${mgmtView === v.key ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                      {v.icon} {v.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── 列表視圖 ── */}
-              {mgmtView === 'table' && (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-xs text-gray-500">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">工程案</th>
-                        <th className="px-4 py-3 text-left font-medium">狀態</th>
-                        <th className="px-4 py-3 text-left font-medium">業主 / 館別</th>
-                        <th className="px-4 py-3 text-right font-medium">廠商/期數</th>
-                        <th className="px-4 py-3 text-right font-medium">預算</th>
-                        <th className="px-4 py-3 font-medium" style={{width:'160px'}}>合約/預算</th>
-                        <th className="px-4 py-3 font-medium" style={{width:'160px'}}>已付/合約</th>
-                        <th className="px-4 py-3 text-right font-medium text-blue-600">進項發票</th>
-                        <th className="px-4 py-3 text-right font-medium text-green-600">銷項發票</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {mgmtFiltered.length === 0 ? (
-                        <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無符合條件的工程案</td></tr>
-                      ) : mgmtFiltered.map(proj => {
-                        const pcs = contracts.filter(c => c.projectId === proj.id);
-                        const budget = Number(proj.budget) || 0;
-                        const contracted = pcs.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
-                        const paid = pcs.reduce((s, c) =>
-                          s + (c.terms || []).reduce((ts, t) =>
-                            ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0), 0), 0);
-                        const totalTerms = pcs.reduce((s, c) => s + (c.terms || []).length, 0);
-                        const paidTerms = pcs.reduce((s, c) =>
-                          s + (c.terms || []).filter(t => paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount) && Number(t.amount) > 0).length, 0);
-                        const overBudget = budget > 0 && contracted > budget;
-                        const contractedPct = budget > 0 ? Math.min((contracted / budget) * 100, 100) : 0;
-                        const paidPct = contracted > 0 ? Math.min((paid / contracted) * 100, 100) : 0;
-                        const overdueTerms = pcs.reduce((s, c) =>
-                          s + (c.terms || []).filter(t => {
-                            if (!t.dueDate) return false;
-                            const isPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount);
-                            return !isPaid && t.dueDate < todayStr();
-                          }).length, 0);
-                        const inputInvTotal = allInputInvsForDash.filter(i => i.projectId === proj.id).reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-                        const outputInvTotal = allOutputInvsForDash.filter(i => i.projectId === proj.id).reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-                        const statusStyle = proj.status === '進行中' ? 'bg-blue-100 text-blue-700' : proj.status === '已結案' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
-                        return (
-                          <tr key={proj.id} className={`hover:bg-gray-50 ${overBudget ? 'bg-red-50/30' : ''}`}>
-                            <td className="px-4 py-3">
-                              <Link href={`/engineering/${proj.id}`} className="font-medium text-amber-700 hover:underline">{proj.code}</Link>
-                              <div className="text-xs text-gray-500 truncate max-w-[180px]">{proj.name}</div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle}`}>{proj.status}</span>
-                              {overBudget && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">超支</span>}
-                              {overdueTerms > 0 && <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-orange-100 text-orange-600">逾期 {overdueTerms}</span>}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-500">
-                              <div>{proj.clientName || '—'}</div>
-                              <div>{proj.warehouseRef?.name || proj.warehouse || '—'}</div>
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs">
-                              <div className="text-gray-700">{pcs.length} 家廠商</div>
-                              <div className="text-gray-400">{paidTerms}/{totalTerms} 期</div>
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs text-gray-600">{budget > 0 ? `NT$ ${formatNum(budget)}` : '—'}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                  <div className={`h-full rounded-full ${overBudget ? 'bg-red-500' : contractedPct > 80 ? 'bg-orange-400' : 'bg-amber-400'}`} style={{ width: `${contractedPct || (budget === 0 && contracted > 0 ? 100 : 0)}%` }} />
-                                </div>
-                                <span className={`text-xs whitespace-nowrap ${overBudget ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                                  {budget > 0 ? `${contractedPct.toFixed(0)}%` : `NT$ ${formatNum(contracted)}`}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                  <div className="h-full rounded-full bg-green-500" style={{ width: `${paidPct}%` }} />
-                                </div>
-                                <span className="text-xs text-gray-500 whitespace-nowrap">{paidPct.toFixed(0)}%</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs">
-                              {inputInvTotal > 0 ? (
-                                <button type="button" onClick={() => { setInvProjectFilter(String(proj.id)); switchEngineeringTab('inputInvoices'); }}
-                                  className="text-blue-700 font-medium hover:underline">
-                                  NT$ {formatNum(inputInvTotal)}
-                                </button>
-                              ) : <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs">
-                              {outputInvTotal > 0 ? (
-                                <button type="button" onClick={() => { setInvProjectFilter(String(proj.id)); switchEngineeringTab('outputInvoices'); }}
-                                  className="text-green-700 font-medium hover:underline">
-                                  NT$ {formatNum(outputInvTotal)}
-                                </button>
-                              ) : <span className="text-gray-300">—</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    {mgmtFiltered.length > 0 && (() => {
-                      const tot = mgmtFiltered;
-                      const tBudget = tot.reduce((s, p) => s + (Number(p.budget) || 0), 0);
-                      const tContracts = tot.reduce((s, p) => s + contracts.filter(c => c.projectId === p.id).reduce((cs, c) => cs + Number(c.totalAmount || 0), 0), 0);
-                      const tPaid = tot.reduce((s, p) => s + contracts.filter(c => c.projectId === p.id).reduce((cs, c) =>
-                        cs + (c.terms || []).reduce((ts, t) => ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0), 0), 0), 0);
-                      const tInputInv = tot.reduce((s, p) => s + allInputInvsForDash.filter(i => i.projectId === p.id).reduce((is, i) => is + Number(i.totalAmount || 0), 0), 0);
-                      const tOutputInv = tot.reduce((s, p) => s + allOutputInvsForDash.filter(i => i.projectId === p.id).reduce((is, i) => is + Number(i.totalAmount || 0), 0), 0);
-                      return (
-                        <tfoot className="bg-gray-50 font-semibold text-sm border-t border-gray-200">
-                          <tr>
-                            <td className="px-4 py-3 text-gray-700" colSpan={4}>合計（{tot.length} 件）</td>
-                            <td className="px-4 py-3 text-right text-gray-700">NT$ {formatNum(tBudget)}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">合約 NT$ {formatNum(tContracts)}</td>
-                            <td className="px-4 py-3 text-xs text-green-700">已付 NT$ {formatNum(tPaid)}</td>
-                            <td className="px-4 py-3 text-right text-xs text-blue-700">{tInputInv > 0 ? `NT$ ${formatNum(tInputInv)}` : '—'}</td>
-                            <td className="px-4 py-3 text-right text-xs text-green-700">{tOutputInv > 0 ? `NT$ ${formatNum(tOutputInv)}` : '—'}</td>
-                          </tr>
-                        </tfoot>
-                      );
-                    })()}
-                  </table>
-                </div>
-              )}
-
-              {/* ── 廠商彙整視圖 ── */}
-              {mgmtView === 'supplier' && (() => {
-                // 整合所有廠商在所有篩選後工程案的合約資料
-                const supplierMap = {};
-                for (const proj of mgmtFiltered) {
-                  const pcs = contracts.filter(c => c.projectId === proj.id);
-                  for (const c of pcs) {
-                    const sid = c.supplierId || `_${c.supplier?.name || '未知'}`;
-                    if (!supplierMap[sid]) {
-                      supplierMap[sid] = {
-                        name: c.supplier?.name || '未知廠商',
-                        contracted: 0, paid: 0, totalTerms: 0, paidTerms: 0, overdueTerms: 0,
-                        projects: new Set(), contracts: [],
-                      };
-                    }
-                    const sm = supplierMap[sid];
-                    sm.projects.add(proj.code || proj.name);
-                    const cTotal = Number(c.totalAmount || 0);
-                    const cPaid = (c.terms || []).reduce((ts, t) =>
-                      ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0), 0);
-                    const cPaidTerms = (c.terms || []).filter(t => paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount) && Number(t.amount) > 0).length;
-                    const cOverdue = (c.terms || []).filter(t => {
-                      if (!t.dueDate) return false;
-                      const isPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0) >= Number(t.amount);
-                      return !isPaid && t.dueDate < todayStr();
-                    }).length;
-                    sm.contracted += cTotal;
-                    sm.paid += cPaid;
-                    sm.totalTerms += (c.terms || []).length;
-                    sm.paidTerms += cPaidTerms;
-                    sm.overdueTerms += cOverdue;
-                    sm.contracts.push({ projectCode: proj.code, contractNo: c.contractNo, amount: cTotal, paid: cPaid, terms: c.terms?.length || 0, paidTerms: cPaidTerms, status: c.status });
-                  }
-                }
-                const supplierList = Object.values(supplierMap).sort((a, b) => b.contracted - a.contracted);
-                if (supplierList.length === 0) return <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">尚無廠商資料</div>;
-                return (
-                  <div className="space-y-3">
-                    {supplierList.map((s, i) => {
-                      const paidPct = s.contracted > 0 ? Math.min((s.paid / s.contracted) * 100, 100) : 0;
-                      return (
-                        <div key={i} className={`bg-white rounded-xl border ${s.overdueTerms > 0 ? 'border-orange-200' : 'border-gray-200'} p-4`}>
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold text-gray-800">{s.name}</span>
-                                {s.overdueTerms > 0 && <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-600 font-medium">逾期 {s.overdueTerms} 期</span>}
-                              </div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                參與 {s.projects.size} 個工程案：{[...s.projects].join('、')}
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0 text-sm">
-                              <div className="font-semibold text-gray-800">NT$ {formatNum(s.contracted)}</div>
-                              <div className="text-xs text-green-600">已付 NT$ {formatNum(s.paid)}</div>
-                              <div className="text-xs text-gray-400">{s.paidTerms}/{s.totalTerms} 期完成</div>
-                            </div>
-                          </div>
-                          {/* 付款進度條 */}
-                          <div className="mt-3">
-                            <div className="flex justify-between text-xs text-gray-400 mb-1">
-                              <span>付款進度</span>
-                              <span>{paidPct.toFixed(1)}%</span>
-                            </div>
-                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full bg-green-400" style={{ width: `${paidPct}%` }} />
-                            </div>
-                          </div>
-                          {/* 合約明細 */}
-                          <div className="mt-3 space-y-1">
-                            {s.contracts.map((c, j) => (
-                              <div key={j} className="flex items-center gap-3 text-xs text-gray-600 bg-gray-50 rounded px-3 py-1.5">
-                                <span className="text-gray-400 font-mono">{c.projectCode}</span>
-                                <span className="font-mono text-gray-500">{c.contractNo}</span>
-                                <span className="ml-auto text-gray-700">NT$ {formatNum(c.amount)}</span>
-                                <span className="text-green-600">已付 {formatNum(c.paid)}</span>
-                                <span className={`px-1.5 py-0.5 rounded ${c.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{c.paidTerms}/{c.terms} 期</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {/* 廠商合計 */}
-                    <div className="bg-gray-50 rounded-xl border border-gray-200 px-4 py-3 flex justify-between text-sm font-semibold text-gray-700">
-                      <span>共 {supplierList.length} 家廠商</span>
-                      <span>合約 NT$ {formatNum(supplierList.reduce((s, v) => s + v.contracted, 0))}　已付 NT$ {formatNum(supplierList.reduce((s, v) => s + v.paid, 0))}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ── 卡片視圖 ── */}
-              {mgmtView === 'card' && mgmtFiltered.length === 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">尚無符合條件的工程案</div>
-              )}
-              {mgmtView === 'card' && mgmtFiltered.map(proj => {
-                const projContracts = contracts.filter(c => c.projectId === proj.id);
-                const budget = Number(proj.budget) || 0;
-                const totalContracted = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
-                const totalPaid = projContracts.reduce((s, c) =>
-                  s + (c.terms || []).reduce((ts, t) => {
-                    return ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行')
-                      .reduce((ps, po) => ps + getActualPaid(po), 0);
-                  }, 0), 0);
-                const totalTerms = projContracts.reduce((s, c) => s + (c.terms || []).length, 0);
-                const paidTerms = projContracts.reduce((s, c) =>
-                  s + (c.terms || []).filter(t => {
-                    const p = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0);
-                    return p >= Number(t.amount) && Number(t.amount) > 0;
-                  }).length, 0);
-
-                const overBudget = budget > 0 && totalContracted > budget;
-                const contractedPct = budget > 0 ? Math.min((totalContracted / budget) * 100, 100) : 0;
-                const paidOfContractedPct = totalContracted > 0 ? Math.min((totalPaid / totalContracted) * 100, 100) : 0;
-                const isExpanded = expandedProjects.has(proj.id);
-                const statusStyle = proj.status === '進行中' ? 'bg-blue-100 text-blue-700' : proj.status === '已結案' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
-
-                return (
-                  <div key={proj.id} className={`bg-white rounded-xl border ${overBudget ? 'border-red-300' : 'border-gray-200'} overflow-hidden`}>
-                    {/* 卡片標題列 */}
-                    <button
-                      className="w-full px-5 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors text-left"
-                      onClick={() => setExpandedProjects(prev => {
-                        const next = new Set(prev);
-                        next.has(proj.id) ? next.delete(proj.id) : next.add(proj.id);
-                        return next;
-                      })}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle}`}>{proj.status}</span>
-                          {overBudget && <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">超支</span>}
-                          <span className="font-semibold text-gray-800">{proj.code} {proj.name}</span>
-                          <Link href={`/engineering/${proj.id}`} onClick={e => e.stopPropagation()} className="text-xs text-amber-600 hover:underline ml-1">詳情</Link>
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
-                          {proj.clientName && <span>業主：{proj.clientName}</span>}
-                          {(proj.warehouseRef?.name || proj.warehouse) && <span>館別：{proj.warehouseRef?.name || proj.warehouse}</span>}
-                          {proj.startDate && <span>{proj.startDate}{proj.endDate ? ` ～ ${proj.endDate}` : ''}</span>}
-                          <span>{projContracts.length} 家廠商・{totalTerms} 個期數</span>
-                        </div>
-                      </div>
-
-                      {/* 預算/付款摘要 + 進度條 */}
-                      <div className="hidden md:block w-72 shrink-0 text-right space-y-2">
-                        {budget > 0 && (
-                          <div>
-                            <div className="flex justify-between text-xs text-gray-500 mb-0.5">
-                              <span className={overBudget ? 'text-red-600 font-medium' : ''}>合約 {formatNum(totalContracted)}</span>
-                              <span>預算 {formatNum(budget)}</span>
-                            </div>
-                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-red-500' : contractedPct > 80 ? 'bg-orange-400' : 'bg-amber-500'}`}
-                                style={{ width: `${contractedPct}%` }} />
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <div className="flex justify-between text-xs text-gray-500 mb-0.5">
-                            <span className="text-green-700">已付 {formatNum(totalPaid)}</span>
-                            <span>{paidTerms}/{totalTerms} 期完成</span>
-                          </div>
-                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${paidOfContractedPct}%` }} />
-                          </div>
-                        </div>
-                      </div>
-
-                      <span className="text-gray-400 text-sm mt-1 shrink-0">{isExpanded ? '▲' : '▼'}</span>
-                    </button>
-
-                    {/* 展開：合約明細 */}
-                    {isExpanded && (
-                      <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/50">
-                        {projContracts.length === 0 ? (
-                          <p className="text-sm text-gray-400">尚無合約</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {projContracts.map(c => {
-                              const terms = c.terms || [];
-                              const cPaid = terms.reduce((ts, t) =>
-                                ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0), 0);
-                              const cPaidTerms = terms.filter(t => {
-                                const p = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0);
-                                return p >= Number(t.amount) && Number(t.amount) > 0;
-                              }).length;
-                              const cTotal = Number(c.totalAmount || 0);
-                              const cPaidPct = cTotal > 0 ? Math.min((cPaid / cTotal) * 100, 100) : 0;
-
-                              return (
-                                <div key={c.id} className="bg-white rounded-lg border border-gray-200 p-3">
-                                  <div className="flex items-center justify-between gap-4 mb-2">
-                                    <div>
-                                      <span className="font-medium text-gray-800 text-sm">{c.supplier?.name}</span>
-                                      <span className="ml-2 text-xs text-gray-400 font-mono">{c.contractNo}</span>
-                                      <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${c.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                        {c.status === 'completed' ? '已完成' : '進行中'}
-                                      </span>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                      <div className="text-sm font-semibold text-gray-800">NT$ {formatNum(cTotal)}</div>
-                                      <div className="text-xs text-gray-400">{cPaidTerms}/{terms.length} 期・已付 {formatNum(cPaid)}</div>
-                                    </div>
-                                  </div>
-                                  {/* 付款進度條 */}
-                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
-                                    <div className="h-full rounded-full bg-green-400 transition-all" style={{ width: `${cPaidPct}%` }} />
-                                  </div>
-                                  {/* 期數 pills */}
-                                  {terms.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 mt-2">
-                                      {terms.map(t => {
-                                        const tPaid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0);
-                                        const isFullyPaid = tPaid >= Number(t.amount) && Number(t.amount) > 0;
-                                        const hasPending = paymentOrders.some(po => po.sourceRecordId === t.id && po.status === '待出納');
-                                        return (
-                                          <span key={t.id} className={`px-2 py-0.5 rounded text-xs font-medium ${isFullyPaid ? 'bg-green-100 text-green-700' : hasPending ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}
-                                            title={`${t.termName}：NT$ ${formatNum(t.amount)}${t.dueDate ? `  到期：${t.dueDate}` : ''}`}>
-                                            {t.termName || `第${t.sortOrder ?? '？'}期`}
-                                            {isFullyPaid ? ' ✓' : hasPending ? ' ⏳' : ''}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
+        {activeTab === 'projectMgmt' && (
+          <ProjectMgmtTab
+            projects={projects}
+            contracts={contracts}
+            paymentOrders={paymentOrders}
+            warehouseDepartments={warehouseDepartments}
+            dashStats={dashStats}
+            onMarkTermPaid={openMarkTermPaid}
+            onUnmarkTermPaid={openUnmarkTermPaid}
+            onOpenPaymentModal={openPaymentModal}
+            onSwitchTab={switchEngineeringTab}
+          />
+        )}
 
         {/* ===== 付款單 TAB ===== */}
         {activeTab === 'payments' && (
-          <>
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
-                <p className="text-xs text-gray-500">草稿</p>
-                <p className="text-xl font-bold text-gray-700">{draftPaymentOrders.length}</p>
-                <p className="text-xs text-gray-400">NT$ {draftPaymentOrders.reduce((s, o) => s + Number(o.netAmount || 0), 0).toLocaleString()}</p>
-              </div>
-              <div className="bg-white rounded-lg border border-yellow-200 px-4 py-3">
-                <p className="text-xs text-yellow-600">待出納</p>
-                <p className="text-xl font-bold text-yellow-700">{pendingPaymentOrders.length}</p>
-                <p className="text-xs text-yellow-500">NT$ {pendingPaymentOrders.reduce((s, o) => s + Number(o.netAmount || 0), 0).toLocaleString()}</p>
-              </div>
-              <div className="bg-white rounded-lg border border-green-200 px-4 py-3">
-                <p className="text-xs text-green-600">已執行</p>
-                <p className="text-xl font-bold text-green-700">{executedPaymentOrders.length}</p>
-                <p className="text-xs text-green-500">NT$ {executedPaymentOrders.reduce((s, o) => s + Number(o.netAmount || 0), 0).toLocaleString()}</p>
-              </div>
-              <div className="bg-white rounded-lg border border-red-200 px-4 py-3">
-                <p className="text-xs text-red-500">已拒絕</p>
-                <p className="text-xl font-bold text-red-600">{rejectedPaymentOrders.length}</p>
-                <p className="text-xs text-red-400">NT$ {rejectedPaymentOrders.reduce((s, o) => s + Number(o.netAmount || 0), 0).toLocaleString()}</p>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mb-4 items-center flex-wrap">
-              <button onClick={() => { setEditingPaymentOrder(null); setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: todayStr(), summary: '', note: '', materials: [] }); setShowPaymentModal(true);}} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 建立付款單</button>
-              <Link href="/cashier" className="text-sm text-amber-600 hover:underline">→ 至出納執行付款</Link>
-              <div className="ml-auto flex gap-2">
-                <button onClick={handlePayPrint} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-600 hover:bg-gray-100 border border-gray-300">🖨 列印</button>
-                <button onClick={handlePayExportExcel} className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-green-700 hover:bg-green-50 border border-green-300">📥 匯出 CSV（Excel 可開）</button>
-              </div>
-            </div>
-
-            {/* 搜尋篩選 */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-                <div>
-                  <label htmlFor="f-5" className="block text-xs text-gray-500 mb-1">建立日期起</label>
-                  <input id="f-5" type="date" value={paySearchDateFrom} onChange={e => setPaySearchDateFrom(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
-                </div>
-                <div>
-                  <label htmlFor="f-6" className="block text-xs text-gray-500 mb-1">建立日期迄</label>
-                  <input id="f-6" type="date" value={paySearchDateTo} onChange={e => setPaySearchDateTo(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
-                </div>
-                <div>
-                  <label htmlFor="f-7" className="block text-xs text-gray-500 mb-1">館別</label>
-                  <select id="f-7" value={paySearchWarehouse} onChange={e => setPaySearchWarehouse(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
-                    <option value="">全部館別</option>
-                    {(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-23" className="block text-xs text-gray-500 mb-1">廠商</label>
-                  <select id="f-23" value={paySearchSupplierId} onChange={e => setPaySearchSupplierId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
-                    <option value="">全部廠商</option>
-                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <button onClick={() => { setPaySearchDateFrom(''); setPaySearchDateTo(''); setPaySearchSupplierId(''); setPaySearchWarehouse(''); }}
-                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">清除</button>
-                </div>
-              </div>
-            </div>
-
-            {/* 狀態分頁 Tabs */}
-            <div className="flex gap-1 mb-4 border-b border-gray-200">
-              {[
-                { key: 'draft',    label: '草稿',  count: draftPaymentOrders.length,    color: 'text-gray-700',   active: 'border-gray-600 text-gray-800' },
-                { key: 'pending',  label: '待出納', count: pendingPaymentOrders.length,  color: 'text-yellow-700', active: 'border-yellow-500 text-yellow-700' },
-                { key: 'executed', label: '已執行', count: executedPaymentOrders.length, color: 'text-green-700',  active: 'border-green-600 text-green-700' },
-                { key: 'rejected', label: '已拒絕', count: rejectedPaymentOrders.length, color: 'text-red-600',    active: 'border-red-500 text-red-600' },
-              ].map(t => (
-                <button key={t.key} onClick={() => setPayTab(t.key)}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${payTab === t.key ? t.active + ' border-b-2' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                  {t.label}
-                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-semibold ${payTab === t.key ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>{t.count}</span>
-                </button>
-              ))}
-              <span className="ml-auto text-xs text-gray-400 self-center">共 {filteredPaymentOrders.length} 筆</span>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0 z-10"><tr>
-                    <SortableTh label="付款單號" colKey="orderNo" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
-                    <SortableTh label="摘要" colKey="summary" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
-                    <SortableTh label="廠商" colKey="supplierName" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
-                    <SortableTh label="館別" colKey="warehouse" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
-                    <SortableTh label="金額" colKey="netAmount" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" align="right" />
-                    <SortableTh label="狀態" colKey="poStatus" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
-                    <SortableTh label="建立日期" colKey="createdAt" sortKey={engPayKey} sortDir={engPayDir} onSort={engPayToggle} className="px-4 py-2" />
-                    <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
-                  </tr></thead>
-                  <tbody className="divide-y">
-                    {sortedPaymentOrders.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">
-                        {payTab === 'draft' ? '目前無草稿付款單' : payTab === 'pending' ? '目前無待出納的付款單' : payTab === 'executed' ? '目前無已執行的付款單' : '目前無已拒絕的付款單'}
-                      </td></tr>
-                    ) : pagedPaymentOrders.map(o => {
-                      const isExecuted = o.status === '已執行';
-                      const isDraft = o.status === '草稿';
-                      const isPending = o.status === '待出納';
-                      const isRejected = o.status === '已拒絕';
-                      const statusColor = isExecuted ? 'bg-green-100 text-green-700' : isPending ? 'bg-yellow-100 text-yellow-800' : isRejected ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700';
-                      return (
-                        <tr key={o.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 font-mono">{o.orderNo}</td>
-                          <td className="px-4 py-2">{o.summary || '－'}</td>
-                          <td className="px-4 py-2">{o.supplierName || '－'}</td>
-                          <td className="px-4 py-2">{o.warehouse || '－'}</td>
-                          <td className="px-4 py-2 text-right font-medium">{formatNum(o.netAmount)}</td>
-                          <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor}`}>{o.status}</span></td>
-                          <td className="px-4 py-2 text-sm text-gray-500">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('zh-TW') : '－'}</td>
-                          <td className="px-4 py-2 text-center">
-                            {isExecuted ? (
-                              <span className="text-xs text-gray-400">已執行</span>
-                            ) : isPending ? (
-                              <div className="flex items-center justify-center gap-2">
-                                <Link href="/cashier" className="text-amber-600 hover:underline text-xs whitespace-nowrap">→ 至出納</Link>
-                                <button onClick={() => {
-                                  setEditingPaymentOrder(o);
-                                  setPaymentForm({
-                                    projectId: '', termId: o.sourceRecordId ? String(o.sourceRecordId) : '', contractId: '',
-                                    supplierId: o.supplierId ? String(o.supplierId) : '', supplierName: o.supplierName || '',
-                                    amount: String(o.amount || o.netAmount), netAmount: String(o.netAmount),
-                                    paymentMethod: o.paymentMethod || '轉帳', accountId: o.accountId ? String(o.accountId) : '',
-                                    dueDate: o.dueDate || '', summary: o.summary || '', note: o.note || '',
-                                    materials: [],
-                                  });
-                                  setShowPaymentModal(true);
-                                }} className="text-amber-600 hover:underline text-xs">編輯</button>
-                                <button onClick={async () => {
-                                  if (!(await confirm(`確定要刪除付款單 ${o.orderNo}？`, { title: '刪除確認', danger: true }))) return;
-                                  const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'DELETE' });
-                                  if (res.ok) { showToast('付款單已刪除', 'success'); fetchPaymentOrders(); }
-                                  else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '刪除失敗', 'error'); }
-                                }} className="text-red-500 hover:underline text-xs">刪除</button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-2">
-                                <button onClick={() => {
-                                  setEditingPaymentOrder(o);
-                                  setPaymentForm({
-                                    projectId: '', termId: o.sourceRecordId ? String(o.sourceRecordId) : '', contractId: '',
-                                    supplierId: o.supplierId ? String(o.supplierId) : '', supplierName: o.supplierName || '',
-                                    amount: String(o.amount || o.netAmount), netAmount: String(o.netAmount),
-                                    paymentMethod: o.paymentMethod || '轉帳', accountId: o.accountId ? String(o.accountId) : '',
-                                    dueDate: o.dueDate || '', summary: o.summary || '', note: o.note || '',
-                                    materials: [],
-                                  });
-                                  setShowPaymentModal(true);
-                                }} className="text-amber-600 hover:underline text-xs">編輯</button>
-                                {(isDraft || isRejected) && (
-                                  <button onClick={async () => {
-                                    if (!(await confirm(`確定要將付款單 ${o.orderNo} 送出出納？`, { title: '送出確認', danger: false }))) return;
-                                    const action = isRejected ? 'resubmit' : 'submit';
-                                    const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
-                                    if (res.ok) { showToast('已送出出納', 'success'); fetchPaymentOrders(); setPayTab('pending'); }
-                                    else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '送出失敗', 'error'); }
-                                  }} className="text-blue-600 hover:underline text-xs">送出出納</button>
-                                )}
-                                <button onClick={async () => {
-                                  if (!(await confirm(`確定要刪除付款單 ${o.orderNo}？`, { title: '刪除確認', danger: true }))) return;
-                                  const res = await fetch(`/api/payment-orders/${o.id}`, { method: 'DELETE' });
-                                  if (res.ok) { showToast('付款單已刪除', 'success'); fetchPaymentOrders(); }
-                                  else { const d = await res.json(); showToast((typeof d.error === 'string' ? d.error : d.error?.message) || '刪除失敗', 'error'); }
-                                }} className="text-red-500 hover:underline text-xs">刪除</button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {sortedPaymentOrders.length > PAY_PAGE_SIZE && (
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50/80 text-sm">
-                  <span className="text-gray-600">
-                    第 {(payPage - 1) * PAY_PAGE_SIZE + 1}–{Math.min(payPage * PAY_PAGE_SIZE, sortedPaymentOrders.length)} 筆，共 {sortedPaymentOrders.length} 筆
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={payPage <= 1}
-                      onClick={() => setPayPage((p) => Math.max(1, p - 1))}
-                      className="px-3 py-1 rounded-lg border border-gray-300 bg-white disabled:opacity-40 hover:bg-gray-50"
-                    >
-                      上一頁
-                    </button>
-                    <span className="text-gray-500">
-                      {payPage} / {Math.max(1, Math.ceil(sortedPaymentOrders.length / PAY_PAGE_SIZE))}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={payPage >= Math.ceil(sortedPaymentOrders.length / PAY_PAGE_SIZE)}
-                      onClick={() =>
-                        setPayPage((p) => Math.min(Math.ceil(sortedPaymentOrders.length / PAY_PAGE_SIZE), p + 1))
-                      }
-                      className="px-3 py-1 rounded-lg border border-gray-300 bg-white disabled:opacity-40 hover:bg-gray-50"
-                    >
-                      下一頁
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
+          <PaymentsTab
+            paymentOrders={paymentOrders}
+            projects={projects}
+            suppliers={suppliers}
+            warehouseDepartments={warehouseDepartments}
+            contracts={contracts}
+            onOpenPaymentModal={openPaymentModal}
+            onRefresh={fetchPaymentOrders}
+          />
         )}
 
         {/* ===== 材料使用 TAB ===== */}
-        {activeTab === 'materials' && (
-          <>
-            <div className="flex gap-3 mb-4 items-center">
-              <label htmlFor="f-8" className="text-sm text-gray-600">篩選工程案</label>
-              <select id="f-8" value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
-                <option value="">全部</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-              </select>
-              <button onClick={openAddMaterial} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 新增材料</button>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr>
-                      <SortableTh label="工程案" colKey="projectCode" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
-                      <SortableTh label="合約" colKey="contractNo" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
-                      <SortableTh label="期別" colKey="termName" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
-                      <SortableTh label="品項／說明" colKey="itemDesc" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
-                      <SortableTh label="數量" colKey="quantity" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="單位" colKey="unit" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
-                      <SortableTh label="單價" colKey="unitPrice" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="小計" colKey="subtotal" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="已領用" colKey="usedQty" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="剩餘" colKey="remaining" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" align="right" />
-                      <SortableTh label="使用日" colKey="usedAt" sortKey={engMatKey} sortDir={engMatDir} onSort={engMatToggle} className="px-4 py-2" />
-                      <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {materials.length === 0 ? (
-                      <tr><td colSpan={12} className="px-4 py-8 text-center text-gray-400">尚無材料記錄或請選擇工程案</td></tr>
-                    ) : sortedMaterials.map(m => {
-                      const sub = Number(m.quantity) * Number(m.unitPrice);
-                      return (
-                        <tr key={m.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2">{m.project?.code}</td>
-                          <td className="px-4 py-2 text-gray-600">{m.contractNo || '－'}</td>
-                          <td className="px-4 py-2 text-gray-600">{m.termName || '－'}</td>
-                          <td className="px-4 py-2">{m.product ? `${m.product.code} ${m.product.name}` : (m.description || '－')}</td>
-                          <td className="px-4 py-2 text-right">{formatNum(m.quantity)}</td>
-                          <td className="px-4 py-2">{m.unit || '－'}</td>
-                          <td className="px-4 py-2 text-right">{formatNum(m.unitPrice)}</td>
-                          <td className="px-4 py-2 text-right font-medium">{formatNum(sub)}</td>
-                          <td className="px-4 py-2 text-right">{(() => {
-                            if (m.usedAt) return <span className="text-green-600 font-medium">{formatNum(m.quantity)}</span>;
-                            const used = getMaterialUsed(m);
-                            return used > 0 ? <span className="text-green-600 font-medium">{formatNum(used)}</span> : <span className="text-gray-400">0</span>;
-                          })()}</td>
-                          <td className="px-4 py-2 text-right">{(() => {
-                            if (m.usedAt) return <span className="text-gray-400">—</span>;
-                            const remaining = Math.max(0, Number(m.quantity || 0) - getMaterialUsed(m));
-                            const qty = Number(m.quantity || 0);
-                            return remaining <= 0
-                              ? <span className="text-red-500 font-medium">0</span>
-                              : remaining < qty
-                                ? <span className="text-amber-600 font-medium">{formatNum(remaining)}</span>
-                                : <span className="text-gray-600">{formatNum(remaining)}</span>;
-                          })()}</td>
-                          <td className="px-4 py-2">{m.usedAt || '－'}</td>
-                          <td className="px-4 py-2 text-center">
-                            <button onClick={() => openEditMaterial(m)} className="text-amber-600 hover:underline mr-2">編輯</button>
-                            <button onClick={() => deleteMaterial(m)} className="text-red-600 hover:underline">刪除</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
+        {activeTab === 'materials' && <MaterialsTab projects={projects} contracts={contracts} />}
 
         {/* ===== 收款管理 TAB ===== */}
-        {activeTab === 'income' && (() => {
-          // Group incomes by projectId
-          const incomesByProject = {};
-          incomes.forEach(inc => {
-            const pid = String(inc.projectId);
-            if (!incomesByProject[pid]) incomesByProject[pid] = [];
-            incomesByProject[pid].push(inc);
-          });
-
-          // Only show projects with clientName (業主)
-          const projectsWithClient = projects.filter(p => !!p.clientName);
-          const displayProjects = incomeFilterProjectId
-            ? projectsWithClient.filter(p => String(p.id) === incomeFilterProjectId)
-            : projectsWithClient;
-
-          return (
-            <div>
-              {/* Filter & Add toolbar */}
-              <div className="flex gap-3 mb-5 items-end">
-                <div>
-                  <label htmlFor="f-24" className="block text-xs text-gray-500 mb-1">篩選工程案</label>
-                  <select id="f-24" value={incomeFilterProjectId} onChange={e => { setIncomeFilterProjectId(e.target.value); fetchIncomes(e.target.value); }}
-                    className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
-                    <option value="">全部（有業主）</option>
-                    {projectsWithClient.map(p => <option key={p.id} value={p.id}>{p.code} {p.name} — {p.clientName}</option>)}
-                  </select>
-                </div>
-                <button onClick={() => setShowIncomeForm(f => !f)}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
-                  + 新增收款
-                </button>
-              </div>
-
-              {/* Income Form */}
-              {showIncomeForm && (
-                <form onSubmit={handleCreateIncome} className="bg-green-50 border border-green-200 rounded-xl p-4 mb-5">
-                  <h4 className="text-sm font-semibold text-green-800 mb-3">新增收款紀錄</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div>
-                      <label htmlFor="f-25" className="block text-xs text-gray-500 mb-1">工程案 *</label>
-                      <select id="f-25" value={incomeForm.projectId} onChange={e => setIncomeForm(f => ({ ...f, projectId: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm" required>
-                        <option value="">請選擇</option>
-                        {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="f-26" className="block text-xs text-gray-500 mb-1">期數名稱 *</label>
-                      <input id="f-26" value={incomeForm.termName} onChange={e => setIncomeForm(f => ({ ...f, termName: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：第一期款" required />
-                    </div>
-                    <div>
-                      <label htmlFor="f-27" className="block text-xs text-gray-500 mb-1">收款金額 *</label>
-                      <input id="f-27" type="number" value={incomeForm.amount} onChange={e => setIncomeForm(f => ({ ...f, amount: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" step="0.01" min="0.01" required />
-                    </div>
-                    <div>
-                      <label htmlFor="f-28" className="block text-xs text-gray-500 mb-1">收款日期 *</label>
-                      <input id="f-28" type="date" value={incomeForm.receivedDate} onChange={e => setIncomeForm(f => ({ ...f, receivedDate: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm" required />
-                    </div>
-                    <div>
-                      <label htmlFor="f-9" className="block text-xs text-gray-500 mb-1">收款帳戶</label>
-                      <select id="f-9" value={incomeForm.accountId} onChange={e => setIncomeForm(f => ({ ...f, accountId: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm">
-                        <option value="">請選擇（選擇後自動建立現金流）</option>
-                        {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? `${a.warehouse} - ` : ''}{a.name} ({a.type})</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="f-29" className="block text-xs text-gray-500 mb-1">會計科目</label>
-                      <input id="f-29" value={incomeForm.accountingSubject} onChange={e => setIncomeForm(f => ({ ...f, accountingSubject: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="41000 工程收入" />
-                    </div>
-                    <div className="col-span-2 md:col-span-3">
-                      <label htmlFor="f-30" className="block text-xs text-gray-500 mb-1">備註</label>
-                      <input id="f-30" value={incomeForm.note} onChange={e => setIncomeForm(f => ({ ...f, note: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm" />
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    <button type="submit" disabled={incomeSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50">
-                      {incomeSaving ? '儲存中…' : '儲存收款'}
-                    </button>
-                    <button type="button" onClick={() => setShowIncomeForm(false)} className="px-4 py-2 border rounded-lg text-sm">取消</button>
-                  </div>
-                </form>
-              )}
-
-              {/* Per-project sections */}
-              {displayProjects.length === 0 ? (
-                <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
-                  {projectsWithClient.length === 0 ? '尚無設定業主的工程案，請先在「工程案」分頁設定業主名稱' : '查無符合條件的工程案'}
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  {displayProjects.map(proj => {
-                    const projIncomes = incomesByProject[String(proj.id)] || [];
-                    const contractAmt = Number(proj.clientContractAmount || 0);
-                    const received = projIncomes.reduce((s, i) => s + Number(i.amount), 0);
-                    const remaining = contractAmt - received;
-                    const pct = contractAmt > 0 ? Math.min((received / contractAmt) * 100, 100) : 0;
-
-                    return (
-                      <div key={proj.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                        {/* Project header */}
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200 px-5 py-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-mono bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded">{proj.code}</span>
-                                <span className="font-bold text-gray-900 text-base">{proj.name}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                  proj.status === '進行中' ? 'bg-green-100 text-green-700' :
-                                  proj.status === '已結案' ? 'bg-gray-100 text-gray-500' :
-                                  'bg-amber-100 text-amber-700'
-                                }`}>{proj.status}</span>
-                              </div>
-                              <div className="text-sm text-gray-500">業主：{proj.clientName || '－'}</div>
-                            </div>
-                            {/* KPI summary */}
-                            <div className="flex gap-6 text-sm shrink-0">
-                              <div className="text-right">
-                                <div className="text-xs text-gray-400 mb-0.5">合約金額</div>
-                                <div className="font-semibold text-gray-700">
-                                  {contractAmt > 0 ? `NT$ ${contractAmt.toLocaleString()}` : <span className="text-gray-400 text-xs">未設定</span>}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xs text-gray-400 mb-0.5">已收款 ({projIncomes.length} 筆)</div>
-                                <div className="font-bold text-green-700">NT$ {received.toLocaleString()}</div>
-                              </div>
-                              {contractAmt > 0 && (
-                                <div className="text-right">
-                                  <div className="text-xs text-gray-400 mb-0.5">尚未收款</div>
-                                  <div className={`font-bold ${remaining > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                                    NT$ {remaining.toLocaleString()}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          {/* Progress bar */}
-                          {contractAmt > 0 && (
-                            <div className="mt-3">
-                              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>收款進度</span>
-                                <span>{pct.toFixed(1)}%</span>
-                              </div>
-                              <div className="bg-gray-200 rounded-full h-2">
-                                <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Income records table */}
-                        {projIncomes.length === 0 ? (
-                          <div className="px-5 py-5 text-center text-sm text-gray-400">
-                            此工程案尚無收款紀錄
-                          </div>
-                        ) : (
-                          <table className="w-full text-sm">
-                            <thead className="bg-gray-50 border-b border-gray-100">
-                              <tr>
-                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 w-6">#</th>
-                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">期數 / 品項</th>
-                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款日期</th>
-                                <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500">收款金額</th>
-                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款帳戶</th>
-                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">備註</th>
-                                <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500">現金流</th>
-                                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500">操作</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {projIncomes.map((inc, idx) => {
-                                const isEditing = editingIncome?.id === inc.id;
-                                if (isEditing) {
-                                  return (
-                                    <tr key={inc.id} className="bg-emerald-50">
-                                      <td className="px-5 py-2 text-xs text-gray-400">{idx + 1}</td>
-                                      <td className="px-3 py-2">
-                                        <input value={editingIncome.form.termName}
-                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, termName: e.target.value } }))}
-                                          className="w-full border rounded px-2 py-1 text-sm" />
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <input type="date" value={editingIncome.form.receivedDate}
-                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, receivedDate: e.target.value } }))}
-                                          className="w-full border rounded px-2 py-1 text-sm" />
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <input type="number" value={editingIncome.form.amount}
-                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, amount: e.target.value } }))}
-                                          className="w-full border rounded px-2 py-1 text-sm text-right" />
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <select value={editingIncome.form.accountId}
-                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, accountId: e.target.value } }))}
-                                          className="w-full border rounded px-2 py-1 text-sm">
-                                          <option value="">無帳戶</option>
-                                          {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? a.warehouse + ' - ' : ''}{a.name}</option>)}
-                                        </select>
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <input value={editingIncome.form.note}
-                                          onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, note: e.target.value } }))}
-                                          className="w-full border rounded px-2 py-1 text-sm" placeholder="備註" />
-                                      </td>
-                                      <td className="px-3 py-2 text-center text-xs text-gray-400">—</td>
-                                      <td className="px-3 py-2 text-center">
-                                        <form onSubmit={handleUpdateIncome} className="flex gap-1 justify-center">
-                                          <button type="submit" disabled={incomeEditSaving}
-                                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
-                                            {incomeEditSaving ? '…' : '儲存'}
-                                          </button>
-                                          <button type="button" onClick={() => setEditingIncome(null)}
-                                            className="text-xs px-2 py-1 border rounded hover:bg-gray-50">取消</button>
-                                        </form>
-                                      </td>
-                                    </tr>
-                                  );
-                                }
-                                return (
-                                  <tr key={inc.id} className="hover:bg-green-50/40">
-                                    <td className="px-5 py-3 text-xs text-gray-400">{idx + 1}</td>
-                                    <td className="px-5 py-3">
-                                      <span className="font-semibold text-gray-800">{inc.termName}</span>
-                                    </td>
-                                    <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
-                                    <td className="px-5 py-3 text-right font-bold text-green-700 text-base">
-                                      NT$ {Number(inc.amount).toLocaleString()}
-                                    </td>
-                                    <td className="px-5 py-3 text-gray-500 text-xs">
-                                      {inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}
-                                    </td>
-                                    <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px]">
-                                      {inc.note || <span className="text-gray-300">－</span>}
-                                    </td>
-                                    <td className="px-5 py-3 text-center">
-                                      {inc.cashTransactionId
-                                        ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">已連動</span>
-                                        : <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">無帳戶</span>}
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <button onClick={() => openEditIncome(inc)} className="text-blue-500 hover:text-blue-700 text-xs hover:underline mr-2">編輯</button>
-                                      <button onClick={() => handleDeleteIncome(inc.id)} className="text-red-500 hover:text-red-700 text-xs hover:underline">刪除</button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                            <tfoot className="bg-green-50 border-t border-green-100">
-                              <tr>
-                                <td colSpan={3} className="px-5 py-2.5 text-xs font-semibold text-gray-600">
-                                  共 {projIncomes.length} 筆收款
-                                </td>
-                                <td className="px-5 py-2.5 text-right font-bold text-green-800">
-                                  NT$ {received.toLocaleString()}
-                                </td>
-                                <td colSpan={4} />
-                              </tr>
-                            </tfoot>
-                          </table>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {activeTab === 'income' && <IncomeTab projects={projects} onDashStatsChanged={refreshDashStats} />}
 
       {/* ===== 廠商進項發票 Tab ===== */}
-      {activeTab === 'inputInvoices' && (
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="flex items-center gap-3">
-              <select value={invProjectFilter} onChange={e => { setInvProjectFilter(e.target.value); fetchInputInvoices(e.target.value || undefined); }}
-                className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
-                <option value="">全部工程案</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-              </select>
-              <span className="text-sm text-gray-500">共 {inputInvoices.length} 筆</span>
-            </div>
-            <button onClick={() => { setEditingInputInv(null); setInputForm({ ...emptyInputForm, projectId: invProjectFilter }); setShowInputModal(true); }}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-              + 新增進項發票
-            </button>
-          </div>
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-blue-50 text-xs sticky top-0 z-10">
-                <tr>
-                  <SortableTh label="工程案" colKey="projectCode" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="廠商" colKey="supplierName" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="發票號碼" colKey="invoiceNo" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="發票日期" colKey="invoiceDate" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="未稅金額" colKey="amount" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" align="right" />
-                  <SortableTh label="稅額" colKey="taxAmount" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" align="right" />
-                  <SortableTh label="含稅金額" colKey="totalAmount" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" align="right" />
-                  <SortableTh label="類型" colKey="invoiceType" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="狀態" colKey="status" sortKey={inputInvKey} sortDir={inputInvDir} onSort={inputInvToggle} className="px-3 py-2" />
-                  <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">關聯合約</th>
-                  <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">備註</th>
-                  <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inputInvoices.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center py-10 text-gray-400">尚無進項發票紀錄，請按「新增進項發票」開始登錄</td></tr>
-                ) : sortRows(inputInvoices, inputInvKey, inputInvDir, {
-                    projectCode: inv => `${inv.project?.code || ''} ${inv.project?.name || ''}`,
-                    supplierName: inv => inv.supplierName || inv.contract?.supplier?.name || '',
-                    amount: inv => Number(inv.amount || 0),
-                    taxAmount: inv => Number(inv.taxAmount || 0),
-                    totalAmount: inv => Number(inv.totalAmount || 0),
-                  }).map(inv => (
-                  <tr key={inv.id} className="border-t hover:bg-gray-50">
-                    <td className="px-3 py-2 text-xs text-gray-600">{inv.project?.code} {inv.project?.name}</td>
-                    <td className="px-3 py-2 font-medium">{inv.supplierName || inv.contract?.supplier?.name || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{inv.invoiceNo || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2">{inv.invoiceDate}</td>
-                    <td className="px-3 py-2 text-right">{Number(inv.amount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{Number(inv.taxAmount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-blue-700">{Number(inv.totalAmount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-xs">{inv.invoiceType || '—'}</td>
-                    <td className="px-3 py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === '已入帳' ? 'bg-green-100 text-green-700' : inv.status === '已對帳' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-500">{inv.contract?.contractNo || '—'}</td>
-                    <td className="px-3 py-2 text-xs text-gray-400 max-w-[120px] truncate" title={inv.note || ''}>{inv.note || '—'}</td>
-                    <td className="px-3 py-2 text-center whitespace-nowrap">
-                      <button onClick={() => { setEditingInputInv(inv); setInputForm({ projectId: String(inv.projectId), contractId: inv.contractId ? String(inv.contractId) : '', supplierName: inv.supplierName || '', invoiceNo: inv.invoiceNo || '', invoiceDate: inv.invoiceDate, amount: String(inv.amount), taxAmount: String(inv.taxAmount), totalAmount: String(inv.totalAmount), invoiceType: inv.invoiceType || '電子發票', status: inv.status, note: inv.note || '' }); setShowInputModal(true); }}
-                        className="text-blue-500 hover:underline text-xs mr-2">編輯</button>
-                      <button onClick={() => deleteInputInvoice(inv)} className="text-red-500 hover:underline text-xs">刪除</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              {inputInvoices.length > 0 && (
-                <tfoot className="bg-blue-50 border-t-2 border-blue-100 text-xs font-semibold">
-                  <tr>
-                    <td colSpan={4} className="px-3 py-2">合計 {inputInvoices.length} 筆</td>
-                    <td className="px-3 py-2 text-right">{inputInvoices.reduce((s, i) => s + Number(i.amount), 0).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{inputInvoices.reduce((s, i) => s + Number(i.taxAmount), 0).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-blue-700">{inputInvoices.reduce((s, i) => s + Number(i.totalAmount), 0).toLocaleString('zh-TW')}</td>
-                    <td colSpan={5} />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      )}
+      {activeTab === 'inputInvoices' && <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />}
 
       {/* ===== 業主銷項發票 Tab ===== */}
-      {activeTab === 'outputInvoices' && (
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="flex items-center gap-3">
-              <select value={invProjectFilter} onChange={e => { setInvProjectFilter(e.target.value); fetchOutputInvoices(e.target.value || undefined); }}
-                className="border rounded-lg px-3 py-2 text-sm min-w-[200px]">
-                <option value="">全部工程案</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-              </select>
-              <span className="text-sm text-gray-500">共 {outputInvoices.length} 筆</span>
-            </div>
-            <button onClick={() => { setEditingOutputInv(null); setOutputForm({ ...emptyOutputForm, projectId: invProjectFilter }); setShowOutputModal(true); }}
-              className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
-              + 新增銷項發票
-            </button>
-          </div>
-          <div className="bg-white rounded-lg shadow overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-green-50 text-xs sticky top-0 z-10">
-                <tr>
-                  <SortableTh label="工程案" colKey="projectCode" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="業主名稱" colKey="clientName" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="發票號碼" colKey="invoiceNo" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="發票日期" colKey="invoiceDate" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="未稅金額" colKey="amount" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" align="right" />
-                  <SortableTh label="稅額" colKey="taxAmount" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" align="right" />
-                  <SortableTh label="含稅金額" colKey="totalAmount" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" align="right" />
-                  <SortableTh label="類型" colKey="invoiceType" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
-                  <SortableTh label="狀態" colKey="status" sortKey={outputInvKey} sortDir={outputInvDir} onSort={outputInvToggle} className="px-3 py-2" />
-                  <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">備註</th>
-                  <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outputInvoices.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center py-10 text-gray-400">尚無銷項發票紀錄，請按「新增銷項發票」開始登錄</td></tr>
-                ) : sortRows(outputInvoices, outputInvKey, outputInvDir, {
-                    projectCode: inv => `${inv.project?.code || ''} ${inv.project?.name || ''}`,
-                    clientName: inv => inv.clientName || inv.project?.clientName || '',
-                    amount: inv => Number(inv.amount || 0),
-                    taxAmount: inv => Number(inv.taxAmount || 0),
-                    totalAmount: inv => Number(inv.totalAmount || 0),
-                  }).map(inv => (
-                  <tr key={inv.id} className="border-t hover:bg-gray-50">
-                    <td className="px-3 py-2 text-xs text-gray-600">{inv.project?.code} {inv.project?.name}</td>
-                    <td className="px-3 py-2 font-medium">{inv.clientName || inv.project?.clientName || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{inv.invoiceNo || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-2">{inv.invoiceDate}</td>
-                    <td className="px-3 py-2 text-right">{Number(inv.amount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{Number(inv.taxAmount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-green-700">{Number(inv.totalAmount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-xs">{inv.invoiceType || '—'}</td>
-                    <td className="px-3 py-2">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === '已作廢' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-gray-400 max-w-[120px] truncate" title={inv.note || ''}>{inv.note || '—'}</td>
-                    <td className="px-3 py-2 text-center whitespace-nowrap">
-                      <button onClick={() => { setEditingOutputInv(inv); setOutputForm({ projectId: String(inv.projectId), clientName: inv.clientName || '', invoiceNo: inv.invoiceNo || '', invoiceDate: inv.invoiceDate, amount: String(inv.amount), taxAmount: String(inv.taxAmount), totalAmount: String(inv.totalAmount), invoiceType: inv.invoiceType || '電子發票', status: inv.status, note: inv.note || '' }); setShowOutputModal(true); }}
-                        className="text-blue-500 hover:underline text-xs mr-2">編輯</button>
-                      <button onClick={() => deleteOutputInvoice(inv)} className="text-red-500 hover:underline text-xs">刪除</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              {outputInvoices.length > 0 && (
-                <tfoot className="bg-green-50 border-t-2 border-green-100 text-xs font-semibold">
-                  <tr>
-                    <td colSpan={4} className="px-3 py-2">合計 {outputInvoices.length} 筆</td>
-                    <td className="px-3 py-2 text-right">{outputInvoices.reduce((s, i) => s + Number(i.amount), 0).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{outputInvoices.reduce((s, i) => s + Number(i.taxAmount), 0).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-green-700">{outputInvoices.reduce((s, i) => s + Number(i.totalAmount), 0).toLocaleString('zh-TW')}</td>
-                    <td colSpan={4} />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      )}
+      {activeTab === 'outputInvoices' && <OutputInvoicesTab projects={projects} onDashStatsChanged={refreshDashStats} />}
 
       </div>
 
@@ -2599,117 +729,6 @@ ${projectRows.map(p => `<tr>
               <button onClick={() => setShowProjectModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={projectSaving}>取消</button>
               <button onClick={saveProject} disabled={projectSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{projectSaving ? '儲存中…' : '儲存'}</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 合約 Modal ===== */}
-      {showContractModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-4" onClick={() => setShowContractModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 p-6 my-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingContract ? '編輯合約' : '新增合約'}</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-53" className="block text-xs text-gray-500 mb-1">工程案 *</label><select id="f-53" value={contractForm.projectId} onChange={e => setContractForm(f => ({ ...f, projectId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
-                <div><label htmlFor="f-54" className="block text-xs text-gray-500 mb-1">廠商 *</label><select id="f-54" value={contractForm.supplierId} onChange={e => setContractForm(f => ({ ...f, supplierId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-55" className="block text-xs text-gray-500 mb-1">合約編號 *</label><input id="f-55" value={contractForm.contractNo} onChange={e => setContractForm(f => ({ ...f, contractNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract} /></div>
-                <div><label htmlFor="f-56" className="block text-xs text-gray-500 mb-1">合約總金額</label><input id="f-56" type="number" value={contractForm.totalAmount} onChange={e => setContractForm(f => ({ ...f, totalAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-57" className="block text-xs text-gray-500 mb-1">簽約日</label><input id="f-57" type="date" value={contractForm.signDate} onChange={e => setContractForm(f => ({ ...f, signDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div />
-              </div>
-              <div><label htmlFor="f-58" className="block text-xs text-gray-500 mb-1">合約內容 *</label><textarea id="f-58" value={contractForm.content} onChange={e => setContractForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="請填寫合約內容（必填）" /></div>
-              {editingContract && (editingContract.terms || []).length > 0 && (
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">既有期數（至期數列表編輯）</label>
-                  <div className="border rounded-lg overflow-hidden bg-gray-50">
-                    <table className="w-full text-sm"><thead className="bg-gray-100"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">狀態</th></tr></thead><tbody>
-                      {(editingContract.terms || []).map(t => (<tr key={t.id} className="border-t"><td className="px-2 py-1 text-gray-600">{t.termName || `第${t.termNo}期`}</td><td className="px-2 py-1 text-right text-gray-600">{formatNum(t.amount)}</td><td className="px-2 py-1 text-gray-600">{t.dueDate || '—'}</td><td className="px-2 py-1"><span className={`text-xs ${t.status === 'paid' ? 'text-green-600' : 'text-amber-600'}`}>{t.status === 'paid' ? '已付' : '待付'}</span></td></tr>))}
-                    </tbody></table>
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-between items-center"><label className="text-xs text-gray-500">{editingContract ? '追加期數' : '付款期數'}</label><button type="button" onClick={addContractTermRow} className="text-amber-600 text-sm">＋ 新增一期</button></div>
-              {(() => {
-                const newTermSum = contractForm.terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-                const existingTermSum = editingContract ? (editingContract.terms || []).reduce((s, t) => s + Number(t.amount || 0), 0) : 0;
-                const totalTermSum = existingTermSum + newTermSum;
-                const contractTotal = parseFloat(contractForm.totalAmount) || 0;
-                const hasMismatch = contractTotal > 0 && contractForm.terms.length > 0 && Math.abs(totalTermSum - contractTotal) > 0.01;
-                const isMatch = contractTotal > 0 && contractForm.terms.length > 0 && !hasMismatch;
-                return (
-                  <>
-                    <div className={`border rounded-lg overflow-hidden ${hasMismatch ? 'border-red-300' : ''}`}>
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">內容</th><th className="px-2 py-1 text-left">備註</th><th className="w-8" /></tr></thead>
-                        <tbody>
-                          {contractForm.terms.length === 0 ? (
-                            <tr><td colSpan={6} className="px-2 py-3 text-center text-gray-400 text-xs">{editingContract ? '點擊上方「＋ 新增一期」追加期數' : '尚未新增期數'}</td></tr>
-                          ) : contractForm.terms.map((t, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={t.termName} onChange={e => updateContractTerm(i, 'termName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" /></td><td className="px-2 py-1"><input type="number" value={t.amount} onChange={e => updateContractTerm(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" /></td><td className="px-2 py-1"><input type="date" value={t.dueDate} onChange={e => updateContractTerm(i, 'dueDate', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" /></td><td className="px-2 py-1"><input value={t.content || ''} onChange={e => updateContractTerm(i, 'content', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="付款內容" /></td><td className="px-2 py-1"><input value={t.note || ''} onChange={e => updateContractTerm(i, 'note', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="備註" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractTermRow(i)} className="text-red-500">×</button></td></tr>))}
-                        </tbody>
-                        {contractForm.terms.length > 0 && (
-                          <tfoot className={`border-t text-xs font-semibold ${hasMismatch ? 'bg-red-50' : isMatch ? 'bg-green-50' : 'bg-gray-50'}`}>
-                            <tr>
-                              <td className="px-2 py-1.5 text-gray-500">
-                                {editingContract && existingTermSum > 0 ? `追加 ${contractForm.terms.length} 期（含舊計）` : `合計 ${contractForm.terms.length} 期`}
-                              </td>
-                              <td className={`px-2 py-1.5 text-right font-bold ${hasMismatch ? 'text-red-600' : isMatch ? 'text-green-700' : 'text-gray-700'}`}>
-                                {editingContract && existingTermSum > 0
-                                  ? <span title={`舊有 ${existingTermSum.toLocaleString()} ＋ 追加 ${newTermSum.toLocaleString()}`}>{totalTermSum.toLocaleString()}</span>
-                                  : newTermSum.toLocaleString()
-                                }
-                              </td>
-                              <td colSpan={3} className="px-2 py-1.5">
-                                {contractTotal > 0 && (
-                                  <span className={`text-xs ${hasMismatch ? 'text-red-600 font-semibold' : 'text-green-600'}`}>
-                                    {hasMismatch
-                                      ? `⚠ 合約金額 ${contractTotal.toLocaleString()}，差 ${(totalTermSum - contractTotal > 0 ? '+' : '') + (totalTermSum - contractTotal).toLocaleString()}`
-                                      : '✓ 與合約金額相符'}
-                                  </span>
-                                )}
-                              </td>
-                              <td />
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
-                    {hasMismatch && (
-                      <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-                        <span className="text-base leading-none mt-0.5">⚠</span>
-                        <span>
-                          期數金額合計 <strong>{totalTermSum.toLocaleString()}</strong> 與合約總金額 <strong>{contractTotal.toLocaleString()}</strong> 不符（相差 {Math.abs(totalTermSum - contractTotal).toLocaleString()}），請修正後才能存檔。
-                        </span>
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-              <div className="flex justify-between items-center"><label className="text-xs text-gray-500">材料（會連動至「材料使用」TAB）</label><button type="button" onClick={addContractMaterialRow} className="text-amber-600 text-sm">＋ 新增一筆</button></div>
-              <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="px-2 py-1 text-left">材料名稱</th><th className="px-2 py-1 text-right">數量</th><th className="px-2 py-1 text-right">金額</th><th className="w-8" /></tr></thead><tbody>
-                {(contractForm.materials || []).map((m, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={m.materialName} onChange={e => updateContractMaterial(i, 'materialName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="材料名稱" /></td><td className="px-2 py-1"><input type="number" value={m.quantity} onChange={e => updateContractMaterial(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="any" min="0" /></td><td className="px-2 py-1"><input type="number" value={m.amount} onChange={e => updateContractMaterial(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" min="0" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractMaterialRow(i)} className="text-red-500">×</button></td></tr>))}
-              </tbody></table></div>
-              <div><label className="block text-xs text-gray-500 mb-1">備註 *</label><textarea value={contractForm.note} onChange={e => setContractForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="請填寫備註（必填）" /></div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowContractModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={contractSaving}>取消</button>
-              <button onClick={saveContract} disabled={contractSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{contractSaving ? '儲存中…' : '儲存'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 上傳合約附件 Modal ===== */}
-      {showContractUploadModal && contractForUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-4" onClick={() => setShowContractUploadModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-2">上傳合約檔案</h3>
-            <p className="text-sm text-gray-500 mb-4">合約：{contractForUpload.contractNo}（{contractForUpload.supplier?.name}）</p>
-            <AttachmentSection sourceModule="engineering_contract" sourceRecordId={contractForUpload.id} canUpload canDelete userEmail={session?.user?.email || ''} />
-            <div className="mt-4 flex justify-end"><button onClick={() => setShowContractUploadModal(false)} className="px-4 py-2 border rounded-lg text-sm">關閉</button></div>
           </div>
         </div>
       )}
@@ -2943,7 +962,6 @@ ${projectRows.map(p => `<tr>
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error?.message || '建立失敗');
-                    if (materialPayload.length > 0) fetchMaterials(filterProjectId || undefined);
                     setShowPaymentModal(false);
                     fetchPaymentOrders();
                     if (activeTab === 'contracts' || activeTab === 'projectMgmt') fetchContracts(filterProjectId || undefined);
@@ -2957,355 +975,8 @@ ${projectRows.map(p => `<tr>
         </div>
       )}
 
-      {/* ===== 材料 Modal ===== */}
-      {showMaterialModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowMaterialModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingMaterial ? '編輯材料' : '新增材料'}</h3>
-            <div className="space-y-3">
-              <div><label htmlFor="f-72" className="block text-xs text-gray-500 mb-1">工程案 *</label><select id="f-72" value={materialForm.projectId} onChange={e => setMaterialForm(f => ({ ...f, projectId: e.target.value, contractId: '', termId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingMaterial}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-73" className="block text-xs text-gray-500 mb-1">合約（選填）</label><select id="f-73" value={materialForm.contractId} onChange={e => setMaterialForm(f => ({ ...f, contractId: e.target.value, termId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">不關聯合約</option>{contracts.filter(c => !materialForm.projectId || c.projectId === parseInt(materialForm.projectId)).map(c => <option key={c.id} value={c.id}>{c.contractNo} - {c.supplier?.name}</option>)}</select></div>
-                <div><label htmlFor="f-74" className="block text-xs text-gray-500 mb-1">期別（選填）</label><select id="f-74" value={materialForm.termId} onChange={e => setMaterialForm(f => ({ ...f, termId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!materialForm.contractId}><option value="">不關聯期別</option>{getTermsForContract(materialForm.contractId).map(t => <option key={t.id} value={t.id}>{t.termName || `第${t.termNo}期`} ({formatNum(t.amount)})</option>)}</select></div>
-              </div>
-              <div><label htmlFor="f-75" className="block text-xs text-gray-500 mb-1">產品（選填，可改為手動說明）</label><select id="f-75" value={materialForm.productId} onChange={e => setMaterialForm(f => ({ ...f, productId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">手動輸入說明</option>{products.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
-              <div><label htmlFor="f-76" className="block text-xs text-gray-500 mb-1">說明（無產品時填寫）</label><input id="f-76" value={materialForm.description} onChange={e => setMaterialForm(f => ({ ...f, description: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="材料名稱或規格" /></div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><label htmlFor="f-77" className="block text-xs text-gray-500 mb-1">數量 *</label><input id="f-77" type="number" value={materialForm.quantity} onChange={e => setMaterialForm(f => ({ ...f, quantity: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.0001" min="0" /></div>
-                <div><label htmlFor="f-78" className="block text-xs text-gray-500 mb-1">單位</label><input id="f-78" value={materialForm.unit} onChange={e => setMaterialForm(f => ({ ...f, unit: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：式、m²" /></div>
-                <div><label htmlFor="f-79" className="block text-xs text-gray-500 mb-1">單價</label><input id="f-79" type="number" value={materialForm.unitPrice} onChange={e => setMaterialForm(f => ({ ...f, unitPrice: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
-              </div>
-              <div><label htmlFor="f-80" className="block text-xs text-gray-500 mb-1">使用日期</label><input id="f-80" type="date" value={materialForm.usedAt} onChange={e => setMaterialForm(f => ({ ...f, usedAt: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label htmlFor="f-81" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-81" value={materialForm.note} onChange={e => setMaterialForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowMaterialModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={materialSaving}>取消</button>
-              <button onClick={saveMaterial} disabled={materialSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{materialSaving ? '儲存中…' : '儲存'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 廠商進項發票 Modal ===== */}
-      {showInputModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-4" onClick={() => setShowInputModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingInputInv ? '編輯廠商進項發票' : '新增廠商進項發票'}</h3>
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="f-11" className="block text-xs text-gray-500 mb-1">工程案 *</label>
-                <select id="f-11" value={inputForm.projectId} onChange={e => setInputForm(f => ({ ...f, projectId: e.target.value, contractId: '' }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingInputInv}>
-                  <option value="">請選擇</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-31" className="block text-xs text-gray-500 mb-1">關聯合約（選填）</label>
-                <select id="f-31" value={inputForm.contractId} onChange={e => setInputForm(f => ({ ...f, contractId: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm">
-                  <option value="">不關聯合約</option>
-                  {contracts.filter(c => !inputForm.projectId || c.projectId === parseInt(inputForm.projectId)).map(c =>
-                    <option key={c.id} value={c.id}>{c.contractNo} — {c.supplier?.name}</option>
-                  )}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-82" className="block text-xs text-gray-500 mb-1">廠商名稱</label>
-                <input id="f-82" value={inputForm.supplierName} onChange={e => setInputForm(f => ({ ...f, supplierName: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="可由合約帶入或手動輸入" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="f-32" className="block text-xs text-gray-500 mb-1">發票號碼</label>
-                  <input id="f-32" value={inputForm.invoiceNo} onChange={e => setInputForm(f => ({ ...f, invoiceNo: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="AB-12345678" />
-                </div>
-                <div>
-                  <label htmlFor="f-12" className="block text-xs text-gray-500 mb-1">發票日期 *</label>
-                  <input id="f-12" type="date" value={inputForm.invoiceDate} onChange={e => setInputForm(f => ({ ...f, invoiceDate: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label htmlFor="f-13" className="block text-xs text-gray-500 mb-1">未稅金額</label>
-                  <input id="f-13" type="number" value={inputForm.amount} onChange={e => {
-                    const amt = e.target.value;
-                    const tax = parseFloat(inputForm.taxAmount) || 0;
-                    setInputForm(f => ({ ...f, amount: amt, totalAmount: String((parseFloat(amt) || 0) + tax) }));
-                  }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
-                </div>
-                <div>
-                  <label htmlFor="f-14" className="block text-xs text-gray-500 mb-1">稅額</label>
-                  <input id="f-14" type="number" value={inputForm.taxAmount} onChange={e => {
-                    const tax = e.target.value;
-                    const amt = parseFloat(inputForm.amount) || 0;
-                    setInputForm(f => ({ ...f, taxAmount: tax, totalAmount: String(amt + (parseFloat(tax) || 0)) }));
-                  }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
-                </div>
-                <div>
-                  <label htmlFor="f-15" className="block text-xs text-gray-500 mb-1">含稅金額</label>
-                  <input id="f-15" type="number" value={inputForm.totalAmount} onChange={e => setInputForm(f => ({ ...f, totalAmount: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-blue-50" step="1" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => {
-                  const amt = parseFloat(inputForm.amount) || 0;
-                  const tax = Math.round(amt * 0.05);
-                  setInputForm(f => ({ ...f, taxAmount: String(tax), totalAmount: String(amt + tax) }));
-                }} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border text-gray-600">自動計算 5% 稅額</button>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="f-16" className="block text-xs text-gray-500 mb-1">發票類型</label>
-                  <select id="f-16" value={inputForm.invoiceType} onChange={e => setInputForm(f => ({ ...f, invoiceType: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm">
-                    {INPUT_INVOICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-33" className="block text-xs text-gray-500 mb-1">狀態</label>
-                  <select id="f-33" value={inputForm.status} onChange={e => setInputForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm">
-                    {INPUT_INVOICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="f-34" className="block text-xs text-gray-500 mb-1">備註</label>
-                <input id="f-34" value={inputForm.note} onChange={e => setInputForm(f => ({ ...f, note: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowInputModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={inputInvSaving}>取消</button>
-              <button onClick={saveInputInvoice} disabled={inputInvSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
-                {inputInvSaving ? '儲存中…' : '儲存'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ===== 分業進項 Tab ===== */}
-      {activeTab === 'companyInvoices' && (
-        <div>
-          {/* 篩選列 */}
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <select value={companyInvProjectFilter}
-              onChange={e => setCompanyInvProjectFilter(e.target.value)}
-              className="border rounded px-3 py-1.5 text-sm">
-              <option value="">全部案件</option>
-              {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-              <option value="null">未分配</option>
-            </select>
-            <select value={companyInvPeriodFilter}
-              onChange={e => setCompanyInvPeriodFilter(e.target.value)}
-              className="border rounded px-3 py-1.5 text-sm">
-              <option value="">全部期間</option>
-              {COMPANY_INV_PERIODS.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <input value={companyInvVendorFilter} onChange={e => setCompanyInvVendorFilter(e.target.value)}
-              placeholder="廠商名稱搜尋…" className="border rounded px-3 py-1.5 text-sm w-36" />
-            <button onClick={() => fetchCompanyInvoices(companyInvProjectFilter || undefined, companyInvPeriodFilter || undefined)}
-              className="bg-teal-600 text-white px-3 py-1.5 rounded text-sm hover:bg-teal-700">
-              {companyInvLoading ? '載入中…' : '查詢'}
-            </button>
-            {(companyInvProjectFilter || companyInvPeriodFilter || companyInvVendorFilter) && (
-              <button onClick={() => { setCompanyInvProjectFilter(''); setCompanyInvPeriodFilter(''); setCompanyInvVendorFilter(''); fetchCompanyInvoices(); }}
-                className="text-xs text-gray-500 hover:text-gray-700 border rounded px-2 py-1.5">清除</button>
-            )}
-            <span className="text-xs text-gray-500 ml-auto">
-              共 {companyInvoices.filter(r => !companyInvVendorFilter || (r.vendorName || '').includes(companyInvVendorFilter)).length} 筆｜合計 NT${companyInvoices.filter(r => !companyInvVendorFilter || (r.vendorName || '').includes(companyInvVendorFilter)).reduce((s, r) => s + Number(r.totalAmount || 0), 0).toLocaleString('zh-TW')}
-            </span>
-          </div>
-
-          {/* 各案件彙整卡片 */}
-          {!companyInvProjectFilter && (() => {
-            const byProject = {};
-            companyInvoices.forEach(r => {
-              const key = r.project ? `${r.project.id}` : 'null';
-              const label = r.project ? r.project.name : '未分配（待歸檔）';
-              if (!byProject[key]) byProject[key] = { label, cnt: 0, total: 0 };
-              byProject[key].cnt++;
-              byProject[key].total += Number(r.totalAmount || 0);
-            });
-            return (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                {Object.entries(byProject).map(([key, v]) => (
-                  <div key={key}
-                    onClick={() => { setCompanyInvProjectFilter(key); fetchCompanyInvoices(key === 'null' ? 'null' : key); }}
-                    className={`bg-white rounded-lg shadow-sm p-3 border-l-4 cursor-pointer hover:shadow ${key === 'null' ? 'border-amber-400' : 'border-teal-500'}`}>
-                    <p className="text-xs text-gray-500 truncate">{v.label}</p>
-                    <p className="text-sm font-bold mt-1">NT${v.total.toLocaleString('zh-TW')}</p>
-                    <p className="text-xs text-gray-400">{v.cnt} 筆</p>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-
-          {/* 明細表格 */}
-          <div className="bg-white rounded-lg shadow tbl-wrap">
-            <table className="w-full text-sm">
-              <thead className="bg-teal-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">期別</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">日期</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">發票號碼</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">廠商名稱</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">品名</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">未稅</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">含稅</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">案件</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">地點</th>
-                </tr>
-              </thead>
-              <tbody>
-                {companyInvoices.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-8 text-gray-400">
-                    {companyInvLoading ? '載入中…' : '無資料'}
-                  </td></tr>
-                ) : companyInvoices.filter(r => !companyInvVendorFilter || (r.vendorName || '').includes(companyInvVendorFilter)).map(r => (
-                  <tr key={r.id} className={`border-t hover:bg-gray-50 ${!r.projectId ? 'bg-amber-50' : ''}`}>
-                    <td className="px-3 py-1.5 text-xs text-gray-500">{r.period || '—'}</td>
-                    <td className="px-3 py-1.5 text-xs">{r.invoiceDate}</td>
-                    <td className="px-3 py-1.5 text-xs font-mono">{r.invoiceNo || '—'}</td>
-                    <td className="px-3 py-1.5 text-xs">{r.vendorName || '—'}</td>
-                    <td className="px-3 py-1.5 text-xs max-w-[180px] truncate" title={r.itemName}>{r.itemName || '—'}</td>
-                    <td className="px-3 py-1.5 text-xs text-right">{Number(r.amount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-1.5 text-xs text-right font-medium">{Number(r.totalAmount).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-1.5 text-xs">
-                      <select
-                        value={r.projectId ? String(r.projectId) : ''}
-                        onChange={e => updateInvoiceProject(r.id, e.target.value || null)}
-                        disabled={!!companyInvUpdating[r.id]}
-                        className={`border rounded px-1.5 py-0.5 text-xs max-w-[150px] ${
-                          r.projectId
-                            ? 'bg-teal-50 text-teal-700 border-teal-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        } ${companyInvUpdating[r.id] ? 'opacity-50' : ''}`}
-                      >
-                        <option value="">未分配</option>
-                        {projects.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-1.5 text-xs text-gray-500">{r.location || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-              {companyInvoices.length > 0 && (
-                <tfoot className="bg-gray-50 font-semibold text-sm">
-                  <tr>
-                    <td colSpan={5} className="px-3 py-2 text-right text-xs">合計</td>
-                    <td className="px-3 py-2 text-right text-xs">{companyInvoices.reduce((s, r) => s + Number(r.amount || 0), 0).toLocaleString('zh-TW')}</td>
-                    <td className="px-3 py-2 text-right text-xs text-teal-700">{companyInvoices.reduce((s, r) => s + Number(r.totalAmount || 0), 0).toLocaleString('zh-TW')}</td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 業主銷項發票 Modal ===== */}
-      {showOutputModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-4" onClick={() => setShowOutputModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingOutputInv ? '編輯業主銷項發票' : '新增業主銷項發票'}</h3>
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="f-17" className="block text-xs text-gray-500 mb-1">工程案 *</label>
-                <select id="f-17" value={outputForm.projectId} onChange={e => {
-                  const pid = e.target.value;
-                  const proj = projects.find(p => String(p.id) === pid);
-                  setOutputForm(f => ({ ...f, projectId: pid, clientName: proj?.clientName || f.clientName }));
-                }} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingOutputInv}>
-                  <option value="">請選擇</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-35" className="block text-xs text-gray-500 mb-1">業主名稱</label>
-                <input id="f-35" value={outputForm.clientName} onChange={e => setOutputForm(f => ({ ...f, clientName: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="由工程案帶入或手動修改" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="f-36" className="block text-xs text-gray-500 mb-1">發票號碼</label>
-                  <input id="f-36" value={outputForm.invoiceNo} onChange={e => setOutputForm(f => ({ ...f, invoiceNo: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="AB-12345678" />
-                </div>
-                <div>
-                  <label htmlFor="f-37" className="block text-xs text-gray-500 mb-1">發票日期 *</label>
-                  <input id="f-37" type="date" value={outputForm.invoiceDate} onChange={e => setOutputForm(f => ({ ...f, invoiceDate: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label htmlFor="f-18" className="block text-xs text-gray-500 mb-1">未稅金額</label>
-                  <input id="f-18" type="number" value={outputForm.amount} onChange={e => {
-                    const amt = e.target.value;
-                    const tax = parseFloat(outputForm.taxAmount) || 0;
-                    setOutputForm(f => ({ ...f, amount: amt, totalAmount: String((parseFloat(amt) || 0) + tax) }));
-                  }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
-                </div>
-                <div>
-                  <label htmlFor="f-19" className="block text-xs text-gray-500 mb-1">稅額</label>
-                  <input id="f-19" type="number" value={outputForm.taxAmount} onChange={e => {
-                    const tax = e.target.value;
-                    const amt = parseFloat(outputForm.amount) || 0;
-                    setOutputForm(f => ({ ...f, taxAmount: tax, totalAmount: String(amt + (parseFloat(tax) || 0)) }));
-                  }} className="w-full border rounded-lg px-3 py-2 text-sm" step="1" min="0" />
-                </div>
-                <div>
-                  <label htmlFor="f-20" className="block text-xs text-gray-500 mb-1">含稅金額</label>
-                  <input id="f-20" type="number" value={outputForm.totalAmount} onChange={e => setOutputForm(f => ({ ...f, totalAmount: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-green-50" step="1" />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => {
-                  const amt = parseFloat(outputForm.amount) || 0;
-                  const tax = Math.round(amt * 0.05);
-                  setOutputForm(f => ({ ...f, taxAmount: String(tax), totalAmount: String(amt + tax) }));
-                }} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border text-gray-600">自動計算 5% 稅額</button>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="f-21" className="block text-xs text-gray-500 mb-1">發票類型</label>
-                  <select id="f-21" value={outputForm.invoiceType} onChange={e => setOutputForm(f => ({ ...f, invoiceType: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm">
-                    {OUTPUT_INVOICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-38" className="block text-xs text-gray-500 mb-1">狀態</label>
-                  <select id="f-38" value={outputForm.status} onChange={e => setOutputForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm">
-                    {OUTPUT_INVOICE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="f-39" className="block text-xs text-gray-500 mb-1">備註</label>
-                <input id="f-39" value={outputForm.note} onChange={e => setOutputForm(f => ({ ...f, note: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowOutputModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={outputInvSaving}>取消</button>
-              <button onClick={saveOutputInvoice} disabled={outputInvSaving} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50">
-                {outputInvSaving ? '儲存中…' : '儲存'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'companyInvoices' && <CompanyInvoicesTab projects={projects} onUnassignedCountChange={setUnassignedInvCount} />}
 
       {/* ── Engineering cashier execute modal ── */}
       <ConfirmModal dialog={confirmDlg} onClose={closeConfirm} />

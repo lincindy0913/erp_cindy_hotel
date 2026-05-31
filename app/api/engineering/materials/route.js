@@ -4,6 +4,9 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
+import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
+import { nextSequence } from '@/lib/sequence-generator';
+import { serializeMaterial } from '@/lib/engineering-serializers';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,11 +23,7 @@ export async function GET(request) {
       orderBy: [{ projectId: 'asc' }, { usedAt: 'desc' }, { id: 'desc' }],
     });
     return NextResponse.json(materials.map(m => ({
-      ...m,
-      quantity: Number(m.quantity),
-      unitPrice: Number(m.unitPrice),
-      createdAt: m.createdAt.toISOString(),
-      updatedAt: m.updatedAt.toISOString(),
+      ...serializeMaterial(m),
       contractNo: m.contract?.contractNo ?? null,
       termName: m.term?.termName ?? null,
     })));
@@ -42,6 +41,7 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請選擇工程案', 400);
     }
     const projectId = parseInt(data.projectId);
+    await assertEngineeringProjectOpen(projectId);
     const quantity = parseFloat(data.quantity) || 0;
     if (quantity <= 0) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫數量', 400);
@@ -73,13 +73,8 @@ export async function POST(request) {
           const qty = Math.round(quantity);
           if (qty >= 1) {
             const date = data.usedAt || todayStr();
-            const prefix = `REQ-${date.replace(/-/g, '')}`;
-            const last = await tx.inventoryRequisition.findFirst({
-              where: { requisitionNo: { startsWith: prefix } },
-              orderBy: { requisitionNo: 'desc' },
-            });
-            const seq = last ? parseInt(last.requisitionNo.slice(-4), 10) + 1 : 1;
-            const requisitionNo = `${prefix}-${String(seq).padStart(4, '0')}`;
+            const prefix = `REQ-${date.replace(/-/g, '')}-`;
+            const requisitionNo = await nextSequence(tx, 'inventoryRequisition', 'requisitionNo', prefix);
             await tx.inventoryRequisition.create({
               data: {
                 requisitionNo,
@@ -90,6 +85,8 @@ export async function POST(request) {
                 requisitionDate: date,
                 status: '已領用',
                 note: `工程材料領用（工程案 ID: ${projectId}）`,
+                sourceType: 'engineering_material',
+                sourceRecordId: mat.id,
               },
             });
           }
@@ -97,13 +94,7 @@ export async function POST(request) {
       }
       return mat;
     });
-    return NextResponse.json({
-      ...material,
-      quantity: Number(material.quantity),
-      unitPrice: Number(material.unitPrice),
-      createdAt: material.createdAt.toISOString(),
-      updatedAt: material.updatedAt.toISOString(),
-    }, { status: 201 });
+    return NextResponse.json(serializeMaterial(material), { status: 201 });
   } catch (e) {
     return handleApiError(e);
   }
