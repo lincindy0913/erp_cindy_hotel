@@ -8,6 +8,7 @@ import { validateWarehouse } from '@/lib/master-data-validator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { todayStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,10 +124,7 @@ export async function POST(request) {
 
       const today = todayStr().replace(/-/g, '');
       const todayPrefix = `PUR-${today}-`;
-      const existingCount = await tx.purchaseMaster.count({
-        where: { purchaseNo: { startsWith: todayPrefix } }
-      });
-      const purchaseNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
+      const purchaseNo = await nextSequence(tx, 'purchaseMaster', 'purchaseNo', todayPrefix);
 
       const created = await tx.purchaseMaster.create({
         data: {
