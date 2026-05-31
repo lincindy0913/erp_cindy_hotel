@@ -1,9 +1,14 @@
 'use client';
 import { useState, useMemo, Fragment } from 'react';
+import Link from 'next/link';
 
 function fmt(n) {
   if (n == null || n === '') return '－';
   return Number(n).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
+}
+
+function fmtRaw(n) {
+  return Number(n || 0).toFixed(0);
 }
 
 function pct(n) {
@@ -95,6 +100,7 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
   }, [contracts]);
 
   // 廠商已付（已執行）per project，透過 sourceRecordId→termId→projectId 推導
+  // 注意：未連結合約期數的付款單（sourceRecordId 為 null）不計入此欄
   const paidByProject = useMemo(() => {
     const m = {};
     for (const po of paymentOrders) {
@@ -105,6 +111,13 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
       m[k] = (m[k] || 0) + getActualPaid(po);
     }
     return m;
+  }, [paymentOrders, termProjectMap]);
+
+  // 未連結期數的付款單（可能漏算）筆數
+  const unlinkedPaidCount = useMemo(() => {
+    return paymentOrders.filter(
+      po => po.status === '已執行' && (po.sourceRecordId == null || !termProjectMap.has(po.sourceRecordId))
+    ).length;
   }, [paymentOrders, termProjectMap]);
 
   const projectMetrics = useMemo(() => {
@@ -179,6 +192,41 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
     return c;
   }, [projectMetrics]);
 
+  function handleExportCsv() {
+    if (filtered.length === 0) return;
+    const header = ['代碼', '名稱', '狀態', '業主合約', '廠商發包（主）', '預估毛利', '預估毛利率',
+      '已收業主款', '廠商已付款', '實際毛利', '實際毛利率', '付款進度',
+      '廠商進項發票', '直接材料費', '保留款餘額'];
+    const rows = filtered.map(m => [
+      m.p.code || '',
+      m.p.name || '',
+      m.p.status || '',
+      fmtRaw(m.clientContract),
+      fmtRaw(m.vendorContract),
+      fmtRaw(m.estimatedProfit),
+      m.estimatedMargin != null && isFinite(m.estimatedMargin) ? `${(m.estimatedMargin * 100).toFixed(1)}%` : '',
+      fmtRaw(m.income),
+      fmtRaw(m.vendorPaid),
+      fmtRaw(m.actualProfit),
+      m.actualMargin != null && isFinite(m.actualMargin) ? `${(m.actualMargin * 100).toFixed(1)}%` : '',
+      m.paymentRate != null && isFinite(m.paymentRate) ? `${(m.paymentRate * 100).toFixed(1)}%` : '',
+      fmtRaw(m.inputInvoices),
+      fmtRaw(m.materialCost),
+      fmtRaw(m.retention),
+    ]);
+    const csv = [header, ...rows]
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `工程預算報表_${today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-4">
       {/* 三個核心指標卡片 */}
@@ -203,17 +251,25 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
         />
       </div>
 
-      {/* 狀態篩選列 */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {['全部', '進行中', '已結案', '暫停'].map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${statusFilter === s ? 'border-amber-500 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-            {s}
-            <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${statusFilter === s ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
-              {statusCounts[s] ?? 0}
-            </span>
-          </button>
-        ))}
+      {/* 狀態篩選列 + 匯出按鈕 */}
+      <div className="flex items-center justify-between border-b border-gray-200">
+        <div className="flex gap-1">
+          {['全部', '進行中', '已結案', '暫停'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${statusFilter === s ? 'border-amber-500 text-amber-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {s}
+              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${statusFilter === s ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                {statusCounts[s] ?? 0}
+              </span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={handleExportCsv}
+          disabled={filtered.length === 0}
+          className="mb-1 px-4 py-1.5 border border-green-600 text-green-700 rounded-lg hover:bg-green-50 text-sm disabled:opacity-40">
+          匯出 CSV
+        </button>
       </div>
 
       {/* 主表格 */}
@@ -226,7 +282,12 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
               <th className="px-4 py-3 text-right font-medium">廠商發包</th>
               <th className="px-4 py-3 text-right font-medium">預估毛利率</th>
               <th className="px-4 py-3 text-right font-medium">已收款</th>
-              <th className="px-4 py-3 text-right font-medium">已付款</th>
+              <th className="px-4 py-3 text-right font-medium">
+                已付款
+                {unlinkedPaidCount > 0 && (
+                  <span className="ml-1 text-orange-400" title={`另有 ${unlinkedPaidCount} 筆未連結合約期數的付款單未計入`}>⚠</span>
+                )}
+              </th>
               <th className="px-4 py-3 text-right font-medium">實際毛利率</th>
               <th className="px-4 py-3 text-right font-medium">付款進度</th>
               <th className="px-4 py-3 text-center font-medium w-16">明細</th>
@@ -239,7 +300,11 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
               <Fragment key={m.pid}>
                 <tr className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-amber-700">{m.p.code}</div>
+                    {/* 7. 工程案代碼加連結 */}
+                    <Link href={`/engineering/${m.p.id}`}
+                      className="font-medium text-amber-700 hover:underline">
+                      {m.p.code}
+                    </Link>
                     <div className="text-xs text-gray-500 truncate max-w-[180px]">{m.p.name}</div>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{fmt(m.clientContract)}</td>
@@ -320,6 +385,14 @@ export default function BudgetReportTab({ projects, contracts, paymentOrders, pr
             ))}
           </tbody>
         </table>
+
+        {/* 5. 未連結付款說明 */}
+        {unlinkedPaidCount > 0 && (
+          <div className="px-4 py-2 border-t border-gray-100 bg-orange-50 text-xs text-orange-600">
+            ⚠ 另有 <span className="font-semibold">{unlinkedPaidCount}</span> 筆「已執行」付款單未連結合約期數，未計入上表「已付款」欄位。
+            請至「付款單」Tab 確認是否需補連結。
+          </div>
+        )}
       </div>
     </div>
   );
