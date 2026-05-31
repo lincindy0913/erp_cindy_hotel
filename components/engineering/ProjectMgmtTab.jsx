@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
 
 function formatNum(n) {
@@ -22,8 +23,82 @@ export default function ProjectMgmtTab({
   const [mgmtStatusFilter, setMgmtStatusFilter] = useState('進行中');
   const [mgmtView, setMgmtView] = useState('card');
   const [expandedProjects, setExpandedProjects] = useState(new Set());
+  // milestones: { [projectId]: milestone[] }
+  const [milestonesMap, setMilestonesMap] = useState({});
+  const [milestonesLoading, setMilestonesLoading] = useState({});
+  // inline add form: { [projectId]: { name, completionPct, plannedDate } }
+  const [addForms, setAddForms] = useState({});
+  const [addSaving, setAddSaving] = useState({});
 
+  const { showToast } = useToast();
   const today = todayStr();
+
+  const fetchMilestones = useCallback(async (projectId) => {
+    if (milestonesMap[projectId] !== undefined) return; // already loaded
+    setMilestonesLoading(p => ({ ...p, [projectId]: true }));
+    try {
+      const res = await fetch(`/api/engineering/projects/${projectId}/milestones`);
+      const data = await res.json();
+      setMilestonesMap(p => ({ ...p, [projectId]: Array.isArray(data) ? data : [] }));
+    } catch { setMilestonesMap(p => ({ ...p, [projectId]: [] })); }
+    finally { setMilestonesLoading(p => ({ ...p, [projectId]: false })); }
+  }, [milestonesMap]);
+
+  function toggleCard(projectId) {
+    setExpandedProjects(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) { next.delete(projectId); }
+      else { next.add(projectId); fetchMilestones(projectId); }
+      return next;
+    });
+  }
+
+  async function completeMilestone(milestone) {
+    try {
+      const res = await fetch(`/api/engineering/milestones/${milestone.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed', actualDate: todayStr() }),
+      });
+      if (!res.ok) throw new Error();
+      setMilestonesMap(p => ({ ...p, [milestone.projectId]: (p[milestone.projectId] || []).map(m => m.id === milestone.id ? { ...m, status: 'completed', actualDate: todayStr() } : m) }));
+    } catch { showToast('更新失敗', 'error'); }
+  }
+
+  async function reopenMilestone(milestone) {
+    try {
+      const res = await fetch(`/api/engineering/milestones/${milestone.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending', actualDate: null }),
+      });
+      if (!res.ok) throw new Error();
+      setMilestonesMap(p => ({ ...p, [milestone.projectId]: (p[milestone.projectId] || []).map(m => m.id === milestone.id ? { ...m, status: 'pending', actualDate: null } : m) }));
+    } catch { showToast('更新失敗', 'error'); }
+  }
+
+  async function deleteMilestone(milestone) {
+    try {
+      const res = await fetch(`/api/engineering/milestones/${milestone.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      setMilestonesMap(p => ({ ...p, [milestone.projectId]: (p[milestone.projectId] || []).filter(m => m.id !== milestone.id) }));
+    } catch { showToast('刪除失敗', 'error'); }
+  }
+
+  async function addMilestone(projectId) {
+    const form = addForms[projectId] || {};
+    if (!form.name?.trim()) { showToast('請填寫里程碑名稱', 'error'); return; }
+    setAddSaving(p => ({ ...p, [projectId]: true }));
+    try {
+      const res = await fetch(`/api/engineering/projects/${projectId}/milestones`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: form.name.trim(), completionPct: parseInt(form.completionPct || 0), plannedDate: form.plannedDate || null }),
+      });
+      if (!res.ok) throw new Error();
+      const m = await res.json();
+      setMilestonesMap(p => ({ ...p, [projectId]: [...(p[projectId] || []), m] }));
+      setAddForms(p => ({ ...p, [projectId]: {} }));
+    } catch { showToast('新增失敗', 'error'); }
+    finally { setAddSaving(p => ({ ...p, [projectId]: false })); }
+  }
   const activeProjects = projects.filter(p => p.status === '進行中');
   const kpiTotalBudget = projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
   const kpiTotalContracted = contracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
@@ -98,8 +173,8 @@ export default function ProjectMgmtTab({
                 <th className="px-4 py-3 text-right font-medium">預算</th>
                 <th className="px-4 py-3 font-medium" style={{width:'160px'}}>合約/預算</th>
                 <th className="px-4 py-3 font-medium" style={{width:'160px'}}>已付/合約</th>
-                <th className="px-4 py-3 text-right font-medium text-blue-600">進項發票</th>
-                <th className="px-4 py-3 text-right font-medium text-green-600">銷項發票</th>
+                <th className="px-4 py-3 font-medium text-blue-600" style={{width:'150px'}}>收款進度</th>
+                <th className="px-4 py-3 font-medium text-purple-600" style={{width:'150px'}}>開票進度</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -126,6 +201,10 @@ export default function ProjectMgmtTab({
                   }).length, 0);
                 const inputInvTotal  = dashStats.byProject[String(proj.id)]?.inputInvoices  || 0;
                 const outputInvTotal = dashStats.byProject[String(proj.id)]?.outputInvoices || 0;
+                const incomeTotal    = dashStats.byProject[String(proj.id)]?.income          || 0;
+                const clientAmt = Number(proj.clientContractAmount || 0);
+                const incomePct    = clientAmt > 0 ? Math.min((incomeTotal    / clientAmt) * 100, 100) : 0;
+                const outputInvPct = clientAmt > 0 ? Math.min((outputInvTotal / clientAmt) * 100, 100) : 0;
                 const statusStyle = proj.status === '進行中' ? 'bg-blue-100 text-blue-700' : proj.status === '已結案' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
                 return (
                   <tr key={proj.id} className={`hover:bg-gray-50 ${overBudget ? 'bg-red-50/30' : ''}`}>
@@ -165,15 +244,35 @@ export default function ProjectMgmtTab({
                         <span className="text-xs text-gray-500 whitespace-nowrap">{paidPct.toFixed(0)}%</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-xs">
-                      {inputInvTotal > 0 ? (
-                        <button type="button" onClick={() => onSwitchTab?.('inputInvoices')} className="text-blue-700 font-medium hover:underline">NT$ {formatNum(inputInvTotal)}</button>
-                      ) : <span className="text-gray-300">—</span>}
+                    <td className="px-4 py-3 text-xs">
+                      {clientAmt > 0 ? (
+                        <>
+                          <div className="flex justify-between mb-0.5">
+                            <span className="text-blue-600 font-medium">{incomeTotal > 0 ? formatNum(incomeTotal) : '—'}</span>
+                            <span className="text-gray-400">{incomePct.toFixed(0)}%</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-400 transition-all" style={{ width: `${incomePct}%` }} />
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-gray-300 float-right">{incomeTotal > 0 ? formatNum(incomeTotal) : '—'}</span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-right text-xs">
-                      {outputInvTotal > 0 ? (
-                        <button type="button" onClick={() => onSwitchTab?.('outputInvoices')} className="text-green-700 font-medium hover:underline">NT$ {formatNum(outputInvTotal)}</button>
-                      ) : <span className="text-gray-300">—</span>}
+                    <td className="px-4 py-3 text-xs">
+                      {clientAmt > 0 ? (
+                        <>
+                          <div className="flex justify-between mb-0.5">
+                            <span className="text-purple-600 font-medium">{outputInvTotal > 0 ? formatNum(outputInvTotal) : '—'}</span>
+                            <span className="text-gray-400">{outputInvPct.toFixed(0)}%</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-purple-400 transition-all" style={{ width: `${outputInvPct}%` }} />
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-gray-300 float-right">{outputInvTotal > 0 ? formatNum(outputInvTotal) : '—'}</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -185,8 +284,9 @@ export default function ProjectMgmtTab({
               const tContracts = tot.reduce((s, p) => s + contracts.filter(c => c.projectId === p.id).reduce((cs, c) => cs + Number(c.totalAmount || 0), 0), 0);
               const tPaid = tot.reduce((s, p) => s + contracts.filter(c => c.projectId === p.id).reduce((cs, c) =>
                 cs + (c.terms || []).reduce((ts, t) => ts + paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((ps, po) => ps + getActualPaid(po), 0), 0), 0), 0);
-              const tInputInv  = tot.reduce((s, p) => s + (dashStats.byProject[String(p.id)]?.inputInvoices  || 0), 0);
+              const tIncome    = tot.reduce((s, p) => s + (dashStats.byProject[String(p.id)]?.income       || 0), 0);
               const tOutputInv = tot.reduce((s, p) => s + (dashStats.byProject[String(p.id)]?.outputInvoices || 0), 0);
+              const tClientAmt = tot.reduce((s, p) => s + (Number(p.clientContractAmount) || 0), 0);
               return (
                 <tfoot className="bg-gray-50 font-semibold text-sm border-t border-gray-200">
                   <tr>
@@ -194,8 +294,8 @@ export default function ProjectMgmtTab({
                     <td className="px-4 py-3 text-right text-gray-700">NT$ {formatNum(tBudget)}</td>
                     <td className="px-4 py-3 text-xs text-gray-600">合約 NT$ {formatNum(tContracts)}</td>
                     <td className="px-4 py-3 text-xs text-green-700">已付 NT$ {formatNum(tPaid)}</td>
-                    <td className="px-4 py-3 text-right text-xs text-blue-700">{tInputInv > 0 ? `NT$ ${formatNum(tInputInv)}` : '—'}</td>
-                    <td className="px-4 py-3 text-right text-xs text-green-700">{tOutputInv > 0 ? `NT$ ${formatNum(tOutputInv)}` : '—'}</td>
+                    <td className="px-4 py-3 text-xs text-blue-700">收款 NT$ {formatNum(tIncome)}{tClientAmt > 0 ? ` (${((tIncome / tClientAmt) * 100).toFixed(0)}%)` : ''}</td>
+                    <td className="px-4 py-3 text-xs text-purple-700">開票 NT$ {formatNum(tOutputInv)}{tClientAmt > 0 ? ` (${((tOutputInv / tClientAmt) * 100).toFixed(0)}%)` : ''}</td>
                   </tr>
                 </tfoot>
               );
@@ -289,13 +389,23 @@ export default function ProjectMgmtTab({
         const overBudget = budget > 0 && totalContracted > budget;
         const contractedPct = budget > 0 ? Math.min((totalContracted / budget) * 100, 100) : 0;
         const paidOfContractedPct = totalContracted > 0 ? Math.min((totalPaid / totalContracted) * 100, 100) : 0;
+        const clientAmt = Number(proj.clientContractAmount || 0);
+        const incomeTotal = dashStats.byProject[String(proj.id)]?.income || 0;
+        const outputInvTotal = dashStats.byProject[String(proj.id)]?.outputInvoices || 0;
+        const incomePct = clientAmt > 0 ? Math.min((incomeTotal / clientAmt) * 100, 100) : 0;
+        const outputInvPct = clientAmt > 0 ? Math.min((outputInvTotal / clientAmt) * 100, 100) : 0;
+        const projMilestones = milestonesMap[proj.id] || [];
+        const completedMilestones = projMilestones.filter(m => m.status === 'completed');
+        const engineeringPct = completedMilestones.length > 0
+          ? Math.max(...completedMilestones.map(m => m.completionPct))
+          : 0;
         const isExpanded = expandedProjects.has(proj.id);
         const statusStyle = proj.status === '進行中' ? 'bg-blue-100 text-blue-700' : proj.status === '已結案' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500';
 
         return (
           <div key={proj.id} className={`bg-white rounded-xl border ${overBudget ? 'border-red-300' : 'border-gray-200'} overflow-hidden`}>
             <button className="w-full px-5 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors text-left"
-              onClick={() => setExpandedProjects(prev => { const next = new Set(prev); next.has(proj.id) ? next.delete(proj.id) : next.add(proj.id); return next; })}>
+              onClick={() => toggleCard(proj.id)}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle}`}>{proj.status}</span>
@@ -310,32 +420,120 @@ export default function ProjectMgmtTab({
                   <span>{projContracts.length} 家廠商・{totalTerms} 個期數</span>
                 </div>
               </div>
-              <div className="hidden md:block w-72 shrink-0 text-right space-y-2">
+              <div className="hidden md:block w-80 shrink-0 space-y-1.5">
                 {budget > 0 && (
                   <div>
                     <div className="flex justify-between text-xs text-gray-500 mb-0.5">
                       <span className={overBudget ? 'text-red-600 font-medium' : ''}>合約 {formatNum(totalContracted)}</span>
-                      <span>預算 {formatNum(budget)}</span>
+                      <span className="text-gray-400">預算 {formatNum(budget)}　{contractedPct.toFixed(0)}%</span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full transition-all ${overBudget ? 'bg-red-500' : contractedPct > 80 ? 'bg-orange-400' : 'bg-amber-500'}`} style={{ width: `${contractedPct}%` }} />
                     </div>
                   </div>
                 )}
                 <div>
-                  <div className="flex justify-between text-xs text-gray-500 mb-0.5">
-                    <span className="text-green-700">已付 {formatNum(totalPaid)}</span>
-                    <span>{paidTerms}/{totalTerms} 期完成</span>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span className="text-green-700 font-medium">付款 {formatNum(totalPaid)}</span>
+                    <span className="text-gray-400">{paidTerms}/{totalTerms} 期　{paidOfContractedPct.toFixed(0)}%</span>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${paidOfContractedPct}%` }} />
+                  </div>
+                </div>
+                {clientAmt > 0 && (
+                  <div>
+                    <div className="flex justify-between text-xs mb-0.5">
+                      <span className="text-blue-600 font-medium">收款 {formatNum(incomeTotal)}</span>
+                      <span className="text-gray-400">業主 {formatNum(clientAmt)}　{incomePct.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${incomePct}%` }} />
+                    </div>
+                  </div>
+                )}
+                {clientAmt > 0 && (
+                  <div>
+                    <div className="flex justify-between text-xs mb-0.5">
+                      <span className="text-purple-600 font-medium">開票 {formatNum(outputInvTotal)}</span>
+                      <span className="text-gray-400">{outputInvPct.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-purple-400 transition-all" style={{ width: `${outputInvPct}%` }} />
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span className="text-amber-700 font-medium">工程 {engineeringPct > 0 ? `${engineeringPct}%` : (projMilestones.length === 0 && !isExpanded ? '點擊展開設定' : '尚無里程碑')}</span>
+                    {engineeringPct > 0 && <span className="text-gray-400">{completedMilestones.length}/{projMilestones.length} 個里程碑</span>}
+                  </div>
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${engineeringPct}%` }} />
                   </div>
                 </div>
               </div>
               <span className="text-gray-400 text-sm mt-1 shrink-0">{isExpanded ? '▲' : '▼'}</span>
             </button>
             {isExpanded && (
-              <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/50">
+              <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/50 space-y-4">
+                {/* ── 工程里程碑 ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-600">工程里程碑</span>
+                    <span className="text-xs text-amber-700 font-medium">{engineeringPct > 0 ? `目前完成 ${engineeringPct}%` : '尚無完成的里程碑'}</span>
+                  </div>
+                  {milestonesLoading[proj.id] ? (
+                    <p className="text-xs text-gray-400">載入中…</p>
+                  ) : (
+                    <>
+                      {projMilestones.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {projMilestones.map(m => (
+                            <div key={m.id} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs ${m.status === 'completed' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-white border-gray-200 text-gray-600'}`}>
+                              <span className="font-medium">{m.name}</span>
+                              <span className={`font-bold ${m.status === 'completed' ? 'text-amber-600' : 'text-gray-400'}`}>{m.completionPct}%</span>
+                              {m.status === 'completed'
+                                ? <button onClick={() => reopenMilestone(m)} className="text-gray-400 hover:text-amber-600 ml-0.5" title="取消完成">✓</button>
+                                : <button onClick={() => completeMilestone(m)} className="text-gray-300 hover:text-amber-600 ml-0.5" title="標記完成">○</button>}
+                              <button onClick={() => deleteMilestone(m)} className="text-gray-300 hover:text-red-500 ml-0.5">×</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* 新增里程碑 inline form */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input
+                          value={addForms[proj.id]?.name || ''}
+                          onChange={e => setAddForms(p => ({ ...p, [proj.id]: { ...(p[proj.id] || {}), name: e.target.value } }))}
+                          placeholder="里程碑名稱（例：主體完工）"
+                          className="border rounded px-2 py-1 text-xs flex-1 min-w-[140px]"
+                        />
+                        <input
+                          type="number" min="0" max="100"
+                          value={addForms[proj.id]?.completionPct ?? ''}
+                          onChange={e => setAddForms(p => ({ ...p, [proj.id]: { ...(p[proj.id] || {}), completionPct: e.target.value } }))}
+                          placeholder="完成度 %"
+                          className="border rounded px-2 py-1 text-xs w-20"
+                        />
+                        <input
+                          type="date"
+                          value={addForms[proj.id]?.plannedDate || ''}
+                          onChange={e => setAddForms(p => ({ ...p, [proj.id]: { ...(p[proj.id] || {}), plannedDate: e.target.value } }))}
+                          className="border rounded px-2 py-1 text-xs w-32"
+                        />
+                        <button
+                          onClick={() => addMilestone(proj.id)}
+                          disabled={addSaving[proj.id]}
+                          className="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {addSaving[proj.id] ? '…' : '＋ 新增'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {/* ── 合約明細 ── */}
                 {projContracts.length === 0 ? (
                   <p className="text-sm text-gray-400">尚無合約</p>
                 ) : (

@@ -2772,11 +2772,31 @@ model EngineeringProject {
   inputInvoices       EngineeringInputInvoice[]
   outputInvoices      EngineeringOutputInvoice[]
   companyInputInvoices CompanyInputInvoice[]
+  milestones           EngineeringMilestone[]
 
   @@index([status])
   @@index([warehouse])
   @@index([warehouseId])
   @@map("engineering_projects")
+}
+
+model EngineeringMilestone {
+  id            Int      @id @default(autoincrement())
+  projectId     Int      @map("project_id")
+  name          String   @db.VarChar(200)
+  completionPct Int      @default(0) @map("completion_pct")
+  plannedDate   String?  @map("planned_date") @db.VarChar(20)
+  actualDate    String?  @map("actual_date") @db.VarChar(20)
+  status        String   @default("pending") @db.VarChar(20)
+  note          String?  @db.Text
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("engineering_milestones")
 }
 
 model EngineeringContract {
