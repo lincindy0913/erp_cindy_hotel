@@ -253,7 +253,7 @@ function EngineeringPageInner() {
     }
     if (activeTab === 'progressClaims') fetchProgressClaims(signal);
     if (activeTab === 'income') { fetchProgressClaims(signal); fetchOutputInvoicesList(signal); }
-    if (activeTab === 'budgetReport') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchProgressClaims(signal); }
+    if (activeTab === 'budgetReport') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchProgressClaims(signal); refreshDashStats(signal); }
     if (activeTab === 'outputInvoices') fetchProgressClaims(signal);
     return () => ctrl.abort();
   }, [activeTab, filterProjectId]);

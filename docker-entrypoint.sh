@@ -12,9 +12,10 @@ echo "✅ Database should be ready!"
 
 # Sync schema without destructive flags (保留既有資料；若與 DB 不相容請手動處理 migration)
 echo "📊 Syncing database schema..."
-if node_modules/.bin/prisma migrate deploy --skip-generate 2>/dev/null; then
+if node_modules/.bin/prisma migrate deploy --skip-generate 2>&1; then
   echo "✅ Migrations applied"
 else
+  echo "⚠️  migrate deploy failed, falling back to db push..."
   node_modules/.bin/prisma db push --skip-generate || echo "⚠️  db push failed — check DATABASE_URL and schema"
 fi
 
