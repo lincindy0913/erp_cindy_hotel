@@ -84,14 +84,16 @@ export async function PUT(request, { params }) {
     const contract = await prisma.engineeringContract.update({
       where: { id },
       data: {
-        ...(data.contractNo !== undefined && { contractNo: String(data.contractNo).trim() }),
-        ...(data.totalAmount !== undefined && { totalAmount: parseFloat(data.totalAmount) }),
-        ...(data.retentionRate !== undefined && { retentionRate: Math.min(1, Math.max(0, parseFloat(data.retentionRate) || 0)) }),
-        ...(data.signDate !== undefined && { signDate: data.signDate || null }),
-        ...(data.content !== undefined && { content: String(data.content).trim() }),
-        ...(data.note !== undefined && { note: String(data.note).trim() }),
+        ...(data.contractNo       !== undefined && { contractNo:       String(data.contractNo).trim() }),
+        ...(data.contractType     !== undefined && { contractType:     data.contractType }),
+        ...(data.parentContractId !== undefined && { parentContractId: data.parentContractId ? parseInt(data.parentContractId) : null }),
+        ...(data.totalAmount      !== undefined && { totalAmount:      parseFloat(data.totalAmount) }),
+        ...(data.retentionRate    !== undefined && { retentionRate:    Math.min(1, Math.max(0, parseFloat(data.retentionRate) || 0)) }),
+        ...(data.signDate         !== undefined && { signDate:         data.signDate || null }),
+        ...(data.content          !== undefined && { content:          String(data.content).trim() || null }),
+        ...(data.note             !== undefined && { note:             String(data.note).trim() || null }),
       },
-      include: { project: true, supplier: true, terms: { orderBy: { termNo: 'asc' } }, materials: true },
+      include: { project: true, supplier: true, terms: { orderBy: { termNo: 'asc' } }, materials: true, subContracts: { include: { supplier: true, terms: { orderBy: { termNo: 'asc' } }, subContracts: { include: { supplier: true, terms: { orderBy: { termNo: 'asc' } }, subContracts: false } } } } },
     });
     if (Array.isArray(data.materials)) {
       await prisma.$transaction(async (tx) => {

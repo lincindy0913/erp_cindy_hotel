@@ -2809,30 +2809,36 @@ model EngineeringMilestone {
 }
 
 model EngineeringContract {
-  id             Int      @id @default(autoincrement())
-  projectId      Int      @map("project_id")
-  supplierId     Int      @map("supplier_id")
-  contractNo     String   @map("contract_no") @db.VarChar(100)
-  totalAmount    Decimal  @map("total_amount") @db.Decimal(14, 2)
-  retentionRate  Decimal  @default(0) @map("retention_rate") @db.Decimal(5, 4)
-  signDate       String?  @map("sign_date") @db.VarChar(20)
-  status         String   @default("active") @db.VarChar(20)
-  content        String?  @db.Text
-  note           String?  @db.Text
-  currentVersion Int      @default(1) @map("current_version")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id               Int      @id @default(autoincrement())
+  projectId        Int      @map("project_id")
+  supplierId       Int      @map("supplier_id")
+  contractNo       String   @map("contract_no") @db.VarChar(100)
+  contractType     String   @default("主合約") @map("contract_type") @db.VarChar(20)
+  // 主合約 | 分包 | 工班
+  parentContractId Int?     @map("parent_contract_id")
+  totalAmount      Decimal  @map("total_amount") @db.Decimal(14, 2)
+  retentionRate    Decimal  @default(0) @map("retention_rate") @db.Decimal(5, 4)
+  signDate         String?  @map("sign_date") @db.VarChar(20)
+  status           String   @default("active") @db.VarChar(20)
+  content          String?  @db.Text
+  note             String?  @db.Text
+  currentVersion   Int      @default(1) @map("current_version")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  supplier      Supplier                  @relation(fields: [supplierId], references: [id])
-  terms         EngineeringContractTerm[]
-  materials     EngineeringMaterial[]
-  inputInvoices EngineeringInputInvoice[]
-  versions      EngineeringContractVersion[]
+  project        EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplier       Supplier                  @relation(fields: [supplierId], references: [id])
+  parentContract EngineeringContract?      @relation("ContractHierarchy", fields: [parentContractId], references: [id], onDelete: SetNull)
+  subContracts   EngineeringContract[]     @relation("ContractHierarchy")
+  terms          EngineeringContractTerm[]
+  materials      EngineeringMaterial[]
+  inputInvoices  EngineeringInputInvoice[]
+  versions       EngineeringContractVersion[]
 
   @@unique([projectId, contractNo])
   @@index([projectId])
   @@index([supplierId])
+  @@index([parentContractId])
   @@map("engineering_contracts")
 }
 

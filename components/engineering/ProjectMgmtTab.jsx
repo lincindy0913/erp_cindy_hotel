@@ -151,7 +151,8 @@ export default function ProjectMgmtTab({
 
   const activeProjects = projects.filter(p => p.status === '進行中');
   const kpiTotalBudget = projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
-  const kpiTotalContracted = contracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
+  // 只計主合約層，避免分包/工班重複加總
+  const kpiTotalContracted = contracts.filter(c => (c.contractType || '主合約') === '主合約').reduce((s, c) => s + Number(c.totalAmount || 0), 0);
   const kpiTotalPaid = contracts.reduce((s, c) =>
     s + (c.terms || []).reduce((ts, t) => {
       const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行')

@@ -27,8 +27,8 @@ export default function ContractsTab({
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
   const emptyContractForm = {
-    projectId: '', supplierId: '', contractNo: '', totalAmount: '', retentionRate: '',
-    signDate: '', content: '', note: '', changeReason: '', terms: [], materials: [],
+    projectId: '', supplierId: '', contractNo: '', contractType: '主合約', parentContractId: '',
+    totalAmount: '', retentionRate: '', signDate: '', content: '', note: '', changeReason: '', terms: [], materials: [],
   };
   const [contractForm, setContractForm] = useState(emptyContractForm);
   const [contractSaving, setContractSaving] = useState(false);
@@ -75,9 +75,24 @@ export default function ContractsTab({
     setEditingContract(null);
     setContractForm({
       projectId: filterProjectId || (projects[0]?.id ? String(projects[0].id) : ''),
-      supplierId: '', contractNo: '', totalAmount: '', retentionRate: '', signDate: '', content: '', note: '',
+      supplierId: '', contractNo: '', contractType: '主合約', parentContractId: '',
+      totalAmount: '', retentionRate: '', signDate: '', content: '', note: '',
       terms: [{ termType: 'regular', termName: '第1期', amount: '', retentionAmount: '0', dueDate: '', content: '', note: '' }],
       materials: [{ materialName: '', quantity: '', amount: '' }],
+    });
+    setShowContractModal(true);
+  }
+
+  function openAddSubContract(parentC, childType) {
+    setEditingContract(null);
+    setContractForm({
+      projectId: String(parentC.projectId),
+      supplierId: '', contractNo: `${parentC.contractNo}-${childType === '分包' ? 'S' : 'W'}01`,
+      contractType: childType, parentContractId: String(parentC.id),
+      totalAmount: '', retentionRate: parentC.retentionRate > 0 ? String(Number(parentC.retentionRate) * 100) : '',
+      signDate: '', content: '', note: '', changeReason: '',
+      terms: [{ termType: 'regular', termName: '第1期', amount: '', retentionAmount: '0', dueDate: '', content: '', note: '' }],
+      materials: [],
     });
     setShowContractModal(true);
   }
@@ -90,7 +105,9 @@ export default function ContractsTab({
     })) : [{ materialName: '', quantity: '', amount: '' }];
     setContractForm({
       projectId: String(c.projectId), supplierId: String(c.supplierId),
-      contractNo: c.contractNo, totalAmount: String(c.totalAmount ?? ''),
+      contractNo: c.contractNo, contractType: c.contractType || '主合約',
+      parentContractId: c.parentContractId ? String(c.parentContractId) : '',
+      totalAmount: String(c.totalAmount ?? ''),
       retentionRate: c.retentionRate > 0 ? String(Number(c.retentionRate) * 100) : '',
       signDate: c.signDate || '', content: c.content || '', note: c.note || '', changeReason: '',
       terms: (c.terms || []).map(t => ({
@@ -196,6 +213,8 @@ export default function ContractsTab({
       const body = {
         projectId: parseInt(contractForm.projectId), supplierId: parseInt(contractForm.supplierId),
         contractNo: contractForm.contractNo.trim(), totalAmount: parseFloat(contractForm.totalAmount) || 0,
+        contractType: contractForm.contractType || '主合約',
+        parentContractId: contractForm.parentContractId ? parseInt(contractForm.parentContractId) : null,
         retentionRate: retentionRateDecimal,
         changeReason: contractForm.changeReason?.trim() || null,
         signDate: contractForm.signDate || null, content: contractForm.content?.trim() || null, note: contractForm.note?.trim() || null,
@@ -293,6 +312,7 @@ export default function ContractsTab({
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <SortableTh label="工程案" colKey="projectLabel" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">層級</th>
                 <SortableTh label="合約編號" colKey="contractNo" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
                 <SortableTh label="廠商" colKey="supplier" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" />
                 <SortableTh label="合約金額" colKey="totalAmount" sortKey={engConKey} sortDir={engConDir} onSort={engConToggle} className="px-4 py-2" align="right" />
@@ -316,11 +336,21 @@ export default function ContractsTab({
                   .filter(t => t.termType === 'retention_release' && t.status === 'paid')
                   .reduce((s, t) => s + Number(t.amount || 0), 0);
                 const retentionBalance = totalRetained - totalReleased;
+                const typeColor = { '主合約': 'bg-amber-100 text-amber-800', '分包': 'bg-blue-100 text-blue-700', '工班': 'bg-purple-100 text-purple-700' };
+                const subCount = (c.subContracts || []).length;
+                const subTotal = (c.subContracts || []).reduce((s, s2) => s + Number(s2.totalAmount || 0) + (s2.subContracts || []).reduce((ss, s3) => ss + Number(s3.totalAmount || 0), 0), 0);
                 return (
-                  <tr key={c.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2">{c.project?.code} {c.project?.name}</td>
-                    <td className="px-4 py-2 font-mono">{c.contractNo}</td>
-                    <td className="px-4 py-2">{c.supplier?.name}</td>
+                  <Fragment key={c.id}>
+                  <tr className="hover:bg-gray-50 border-b border-amber-100">
+                    <td className="px-4 py-2 text-sm">{c.project?.code} {c.project?.name}</td>
+                    <td className="px-4 py-2">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${typeColor[c.contractType] || 'bg-gray-100 text-gray-500'}`}>
+                        {c.contractType || '主合約'}
+                      </span>
+                      {subCount > 0 && <span className="ml-1 text-[10px] text-gray-400">{subCount}個子合約</span>}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-sm">{c.contractNo}</td>
+                    <td className="px-4 py-2 text-sm">{c.supplier?.name}</td>
                     <td className="px-4 py-2 text-right font-medium">
                       {formatNum(c.totalAmount)}
                       {hasRetention && (
@@ -462,8 +492,83 @@ export default function ContractsTab({
                       {!isCompleted && <button onClick={() => openEditContract(c)} className="text-amber-600 hover:underline mr-2">編輯</button>}
                       {!hasPaidTerms && <button onClick={() => deleteContract(c)} className="text-red-600 hover:underline">刪除</button>}
                       {isCompleted && <span className="text-xs text-gray-400 ml-1">已鎖定</span>}
+                      {c.contractType !== '工班' && (
+                        <button onClick={() => openAddSubContract(c, c.contractType === '主合約' ? '分包' : '工班')}
+                          className="ml-1 text-xs text-blue-500 hover:underline border border-blue-200 rounded px-1.5 py-0.5">
+                          ＋{c.contractType === '主合約' ? '分包' : '工班'}
+                        </button>
+                      )}
                     </td>
                   </tr>
+                  {/* 子合約展開列 */}
+                  {(c.subContracts || []).flatMap(sub => {
+                    const subHasPaid = (sub.terms || []).some(t => t.status === 'paid');
+                    const subDone = sub.status === 'completed';
+                    const subTermPOs = paymentOrders.filter(po => (sub.terms || []).some(t => t.id === po.sourceRecordId));
+                    const subPaid = subTermPOs.filter(po => po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
+                    const rows = [(
+                      <tr key={`sub-${sub.id}`} className="bg-blue-50/40 hover:bg-blue-50 border-b border-blue-100">
+                        <td className="px-4 py-1.5 text-xs text-gray-400">↳</td>
+                        <td className="px-4 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${typeColor[sub.contractType] || 'bg-gray-100 text-gray-400'}`}>{sub.contractType}</span>
+                        </td>
+                        <td className="px-4 py-1.5 font-mono text-xs text-blue-700">{sub.contractNo}</td>
+                        <td className="px-4 py-1.5 text-xs">{sub.supplier?.name}</td>
+                        <td className="px-4 py-1.5 text-right text-xs font-medium">
+                          {formatNum(sub.totalAmount)}
+                          {subPaid > 0 && <span className="ml-1 text-[10px] text-green-600">已付{formatNum(subPaid)}</span>}
+                        </td>
+                        <td className="px-4 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] ${subDone ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{subDone ? '已完成' : '進行中'}</span>
+                        </td>
+                        <td className="px-4 py-1.5 text-xs text-gray-500">{sub.signDate || '—'}</td>
+                        <td className="px-4 py-1.5 text-xs text-gray-400">{sub.terms?.length || 0} 期</td>
+                        <td className="px-4 py-1.5 text-center whitespace-nowrap">
+                          <button onClick={() => openEditContract(sub)} className="text-amber-500 hover:underline text-xs mr-1">編輯</button>
+                          {!subHasPaid && <button onClick={() => deleteContract(sub)} className="text-red-400 hover:underline text-xs mr-1">刪</button>}
+                          {sub.contractType === '分包' && (
+                            <button onClick={() => openAddSubContract(sub, '工班')}
+                              className="text-xs text-purple-500 hover:underline border border-purple-200 rounded px-1 py-0.5">＋工班</button>
+                          )}
+                        </td>
+                      </tr>
+                    )];
+                    // 工班層（第三層）
+                    (sub.subContracts || []).forEach(team => {
+                      const teamDone = team.status === 'completed';
+                      rows.push(
+                        <tr key={`team-${team.id}`} className="bg-purple-50/30 hover:bg-purple-50/60 border-b border-purple-100">
+                          <td className="px-4 py-1 text-xs text-gray-300">↳↳</td>
+                          <td className="px-4 py-1">
+                            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{team.contractType}</span>
+                          </td>
+                          <td className="px-4 py-1 font-mono text-xs text-purple-700">{team.contractNo}</td>
+                          <td className="px-4 py-1 text-xs">{team.supplier?.name}</td>
+                          <td className="px-4 py-1 text-right text-xs font-medium">{formatNum(team.totalAmount)}</td>
+                          <td className="px-4 py-1">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${teamDone ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{teamDone ? '已完成' : '進行中'}</span>
+                          </td>
+                          <td className="px-4 py-1 text-xs text-gray-400">{team.signDate || '—'}</td>
+                          <td className="px-4 py-1 text-xs text-gray-400">{team.terms?.length || 0} 期</td>
+                          <td className="px-4 py-1 text-center whitespace-nowrap">
+                            <button onClick={() => openEditContract(team)} className="text-amber-400 hover:underline text-xs mr-1">編輯</button>
+                            {!(team.terms || []).some(t => t.status === 'paid') && <button onClick={() => deleteContract(team)} className="text-red-300 hover:underline text-xs">刪</button>}
+                          </td>
+                        </tr>
+                      );
+                    });
+                    return rows;
+                  })}
+                  {/* 子合約金額彙整 */}
+                  {subCount > 0 && (
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <td colSpan={3} className="px-4 py-1 text-[11px] text-gray-400">↳ 子合約小計（{subCount} 個，不計入工程案總發包）</td>
+                      <td className="px-4 py-1" />
+                      <td className="px-4 py-1 text-right text-[11px] text-gray-500 font-medium">{formatNum(subTotal)}</td>
+                      <td colSpan={4} />
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -481,10 +586,32 @@ export default function ContractsTab({
                 <div><label htmlFor="con-f-2" className="block text-xs text-gray-500 mb-1">工程案 *</label><select id="con-f-2" value={contractForm.projectId} onChange={e => setContractForm(f => ({ ...f, projectId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}</select></div>
                 <div><label htmlFor="con-f-3" className="block text-xs text-gray-500 mb-1">廠商 *</label><select id="con-f-3" value={contractForm.supplierId} onChange={e => setContractForm(f => ({ ...f, supplierId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract}><option value="">請選擇</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div><label htmlFor="con-f-4" className="block text-xs text-gray-500 mb-1">合約編號 *</label><input id="con-f-4" value={contractForm.contractNo} onChange={e => setContractForm(f => ({ ...f, contractNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={!!editingContract} /></div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">合約類型</label>
+                  <div className="flex gap-1">
+                    {['主合約','分包','工班'].map(t => (
+                      <button key={t} type="button" onClick={() => setContractForm(f => ({ ...f, contractType: t }))}
+                        className={`flex-1 py-2 rounded-lg text-xs border transition-colors ${contractForm.contractType === t ? ({ '主合約':'bg-amber-100 border-amber-400 text-amber-800', '分包':'bg-blue-100 border-blue-400 text-blue-800', '工班':'bg-purple-100 border-purple-400 text-purple-800' }[t]) : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div><label htmlFor="con-f-5" className="block text-xs text-gray-500 mb-1">合約總金額</label><input id="con-f-5" type="number" value={contractForm.totalAmount} onChange={e => setContractForm(f => ({ ...f, totalAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
               </div>
+              {contractForm.contractType !== '主合約' && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">上層合約（{contractForm.contractType === '分包' ? '主合約' : '分包合約'}）</label>
+                  <select value={contractForm.parentContractId} onChange={e => setContractForm(f => ({ ...f, parentContractId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">不連結上層</option>
+                    {contracts.filter(c => c.projectId === parseInt(contractForm.projectId) && ((contractForm.contractType === '分包' && c.contractType === '主合約') || (contractForm.contractType === '工班' && c.contractType === '分包'))).map(c => (
+                      <option key={c.id} value={c.id}>{c.contractNo} ({c.supplier?.name}) NT${Number(c.totalAmount).toLocaleString('zh-TW')}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div><label htmlFor="con-f-6" className="block text-xs text-gray-500 mb-1">簽約日</label><input id="con-f-6" type="date" value={contractForm.signDate} onChange={e => setContractForm(f => ({ ...f, signDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
                 <div>

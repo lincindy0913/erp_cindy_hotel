@@ -16,14 +16,20 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
     const where = projectId ? { projectId: parseInt(projectId) } : {};
-    const contracts = await prisma.engineeringContract.findMany({
-      where,
-      include: {
-        project: true,
-        supplier: true,
-        terms: { orderBy: { termNo: 'asc' } },
-        materials: true,
+    const SUB_INCLUDE = {
+      supplier: true,
+      terms: { orderBy: { termNo: 'asc' } },
+      subContracts: {
+        include: {
+          supplier: true,
+          terms: { orderBy: { termNo: 'asc' } },
+          subContracts: { include: { supplier: true, terms: { orderBy: { termNo: 'asc' } }, subContracts: false } },
+        },
       },
+    };
+    const contracts = await prisma.engineeringContract.findMany({
+      where: { ...where, parentContractId: null }, // 只取頂層合約，子合約透過 subContracts 展開
+      include: { project: true, materials: true, ...SUB_INCLUDE },
       orderBy: { id: 'desc' },
     });
     return NextResponse.json(contracts.map(serializeContract));
@@ -40,10 +46,12 @@ export async function POST(request) {
     if (!data.projectId || !data.supplierId || !data.contractNo?.trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫工程案、廠商、合約編號', 400);
     }
-    if (!data.content?.trim()) {
+    // 子合約（分包/工班）不強制要求 content/note
+    const isSubContract = data.contractType && data.contractType !== '主合約';
+    if (!isSubContract && !data.content?.trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫合約內容後再存檔', 400);
     }
-    if (!data.note?.trim()) {
+    if (!isSubContract && !data.note?.trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫備註後再存檔', 400);
     }
     const projectId = parseInt(data.projectId);
@@ -80,11 +88,13 @@ export async function POST(request) {
           projectId,
           supplierId,
           contractNo,
+          contractType: data.contractType || '主合約',
+          parentContractId: data.parentContractId ? parseInt(data.parentContractId) : null,
           totalAmount,
           retentionRate,
           signDate: data.signDate || null,
-          content: String(data.content).trim(),
-          note: String(data.note).trim(),
+          content: String(data.content || '').trim() || null,
+          note: String(data.note || '').trim() || null,
           terms: terms.length
             ? {
                 create: terms.map((t, i) => ({

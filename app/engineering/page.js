@@ -154,7 +154,8 @@ function EngineeringPageInner() {
     const activeProjects = projects.filter((p) => p.status === '進行中').length;
     const sumBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
     const sumClient = projects.reduce((s, p) => s + Number(p.clientContractAmount || 0), 0);
-    const sumVendorContracts = contracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
+    // 只計主合約層，避免分包/工班重複加總
+    const sumVendorContracts = contracts.filter(c => (c.contractType || '主合約') === '主合約').reduce((s, c) => s + Number(c.totalAmount || 0), 0);
     let paidExecuted = 0;
     for (const o of paymentOrders) {
       if (o.status === '已執行') paidExecuted += getActualPaid(o);
