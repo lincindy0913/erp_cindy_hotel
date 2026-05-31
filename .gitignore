@@ -43,7 +43,7 @@ yarn-error.log*
 next-env.d.ts
 
 # prisma
-prisma/migrations/
+# prisma/migrations/ — 需追蹤入 git 以確保 Railway Docker build 含 migration 檔案
 
 # database dumps (do not commit)
 *.dump
