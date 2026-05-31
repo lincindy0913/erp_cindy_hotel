@@ -7,13 +7,13 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 const OUTPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
 const OUTPUT_INVOICE_STATUSES = ['已開立', '已作廢'];
 
-export default function OutputInvoicesTab({ projects, onDashStatsChanged }) {
+export default function OutputInvoicesTab({ projects, progressClaims = [], onDashStatsChanged }) {
   const [outputInvoices, setOutputInvoices] = useState([]);
   const [projectFilter, setProjectFilter] = useState('');
   const [showOutputModal, setShowOutputModal] = useState(false);
   const [editingOutputInv, setEditingOutputInv] = useState(null);
   const [outputInvSaving, setOutputInvSaving] = useState(false);
-  const emptyForm = { projectId: '', clientName: '', invoiceNo: '', invoiceDate: '', amount: '', taxAmount: '', totalAmount: '', invoiceType: '電子發票', status: '已開立', note: '' };
+  const emptyForm = { projectId: '', progressClaimId: '', clientName: '', invoiceNo: '', invoiceDate: '', amount: '', taxAmount: '', totalAmount: '', invoiceType: '電子發票', status: '已開立', note: '' };
   const [outputForm, setOutputForm] = useState(emptyForm);
 
   const { showToast } = useToast();
@@ -79,7 +79,7 @@ export default function OutputInvoicesTab({ projects, onDashStatsChanged }) {
           </select>
           <span className="text-sm text-gray-500">共 {outputInvoices.length} 筆</span>
         </div>
-        <button onClick={() => { setEditingOutputInv(null); setOutputForm({ ...emptyForm, projectId: projectFilter }); setShowOutputModal(true); }}
+        <button onClick={() => { setEditingOutputInv(null); setOutputForm({ ...emptyForm, projectId: projectFilter, progressClaimId: '' }); setShowOutputModal(true); }}
           className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
           + 新增銷項發票
         </button>
@@ -97,6 +97,7 @@ export default function OutputInvoicesTab({ projects, onDashStatsChanged }) {
               <SortableTh label="含稅金額" colKey="totalAmount" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" align="right" />
               <SortableTh label="類型" colKey="invoiceType" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
               <SortableTh label="狀態" colKey="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+              <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">連結估驗</th>
               <th className="text-left px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">備註</th>
               <th className="text-center px-3 py-2 text-sm font-medium text-gray-700 whitespace-nowrap">操作</th>
             </tr>
@@ -117,9 +118,15 @@ export default function OutputInvoicesTab({ projects, onDashStatsChanged }) {
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === '已作廢' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>{inv.status}</span>
                 </td>
+                <td className="px-3 py-2 text-xs">
+                  {inv.progressClaim
+                    ? <span className="text-indigo-600">{inv.progressClaim.termName}{inv.progressClaim.claimNo ? ` (${inv.progressClaim.claimNo})` : ''}</span>
+                    : <span className="text-gray-300">—</span>
+                  }
+                </td>
                 <td className="px-3 py-2 text-xs text-gray-400 max-w-[120px] truncate" title={inv.note || ''}>{inv.note || '—'}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
-                  <button onClick={() => { setEditingOutputInv(inv); setOutputForm({ projectId: String(inv.projectId), clientName: inv.clientName || '', invoiceNo: inv.invoiceNo || '', invoiceDate: inv.invoiceDate, amount: String(inv.amount), taxAmount: String(inv.taxAmount), totalAmount: String(inv.totalAmount), invoiceType: inv.invoiceType || '電子發票', status: inv.status, note: inv.note || '' }); setShowOutputModal(true); }}
+                  <button onClick={() => { setEditingOutputInv(inv); setOutputForm({ projectId: String(inv.projectId), progressClaimId: inv.progressClaimId ? String(inv.progressClaimId) : '', clientName: inv.clientName || '', invoiceNo: inv.invoiceNo || '', invoiceDate: inv.invoiceDate, amount: String(inv.amount), taxAmount: String(inv.taxAmount), totalAmount: String(inv.totalAmount), invoiceType: inv.invoiceType || '電子發票', status: inv.status, note: inv.note || '' }); setShowOutputModal(true); }}
                     className="text-blue-500 hover:underline text-xs mr-2">編輯</button>
                   <button onClick={() => deleteOutputInvoice(inv)} className="text-red-500 hover:underline text-xs">刪除</button>
                 </td>
@@ -156,6 +163,22 @@ export default function OutputInvoicesTab({ projects, onDashStatsChanged }) {
                   {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
                 </select>
               </div>
+              {(() => {
+                const pid = outputForm.projectId ? parseInt(outputForm.projectId) : null;
+                const claimsForProject = pid ? progressClaims.filter(c => c.projectId === pid) : [];
+                return claimsForProject.length > 0 ? (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">連結估驗單（選填）</label>
+                    <select value={outputForm.progressClaimId} onChange={e => setOutputForm(f => ({ ...f, progressClaimId: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm">
+                      <option value="">不連結估驗單</option>
+                      {claimsForProject.map(c => (
+                        <option key={c.id} value={c.id}>{c.termName}{c.claimNo ? ` (${c.claimNo})` : ''} — 申報 {Number(c.claimAmount).toLocaleString('zh-TW')}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null;
+              })()}
               <div>
                 <label htmlFor="out-f-2" className="block text-xs text-gray-500 mb-1">業主名稱</label>
                 <input id="out-f-2" value={outputForm.clientName} onChange={e => setOutputForm(f => ({ ...f, clientName: e.target.value }))}

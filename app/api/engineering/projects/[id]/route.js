@@ -64,6 +64,10 @@ export async function PUT(request, { params }) {
       ...(data.buildingNo !== undefined && { buildingNo: data.buildingNo?.trim() || null }),
       ...(data.permitNo !== undefined && { permitNo: data.permitNo?.trim() || null }),
       ...(data.note !== undefined && { note: data.note?.trim() || null }),
+      ...(data.warrantyStartDate !== undefined && { warrantyStartDate: data.warrantyStartDate || null }),
+      ...(data.warrantyEndDate !== undefined && { warrantyEndDate: data.warrantyEndDate || null }),
+      ...(data.warrantyMonths !== undefined && { warrantyMonths: data.warrantyMonths ? parseInt(data.warrantyMonths) : null }),
+      ...(data.warrantyNote !== undefined && { warrantyNote: data.warrantyNote?.trim() || null }),
     };
     if (data.warehouseId !== undefined) {
       const [incomes, orders] = await Promise.all([

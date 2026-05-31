@@ -24,6 +24,7 @@ export async function GET(request) {
       include: {
         project: { select: { id: true, code: true, name: true, clientName: true, clientContractAmount: true, warehouse: true } },
         account: { select: { id: true, name: true, type: true, warehouse: true } },
+        progressClaim: { select: { id: true, termName: true, claimNo: true, status: true } },
       },
       orderBy: [{ projectId: 'asc' }, { receivedDate: 'desc' }],
     });
@@ -64,6 +65,7 @@ export async function POST(request) {
       const income = await tx.engineeringIncome.create({
         data: {
           projectId,
+          progressClaimId: data.progressClaimId ? parseInt(data.progressClaimId) : null,
           termName: data.termName.trim(),
           amount,
           receivedDate: data.receivedDate,
@@ -107,6 +109,7 @@ export async function POST(request) {
       include: {
         project: { select: { id: true, code: true, name: true, clientName: true, clientContractAmount: true, warehouse: true } },
         account: { select: { id: true, name: true, type: true, warehouse: true } },
+        progressClaim: { select: { id: true, termName: true, claimNo: true, status: true } },
       },
     });
 

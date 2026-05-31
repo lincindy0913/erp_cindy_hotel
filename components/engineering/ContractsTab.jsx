@@ -26,7 +26,10 @@ export default function ContractsTab({
 }) {
   const [showContractModal, setShowContractModal] = useState(false);
   const [editingContract, setEditingContract] = useState(null);
-  const emptyContractForm = { projectId: '', supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '', terms: [], materials: [] };
+  const emptyContractForm = {
+    projectId: '', supplierId: '', contractNo: '', totalAmount: '', retentionRate: '',
+    signDate: '', content: '', note: '', terms: [], materials: [],
+  };
   const [contractForm, setContractForm] = useState(emptyContractForm);
   const [contractSaving, setContractSaving] = useState(false);
 
@@ -53,12 +56,21 @@ export default function ContractsTab({
     [displayContracts, engConKey, engConDir]
   );
 
+  function applyRetentionToTerms(terms, rateStr) {
+    const rate = Math.min(1, Math.max(0, parseFloat(rateStr) || 0));
+    return terms.map(t => {
+      if ((t.termType || 'regular') !== 'regular') return t;
+      const amt = parseFloat(t.amount) || 0;
+      return { ...t, retentionAmount: rate > 0 ? String(Math.round(amt * rate * 100) / 100) : '0' };
+    });
+  }
+
   function openAddContract() {
     setEditingContract(null);
     setContractForm({
       projectId: filterProjectId || (projects[0]?.id ? String(projects[0].id) : ''),
-      supplierId: '', contractNo: '', totalAmount: '', signDate: '', content: '', note: '',
-      terms: [{ termName: '第1期', amount: '', dueDate: '', content: '', note: '' }],
+      supplierId: '', contractNo: '', totalAmount: '', retentionRate: '', signDate: '', content: '', note: '',
+      terms: [{ termType: 'regular', termName: '第1期', amount: '', retentionAmount: '0', dueDate: '', content: '', note: '' }],
       materials: [{ materialName: '', quantity: '', amount: '' }],
     });
     setShowContractModal(true);
@@ -73,11 +85,13 @@ export default function ContractsTab({
     setContractForm({
       projectId: String(c.projectId), supplierId: String(c.supplierId),
       contractNo: c.contractNo, totalAmount: String(c.totalAmount ?? ''),
+      retentionRate: c.retentionRate > 0 ? String(Number(c.retentionRate) * 100) : '',
       signDate: c.signDate || '', content: c.content || '', note: c.note || '',
       terms: (c.terms || []).map(t => ({
-        id: t.id, termName: t.termName || `第${t.termNo}期`,
-        amount: String(t.amount ?? ''), dueDate: t.dueDate || '',
-        content: t.content || '', note: t.note || '', status: t.status,
+        id: t.id, termType: t.termType || 'regular',
+        termName: t.termName || `第${t.termNo}期`,
+        amount: String(t.amount ?? ''), retentionAmount: String(t.retentionAmount ?? '0'),
+        dueDate: t.dueDate || '', content: t.content || '', note: t.note || '', status: t.status,
       })),
       materials: matList,
     });
@@ -85,14 +99,59 @@ export default function ContractsTab({
   }
 
   function openUploadContract(c) { setContractForUpload(c); setShowContractUploadModal(true); }
-  function addContractTermRow() {
+
+  function addContractTermRow(type = 'regular') {
     const n = contractForm.terms.length + 1;
-    setContractForm(f => ({ ...f, terms: [...f.terms, { termName: `第${n}期`, amount: '', dueDate: '', content: '', note: '' }] }));
+    const rate = Math.min(1, Math.max(0, parseFloat(contractForm.retentionRate || 0) / 100 || 0));
+    if (type === 'retention_release') {
+      const totalRetained = contractForm.terms
+        .filter(t => (t.termType || 'regular') === 'regular')
+        .reduce((s, t) => s + (parseFloat(t.retentionAmount) || 0), 0);
+      setContractForm(f => ({
+        ...f,
+        terms: [...f.terms, {
+          termType: 'retention_release', termName: '保留款撥付',
+          amount: String(Math.round(totalRetained * 100) / 100), retentionAmount: '0',
+          dueDate: '', content: '', note: '',
+        }],
+      }));
+    } else {
+      setContractForm(f => ({
+        ...f,
+        terms: [...f.terms, {
+          termType: 'regular', termName: `第${n}期`, amount: '', retentionAmount: '0',
+          dueDate: '', content: '', note: '',
+        }],
+      }));
+    }
   }
+
   function removeContractTermRow(i) { setContractForm(f => ({ ...f, terms: f.terms.filter((_, idx) => idx !== i) })); }
+
   function updateContractTerm(i, field, value) {
-    setContractForm(f => ({ ...f, terms: f.terms.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)) }));
+    setContractForm(f => {
+      const terms = f.terms.map((t, idx) => {
+        if (idx !== i) return t;
+        const updated = { ...t, [field]: value };
+        if (field === 'amount' && (t.termType || 'regular') === 'regular') {
+          const rate = Math.min(1, Math.max(0, parseFloat(f.retentionRate || 0) / 100 || 0));
+          const amt = parseFloat(value) || 0;
+          updated.retentionAmount = rate > 0 ? String(Math.round(amt * rate * 100) / 100) : t.retentionAmount;
+        }
+        return updated;
+      });
+      return { ...f, terms };
+    });
   }
+
+  function handleRetentionRateChange(value) {
+    setContractForm(f => ({
+      ...f,
+      retentionRate: value,
+      terms: applyRetentionToTerms(f.terms, parseFloat(value || 0) / 100),
+    }));
+  }
+
   function addContractMaterialRow() { setContractForm(f => ({ ...f, materials: [...f.materials, { materialName: '', quantity: '', amount: '' }] })); }
   function removeContractMaterialRow(i) { setContractForm(f => ({ ...f, materials: f.materials.filter((_, idx) => idx !== i) })); }
   function updateContractMaterial(i, field, value) {
@@ -104,21 +163,27 @@ export default function ContractsTab({
     if (!contractForm.content?.trim()) { showToast('請填寫合約內容後再存檔', 'error'); return; }
     if (!contractForm.note?.trim()) { showToast('請填寫備註後再存檔', 'error'); return; }
     const _contractTotal = parseFloat(contractForm.totalAmount) || 0;
-    if (_contractTotal > 0 && contractForm.terms.length > 0) {
-      const _allTermsSum = contractForm.terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-      if (Math.abs(_allTermsSum - _contractTotal) > 0.01) {
-        showToast(`期數合計 ${_allTermsSum.toLocaleString()} 與合約總金額 ${_contractTotal.toLocaleString()} 不符，請修正後再存檔`, 'error');
+    const regularTerms = contractForm.terms.filter(t => (t.termType || 'regular') === 'regular');
+    if (_contractTotal > 0 && regularTerms.length > 0) {
+      const _regularSum = regularTerms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+      if (Math.abs(_regularSum - _contractTotal) > 0.01) {
+        showToast(`一般期數合計 ${_regularSum.toLocaleString()} 與合約總金額 ${_contractTotal.toLocaleString()} 不符，請修正後再存檔`, 'error');
         return;
       }
     }
+    const retentionRateDecimal = Math.min(1, Math.max(0, parseFloat(contractForm.retentionRate || 0) / 100 || 0));
     setContractSaving(true);
     try {
       const body = {
         projectId: parseInt(contractForm.projectId), supplierId: parseInt(contractForm.supplierId),
         contractNo: contractForm.contractNo.trim(), totalAmount: parseFloat(contractForm.totalAmount) || 0,
+        retentionRate: retentionRateDecimal,
         signDate: contractForm.signDate || null, content: contractForm.content?.trim() || null, note: contractForm.note?.trim() || null,
         terms: contractForm.terms.filter(t => !t.id).map((t, i) => ({
-          termName: t.termName || `第${i + 1}期`, amount: parseFloat(t.amount) || 0,
+          termType: t.termType || 'regular',
+          termName: t.termName || `第${i + 1}期`,
+          amount: parseFloat(t.amount) || 0,
+          retentionAmount: parseFloat(t.retentionAmount) || 0,
           dueDate: t.dueDate || null, content: t.content?.trim() || null, note: t.note?.trim() || null,
         })).filter(t => t.amount > 0),
         materials: (contractForm.materials || []).map(m => ({
@@ -140,7 +205,13 @@ export default function ContractsTab({
         for (const t of updateTerms) {
           const r = await fetch(`/api/engineering/contract-terms/${t.id}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ termName: t.termName || null, amount: parseFloat(t.amount) || 0, dueDate: t.dueDate || null, content: t.content?.trim() || null, note: t.note?.trim() || null }),
+            body: JSON.stringify({
+              termType: t.termType || 'regular',
+              termName: t.termName || null,
+              amount: parseFloat(t.amount) || 0,
+              retentionAmount: parseFloat(t.retentionAmount) || 0,
+              dueDate: t.dueDate || null, content: t.content?.trim() || null, note: t.note?.trim() || null,
+            }),
           });
           if (!r.ok) { const d = await r.json(); throw new Error(d.error?.message || '更新期數失敗'); }
         }
@@ -150,7 +221,14 @@ export default function ContractsTab({
           });
           if (!tRes.ok) { const d = await tRes.json().catch(() => ({})); throw new Error(d.error || '追加期數失敗'); }
         }
-        const res = await fetch(`/api/engineering/contracts/${editingContract.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contractNo: body.contractNo, totalAmount: body.totalAmount, signDate: body.signDate, content: body.content, note: body.note, materials: body.materials }) });
+        const res = await fetch(`/api/engineering/contracts/${editingContract.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contractNo: body.contractNo, totalAmount: body.totalAmount,
+            retentionRate: retentionRateDecimal,
+            signDate: body.signDate, content: body.content, note: body.note, materials: body.materials,
+          }),
+        });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error?.message || '更新失敗'); }
         const changes = [];
         if (deleteTermIds.length > 0) changes.push(`刪除 ${deleteTermIds.length} 期`);
@@ -209,12 +287,27 @@ export default function ContractsTab({
               ) : sortedContracts.map(c => {
                 const hasPaidTerms = (c.terms || []).some(t => t.status === 'paid');
                 const isCompleted = c.status === 'completed';
+                const hasRetention = Number(c.retentionRate || 0) > 0;
+                const totalRetained = (c.terms || [])
+                  .filter(t => (t.termType || 'regular') === 'regular')
+                  .reduce((s, t) => s + Number(t.retentionAmount || 0), 0);
+                const totalReleased = (c.terms || [])
+                  .filter(t => t.termType === 'retention_release' && t.status === 'paid')
+                  .reduce((s, t) => s + Number(t.amount || 0), 0);
+                const retentionBalance = totalRetained - totalReleased;
                 return (
                   <tr key={c.id} className="hover:bg-gray-50">
                     <td className="px-4 py-2">{c.project?.code} {c.project?.name}</td>
                     <td className="px-4 py-2 font-mono">{c.contractNo}</td>
                     <td className="px-4 py-2">{c.supplier?.name}</td>
-                    <td className="px-4 py-2 text-right font-medium">{formatNum(c.totalAmount)}</td>
+                    <td className="px-4 py-2 text-right font-medium">
+                      {formatNum(c.totalAmount)}
+                      {hasRetention && (
+                        <span className="ml-1 text-[10px] text-orange-500 font-normal">
+                          留{(Number(c.retentionRate) * 100).toFixed(0)}%
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2">
                       <span className={`px-2 py-0.5 rounded text-xs ${isCompleted ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                         {isCompleted ? '已完成' : '進行中'}
@@ -223,91 +316,118 @@ export default function ContractsTab({
                     <td className="px-4 py-2">{c.signDate || '－'}</td>
                     <td className="px-4 py-2">
                       {(c.terms || []).length > 0 && (
-                        <table className="w-full text-xs border-collapse">
-                          <thead className="sticky top-0 z-10 bg-white">
-                            <tr className="text-gray-400 border-b border-gray-200">
-                              <th className="text-left py-1 pr-2 font-normal whitespace-nowrap">期別</th>
-                              <th className="text-right py-1 px-2 font-normal whitespace-nowrap">期款</th>
-                              <th className="text-right py-1 px-2 font-normal whitespace-nowrap">已付</th>
-                              <th className="text-right py-1 px-2 font-normal whitespace-nowrap">未付</th>
-                              <th className="text-center py-1 px-2 font-normal whitespace-nowrap">狀態</th>
-                              <th className="text-center py-1 pl-2 font-normal whitespace-nowrap">操作</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(c.terms || []).map(t => {
-                              const termMaterials = (c.materials || []).filter(m => m.termId === t.id);
-                              const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
-                              const paidPOs = termPOs.filter(po => po.status === '已執行');
-                              const pendingPOs = termPOs.filter(po => po.status === '待出納');
-                              const paidAmount = paidPOs.reduce((s, po) => s + getActualPaid(po), 0);
-                              const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
-                              const termAmt = Number(t.amount);
-                              const unpaidAmount = Math.max(0, termAmt - paidAmount);
-                              const isFullyPaid = paidAmount >= termAmt && termAmt > 0;
-                              const isPartial = paidAmount > 0 && !isFullyPaid;
-                              const hasDetails = paidPOs.length > 0 || pendingPOs.length > 0 || t.content || t.note || termMaterials.length > 0;
-                              return (
-                                <Fragment key={t.id}>
-                                  <tr className="border-b border-gray-50 hover:bg-gray-50/50">
-                                    <td className="py-1.5 pr-2 font-medium whitespace-nowrap">{t.termName || `第${t.termNo}期`}</td>
-                                    <td className="py-1.5 px-2 text-right whitespace-nowrap">{formatNum(termAmt)}</td>
-                                    <td className={`py-1.5 px-2 text-right whitespace-nowrap ${paidAmount > 0 ? 'text-green-600 font-medium' : 'text-gray-300'}`}>{paidAmount > 0 ? formatNum(paidAmount) : '—'}</td>
-                                    <td className={`py-1.5 px-2 text-right whitespace-nowrap ${isFullyPaid ? 'text-gray-300' : unpaidAmount > 0 ? 'text-amber-600 font-medium' : 'text-gray-300'}`}>{isFullyPaid ? '—' : formatNum(unpaidAmount)}</td>
-                                    <td className="py-1.5 px-2 text-center whitespace-nowrap">
-                                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] leading-tight ${isFullyPaid ? 'bg-green-100 text-green-700' : isPartial ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                                        {isFullyPaid ? '已付清' : isPartial ? '部分' : '待付'}
-                                      </span>
-                                      {pendingAmount > 0 && <span className="inline-block ml-1 px-1.5 py-0.5 rounded text-[10px] leading-tight bg-orange-50 text-orange-500">待出納 {formatNum(pendingAmount)}</span>}
-                                    </td>
-                                    <td className="py-1.5 pl-2 text-center whitespace-nowrap">
-                                      {!isFullyPaid && <button onClick={() => onMarkTermPaid?.(t)} className="text-amber-600 hover:underline">付款</button>}
-                                      {isFullyPaid && <button onClick={() => onUnmarkTermPaid?.(t)} className="text-gray-400 hover:text-red-600 hover:underline">取消</button>}
-                                    </td>
-                                  </tr>
-                                  {(isPartial || isFullyPaid) && (
-                                    <tr><td colSpan="6" className="pb-1 pt-0">
-                                      <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                                        <div className={`h-full rounded-full ${isFullyPaid ? 'bg-green-400' : 'bg-blue-400'}`} style={{ width: `${Math.min((paidAmount / (termAmt || 1)) * 100, 100)}%` }} />
-                                      </div>
-                                    </td></tr>
-                                  )}
-                                  {hasDetails && (
-                                    <tr><td colSpan="6" className="pb-2 pt-0">
-                                      <div className="pl-3 space-y-0.5">
-                                        {paidPOs.map((po, pi) => (
-                                          <div key={pi} className="flex items-center gap-2 text-[11px] text-gray-500">
-                                            <span className="text-green-600">✓</span>
-                                            <span>{po.dueDate || po.createdAt?.slice(0, 10) || ''}</span>
-                                            <span className="text-green-600 font-medium">{formatNum(getActualPaid(po))}</span>
-                                            <span className="text-gray-400">{po.paymentMethod || ''}</span>
-                                            {po.paymentNo && <span className="font-mono text-gray-300">{po.paymentNo}</span>}
-                                          </div>
-                                        ))}
-                                        {pendingPOs.map((po, pi) => (
-                                          <div key={`p${pi}`} className="flex items-center gap-2 text-[11px] text-orange-500">
-                                            <span>⏳</span>
-                                            <span>{po.dueDate || ''}</span>
-                                            <span className="font-medium">{formatNum(Number(po.amount))}</span>
-                                            <span className="text-orange-400">待出納</span>
-                                            {po.paymentNo && <span className="font-mono text-orange-300">{po.paymentNo}</span>}
-                                          </div>
-                                        ))}
-                                        {t.content && <div className="text-[11px] text-gray-500">📋 {t.content}</div>}
-                                        {t.note && <div className="text-[11px] text-gray-400">💬 {t.note}</div>}
-                                        {termMaterials.length > 0 && (
-                                          <div className="text-[11px] text-blue-600">
-                                            📦 {termMaterials.map(m => `${m.description || (m.product ? `${m.product.code} ${m.product.name}` : '—')} ×${Number(m.quantity)}`).join('、')}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </td></tr>
-                                  )}
-                                </Fragment>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                        <>
+                          <table className="w-full text-xs border-collapse">
+                            <thead className="sticky top-0 z-10 bg-white">
+                              <tr className="text-gray-400 border-b border-gray-200">
+                                <th className="text-left py-1 pr-2 font-normal whitespace-nowrap">期別</th>
+                                <th className="text-right py-1 px-2 font-normal whitespace-nowrap">請款</th>
+                                {hasRetention && <th className="text-right py-1 px-2 font-normal whitespace-nowrap text-orange-400">扣留</th>}
+                                {hasRetention && <th className="text-right py-1 px-2 font-normal whitespace-nowrap">實付</th>}
+                                {!hasRetention && <th className="text-right py-1 px-2 font-normal whitespace-nowrap">已付</th>}
+                                <th className="text-right py-1 px-2 font-normal whitespace-nowrap">未付</th>
+                                <th className="text-center py-1 px-2 font-normal whitespace-nowrap">狀態</th>
+                                <th className="text-center py-1 pl-2 font-normal whitespace-nowrap">操作</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(c.terms || []).map(t => {
+                                const isRetentionRelease = t.termType === 'retention_release';
+                                const termMaterials = (c.materials || []).filter(m => m.termId === t.id);
+                                const termPOs = paymentOrders.filter(po => po.sourceRecordId === t.id);
+                                const paidPOs = termPOs.filter(po => po.status === '已執行');
+                                const pendingPOs = termPOs.filter(po => po.status === '待出納');
+                                const paidAmount = paidPOs.reduce((s, po) => s + getActualPaid(po), 0);
+                                const pendingAmount = pendingPOs.reduce((s, po) => s + Number(po.amount || 0), 0);
+                                const termAmt = Number(t.amount);
+                                const retAmt = Number(t.retentionAmount || 0);
+                                const payable = isRetentionRelease ? termAmt : termAmt - retAmt;
+                                const unpaidAmount = Math.max(0, payable - paidAmount);
+                                const isFullyPaid = paidAmount >= payable && payable > 0;
+                                const isPartial = paidAmount > 0 && !isFullyPaid;
+                                const hasDetails = paidPOs.length > 0 || pendingPOs.length > 0 || t.content || t.note || termMaterials.length > 0;
+                                return (
+                                  <Fragment key={t.id}>
+                                    <tr className="border-b border-gray-50 hover:bg-gray-50/50">
+                                      <td className="py-1.5 pr-2 font-medium whitespace-nowrap">
+                                        {isRetentionRelease
+                                          ? <span className="text-orange-600">{t.termName || '保留款撥付'}</span>
+                                          : (t.termName || `第${t.termNo}期`)}
+                                      </td>
+                                      <td className="py-1.5 px-2 text-right whitespace-nowrap">{formatNum(termAmt)}</td>
+                                      {hasRetention && (
+                                        <td className="py-1.5 px-2 text-right whitespace-nowrap text-orange-500">
+                                          {isRetentionRelease ? '—' : (retAmt > 0 ? formatNum(retAmt) : '—')}
+                                        </td>
+                                      )}
+                                      {hasRetention
+                                        ? <td className={`py-1.5 px-2 text-right whitespace-nowrap ${paidAmount > 0 ? 'text-green-600 font-medium' : 'text-gray-300'}`}>{paidAmount > 0 ? formatNum(paidAmount) : '—'}</td>
+                                        : <td className={`py-1.5 px-2 text-right whitespace-nowrap ${paidAmount > 0 ? 'text-green-600 font-medium' : 'text-gray-300'}`}>{paidAmount > 0 ? formatNum(paidAmount) : '—'}</td>
+                                      }
+                                      <td className={`py-1.5 px-2 text-right whitespace-nowrap ${isFullyPaid ? 'text-gray-300' : unpaidAmount > 0 ? 'text-amber-600 font-medium' : 'text-gray-300'}`}>{isFullyPaid ? '—' : formatNum(unpaidAmount)}</td>
+                                      <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] leading-tight ${isFullyPaid ? 'bg-green-100 text-green-700' : isPartial ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                                          {isFullyPaid ? '已付清' : isPartial ? '部分' : '待付'}
+                                        </span>
+                                        {pendingAmount > 0 && <span className="inline-block ml-1 px-1.5 py-0.5 rounded text-[10px] leading-tight bg-orange-50 text-orange-500">待出納 {formatNum(pendingAmount)}</span>}
+                                      </td>
+                                      <td className="py-1.5 pl-2 text-center whitespace-nowrap">
+                                        {!isFullyPaid && <button onClick={() => onMarkTermPaid?.(t)} className="text-amber-600 hover:underline">付款</button>}
+                                        {isFullyPaid && <button onClick={() => onUnmarkTermPaid?.(t)} className="text-gray-400 hover:text-red-600 hover:underline">取消</button>}
+                                      </td>
+                                    </tr>
+                                    {(isPartial || isFullyPaid) && (
+                                      <tr><td colSpan={hasRetention ? 7 : 6} className="pb-1 pt-0">
+                                        <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                                          <div className={`h-full rounded-full ${isFullyPaid ? 'bg-green-400' : 'bg-blue-400'}`} style={{ width: `${Math.min((paidAmount / (payable || 1)) * 100, 100)}%` }} />
+                                        </div>
+                                      </td></tr>
+                                    )}
+                                    {hasDetails && (
+                                      <tr><td colSpan={hasRetention ? 7 : 6} className="pb-2 pt-0">
+                                        <div className="pl-3 space-y-0.5">
+                                          {paidPOs.map((po, pi) => (
+                                            <div key={pi} className="flex items-center gap-2 text-[11px] text-gray-500">
+                                              <span className="text-green-600">✓</span>
+                                              <span>{po.dueDate || po.createdAt?.slice(0, 10) || ''}</span>
+                                              <span className="text-green-600 font-medium">{formatNum(getActualPaid(po))}</span>
+                                              <span className="text-gray-400">{po.paymentMethod || ''}</span>
+                                              {po.paymentNo && <span className="font-mono text-gray-300">{po.paymentNo}</span>}
+                                            </div>
+                                          ))}
+                                          {pendingPOs.map((po, pi) => (
+                                            <div key={`p${pi}`} className="flex items-center gap-2 text-[11px] text-orange-500">
+                                              <span>⏳</span>
+                                              <span>{po.dueDate || ''}</span>
+                                              <span className="font-medium">{formatNum(Number(po.amount))}</span>
+                                              <span className="text-orange-400">待出納</span>
+                                              {po.paymentNo && <span className="font-mono text-orange-300">{po.paymentNo}</span>}
+                                            </div>
+                                          ))}
+                                          {t.content && <div className="text-[11px] text-gray-500">📋 {t.content}</div>}
+                                          {t.note && <div className="text-[11px] text-gray-400">💬 {t.note}</div>}
+                                          {termMaterials.length > 0 && (
+                                            <div className="text-[11px] text-blue-600">
+                                              📦 {termMaterials.map(m => `${m.description || (m.product ? `${m.product.code} ${m.product.name}` : '—')} ×${Number(m.quantity)}`).join('、')}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td></tr>
+                                    )}
+                                  </Fragment>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          {hasRetention && totalRetained > 0 && (
+                            <div className="mt-1 flex gap-3 text-[11px] text-orange-600 bg-orange-50 rounded px-2 py-1">
+                              <span>累計扣留 <strong>{formatNum(totalRetained)}</strong></span>
+                              {totalReleased > 0 && <span>已撥付 <strong className="text-green-600">{formatNum(totalReleased)}</strong></span>}
+                              {retentionBalance > 0 && <span>未撥付餘額 <strong>{formatNum(retentionBalance)}</strong></span>}
+                              {retentionBalance === 0 && totalRetained > 0 && <span className="text-green-600">全數撥付完畢</span>}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="px-4 py-2 text-center">
@@ -340,34 +460,118 @@ export default function ContractsTab({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label htmlFor="con-f-6" className="block text-xs text-gray-500 mb-1">簽約日</label><input id="con-f-6" type="date" value={contractForm.signDate} onChange={e => setContractForm(f => ({ ...f, signDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div />
+                <div>
+                  <label htmlFor="con-f-ret" className="block text-xs text-gray-500 mb-1">保留款比例（%）</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="con-f-ret" type="number" min="0" max="100" step="0.01"
+                      value={contractForm.retentionRate}
+                      onChange={e => handleRetentionRateChange(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      placeholder="0 表示無保留款"
+                    />
+                    <span className="text-sm text-gray-400 shrink-0">%</span>
+                  </div>
+                  {contractForm.retentionRate > 0 && (
+                    <p className="text-[11px] text-orange-500 mt-0.5">每期自動扣留 {contractForm.retentionRate}%</p>
+                  )}
+                </div>
               </div>
               <div><label htmlFor="con-f-7" className="block text-xs text-gray-500 mb-1">合約內容 *</label><textarea id="con-f-7" value={contractForm.content} onChange={e => setContractForm(f => ({ ...f, content: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="請填寫合約內容（必填）" /></div>
-              <div className="flex justify-between items-center"><label className="text-xs text-gray-500">付款期數</label><button type="button" onClick={addContractTermRow} className="text-amber-600 text-sm">＋ 新增一期</button></div>
+
+              {/* 付款期數區塊 */}
+              <div className="flex justify-between items-center">
+                <label className="text-xs text-gray-500">付款期數</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => addContractTermRow('regular')} className="text-amber-600 text-sm">＋ 一般期</button>
+                  <button type="button" onClick={() => addContractTermRow('retention_release')} className="text-orange-600 text-sm">＋ 保留款撥付期</button>
+                </div>
+              </div>
               {(() => {
-                const totalTermSum = contractForm.terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+                const regularTerms = contractForm.terms.filter(t => (t.termType || 'regular') === 'regular');
+                const regularSum = regularTerms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
                 const contractTotal = parseFloat(contractForm.totalAmount) || 0;
-                const hasMismatch = contractTotal > 0 && contractForm.terms.length > 0 && Math.abs(totalTermSum - contractTotal) > 0.01;
-                const isMatch = contractTotal > 0 && contractForm.terms.length > 0 && !hasMismatch;
+                const hasMismatch = contractTotal > 0 && regularTerms.length > 0 && Math.abs(regularSum - contractTotal) > 0.01;
+                const isMatch = contractTotal > 0 && regularTerms.length > 0 && !hasMismatch;
+                const hasRetention = parseFloat(contractForm.retentionRate || 0) > 0;
                 return (
                   <>
                     <div className={`border rounded-lg overflow-hidden ${hasMismatch ? 'border-red-300' : ''}`}>
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="px-2 py-1 text-left">期別</th><th className="px-2 py-1 text-right">金額</th><th className="px-2 py-1 text-left">到期日</th><th className="px-2 py-1 text-left">內容</th><th className="px-2 py-1 text-left">備註</th><th className="w-8" /></tr></thead>
+                        <thead className="bg-gray-50 sticky top-0 z-10">
+                          <tr>
+                            <th className="px-2 py-1 text-left">期別</th>
+                            <th className="px-2 py-1 text-right">請款金額</th>
+                            {hasRetention && <th className="px-2 py-1 text-right text-orange-500">保留款</th>}
+                            {hasRetention && <th className="px-2 py-1 text-right">實付</th>}
+                            <th className="px-2 py-1 text-left">到期日</th>
+                            <th className="px-2 py-1 text-left">內容</th>
+                            <th className="px-2 py-1 text-left">備註</th>
+                            <th className="w-8" />
+                          </tr>
+                        </thead>
                         <tbody>
                           {contractForm.terms.length === 0 ? (
-                            <tr><td colSpan={6} className="px-2 py-3 text-center text-gray-400 text-xs">尚未新增期數</td></tr>
-                          ) : contractForm.terms.map((t, i) => { const isPaid = t.status === 'paid'; return (<tr key={t.id || `new-${i}`} className={`border-t${isPaid ? ' bg-green-50' : ''}`}><td className="px-2 py-1"><div className="flex items-center gap-1"><input value={t.termName} onChange={e => updateContractTerm(i, 'termName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100 disabled:text-gray-500" disabled={isPaid} />{isPaid && <span className="text-xs text-green-600 whitespace-nowrap">已付</span>}</div></td><td className="px-2 py-1"><input type="number" value={t.amount} onChange={e => updateContractTerm(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right disabled:bg-gray-100" step="0.01" disabled={isPaid} /></td><td className="px-2 py-1"><input type="date" value={t.dueDate} onChange={e => updateContractTerm(i, 'dueDate', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100" disabled={isPaid} /></td><td className="px-2 py-1"><input value={t.content || ''} onChange={e => updateContractTerm(i, 'content', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100" placeholder="付款內容" disabled={isPaid} /></td><td className="px-2 py-1"><input value={t.note || ''} onChange={e => updateContractTerm(i, 'note', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100" placeholder="備註" disabled={isPaid} /></td><td className="px-2 py-1">{!isPaid && <button type="button" onClick={() => removeContractTermRow(i)} className="text-red-500">×</button>}</td></tr>); })}
+                            <tr><td colSpan={hasRetention ? 8 : 6} className="px-2 py-3 text-center text-gray-400 text-xs">尚未新增期數</td></tr>
+                          ) : contractForm.terms.map((t, i) => {
+                            const isPaid = t.status === 'paid';
+                            const isRetentionRelease = t.termType === 'retention_release';
+                            const amt = parseFloat(t.amount) || 0;
+                            const retAmt = parseFloat(t.retentionAmount) || 0;
+                            const payable = isRetentionRelease ? amt : amt - retAmt;
+                            return (
+                              <tr key={t.id || `new-${i}`} className={`border-t${isPaid ? ' bg-green-50' : isRetentionRelease ? ' bg-orange-50' : ''}`}>
+                                <td className="px-2 py-1">
+                                  <div className="flex items-center gap-1">
+                                    <input value={t.termName} onChange={e => updateContractTerm(i, 'termName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100 disabled:text-gray-500" disabled={isPaid} />
+                                    {isPaid && <span className="text-xs text-green-600 whitespace-nowrap">已付</span>}
+                                    {isRetentionRelease && !isPaid && <span className="text-[10px] text-orange-600 whitespace-nowrap bg-orange-100 px-1 rounded">撥付</span>}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="number" value={t.amount} onChange={e => updateContractTerm(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right disabled:bg-gray-100" step="0.01" disabled={isPaid} />
+                                </td>
+                                {hasRetention && (
+                                  <td className="px-2 py-1">
+                                    {isRetentionRelease
+                                      ? <span className="text-xs text-gray-400 px-2">—</span>
+                                      : <input type="number" value={t.retentionAmount} onChange={e => updateContractTerm(i, 'retentionAmount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right text-orange-600 disabled:bg-gray-100" step="0.01" disabled={isPaid} />
+                                    }
+                                  </td>
+                                )}
+                                {hasRetention && (
+                                  <td className="px-2 py-1 text-right text-xs text-gray-500 whitespace-nowrap">
+                                    {amt > 0 ? formatNum(payable) : '—'}
+                                  </td>
+                                )}
+                                <td className="px-2 py-1"><input type="date" value={t.dueDate} onChange={e => updateContractTerm(i, 'dueDate', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100" disabled={isPaid} /></td>
+                                <td className="px-2 py-1"><input value={t.content || ''} onChange={e => updateContractTerm(i, 'content', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100" placeholder="付款內容" disabled={isPaid} /></td>
+                                <td className="px-2 py-1"><input value={t.note || ''} onChange={e => updateContractTerm(i, 'note', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm disabled:bg-gray-100" placeholder="備註" disabled={isPaid} /></td>
+                                <td className="px-2 py-1">{!isPaid && <button type="button" onClick={() => removeContractTermRow(i)} className="text-red-500">×</button>}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         {contractForm.terms.length > 0 && (
                           <tfoot className={`border-t text-xs font-semibold ${hasMismatch ? 'bg-red-50' : isMatch ? 'bg-green-50' : 'bg-gray-50'}`}>
                             <tr>
                               <td className="px-2 py-1.5 text-gray-500">{`合計 ${contractForm.terms.length} 期`}</td>
-                              <td className={`px-2 py-1.5 text-right font-bold ${hasMismatch ? 'text-red-600' : isMatch ? 'text-green-700' : 'text-gray-700'}`}>{totalTermSum.toLocaleString()}</td>
+                              <td className={`px-2 py-1.5 text-right font-bold ${hasMismatch ? 'text-red-600' : isMatch ? 'text-green-700' : 'text-gray-700'}`}>
+                                {regularSum.toLocaleString()}
+                                {contractForm.terms.some(t => t.termType === 'retention_release') && (
+                                  <span className="text-orange-500 ml-1">(+撥付)</span>
+                                )}
+                              </td>
+                              {hasRetention && (
+                                <td className="px-2 py-1.5 text-right text-orange-600">
+                                  {contractForm.terms.filter(t => (t.termType || 'regular') === 'regular').reduce((s, t) => s + (parseFloat(t.retentionAmount) || 0), 0).toLocaleString()}
+                                </td>
+                              )}
+                              {hasRetention && <td />}
                               <td colSpan={3} className="px-2 py-1.5">
                                 {contractTotal > 0 && (
                                   <span className={`text-xs ${hasMismatch ? 'text-red-600 font-semibold' : 'text-green-600'}`}>
-                                    {hasMismatch ? `⚠ 合約金額 ${contractTotal.toLocaleString()}，差 ${(totalTermSum - contractTotal > 0 ? '+' : '') + (totalTermSum - contractTotal).toLocaleString()}` : '✓ 與合約金額相符'}
+                                    {hasMismatch ? `⚠ 合約金額 ${contractTotal.toLocaleString()}，差 ${(regularSum - contractTotal > 0 ? '+' : '') + (regularSum - contractTotal).toLocaleString()}` : '✓ 與合約金額相符'}
                                   </span>
                                 )}
                               </td>
@@ -380,12 +584,13 @@ export default function ContractsTab({
                     {hasMismatch && (
                       <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
                         <span className="text-base leading-none mt-0.5">⚠</span>
-                        <span>期數金額合計 <strong>{totalTermSum.toLocaleString()}</strong> 與合約總金額 <strong>{contractTotal.toLocaleString()}</strong> 不符（相差 {Math.abs(totalTermSum - contractTotal).toLocaleString()}），請修正後才能存檔。</span>
+                        <span>一般期數合計 <strong>{regularSum.toLocaleString()}</strong> 與合約總金額 <strong>{contractTotal.toLocaleString()}</strong> 不符（相差 {Math.abs(regularSum - contractTotal).toLocaleString()}），請修正後才能存檔。</span>
                       </div>
                     )}
                   </>
                 );
               })()}
+
               <div className="flex justify-between items-center"><label className="text-xs text-gray-500">材料（會連動至「材料使用」TAB）</label><button type="button" onClick={addContractMaterialRow} className="text-amber-600 text-sm">＋ 新增一筆</button></div>
               <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-gray-50 sticky top-0 z-10"><tr><th className="px-2 py-1 text-left">材料名稱</th><th className="px-2 py-1 text-right">數量</th><th className="px-2 py-1 text-right">金額</th><th className="w-8" /></tr></thead><tbody>
                 {(contractForm.materials || []).map((m, i) => (<tr key={i} className="border-t"><td className="px-2 py-1"><input value={m.materialName} onChange={e => updateContractMaterial(i, 'materialName', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm" placeholder="材料名稱" /></td><td className="px-2 py-1"><input type="number" value={m.quantity} onChange={e => updateContractMaterial(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="any" min="0" /></td><td className="px-2 py-1"><input type="number" value={m.amount} onChange={e => updateContractMaterial(i, 'amount', e.target.value)} className="w-full border rounded px-2 py-0.5 text-sm text-right" step="0.01" min="0" /></td><td className="px-2 py-1"><button type="button" onClick={() => removeContractMaterialRow(i)} className="text-red-500">×</button></td></tr>))}

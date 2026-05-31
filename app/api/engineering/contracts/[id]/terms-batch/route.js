@@ -48,9 +48,11 @@ export async function POST(request, { params }) {
           data: {
             contractId,
             termNo,
+            termType: t.termType || 'regular',
             termName: t.termName?.trim() || `第${termNo}期`,
             content: t.content?.trim() || null,
             amount: parseFloat(t.amount) || 0,
+            retentionAmount: parseFloat(t.retentionAmount) || 0,
             dueDate: t.dueDate || null,
             status: 'pending',
             note: t.note?.trim() || null,

@@ -50,15 +50,16 @@ export async function POST(request) {
     const supplierId = parseInt(data.supplierId);
     const contractNo = String(data.contractNo).trim();
     const totalAmount = parseFloat(data.totalAmount) || 0;
+    const retentionRate = Math.min(1, Math.max(0, parseFloat(data.retentionRate) || 0));
     const terms = Array.isArray(data.terms) ? data.terms : [];
     const materials = Array.isArray(data.materials) ? data.materials : [];
 
     if (terms.length > 0) {
-      const termsSum = terms.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-      if (Math.abs(termsSum - totalAmount) > 0.01) {
+      const regularSum = terms.filter(t => (t.termType || 'regular') === 'regular').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+      if (totalAmount > 0 && Math.abs(regularSum - totalAmount) > 0.01) {
         return createErrorResponse(
           'VALIDATION_FAILED',
-          `期數合計 NT$${termsSum.toLocaleString()} 與合約總金額 NT$${totalAmount.toLocaleString()} 不符，請修正後再存檔`,
+          `一般期數合計 NT$${regularSum.toLocaleString()} 與合約總金額 NT$${totalAmount.toLocaleString()} 不符，請修正後再存檔`,
           400
         );
       }
@@ -79,6 +80,7 @@ export async function POST(request) {
           supplierId,
           contractNo,
           totalAmount,
+          retentionRate,
           signDate: data.signDate || null,
           content: String(data.content).trim(),
           note: String(data.note).trim(),
@@ -86,9 +88,11 @@ export async function POST(request) {
             ? {
                 create: terms.map((t, i) => ({
                   termNo: i + 1,
+                  termType: t.termType || 'regular',
                   termName: t.termName || `第${i + 1}期`,
                   content: t.content?.trim() || null,
                   amount: parseFloat(t.amount) || 0,
+                  retentionAmount: parseFloat(t.retentionAmount) || 0,
                   dueDate: t.dueDate || null,
                   status: 'pending',
                   note: t.note?.trim() || null,

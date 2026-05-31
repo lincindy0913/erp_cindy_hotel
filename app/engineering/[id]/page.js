@@ -91,6 +91,21 @@ function ProjectDetailInner() {
   const sumOutputInv = useMemo(() =>
     outputInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0), [outputInvoices]);
 
+  const retentionStats = useMemo(() => {
+    let totalRetained = 0;
+    let totalReleased = 0;
+    for (const c of contracts) {
+      for (const t of c.terms || []) {
+        if ((t.termType || 'regular') === 'regular') {
+          totalRetained += Number(t.retentionAmount || 0);
+        } else if (t.termType === 'retention_release' && t.status === 'paid') {
+          totalReleased += Number(t.amount || 0);
+        }
+      }
+    }
+    return { totalRetained, totalReleased, balance: totalRetained - totalReleased };
+  }, [contracts]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -156,7 +171,7 @@ function ProjectDetailInner() {
           </div>
 
           {/* KPI 統計列 */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mt-5 pt-4 border-t border-gray-100">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3 mt-5 pt-4 border-t border-gray-100">
             <div>
               <p className="text-xs text-gray-400 mb-0.5">預算</p>
               <p className="font-bold text-gray-700">{budget > 0 ? `NT$ ${formatNum(budget)}` : <span className="text-gray-400 font-normal text-xs">未設定</span>}</p>
@@ -171,6 +186,17 @@ function ProjectDetailInner() {
               <p className="font-bold text-green-700">NT$ {formatNum(totalPaid)}</p>
               {totalContracted > 0 && <p className="text-xs text-gray-400 mt-0.5">{paidPct.toFixed(1)}% 發包</p>}
             </div>
+            {retentionStats.totalRetained > 0 && (
+              <div>
+                <p className="text-xs text-orange-400 mb-0.5">保留款餘額</p>
+                <p className={`font-bold ${retentionStats.balance > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                  NT$ {formatNum(retentionStats.balance)}
+                </p>
+                {retentionStats.totalReleased > 0 && (
+                  <p className="text-xs text-green-500 mt-0.5">已撥 {formatNum(retentionStats.totalReleased)}</p>
+                )}
+              </div>
+            )}
             <div>
               <p className="text-xs text-gray-400 mb-0.5">業主合約</p>
               <p className="font-bold text-indigo-700">

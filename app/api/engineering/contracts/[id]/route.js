@@ -54,11 +54,13 @@ export async function PUT(request, { params }) {
 
     if (data.totalAmount !== undefined) {
       const newTotal = parseFloat(data.totalAmount);
-      const termsSum = existingContract.terms.reduce((s, t) => s + Number(t.amount), 0);
-      if (termsSum > 0 && Math.abs(termsSum - newTotal) > 0.01) {
+      const regularSum = existingContract.terms
+        .filter(t => (t.termType || 'regular') === 'regular')
+        .reduce((s, t) => s + Number(t.amount), 0);
+      if (regularSum > 0 && Math.abs(regularSum - newTotal) > 0.01) {
         return createErrorResponse(
           'VALIDATION_FAILED',
-          `現有期數合計 NT$${termsSum.toLocaleString()} 與新合約總金額 NT$${newTotal.toLocaleString()} 不符`,
+          `現有一般期數合計 NT$${regularSum.toLocaleString()} 與新合約總金額 NT$${newTotal.toLocaleString()} 不符`,
           400
         );
       }
@@ -75,6 +77,7 @@ export async function PUT(request, { params }) {
       data: {
         ...(data.contractNo !== undefined && { contractNo: String(data.contractNo).trim() }),
         ...(data.totalAmount !== undefined && { totalAmount: parseFloat(data.totalAmount) }),
+        ...(data.retentionRate !== undefined && { retentionRate: Math.min(1, Math.max(0, parseFloat(data.retentionRate) || 0)) }),
         ...(data.signDate !== undefined && { signDate: data.signDate || null }),
         ...(data.content !== undefined && { content: String(data.content).trim() }),
         ...(data.note !== undefined && { note: String(data.note).trim() }),

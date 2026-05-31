@@ -21,6 +21,7 @@ import CompanyInvoicesTab from '@/components/engineering/CompanyInvoicesTab';
 import ContractsTab from '@/components/engineering/ContractsTab';
 import ProjectMgmtTab from '@/components/engineering/ProjectMgmtTab';
 import PaymentsTab from '@/components/engineering/PaymentsTab';
+import ProgressClaimsTab from '@/components/engineering/ProgressClaimsTab';
 
 function makeCompanyInvPeriods() {
   const today = new Date();
@@ -40,6 +41,7 @@ const TABS = [
   { key: 'contracts', label: '合約與期數' },
   { key: 'materials', label: '材料使用' },
   { key: 'payments', label: '付款單' },
+  { key: 'progressClaims', label: '估驗計價' },
   { key: 'income', label: '收款管理' },
   { key: 'inputInvoices', label: '廠商進項發票' },
   { key: 'outputInvoices', label: '業主銷項發票' },
@@ -83,7 +85,8 @@ function EngineeringPageInner() {
   const [editingProject, setEditingProject] = useState(null);
   const [editingTerm, setEditingTerm] = useState(null);
 
-  const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
+  const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '', warrantyStartDate: '', warrantyEndDate: '', warrantyMonths: '', warrantyNote: '' });
+  const [warrantyRecords, setWarrantyRecords] = useState([]);
   const [termForm, setTermForm] = useState({ termName: '', amount: '', dueDate: '', status: 'pending', paidAt: '', paymentOrderId: '', note: '' });
 
   const [unassignedInvCount, setUnassignedInvCount] = useState(0);
@@ -91,6 +94,7 @@ function EngineeringPageInner() {
   const [filterProjectId, setFilterProjectId] = useState('');
   const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
   const [paymentOrders, setPaymentOrders] = useState([]);
+  const [progressClaims, setProgressClaims] = useState([]);
   /** 儀表板用：全工程案收款累計（不受收款 tab 篩選影響） */
   const [dashStats, setDashStats] = useState({ totalIncome: 0, totalInputInvoices: 0, totalOutputInvoices: 0, byProject: {} });
 
@@ -236,13 +240,16 @@ function EngineeringPageInner() {
     if (activeTab === 'projects') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); refreshDashStats(signal); fetchWarehouseDepartments(signal); }
     if (activeTab === 'contracts') fetchContracts(filterProjectId || undefined, signal);
     if (activeTab === 'materials') fetchContracts(undefined, signal);
-    if (activeTab === 'projectMgmt') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchWarehouseDepartments(signal); }
+    if (activeTab === 'projectMgmt') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchWarehouseDepartments(signal); fetchWarrantyRecords(signal); }
     if (activeTab === 'payments') {
       fetchPaymentOrders(signal);
       fetchAccounts(signal);
       fetchContracts(undefined, signal);
       fetch('/api/settings/payment-methods', { signal }).then(res => res.ok ? res.json() : Promise.reject()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(e => { if (e?.name !== 'AbortError') console.error(e); });
     }
+    if (activeTab === 'progressClaims') fetchProgressClaims(signal);
+    if (activeTab === 'income') fetchProgressClaims(signal);
+    if (activeTab === 'outputInvoices') fetchProgressClaims(signal);
     return () => ctrl.abort();
   }, [activeTab, filterProjectId]);
 
@@ -304,6 +311,22 @@ function EngineeringPageInner() {
     } catch (e) { if (e?.name !== 'AbortError') setAccounts([]); }
   }
 
+  async function fetchProgressClaims(signal) {
+    try {
+      const res = await fetch('/api/engineering/progress-claims', signal ? { signal } : undefined);
+      const data = await res.json();
+      setProgressClaims(Array.isArray(data) ? data : []);
+    } catch (e) { if (e?.name !== 'AbortError') setProgressClaims([]); }
+  }
+
+  async function fetchWarrantyRecords(signal) {
+    try {
+      const res = await fetch('/api/engineering/warranty-records', signal ? { signal } : undefined);
+      const data = await res.json();
+      setWarrantyRecords(Array.isArray(data) ? data : []);
+    } catch (e) { if (e?.name !== 'AbortError') setWarrantyRecords([]); }
+  }
+
 
 
   function openAddProject() {
@@ -323,6 +346,8 @@ function EngineeringPageInner() {
       warehouseId: p.warehouseId != null ? String(p.warehouseId) : '',
       departmentId: p.departmentId != null ? String(p.departmentId) : '',
       location: p.location || '', buildingNo: p.buildingNo || '', permitNo: p.permitNo || '', note: p.note || '',
+      warrantyStartDate: p.warrantyStartDate || '', warrantyEndDate: p.warrantyEndDate || '',
+      warrantyMonths: p.warrantyMonths != null ? String(p.warrantyMonths) : '', warrantyNote: p.warrantyNote || '',
     });
     setShowProjectModal(true);
   }
@@ -341,6 +366,10 @@ function EngineeringPageInner() {
         warehouseId: projectForm.warehouseId || null, departmentId: projectForm.departmentId || null,
         location: projectForm.location?.trim() || null, buildingNo: projectForm.buildingNo?.trim() || null,
         permitNo: projectForm.permitNo?.trim() || null, note: projectForm.note?.trim() || null,
+        warrantyStartDate: projectForm.warrantyStartDate || null,
+        warrantyEndDate: projectForm.warrantyEndDate || null,
+        warrantyMonths: projectForm.warrantyMonths ? parseInt(projectForm.warrantyMonths) : null,
+        warrantyNote: projectForm.warrantyNote?.trim() || null,
       };
       if (editingProject) {
         const res = await fetch(`/api/engineering/projects/${editingProject.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -658,6 +687,8 @@ ${projectRows.map(p => `<tr>
             paymentOrders={paymentOrders}
             warehouseDepartments={warehouseDepartments}
             dashStats={dashStats}
+            warrantyRecords={warrantyRecords}
+            onWarrantyRefresh={() => fetchWarrantyRecords()}
             onMarkTermPaid={openMarkTermPaid}
             onUnmarkTermPaid={openUnmarkTermPaid}
             onOpenPaymentModal={openPaymentModal}
@@ -681,14 +712,17 @@ ${projectRows.map(p => `<tr>
         {/* ===== 材料使用 TAB ===== */}
         {activeTab === 'materials' && <MaterialsTab projects={projects} contracts={contracts} />}
 
+        {/* ===== 估驗計價 TAB ===== */}
+        {activeTab === 'progressClaims' && <ProgressClaimsTab projects={projects} />}
+
         {/* ===== 收款管理 TAB ===== */}
-        {activeTab === 'income' && <IncomeTab projects={projects} onDashStatsChanged={refreshDashStats} />}
+        {activeTab === 'income' && <IncomeTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />}
 
       {/* ===== 廠商進項發票 Tab ===== */}
       {activeTab === 'inputInvoices' && <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />}
 
       {/* ===== 業主銷項發票 Tab ===== */}
-      {activeTab === 'outputInvoices' && <OutputInvoicesTab projects={projects} onDashStatsChanged={refreshDashStats} />}
+      {activeTab === 'outputInvoices' && <OutputInvoicesTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />}
 
       </div>
 
@@ -724,6 +758,16 @@ ${projectRows.map(p => `<tr>
                 <div><label htmlFor="f-51" className="block text-xs text-gray-500 mb-1">使造號碼</label><input id="f-51" value={projectForm.permitNo} onChange={e => setProjectForm(f => ({ ...f, permitNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </div>
               <div><label htmlFor="f-52" className="block text-xs text-gray-500 mb-1">備註</label><textarea id="f-52" value={projectForm.note} onChange={e => setProjectForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} /></div>
+              {/* 保固期 */}
+              <div className="border-t pt-3">
+                <p className="text-xs font-medium text-purple-700 mb-2">保固期設定</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div><label className="block text-xs text-gray-500 mb-1">保固開始日</label><input type="date" value={projectForm.warrantyStartDate} onChange={e => { const s = e.target.value; const months = parseInt(projectForm.warrantyMonths || 0); setProjectForm(f => ({ ...f, warrantyStartDate: s, warrantyEndDate: s && months ? new Date(new Date(s).setMonth(new Date(s).getMonth() + months)).toISOString().slice(0,10) : f.warrantyEndDate })); }} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                  <div><label className="block text-xs text-gray-500 mb-1">保固月數</label><input type="number" min="1" max="120" value={projectForm.warrantyMonths} onChange={e => { const m = e.target.value; const s = projectForm.warrantyStartDate; setProjectForm(f => ({ ...f, warrantyMonths: m, warrantyEndDate: s && m ? new Date(new Date(s).setMonth(new Date(s).getMonth() + parseInt(m))).toISOString().slice(0,10) : f.warrantyEndDate })); }} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：24" /></div>
+                  <div><label className="block text-xs text-gray-500 mb-1">保固結束日</label><input type="date" value={projectForm.warrantyEndDate} onChange={e => setProjectForm(f => ({ ...f, warrantyEndDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
+                </div>
+                <div className="mt-2"><label className="block text-xs text-gray-500 mb-1">保固備註</label><input value={projectForm.warrantyNote} onChange={e => setProjectForm(f => ({ ...f, warrantyNote: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：結構防水 2 年、其他 1 年" /></div>
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowProjectModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={projectSaving}>取消</button>
@@ -777,8 +821,9 @@ ${projectRows.map(p => `<tr>
                     const whName = proj?.warehouseRef?.name || proj?.warehouse || '';
                     const deptName = proj?.departmentRef?.name || '';
                     const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === tid && (po.status === '已執行' || po.status === '待出納')).reduce((s, po) => s + (po.status === '已執行' ? getActualPaid(po) : Number(po.amount || 0)), 0);
-                    const remaining = Math.max(0, Number(term.amount) - termPaidAmt);
-                    const fillAmount = remaining > 0 ? String(remaining) : String(term.amount);
+                    const payable = Number(term.amount) - Number(term.retentionAmount || 0);
+                    const remaining = Math.max(0, payable - termPaidAmt);
+                    const fillAmount = remaining > 0 ? String(remaining) : String(payable);
                     setPaymentForm(f => ({ ...f, termId: tid, contractId: cid, supplierId: String(contract.supplierId),
                       supplierName: contract.supplier?.name || '', amount: fillAmount, netAmount: fillAmount,
                       warehouse: whName, department: deptName,
@@ -789,14 +834,17 @@ ${projectRows.map(p => `<tr>
                   {contracts.map(c =>
                     (c.terms || []).filter(t => {
                       const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
-                      return paid < Number(t.amount); // show terms not fully paid by actual amount
+                      const payable = Number(t.amount) - Number(t.retentionAmount || 0);
+                      return paid < payable;
                     }).map(t => {
                       const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
                       const pendingAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
-                      const remaining = Number(t.amount) - paidAmt;
+                      const payable = Number(t.amount) - Number(t.retentionAmount || 0);
+                      const remaining = payable - paidAmt;
+                      const retLabel = t.retentionAmount > 0 ? ` 實付${formatNum(payable)}` : '';
                       return (
                         <option key={t.id} value={`${t.id}-${c.id}`}>
-                          {c.project?.code} {c.contractNo} － {t.termName || `第${t.termNo}期`} 期款{formatNum(t.amount)}
+                          {c.project?.code} {c.contractNo} － {t.termName || `第${t.termNo}期`} 請款{formatNum(t.amount)}{retLabel}
                           {paidAmt > 0 ? ` (已付${formatNum(paidAmt)}, 餘${formatNum(remaining)})` : ''}
                           {pendingAmt > 0 ? ` [待出納${formatNum(pendingAmt)}]` : ''}
                         </option>

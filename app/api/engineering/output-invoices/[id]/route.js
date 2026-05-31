@@ -20,6 +20,7 @@ export async function PUT(request, { params }) {
     const inv = await prisma.engineeringOutputInvoice.update({
       where: { id },
       data: {
+        ...(body.progressClaimId !== undefined && { progressClaimId: body.progressClaimId ? parseInt(body.progressClaimId) : null }),
         clientName: body.clientName?.trim() || null,
         invoiceNo: body.invoiceNo?.trim() || null,
         invoiceDate: body.invoiceDate,
@@ -32,9 +33,10 @@ export async function PUT(request, { params }) {
       },
       include: {
         project: { select: { id: true, code: true, name: true, clientName: true } },
+        progressClaim: { select: { id: true, termName: true, claimNo: true, status: true } },
       },
     });
-    return NextResponse.json(inv);
+    return NextResponse.json({ ...inv, amount: Number(inv.amount), taxAmount: Number(inv.taxAmount), totalAmount: Number(inv.totalAmount) });
   } catch (e) { return handleApiError(e); }
 }
 

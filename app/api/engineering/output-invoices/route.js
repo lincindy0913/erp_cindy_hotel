@@ -7,6 +7,15 @@ import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 
 export const dynamic = 'force-dynamic';
 
+const OUTPUT_INV_INCLUDE = {
+  project: { select: { id: true, code: true, name: true, clientName: true } },
+  progressClaim: { select: { id: true, termName: true, claimNo: true, status: true } },
+};
+
+function serializeInv(i) {
+  return { ...i, amount: Number(i.amount), taxAmount: Number(i.taxAmount), totalAmount: Number(i.totalAmount) };
+}
+
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.ENGINEERING_VIEW);
   if (!auth.ok) return auth.response;
@@ -17,12 +26,10 @@ export async function GET(request) {
     if (projectId) where.projectId = parseInt(projectId, 10);
     const invoices = await prisma.engineeringOutputInvoice.findMany({
       where,
-      include: {
-        project: { select: { id: true, code: true, name: true, clientName: true } },
-      },
+      include: OUTPUT_INV_INCLUDE,
       orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
     });
-    return NextResponse.json(invoices);
+    return NextResponse.json(invoices.map(serializeInv));
   } catch (e) { return handleApiError(e); }
 }
 
@@ -39,6 +46,7 @@ export async function POST(request) {
     const inv = await prisma.engineeringOutputInvoice.create({
       data: {
         projectId: parseInt(body.projectId),
+        progressClaimId: body.progressClaimId ? parseInt(body.progressClaimId) : null,
         clientName: body.clientName?.trim() || null,
         invoiceNo: body.invoiceNo?.trim() || null,
         invoiceDate: body.invoiceDate,
@@ -49,10 +57,8 @@ export async function POST(request) {
         status: body.status || '已開立',
         note: body.note?.trim() || null,
       },
-      include: {
-        project: { select: { id: true, code: true, name: true, clientName: true } },
-      },
+      include: OUTPUT_INV_INCLUDE,
     });
-    return NextResponse.json(inv, { status: 201 });
+    return NextResponse.json(serializeInv(inv), { status: 201 });
   } catch (e) { return handleApiError(e); }
 }

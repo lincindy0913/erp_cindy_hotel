@@ -2764,6 +2764,11 @@ model EngineeringProject {
 
   clientContractAmount Decimal? @map("client_contract_amount") @db.Decimal(14, 2)
 
+  warrantyStartDate String? @map("warranty_start_date") @db.VarChar(20)
+  warrantyEndDate   String? @map("warranty_end_date")   @db.VarChar(20)
+  warrantyMonths    Int?    @map("warranty_months")
+  warrantyNote      String? @map("warranty_note")       @db.Text
+
   warehouseRef  Warehouse?  @relation(fields: [warehouseId], references: [id])
   departmentRef Department? @relation(fields: [departmentId], references: [id])
   contracts      EngineeringContract[]
@@ -2773,6 +2778,8 @@ model EngineeringProject {
   outputInvoices      EngineeringOutputInvoice[]
   companyInputInvoices CompanyInputInvoice[]
   milestones           EngineeringMilestone[]
+  progressClaims       EngineeringProgressClaim[]
+  warrantyRecords      EngineeringWarrantyRecord[]
 
   @@index([status])
   @@index([warehouse])
@@ -2800,17 +2807,18 @@ model EngineeringMilestone {
 }
 
 model EngineeringContract {
-  id           Int      @id @default(autoincrement())
-  projectId    Int      @map("project_id")
-  supplierId   Int      @map("supplier_id")
-  contractNo   String   @map("contract_no") @db.VarChar(100)
-  totalAmount  Decimal  @map("total_amount") @db.Decimal(14, 2)
-  signDate     String?  @map("sign_date") @db.VarChar(20)
-  status       String   @default("active") @db.VarChar(20)
-  content      String?  @db.Text
-  note         String?  @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id             Int      @id @default(autoincrement())
+  projectId      Int      @map("project_id")
+  supplierId     Int      @map("supplier_id")
+  contractNo     String   @map("contract_no") @db.VarChar(100)
+  totalAmount    Decimal  @map("total_amount") @db.Decimal(14, 2)
+  retentionRate  Decimal  @default(0) @map("retention_rate") @db.Decimal(5, 4)
+  signDate       String?  @map("sign_date") @db.VarChar(20)
+  status         String   @default("active") @db.VarChar(20)
+  content        String?  @db.Text
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   supplier      Supplier                  @relation(fields: [supplierId], references: [id])
@@ -2825,19 +2833,21 @@ model EngineeringContract {
 }
 
 model EngineeringContractTerm {
-  id              Int       @id @default(autoincrement())
-  contractId      Int       @map("contract_id")
-  termNo          Int       @map("term_no")
-  termName        String?   @map("term_name") @db.VarChar(100)
-  content         String?   @db.Text
-  amount          Decimal   @db.Decimal(14, 2)
-  dueDate         String?   @map("due_date") @db.VarChar(20)
-  status          String    @default("pending") @db.VarChar(20)
-  paidAt          String?   @map("paid_at") @db.VarChar(20)
-  paymentOrderId  Int?      @map("payment_order_id")
-  note            String?   @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id               Int       @id @default(autoincrement())
+  contractId       Int       @map("contract_id")
+  termNo           Int       @map("term_no")
+  termType         String    @default("regular") @map("term_type") @db.VarChar(20)
+  termName         String?   @map("term_name") @db.VarChar(100)
+  content          String?   @db.Text
+  amount           Decimal   @db.Decimal(14, 2)
+  retentionAmount  Decimal   @default(0) @map("retention_amount") @db.Decimal(14, 2)
+  dueDate          String?   @map("due_date") @db.VarChar(20)
+  status           String    @default("pending") @db.VarChar(20)
+  paidAt           String?   @map("paid_at") @db.VarChar(20)
+  paymentOrderId   Int?      @map("payment_order_id")
+  note             String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   contract  EngineeringContract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
   materials EngineeringMaterial[]
@@ -2878,6 +2888,7 @@ model EngineeringMaterial {
 model EngineeringIncome {
   id                Int      @id @default(autoincrement())
   projectId         Int      @map("project_id")
+  progressClaimId   Int?     @map("progress_claim_id")
   termName          String   @map("term_name") @db.VarChar(100)
   amount            Decimal  @db.Decimal(14, 2)
   receivedDate      String   @map("received_date") @db.VarChar(20)
@@ -2888,10 +2899,12 @@ model EngineeringIncome {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  account CashAccount?       @relation(fields: [accountId], references: [id])
+  project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  progressClaim EngineeringProgressClaim? @relation(fields: [progressClaimId], references: [id], onDelete: SetNull)
+  account       CashAccount?              @relation(fields: [accountId], references: [id])
 
   @@index([projectId])
+  @@index([progressClaimId])
   @@map("engineering_incomes")
 }
 
@@ -2922,24 +2935,68 @@ model EngineeringInputInvoice {
 
 // 業主銷項發票（工程開給業主的發票）
 model EngineeringOutputInvoice {
-  id          Int      @id @default(autoincrement())
-  projectId   Int      @map("project_id")
-  clientName  String?  @map("client_name") @db.VarChar(255)
-  invoiceNo   String?  @map("invoice_no") @db.VarChar(100)
-  invoiceDate String   @map("invoice_date") @db.VarChar(20)
-  amount      Decimal  @db.Decimal(14, 2)
-  taxAmount   Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
-  totalAmount Decimal  @map("total_amount") @db.Decimal(14, 2)
-  invoiceType String?  @map("invoice_type") @db.VarChar(30)
-  status      String   @default("已開立") @db.VarChar(20)
-  note        String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              Int      @id @default(autoincrement())
+  projectId       Int      @map("project_id")
+  progressClaimId Int?     @map("progress_claim_id")
+  clientName      String?  @map("client_name") @db.VarChar(255)
+  invoiceNo       String?  @map("invoice_no") @db.VarChar(100)
+  invoiceDate     String   @map("invoice_date") @db.VarChar(20)
+  amount          Decimal  @db.Decimal(14, 2)
+  taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  totalAmount     Decimal  @map("total_amount") @db.Decimal(14, 2)
+  invoiceType     String?  @map("invoice_type") @db.VarChar(30)
+  status          String   @default("已開立") @db.VarChar(20)
+  note            String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project       EngineeringProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  progressClaim EngineeringProgressClaim? @relation(fields: [progressClaimId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([progressClaimId])
+  @@map("engineering_output_invoices")
+}
+
+model EngineeringProgressClaim {
+  id              Int      @id @default(autoincrement())
+  projectId       Int      @map("project_id")
+  claimNo         String?  @map("claim_no") @db.VarChar(100)
+  termName        String   @map("term_name") @db.VarChar(100)
+  claimDate       String?  @map("claim_date") @db.VarChar(20)
+  certifiedDate   String?  @map("certified_date") @db.VarChar(20)
+  claimAmount     Decimal  @map("claim_amount") @db.Decimal(14, 2)
+  certifiedAmount Decimal? @map("certified_amount") @db.Decimal(14, 2)
+  status          String   @default("draft") @db.VarChar(20)
+  note            String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project        EngineeringProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outputInvoices EngineeringOutputInvoice[]
+  incomes        EngineeringIncome[]
+
+  @@index([projectId])
+  @@map("engineering_progress_claims")
+}
+
+model EngineeringWarrantyRecord {
+  id            Int      @id @default(autoincrement())
+  projectId     Int      @map("project_id")
+  reportDate    String   @map("report_date")   @db.VarChar(20)
+  description   String   @db.Text
+  handler       String?  @db.VarChar(100)
+  resolvedDate  String?  @map("resolved_date") @db.VarChar(20)
+  cost          Decimal? @db.Decimal(14, 2)
+  status        String   @default("pending")   @db.VarChar(20)
+  note          String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   project EngineeringProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
-  @@map("engineering_output_invoices")
+  @@map("engineering_warranty_records")
 }
 
 // ============================================

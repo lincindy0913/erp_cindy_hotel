@@ -4,11 +4,11 @@ import { useToast } from '@/context/ToastContext';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
 
-export default function IncomeTab({ projects, onDashStatsChanged }) {
+export default function IncomeTab({ projects, progressClaims = [], onDashStatsChanged }) {
   const [incomes, setIncomes] = useState([]);
   const [incomeSaving, setIncomeSaving] = useState(false);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
-  const emptyForm = { projectId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' };
+  const emptyForm = { projectId: '', progressClaimId: '', termName: '', amount: '', receivedDate: todayStr(), accountId: '', accountingSubject: '41000 工程收入', note: '' };
   const [incomeForm, setIncomeForm] = useState(emptyForm);
   const [incomeFilterProjectId, setIncomeFilterProjectId] = useState('');
   const [editingIncome, setEditingIncome] = useState(null);
@@ -146,12 +146,28 @@ export default function IncomeTab({ projects, onDashStatsChanged }) {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div>
               <label htmlFor="inc-f-2" className="block text-xs text-gray-500 mb-1">工程案 *</label>
-              <select id="inc-f-2" value={incomeForm.projectId} onChange={e => setIncomeForm(f => ({ ...f, projectId: e.target.value }))}
+              <select id="inc-f-2" value={incomeForm.projectId} onChange={e => setIncomeForm(f => ({ ...f, projectId: e.target.value, progressClaimId: '' }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm" required>
                 <option value="">請選擇</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
               </select>
             </div>
+            {(() => {
+              const pid = incomeForm.projectId ? parseInt(incomeForm.projectId) : null;
+              const claimsForProject = pid ? progressClaims.filter(c => c.projectId === pid) : [];
+              return claimsForProject.length > 0 ? (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">連結估驗單</label>
+                  <select value={incomeForm.progressClaimId} onChange={e => setIncomeForm(f => ({ ...f, progressClaimId: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">不連結</option>
+                    {claimsForProject.map(c => (
+                      <option key={c.id} value={c.id}>{c.termName}{c.claimNo ? ` (${c.claimNo})` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null;
+            })()}
             <div>
               <label htmlFor="inc-f-3" className="block text-xs text-gray-500 mb-1">期數名稱 *</label>
               <input id="inc-f-3" value={incomeForm.termName} onChange={e => setIncomeForm(f => ({ ...f, termName: e.target.value }))}
@@ -257,6 +273,7 @@ export default function IncomeTab({ projects, onDashStatsChanged }) {
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">期數 / 品項</th>
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款日期</th>
                         <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500">收款金額</th>
+                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">連結估驗</th>
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">收款帳戶</th>
                         <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">備註</th>
                         <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500">現金流</th>
@@ -279,6 +296,7 @@ export default function IncomeTab({ projects, onDashStatsChanged }) {
                                   {accounts.map(a => <option key={a.id} value={a.id}>{a.warehouse ? a.warehouse + ' - ' : ''}{a.name}</option>)}
                                 </select>
                               </td>
+                              <td className="px-3 py-2 text-xs text-gray-300">—</td>
                               <td className="px-3 py-2"><input value={editingIncome.form.note} onChange={e => setEditingIncome(v => ({ ...v, form: { ...v.form, note: e.target.value } }))} className="w-full border rounded px-2 py-1 text-sm" placeholder="備註" /></td>
                               <td className="px-3 py-2 text-center text-xs text-gray-400">—</td>
                               <td className="px-3 py-2 text-center">
@@ -296,6 +314,12 @@ export default function IncomeTab({ projects, onDashStatsChanged }) {
                             <td className="px-5 py-3"><span className="font-semibold text-gray-800">{inc.termName}</span></td>
                             <td className="px-5 py-3 text-gray-600">{inc.receivedDate}</td>
                             <td className="px-5 py-3 text-right font-bold text-green-700 text-base">NT$ {Number(inc.amount).toLocaleString()}</td>
+                            <td className="px-5 py-3 text-xs">
+                              {inc.progressClaim
+                                ? <span className="text-indigo-600">{inc.progressClaim.termName}{inc.progressClaim.claimNo ? ` (${inc.progressClaim.claimNo})` : ''}</span>
+                                : <span className="text-gray-300">—</span>
+                              }
+                            </td>
                             <td className="px-5 py-3 text-gray-500 text-xs">{inc.account ? `${inc.account.warehouse ? inc.account.warehouse + ' - ' : ''}${inc.account.name}` : '－'}</td>
                             <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px]">{inc.note || <span className="text-gray-300">－</span>}</td>
                             <td className="px-5 py-3 text-center">
@@ -315,7 +339,7 @@ export default function IncomeTab({ projects, onDashStatsChanged }) {
                       <tr>
                         <td colSpan={3} className="px-5 py-2.5 text-xs font-semibold text-gray-600">共 {projIncomes.length} 筆收款</td>
                         <td className="px-5 py-2.5 text-right font-bold text-green-800">NT$ {received.toLocaleString()}</td>
-                        <td colSpan={4} />
+                        <td colSpan={5} />
                       </tr>
                     </tfoot>
                   </table>

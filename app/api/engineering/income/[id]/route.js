@@ -32,6 +32,7 @@ export async function PUT(request, { params }) {
       await tx.engineeringIncome.update({
         where: { id: incomeId },
         data: {
+          ...(data.progressClaimId !== undefined && { progressClaimId: data.progressClaimId ? parseInt(data.progressClaimId) : null }),
           termName,
           amount,
           receivedDate,

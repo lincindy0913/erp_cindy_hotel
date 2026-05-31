@@ -16,8 +16,18 @@ function getActualPaid(po) {
   return Number(po.amount || 0);
 }
 
+function warrantyStatus(endDate, today) {
+  if (!endDate) return null;
+  const days = Math.ceil((new Date(endDate) - new Date(today)) / 86400000);
+  if (days < 0) return { label: '已過保', color: 'bg-gray-100 text-gray-400', urgent: false, days };
+  if (days <= 30) return { label: `${days}天到期`, color: 'bg-red-100 text-red-600', urgent: true, days };
+  if (days <= 90) return { label: `${days}天到期`, color: 'bg-orange-100 text-orange-600', urgent: true, days };
+  return { label: '保固中', color: 'bg-purple-100 text-purple-700', urgent: false, days };
+}
+
 export default function ProjectMgmtTab({
   projects, contracts, paymentOrders, warehouseDepartments, dashStats,
+  warrantyRecords = [], onWarrantyRefresh,
   onMarkTermPaid, onUnmarkTermPaid, onOpenPaymentModal, onSwitchTab,
 }) {
   const [mgmtStatusFilter, setMgmtStatusFilter] = useState('進行中');
@@ -29,6 +39,9 @@ export default function ProjectMgmtTab({
   // inline add form: { [projectId]: { name, completionPct, plannedDate } }
   const [addForms, setAddForms] = useState({});
   const [addSaving, setAddSaving] = useState({});
+  // warranty record forms: { [projectId]: { reportDate, description, handler, cost, note } }
+  const [warrantyForms, setWarrantyForms] = useState({});
+  const [warrantySaving, setWarrantySaving] = useState({});
 
   const { showToast } = useToast();
   const today = todayStr();
@@ -99,6 +112,43 @@ export default function ProjectMgmtTab({
     } catch { showToast('新增失敗', 'error'); }
     finally { setAddSaving(p => ({ ...p, [projectId]: false })); }
   }
+  async function addWarrantyRecord(projectId) {
+    const form = warrantyForms[projectId] || {};
+    if (!form.reportDate) { showToast('請填寫報修日期', 'error'); return; }
+    if (!form.description?.trim()) { showToast('請填寫問題描述', 'error'); return; }
+    setWarrantySaving(p => ({ ...p, [projectId]: true }));
+    try {
+      const res = await fetch('/api/engineering/warranty-records', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, reportDate: form.reportDate, description: form.description.trim(), handler: form.handler?.trim() || null, cost: form.cost || null, note: form.note?.trim() || null }),
+      });
+      if (!res.ok) throw new Error();
+      setWarrantyForms(p => ({ ...p, [projectId]: {} }));
+      onWarrantyRefresh?.();
+      showToast('已新增維修紀錄', 'success');
+    } catch { showToast('新增失敗', 'error'); }
+    finally { setWarrantySaving(p => ({ ...p, [projectId]: false })); }
+  }
+
+  async function resolveWarrantyRecord(record) {
+    try {
+      const res = await fetch(`/api/engineering/warranty-records/${record.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved', resolvedDate: today }),
+      });
+      if (!res.ok) throw new Error();
+      onWarrantyRefresh?.();
+    } catch { showToast('更新失敗', 'error'); }
+  }
+
+  async function deleteWarrantyRecord(record) {
+    try {
+      const res = await fetch(`/api/engineering/warranty-records/${record.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      onWarrantyRefresh?.();
+    } catch { showToast('刪除失敗', 'error'); }
+  }
+
   const activeProjects = projects.filter(p => p.status === '進行中');
   const kpiTotalBudget = projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
   const kpiTotalContracted = contracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
@@ -137,6 +187,24 @@ export default function ProjectMgmtTab({
           <p className="text-lg font-bold text-green-700">NT$ {formatNum(kpiTotalPaid)}</p>
           <p className="text-xs text-green-400 mt-0.5">{kpiTotalContracted > 0 ? `合約執行 ${((kpiTotalPaid / kpiTotalContracted) * 100).toFixed(1)}%` : '－'}</p>
         </div>
+        {(() => {
+          const withWarranty = projects.filter(p => p.warrantyEndDate);
+          const expiring = withWarranty.filter(p => { const s = warrantyStatus(p.warrantyEndDate, today); return s && s.days >= 0 && s.days <= 90; });
+          const overdue = withWarranty.filter(p => { const s = warrantyStatus(p.warrantyEndDate, today); return s && s.days < 0; });
+          const pending = warrantyRecords.filter(r => r.status === 'pending').length;
+          if (withWarranty.length === 0) return null;
+          return (
+            <div className={`bg-white rounded-xl border ${expiring.length > 0 ? 'border-orange-200' : 'border-purple-100'} px-4 py-3`}>
+              <p className={`text-xs mb-1 ${expiring.length > 0 ? 'text-orange-600' : 'text-purple-600'}`}>保固追蹤</p>
+              <p className={`text-lg font-bold ${expiring.length > 0 ? 'text-orange-600' : 'text-purple-700'}`}>{withWarranty.length - overdue.length} 件保固中</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {expiring.length > 0 && <span className="text-orange-500">⚠ {expiring.length} 件 90 天內到期　</span>}
+                {pending > 0 && <span className="text-red-500">維修待處理 {pending} 筆</span>}
+                {expiring.length === 0 && pending === 0 && '無即將到期'}
+              </p>
+            </div>
+          );
+        })()}
       </div>
 
       {/* 狀態篩選 + 視圖切換 */}
@@ -216,6 +284,7 @@ export default function ProjectMgmtTab({
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle}`}>{proj.status}</span>
                       {overBudget && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">超支</span>}
                       {overdueTerms > 0 && <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-orange-100 text-orange-600">逾期 {overdueTerms}</span>}
+                      {proj.warrantyEndDate && (() => { const ws = warrantyStatus(proj.warrantyEndDate, today); return ws ? <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${ws.color}`}>{ws.label}</span> : null; })()}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500">
                       <div>{proj.clientName || '—'}</div>
@@ -410,6 +479,7 @@ export default function ProjectMgmtTab({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusStyle}`}>{proj.status}</span>
                   {overBudget && <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-600">超支</span>}
+                  {proj.warrantyEndDate && (() => { const ws = warrantyStatus(proj.warrantyEndDate, today); return ws ? <span className={`px-2 py-0.5 rounded text-xs font-medium ${ws.color}`}>{ws.label}</span> : null; })()}
                   <span className="font-semibold text-gray-800">{proj.code} {proj.name}</span>
                   <Link href={`/engineering/${proj.id}`} onClick={e => e.stopPropagation()} className="text-xs text-amber-600 hover:underline ml-1">詳情</Link>
                 </div>
@@ -417,6 +487,7 @@ export default function ProjectMgmtTab({
                   {proj.clientName && <span>業主：{proj.clientName}</span>}
                   {(proj.warehouseRef?.name || proj.warehouse) && <span>館別：{proj.warehouseRef?.name || proj.warehouse}</span>}
                   {proj.startDate && <span>{proj.startDate}{proj.endDate ? ` ～ ${proj.endDate}` : ''}</span>}
+                  {proj.warrantyEndDate && <span className="text-purple-500">保固至 {proj.warrantyEndDate}{proj.warrantyMonths ? `（${proj.warrantyMonths}個月）` : ''}</span>}
                   <span>{projContracts.length} 家廠商・{totalTerms} 個期數</span>
                 </div>
               </div>
@@ -533,6 +604,65 @@ export default function ProjectMgmtTab({
                     </>
                   )}
                 </div>
+                {/* ── 保固維修記錄 ── */}
+                {proj.warrantyEndDate && (() => {
+                  const projRecords = warrantyRecords.filter(r => r.projectId === proj.id);
+                  const ws = warrantyStatus(proj.warrantyEndDate, today);
+                  return (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-600">保固與維修</span>
+                          {ws && <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${ws.color}`}>{ws.label}</span>}
+                          {proj.warrantyNote && <span className="text-[10px] text-gray-400">{proj.warrantyNote}</span>}
+                        </div>
+                        <span className="text-xs text-gray-400">保固至 {proj.warrantyEndDate}</span>
+                      </div>
+                      {projRecords.length > 0 && (
+                        <div className="space-y-1.5 mb-2">
+                          {projRecords.map(r => (
+                            <div key={r.id} className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 ${r.status === 'resolved' ? 'bg-green-50 border border-green-100' : 'bg-orange-50 border border-orange-100'}`}>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-medium text-gray-700">{r.reportDate}</span>
+                                  {r.handler && <span className="text-gray-500">【{r.handler}】</span>}
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${r.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}>{r.status === 'resolved' ? '已解決' : '待處理'}</span>
+                                  {r.resolvedDate && <span className="text-green-500">解決：{r.resolvedDate}</span>}
+                                  {r.cost && <span className="text-gray-500">費用：{Number(r.cost).toLocaleString('zh-TW')}</span>}
+                                </div>
+                                <div className="text-gray-600 mt-0.5">{r.description}</div>
+                                {r.note && <div className="text-gray-400 mt-0.5">{r.note}</div>}
+                              </div>
+                              <div className="flex gap-1 shrink-0">
+                                {r.status === 'pending' && <button onClick={() => resolveWarrantyRecord(r)} className="text-green-600 hover:underline text-[11px]">解決</button>}
+                                <button onClick={() => deleteWarrantyRecord(r)} className="text-red-400 hover:text-red-600 text-[11px]">×</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {projRecords.length === 0 && <p className="text-xs text-gray-400 mb-2">保固期間尚無維修紀錄</p>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input type="date" value={warrantyForms[proj.id]?.reportDate || today}
+                          onChange={e => setWarrantyForms(p => ({ ...p, [proj.id]: { ...(p[proj.id] || {}), reportDate: e.target.value } }))}
+                          className="border rounded px-2 py-1 text-xs w-32" />
+                        <input value={warrantyForms[proj.id]?.description || ''}
+                          onChange={e => setWarrantyForms(p => ({ ...p, [proj.id]: { ...(p[proj.id] || {}), description: e.target.value } }))}
+                          placeholder="問題描述（必填）"
+                          className="border rounded px-2 py-1 text-xs flex-1 min-w-[160px]" />
+                        <input value={warrantyForms[proj.id]?.handler || ''}
+                          onChange={e => setWarrantyForms(p => ({ ...p, [proj.id]: { ...(p[proj.id] || {}), handler: e.target.value } }))}
+                          placeholder="處理人員"
+                          className="border rounded px-2 py-1 text-xs w-24" />
+                        <button onClick={() => addWarrantyRecord(proj.id)} disabled={warrantySaving[proj.id]}
+                          className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 disabled:opacity-50 whitespace-nowrap">
+                          {warrantySaving[proj.id] ? '…' : '＋ 新增'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* ── 合約明細 ── */}
                 {projContracts.length === 0 ? (
                   <p className="text-sm text-gray-400">尚無合約</p>
