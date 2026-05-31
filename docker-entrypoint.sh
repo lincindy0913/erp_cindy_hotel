@@ -3,12 +3,33 @@ set -e
 
 echo "🚀 Starting ERP Application..."
 
-# Wait for database to be ready
-echo "⏳ Waiting for database connection..."
-# depends_on + healthcheck 已確保 db 就緒，短暫緩衝即可
-sleep 3
-
-echo "✅ Database should be ready!"
+# ---------------------------------------------------------------------------
+# Wait for DB to be reachable (TCP check via Node built-in net module)
+# Replaces fixed sleep — handles Railway cold-start and slow cloud connections
+# ---------------------------------------------------------------------------
+echo "⏳ Checking database connectivity..."
+MAX_RETRIES=15
+RETRY=0
+while ! node -e "
+  const u = process.env.DATABASE_URL || '';
+  const m = u.match(/@([^:@]+):(\d+)\//);
+  if (!m) { console.error('Cannot parse DATABASE_URL'); process.exit(1); }
+  const net = require('net');
+  const s = net.createConnection(parseInt(m[2]), m[1]);
+  s.setTimeout(3000);
+  s.on('connect', () => { s.destroy(); process.exit(0); });
+  s.on('timeout', () => { s.destroy(); process.exit(1); });
+  s.on('error',   () => { s.destroy(); process.exit(1); });
+" 2>/dev/null; do
+  RETRY=$((RETRY + 1))
+  if [ "$RETRY" -ge "$MAX_RETRIES" ]; then
+    echo "⚠️  DB not reachable after $MAX_RETRIES attempts, continuing anyway..."
+    break
+  fi
+  echo "⏳ Waiting for database... ($RETRY/$MAX_RETRIES)"
+  sleep 2
+done
+echo "✅ Database is reachable!"
 
 # ---------------------------------------------------------------------------
 # Schema sync strategy（三段式，確保新舊 DB 都能正常啟動）：

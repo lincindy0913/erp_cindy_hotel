@@ -203,6 +203,7 @@ function EngineeringPageInner() {
       sumIncome,
       sumInputInvoices,
       sumOutputInvoices,
+      totalMaterialCost: dashStats.totalMaterialCost || 0,
       overdueTerms,
       dueThisWeek,
       projectCount: projects.length,

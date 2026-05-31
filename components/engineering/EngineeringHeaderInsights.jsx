@@ -25,6 +25,7 @@ export default function EngineeringHeaderInsights({ stats, onSwitchTab }) {
     paidExecuted,
     sumIncome,
     sumInputInvoices,
+    totalMaterialCost,
     sumOutputInvoices,
     overdueTerms,
     dueThisWeek,
@@ -84,7 +85,7 @@ export default function EngineeringHeaderInsights({ stats, onSwitchTab }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
           <p className="text-xs text-gray-500">工程案（進行中）</p>
           <p className="text-lg font-bold text-gray-800">{activeProjects} <span className="text-xs font-normal text-gray-400">/ {projectCount}</span></p>
@@ -100,6 +101,10 @@ export default function EngineeringHeaderInsights({ stats, onSwitchTab }) {
         <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
           <p className="text-xs text-gray-500">廠商發包合計</p>
           <p className="text-lg font-bold text-amber-800">${formatNum(sumVendorContracts)}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-orange-100 p-3 shadow-sm">
+          <p className="text-xs text-orange-600">直接材料費合計</p>
+          <p className="text-lg font-bold text-orange-700">${formatNum(totalMaterialCost ?? 0)}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
           <p className="text-xs text-gray-500">工程付款已執行</p>
