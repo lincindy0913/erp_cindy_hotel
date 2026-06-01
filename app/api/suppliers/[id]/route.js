@@ -88,16 +88,57 @@ export async function DELETE(request, { params }) {
     PERMISSIONS.SETTINGS_EDIT,
   ]);
   if (!auth.ok) return auth.response;
-  
+
   try {
     const id = parseInt(params.id);
+    const { searchParams } = new URL(request.url);
+    const deactivate = searchParams.get('deactivate') === 'true';
 
     const existing = await prisma.supplier.findUnique({ where: { id } });
     if (!existing) {
       return createErrorResponse('NOT_FOUND', '廠商不存在', 404);
     }
 
+    // ── 軟刪除路徑：停用，不管有無引用 ─────────────────────────
+    if (deactivate) {
+      await prisma.supplier.update({ where: { id }, data: { isActive: false } });
+      await auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.SUPPLIER_DEACTIVATE,
+        targetModule: 'suppliers',
+        targetRecordId: id,
+        targetRecordNo: existing.supplierCode || String(id),
+        beforeState: { isActive: true },
+        afterState: { isActive: false },
+        note: `停用廠商「${existing.name}」`,
+      });
+      return NextResponse.json({ message: '廠商已停用' });
+    }
+
+    // ── 硬刪除路徑：先查三方引用 ────────────────────────────────
+    const [purchaseCount, paymentCount, allowanceCount] = await Promise.all([
+      prisma.purchaseMaster.count({ where: { supplierId: id } }),
+      prisma.paymentOrder.count({ where: { supplierId: id } }),
+      prisma.purchaseAllowance.count({ where: { supplierId: id } }),
+    ]);
+
+    if (purchaseCount + paymentCount + allowanceCount > 0) {
+      return NextResponse.json({
+        error: `廠商「${existing.name}」有 ${purchaseCount} 筆進貨、${paymentCount} 筆付款單、${allowanceCount} 筆折讓單，無法直接刪除。建議改用停用（傳 ?deactivate=true）。`,
+        code: 'SUPPLIER_REFERENCED',
+        counts: { purchaseCount, paymentCount, allowanceCount },
+      }, { status: 409 });
+    }
+
+    // 無引用 → 真正刪除
     await prisma.supplier.delete({ where: { id } });
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.SUPPLIER_DELETE,
+      targetModule: 'suppliers',
+      targetRecordId: id,
+      targetRecordNo: existing.supplierCode || String(id),
+      beforeState: { name: existing.name, supplierCode: existing.supplierCode },
+      note: `刪除廠商「${existing.name}」`,
+    });
     return NextResponse.json({ message: '廠商已刪除' });
   } catch (error) {
     return handleApiError(error);
