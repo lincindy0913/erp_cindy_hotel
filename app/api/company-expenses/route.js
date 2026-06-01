@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
+import { handleApiError } from '@/lib/error-handler';
+import { requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export async function GET(req) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_VIEW, PERMISSIONS.PURCHASING_VIEW]);
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period');
@@ -33,14 +34,13 @@ export async function GET(req) {
     });
     return NextResponse.json(rows);
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return handleApiError(e);
   }
 }
 
 export async function POST(req) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_CREATE, PERMISSIONS.ENGINEERING_EDIT, PERMISSIONS.PURCHASING_CREATE]);
+  if (!auth.ok) return auth.response;
 
   const body = await req.json();
   const type = body.type; // 'expense' | 'invoice'
@@ -86,7 +86,6 @@ export async function POST(req) {
     });
     return NextResponse.json(row, { status: 201 });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return handleApiError(e);
   }
 }

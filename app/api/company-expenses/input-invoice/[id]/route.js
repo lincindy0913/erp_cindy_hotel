@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
+import { handleApiError } from '@/lib/error-handler';
+import { requireAnyPermission } from '@/lib/api-auth';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export async function PUT(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_EDIT]);
+  if (!auth.ok) return auth.response;
 
   const id = Number(params.id);
   const body = await req.json();
@@ -32,13 +33,13 @@ export async function PUT(req, { params }) {
     });
     return NextResponse.json(row);
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return handleApiError(e);
   }
 }
 
 export async function PATCH(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_EDIT]);
+  if (!auth.ok) return auth.response;
 
   const id = Number(params.id);
   const body = await req.json();
@@ -54,19 +55,19 @@ export async function PATCH(req, { params }) {
     });
     return NextResponse.json(row);
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return handleApiError(e);
   }
 }
 
 export async function DELETE(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_EDIT]);
+  if (!auth.ok) return auth.response;
 
   const id = Number(params.id);
   try {
     await prisma.companyInputInvoice.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return handleApiError(e);
   }
 }
