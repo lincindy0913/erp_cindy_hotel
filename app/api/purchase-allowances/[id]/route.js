@@ -64,8 +64,41 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      // Delete old details and recreate
-      await tx.allowanceDetail.deleteMany({ where: { allowanceId: id } });
+      // ── Diff-based detail sync（同 P3 策略，保留既有 detail ID）──
+      if (data.details !== undefined) {
+        const incomingDetails = data.details || [];
+        const currentDetails = await tx.allowanceDetail.findMany({
+          where: { allowanceId: id },
+          select: { id: true },
+        });
+        const currentIds = new Set(currentDetails.map(d => d.id));
+        const incomingIds = new Set(
+          incomingDetails.filter(d => d.id || d.detailId)
+                         .map(d => parseInt(d.id ?? d.detailId))
+        );
+
+        // 刪除 incoming 未帶 id 的舊明細
+        const toDeleteIds = [...currentIds].filter(did => !incomingIds.has(did));
+        if (toDeleteIds.length > 0) {
+          await tx.allowanceDetail.deleteMany({ where: { id: { in: toDeleteIds }, allowanceId: id } });
+        }
+
+        for (const d of incomingDetails) {
+          const detailData = {
+            productName: d.productName?.trim() || null,
+            quantity:    parseFloat(d.quantity  || 0),
+            unitPrice:   parseFloat(d.unitPrice  || 0),
+            subtotal:    parseFloat(d.subtotal   || 0),
+            reason:      d.reason?.trim()        || null,
+          };
+          const did = d.id != null ? parseInt(d.id) : d.detailId != null ? parseInt(d.detailId) : null;
+          if (did && currentIds.has(did)) {
+            await tx.allowanceDetail.update({ where: { id: did }, data: detailData });
+          } else {
+            await tx.allowanceDetail.create({ data: { allowanceId: id, ...detailData } });
+          }
+        }
+      }
 
       const record = await tx.purchaseAllowance.update({
         where: { id },
@@ -84,15 +117,6 @@ export async function PUT(request, { params }) {
           creditNoteNo: data.creditNoteNo !== undefined ? (data.creditNoteNo?.trim() || null) : existing.creditNoteNo,
           reason: data.reason !== undefined ? (data.reason?.trim() || null) : existing.reason,
           note: data.note !== undefined ? (data.note?.trim() || null) : existing.note,
-          details: data.details?.length > 0 ? {
-            create: data.details.map(d => ({
-              productName: d.productName?.trim() || null,
-              quantity: parseFloat(d.quantity || 0),
-              unitPrice: parseFloat(d.unitPrice || 0),
-              subtotal: parseFloat(d.subtotal || 0),
-              reason: d.reason?.trim() || null,
-            })),
-          } : undefined,
         },
         include: { details: true },
       });
