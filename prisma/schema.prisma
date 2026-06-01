@@ -263,6 +263,7 @@ model SalesDetail {
 
   @@index([salesId])
   @@index([purchaseItemId])
+  @@index([purchaseId])
   @@index([productId])                                         // year-end inventory groupBy
   @@map("sales_details")
 }

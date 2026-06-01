@@ -16,29 +16,29 @@ export async function GET(request) {
     const supplierId = searchParams.get('supplierId');
     const warehouse = searchParams.get('warehouse');
 
-    // 取得所有已核銷的 purchaseItemId
-    const allSalesDetails = await prisma.salesDetail.findMany({
-      select: { purchaseItemId: true }
-    });
-    const invoicedItemIds = new Set(allSalesDetails.map(d => d.purchaseItemId));
-
     // 建立進貨單篩選條件
     const purchaseWhere = {};
-    if (supplierId) {
-      purchaseWhere.supplierId = parseInt(supplierId);
-    }
-    if (warehouse) {
-      purchaseWhere.warehouse = warehouse;
-    }
-    if (yearMonth) {
-      purchaseWhere.purchaseDate = { startsWith: yearMonth };
-    }
+    if (supplierId) purchaseWhere.supplierId = parseInt(supplierId);
+    if (warehouse)  purchaseWhere.warehouse = warehouse;
+    if (yearMonth)  purchaseWhere.purchaseDate = { startsWith: yearMonth };
 
+    // 先取符合條件的進貨單
     const purchases = await prisma.purchaseMaster.findMany({
       where: purchaseWhere,
       include: { details: true },
       orderBy: { purchaseDate: 'asc' }
     });
+
+    // 只查這些進貨單的核銷記錄（避免全表掃 salesDetail）
+    const purchaseIds = purchases.map(p => p.id);
+    let invoicedItemIds = new Set();
+    if (purchaseIds.length > 0) {
+      const scopedDetails = await prisma.salesDetail.findMany({
+        where: { purchaseId: { in: purchaseIds } },
+        select: { purchaseItemId: true },
+      });
+      invoicedItemIds = new Set(scopedDetails.map(d => d.purchaseItemId));
+    }
 
     const uninvoicedItems = [];
 
