@@ -133,10 +133,7 @@ export async function POST(request, { params }) {
           const newTotal = Math.max(0, Number(agg.totalAmount) - totalAmount);
           await tx.monthlyAggregation.update({
             where: { id: agg.id },
-            data: {
-              totalAmount: newTotal,
-              recordCount: Math.max(0, agg.recordCount - 1),
-            },
+            data: { totalAmount: newTotal },
           });
         }
       }
