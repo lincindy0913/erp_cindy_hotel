@@ -63,6 +63,25 @@ export async function PUT(request, { params }) {
       return createErrorResponse('VALIDATION_FAILED', `無法編輯：目前狀態為「${existing.status}」，僅「草稿」可編輯`, 400);
     }
 
+    // ── cross-check 金額一致性 ──────────────────────────────
+    if (data.totalAmount !== undefined || data.amount !== undefined || data.tax !== undefined) {
+      const amt   = parseFloat(data.amount   ?? existing.amount   ?? 0);
+      const tax   = parseFloat(data.tax      ?? existing.tax      ?? 0);
+      const total = parseFloat(data.totalAmount ?? existing.totalAmount ?? 0);
+      if (Math.abs(amt + tax - total) > 0.5) {
+        return createErrorResponse('VALIDATION_FAILED',
+          `totalAmount(${total}) 應等於 amount(${amt}) + tax(${tax})`, 400);
+      }
+    }
+    if (data.details?.length > 0 && data.totalAmount !== undefined) {
+      const detailSum = data.details.reduce((s, d) => s + parseFloat(d.subtotal || 0), 0);
+      const total = parseFloat(data.totalAmount);
+      if (Math.abs(detailSum - total) > 0.5) {
+        return createErrorResponse('VALIDATION_FAILED',
+          `明細小計合計(${detailSum.toFixed(2)}) 與折讓總額(${total}) 不符`, 400);
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       // ── Diff-based detail sync（同 P3 策略，保留既有 detail ID）──
       if (data.details !== undefined) {

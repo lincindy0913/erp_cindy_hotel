@@ -88,6 +88,22 @@ export async function POST(request) {
     const supErr = await validateSupplier(data.supplierName);
     if (supErr) return createErrorResponse('VALIDATION_FAILED', supErr, 400);
 
+    const amt   = parseFloat(data.amount   || data.totalAmount || 0);
+    const tax   = parseFloat(data.tax      || 0);
+    const total = parseFloat(data.totalAmount || 0);
+
+    if (Math.abs(amt + tax - total) > 0.5) {
+      return createErrorResponse('VALIDATION_FAILED',
+        `totalAmount(${total}) 應等於 amount(${amt}) + tax(${tax})`, 400);
+    }
+    if (data.details?.length > 0) {
+      const detailSum = data.details.reduce((s, d) => s + parseFloat(d.subtotal || 0), 0);
+      if (Math.abs(detailSum - total) > 0.5) {
+        return createErrorResponse('VALIDATION_FAILED',
+          `明細小計合計(${detailSum.toFixed(2)}) 與折讓總額(${total}) 不符`, 400);
+      }
+    }
+
     const record = await prisma.$transaction(async (tx) => {
       // Generate allowanceNo inside transaction with SELECT FOR UPDATE to prevent race condition
       const dateStr = data.allowanceDate.replace(/-/g, '');
