@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { handleApiError } from '@/lib/error-handler';
+import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { validateInvoiceBody, validateExpenseBody } from '@/lib/validators/company-expense';
 
 export async function GET(req) {
   const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_VIEW, PERMISSIONS.PURCHASING_VIEW]);
@@ -47,6 +48,9 @@ export async function POST(req) {
 
   try {
     if (type === 'invoice') {
+      const err = validateInvoiceBody(body);
+      if (err) return createErrorResponse('VALIDATION_FAILED', err, 400);
+
       const row = await prisma.companyInputInvoice.create({
         data: {
           invoiceDate: body.invoiceDate,
@@ -67,6 +71,9 @@ export async function POST(req) {
       });
       return NextResponse.json(row, { status: 201 });
     }
+
+    const expErr = validateExpenseBody(body);
+    if (expErr) return createErrorResponse('VALIDATION_FAILED', expErr, 400);
 
     const row = await prisma.companyExpense.create({
       data: {
