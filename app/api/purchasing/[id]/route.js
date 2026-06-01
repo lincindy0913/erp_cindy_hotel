@@ -218,6 +218,22 @@ export async function DELETE(request, { params }) {
       const record = await tx.purchaseMaster.findUnique({ where: { id } });
       await assertPeriodOpen(tx, record.purchaseDate, record.warehouse);
 
+      // ── 引用保護：有下游記錄時禁止刪除 ──────────────────────
+      const [invoiceCount, allowanceCount, paymentCount] = await Promise.all([
+        tx.salesDetail.count({ where: { purchaseId: id } }),
+        tx.purchaseAllowance.count({ where: { purchaseId: id } }),
+        tx.paymentOrder.count({ where: { sourceType: 'purchasing', sourceRecordId: id } }),
+      ]);
+      if (invoiceCount > 0) {
+        throw new Error('CONFLICT:此進貨單已開立發票，無法刪除');
+      }
+      if (allowanceCount > 0) {
+        throw new Error('CONFLICT:此進貨單已建立折讓退貨單，無法刪除');
+      }
+      if (paymentCount > 0) {
+        throw new Error('CONFLICT:此進貨單已建立付款單，無法刪除');
+      }
+
       await tx.purchaseMaster.delete({ where: { id } });
     });
 
