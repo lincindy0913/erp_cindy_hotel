@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
@@ -13,7 +13,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const invoiceId = parseInt(params.invoiceId);
+    const invoiceId = parseInt((await params).invoiceId);
 
     // 取得發票資料（含明細）
     const invoice = await prisma.salesMaster.findUnique({

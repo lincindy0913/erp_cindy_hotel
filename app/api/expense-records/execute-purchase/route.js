@@ -117,7 +117,17 @@ export async function POST(request) {
         }
       });
       if (duplicate && !data.allowDuplicate) {
-        throw new Error(`DUPLICATE:此範本在 ${data.warehouse} ${data.expenseMonth} 已有記錄 (${duplicate.recordNo})，確定要再新增嗎？`);
+        const err = new Error('DUPLICATE');
+        err.existingRecord = {
+          recordNo: duplicate.recordNo,
+          warehouse: data.warehouse.trim(),
+          expenseMonth: data.expenseMonth.trim(),
+          totalDebit: Number(duplicate.totalDebit),
+          createdAt: duplicate.createdAt.toISOString(),
+          createdBy: duplicate.createdBy,
+          purchaseNo: duplicate.purchaseNo || null,
+        };
+        throw err;
       }
       // Enforce period lock
       await assertPeriodOpen(tx, `${data.expenseMonth}-01`, data.warehouse?.trim());
@@ -294,8 +304,13 @@ export async function POST(request) {
       message: `執行成功！進貨單: ${result.purchaseNo}${result.salesNo ? `, 發票: ${result.salesNo}` : ''}`
     }, { status: 201 });
   } catch (error) {
-    if (error.message?.startsWith('DUPLICATE:')) {
-      return createErrorResponse('CONFLICT_UNIQUE', error.message.replace('DUPLICATE:', ''), 409, { duplicate: true });
+    if (error.message === 'DUPLICATE') {
+      const rec = error.existingRecord || {};
+      return NextResponse.json({
+        error: `此範本在 ${rec.warehouse || ''} ${rec.expenseMonth || ''} 已有記錄 (${rec.recordNo})，確定要再新增嗎？`,
+        code: 'CONFLICT_UNIQUE',
+        existingRecord: rec,
+      }, { status: 409 });
     }
     return handleApiError(error);
   }

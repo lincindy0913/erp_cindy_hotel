@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { saveContractFile } from '@/lib/contract-storage';
 
 // Magic bytes validation — checks file header matches declared MIME type
 function validateContractMagicBytes(buffer, mimeType) {
@@ -26,7 +27,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const supplierId = parseInt(params.id);
+    const supplierId = parseInt((await params).id);
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
 
     if (!supplier) {
@@ -58,7 +59,7 @@ export async function POST(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const supplierId = parseInt(params.id);
+    const supplierId = parseInt((await params).id);
     const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
 
     if (!supplier) {
@@ -106,17 +107,20 @@ export async function POST(request, { params }) {
     const rawName = file.name || 'unnamed';
     const safeName = rawName.replace(/[/\\:*?"<>|]/g, '_').slice(0, 255);
 
+    const fileUrl = saveContractFile(supplierId, safeName, buffer);
+
     const newContract = await prisma.supplierContract.create({
       data: {
         supplierId,
         fileName: safeName,
         fileSize: file.size,
         fileType: file.type,
-        fileData: buffer
+        fileData: null,
+        fileUrl,
       }
     });
 
-    const { fileData, ...contractInfo } = newContract;
+    const { fileData, fileUrl: _fu, ...contractInfo } = newContract;
     return NextResponse.json(contractInfo, { status: 201 });
   } catch (error) {
     console.error('上傳合約錯誤:', error.message || error);

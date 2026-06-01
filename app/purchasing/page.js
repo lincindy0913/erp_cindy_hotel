@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
@@ -11,6 +11,12 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
+import { ALLOWANCE_STATUS } from '@/lib/allowance-statuses';
+import { usePurchaseExpense } from '@/hooks/usePurchaseExpense';
+import { useWarehouseDepartments } from '@/hooks/useWarehouseDepartments';
+import { useReorderSuggestions } from '@/hooks/useReorderSuggestions';
+import ReorderSuggestionsPanel from '@/components/purchasing/ReorderSuggestionsPanel';
+import MonthlyExpenseTab from '@/components/purchasing/MonthlyExpenseTab';
 
 function PurchasingPageInner() {
   const searchParams = useSearchParams();
@@ -36,12 +42,26 @@ function PurchasingPageInner() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
-  // 館別和部門的對應關係（從 API 載入）
-  const [warehouseDepartments, setWarehouseDepartments] = useState({});
-  const [showWarehouseManager, setShowWarehouseManager] = useState(false);
-  const [newWarehouseName, setNewWarehouseName] = useState('');
-  const [newDeptName, setNewDeptName] = useState('');
-  const [newDeptWarehouse, setNewDeptWarehouse] = useState('');
+  // 館別部門管理
+  const {
+    warehouseDepartments, warehouseList,
+    showWarehouseManager, setShowWarehouseManager,
+    newWarehouseName, setNewWarehouseName,
+    newDeptName, setNewDeptName,
+    newDeptWarehouse, setNewDeptWarehouse,
+    fetchWarehouseDepartments,
+    handleAddWarehouse, handleDeleteWarehouse,
+    handleAddDepartment, handleDeleteDepartment,
+  } = useWarehouseDepartments({
+    showToast, confirm,
+    onWarehouseDeleted: (name) => {
+      if (formData.warehouse === name) setFormData(f => ({ ...f, warehouse: '', department: '' }));
+    },
+    onDepartmentDeleted: (warehouse, deptName) => {
+      if (formData.warehouse === warehouse && formData.department === deptName)
+        setFormData(f => ({ ...f, department: '' }));
+    },
+  });
 
   const [formData, setFormData] = useState({
     warehouse: '', // 館別
@@ -60,60 +80,47 @@ function PurchasingPageInner() {
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [recentPurchases, setRecentPurchases] = useState([]);
+  const [allProductPurchases, setAllProductPurchases] = useState([]); // 全廠商歷史（比價用）
+  // 補貨建議
+  const { reorderSuggestions, showReorderPanel, setShowReorderPanel, fetchReorderSuggestions, handleReorderItem: _handleReorderItem } =
+    useReorderSuggestions({
+      products,
+      onApply: ({ supplierId, supplierName, paymentTerms, warehouse, productId, product, suggestedQty, lastUnitPrice }) => {
+        if (supplierId) {
+          setFormData(f => ({ ...f, supplierId: String(supplierId), paymentTerms: paymentTerms || '月結', warehouse: f.warehouse || warehouse }));
+          setSupplierSearch(supplierName || '');
+        }
+        if (product) {
+          setProductSearch(product.name);
+          setNewItem({
+            productId: String(productId),
+            quantity: String(suggestedQty),
+            unitPrice: lastUnitPrice != null ? String(lastUnitPrice) : '',
+            note: '',
+            inventoryWarehouse: product.isInStock ? warehouse : '',
+          });
+          fetchRecentPurchases(productId);
+        }
+        setShowAddForm(true);
+        setEditingPurchase(null);
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+      },
+    });
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [priceCache, setPriceCache] = useState(null);
   const [supplierSearch, setSupplierSearch] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState(null);
-  const [invoices, setInvoices] = useState([]); // 發票資料（用於判斷發票狀態）
+  const [invoicedIds, setInvoicedIds] = useState(new Set()); // 已核銷 purchaseItemId 集合
   const [invoiceTitles, setInvoiceTitles] = useState([]); // 發票抬頭選項（來自設定）
 
-  // 進銷存每月費用分頁
-  const [purchasePageTab, setPurchasePageTab] = useState('orders'); // 'orders' | 'monthlyExpense'
-  const [monthlyExpenseSubTab, setMonthlyExpenseSubTab] = useState('execute'); // 'templates' | 'execute' | 'records'
-  const [expenseTemplates, setExpenseTemplates] = useState([]);
-  const [expenseRecords, setExpenseRecords] = useState([]);
-  const [expenseRecordsTotal, setExpenseRecordsTotal] = useState(0);
-  const [expenseRecordsLoading, setExpenseRecordsLoading] = useState(false);
-  const [expenseRecordFilter, setExpenseRecordFilter] = useState({
-    month: todayStr().slice(0, 7),
-    warehouse: '',
-    status: ''
-  });
-  const [selectedExpenseTemplateId, setSelectedExpenseTemplateId] = useState('');
-  const [executeExpenseForm, setExecuteExpenseForm] = useState({
-    warehouse: '',
-    expenseMonth: todayStr().slice(0, 7),
-    supplierId: '',
-    supplierName: '',
-    paymentTerms: '月結',
-    taxType: '',
-    department: '',
-    items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }],
-    invoiceNo: '',
-    invoiceDate: '',
-    invoiceTitle: '',
-    invoiceAmount: '',
-    taxAmount: '',
-    supplierDiscount: '',
-    note: ''
-  });
-  const [submittingExpense, setSubmittingExpense] = useState(false);
+  // 進銷存每月費用（整包傳給 MonthlyExpenseTab）
+  const expense = usePurchaseExpense({ showToast, confirm, session, products, suppliers });
+  const { purchasePageTab, setPurchasePageTab } = expense;
+
   const [purchaseSaving, setPurchaseSaving] = useState(false);
-  const [templateSaving, setTemplateSaving] = useState(false);
   const [paymentMethodOptions, setPaymentMethodOptions] = useState([]);
-  const [warehouseList, setWarehouseList] = useState([]);
-  // Template CRUD state
-  const [showExpTemplateForm, setShowExpTemplateForm] = useState(false);
-  const [editingExpTemplate, setEditingExpTemplate] = useState(null);
-  const [expTemplateForm, setExpTemplateForm] = useState({
-    name: '', description: '', warehouse: '',
-    defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
-    purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }]
-  });
-  // 館別（building type）— for 館別 selectors
   const warehousesList = warehouseList.filter(w => w.type === 'building').map(w => w.name);
-  // 倉庫位置（storage type）— for 入庫倉庫 selectors
   const storageLocationsList = warehouseList.filter(w => w.type === 'storage').map(w => w.name);
 
   async function fetchPaymentMethods() {
@@ -154,388 +161,15 @@ function PurchasingPageInner() {
     };
     fetchPurchases(1, 50, initFilter);
     fetchWarehouseDepartments();
-    fetchInvoices();
     fetchInvoiceTitles();
     fetchPaymentMethods();
+    fetchReorderSuggestions();
   }, []);
 
   useEffect(() => {
     if (purchasePageTab === 'monthlyExpense') fetchInvoiceTitles();
   }, [purchasePageTab]);
 
-  async function fetchExpenseTemplates() {
-    try {
-      const res = await fetch('/api/expense-templates?activeOnly=false');
-      if (!res.ok) { showToast('載入費用範本失敗', 'error'); return; }
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : [];
-      setExpenseTemplates(list.filter(t => (t.templateType || 'fixed') === 'purchase'));
-    } catch (err) {
-      console.error('載入費用範本失敗:', err);
-      showToast('載入費用範本失敗', 'error');
-    }
-  }
-
-  async function fetchExpenseRecords() {
-    setExpenseRecordsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (expenseRecordFilter.month) params.set('month', expenseRecordFilter.month);
-      if (expenseRecordFilter.warehouse) params.set('warehouse', expenseRecordFilter.warehouse);
-      if (expenseRecordFilter.status) params.set('status', expenseRecordFilter.status);
-      params.set('type', 'purchase');
-      const res = await fetch(`/api/expense-records?${params.toString()}`);
-      if (!res.ok) {
-        showToast('載入執行記錄失敗', 'error');
-        setExpenseRecords([]); setExpenseRecordsTotal(0);
-        setExpenseRecordsLoading(false); return;
-      }
-      const data = await res.json();
-      setExpenseRecords(data.records || []);
-      setExpenseRecordsTotal(data.total || 0);
-    } catch (err) {
-      console.error('載入執行記錄失敗:', err);
-      showToast('載入執行記錄失敗', 'error');
-      setExpenseRecords([]); setExpenseRecordsTotal(0);
-    }
-    setExpenseRecordsLoading(false);
-  }
-
-  useEffect(() => {
-    if (purchasePageTab === 'monthlyExpense') fetchExpenseTemplates();
-  }, [purchasePageTab]);
-
-  useEffect(() => {
-    if (purchasePageTab === 'monthlyExpense' && monthlyExpenseSubTab === 'records') fetchExpenseRecords();
-  }, [purchasePageTab, monthlyExpenseSubTab, expenseRecordFilter]);
-
-  function handleSelectExpenseTemplate(tmplId) {
-    setSelectedExpenseTemplateId(tmplId);
-    if (!tmplId) {
-      setExecuteExpenseForm(prev => ({ ...prev, items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }], supplierId: '', supplierName: '', invoiceNo: '', invoiceDate: '', invoiceTitle: '', invoiceAmount: '', taxAmount: '', supplierDiscount: '' }));
-      return;
-    }
-    const tmpl = expenseTemplates.find(t => t.id === parseInt(tmplId));
-    if (!tmpl) return;
-    const items = Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
-      ? tmpl.purchaseItems.map(item => {
-          const product = products.find(p => p.id === parseInt(item.productId));
-          const isInStock = !!product?.isInStock;
-          return {
-            productId: String(item.productId || ''),
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
-            note: item.note || '',
-            putInInventory: isInStock,
-            inventoryWarehouse: (item.inventoryWarehouse != null && item.inventoryWarehouse !== '') ? String(item.inventoryWarehouse) : ''
-          };
-        })
-      : [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }];
-    const supplier = suppliers.find(s => s.id === tmpl.defaultSupplierId);
-    setExecuteExpenseForm(prev => ({
-      ...prev,
-      warehouse: tmpl.warehouse || prev.warehouse,
-      supplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
-      supplierName: supplier ? supplier.name : '',
-      // 付款方式連動範本預設值，若範本未設則用廠商預設，再無則「月結」
-      paymentTerms: tmpl.paymentMethod || supplier?.paymentTerms || '月結',
-      taxType: tmpl.defaultTaxType || '',
-      items,
-      invoiceNo: '',
-      invoiceDate: '',
-      invoiceTitle: '',
-      invoiceAmount: '',
-      taxAmount: '',
-      supplierDiscount: ''
-    }));
-  }
-
-  // ====== Template CRUD ======
-  function resetExpTemplateForm() {
-    setExpTemplateForm({
-      name: '', description: '', warehouse: '',
-      defaultSupplierId: '', paymentMethod: '', defaultTaxType: '',
-      purchaseItems: [{ productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }]
-    });
-    setEditingExpTemplate(null);
-    setShowExpTemplateForm(false);
-  }
-
-  function handleEditExpTemplate(tmpl) {
-    setEditingExpTemplate(tmpl);
-    const supplier = suppliers.find(s => s.id === tmpl.defaultSupplierId);
-    setExpTemplateForm({
-      name: tmpl.name || '',
-      description: tmpl.description || '',
-      warehouse: tmpl.warehouse || '',
-      defaultSupplierId: tmpl.defaultSupplierId ? String(tmpl.defaultSupplierId) : '',
-      paymentMethod: tmpl.paymentMethod || supplier?.paymentTerms || '',
-      defaultTaxType: tmpl.defaultTaxType || '',
-      purchaseItems: Array.isArray(tmpl.purchaseItems) && tmpl.purchaseItems.length > 0
-        ? tmpl.purchaseItems.map(item => ({
-            productId: String(item.productId || ''),
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice != null ? String(item.unitPrice) : '',
-            note: item.note || '',
-            inventoryWarehouse: item.inventoryWarehouse != null ? String(item.inventoryWarehouse) : ''
-          }))
-        : [{ productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }]
-    });
-    setShowExpTemplateForm(true);
-  }
-
-  async function handleSaveExpTemplate() {
-    setTemplateSaving(true);
-    if (!expTemplateForm.name.trim()) { showToast('請輸入範本名稱', 'error'); setTemplateSaving(false); return; }
-    if (!expTemplateForm.defaultSupplierId) { showToast('請選擇廠商', 'error'); setTemplateSaving(false); return; }
-    const validItems = expTemplateForm.purchaseItems.filter(item => item.productId);
-    if (validItems.length === 0) { showToast('請至少新增一筆進貨品項', 'error'); setTemplateSaving(false); return; }
-
-    const body = {
-      name: expTemplateForm.name.trim(),
-      description: expTemplateForm.description?.trim() || null,
-      templateType: 'purchase',
-      warehouse: expTemplateForm.warehouse || null,
-      defaultSupplierId: parseInt(expTemplateForm.defaultSupplierId),
-      paymentMethod: expTemplateForm.paymentMethod || '月結',
-      defaultTaxType: expTemplateForm.defaultTaxType || null,
-      purchaseItems: validItems.map(item => ({
-        productId: parseInt(item.productId),
-        quantity: parseInt(item.quantity) || 1,
-        unitPrice: parseFloat(item.unitPrice) || 0,
-        note: item.note || '',
-        inventoryWarehouse: item.inventoryWarehouse?.trim() || null
-      })),
-      isActive: true
-    };
-
-    try {
-      const url = editingExpTemplate
-        ? `/api/expense-templates/${editingExpTemplate.id}`
-        : '/api/expense-templates';
-      const method = editingExpTemplate ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (res.ok) {
-        showToast(editingExpTemplate ? '範本更新成功' : '範本新增成功', 'success');
-        resetExpTemplateForm();
-        fetchExpenseTemplates();
-      } else {
-        const err = await res.json();
-        showToast(err.error || '儲存失敗', 'error');
-      }
-    } catch (err) {
-      showToast('儲存失敗: ' + err.message, 'error');
-    } finally {
-      setTemplateSaving(false);
-    }
-  }
-
-  async function handleDeleteExpTemplate(id) {
-    if (!(await confirm('確定要刪除此範本嗎？', { title: '刪除確認', danger: true }))) return;
-    try {
-      const res = await fetch(`/api/expense-templates/${id}`, { method: 'DELETE' });
-      if (res.ok) { showToast('範本已刪除', 'success'); fetchExpenseTemplates(); }
-      else { const err = await res.json(); showToast(err.error || '刪除失敗', 'error'); }
-    } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
-  }
-
-  async function handleToggleExpTemplateActive(tmpl) {
-    try {
-      const res = await fetch(`/api/expense-templates/${tmpl.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...tmpl, isActive: !tmpl.isActive, purchaseItems: tmpl.purchaseItems || [] })
-      });
-      if (res.ok) fetchExpenseTemplates();
-    } catch (err) { showToast('更新失敗', 'error'); }
-  }
-
-  function updateExecuteExpenseItem(idx, field, value) {
-    setExecuteExpenseForm(prev => ({
-      ...prev,
-      items: prev.items.map((item, i) => i === idx ? { ...item, [field]: value } : item)
-    }));
-  }
-
-  // Calculate execute form purchase total
-  function getExecPurchaseTotal() {
-    return executeExpenseForm.items.reduce((sum, item) => {
-      return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0));
-    }, 0);
-  }
-
-  // Auto-calculate tax amount based on taxType
-  function calcTaxAmount(purchaseAmt, taxType) {
-    if (taxType === '應稅') return Math.round(purchaseAmt * 0.05);
-    return 0;
-  }
-
-  async function handleExecutePurchaseExpense() {
-    if (!selectedExpenseTemplateId) {
-      showToast('請選擇範本', 'error');
-      return;
-    }
-    if (!executeExpenseForm.warehouse) {
-      showToast('請選擇館別', 'error');
-      return;
-    }
-    if (!executeExpenseForm.expenseMonth) {
-      showToast('請選擇費用月份', 'error');
-      return;
-    }
-    const validItems = executeExpenseForm.items.filter(item => item.productId);
-    if (validItems.length === 0) {
-      showToast('請至少新增一筆進貨品項', 'error');
-      return;
-    }
-    const productById = (id) => products.find(p => p.id === parseInt(id, 10));
-    for (const item of validItems) {
-      if (productById(item.productId)?.isInStock && item.putInInventory && !(item.inventoryWarehouse || '').trim()) {
-        showToast('勾選「入庫」的品項請選擇庫存地點', 'error');
-        return;
-      }
-    }
-    if (!executeExpenseForm.supplierId) {
-      showToast('請選擇廠商', 'error');
-      return;
-    }
-    // If invoice info provided, validate invoice amount = purchase + tax - discount
-    const purchaseTotal = getExecPurchaseTotal();
-    const hasInvoice = !!(executeExpenseForm.invoiceNo?.trim());
-    if (hasInvoice) {
-      const invAmt = parseFloat(executeExpenseForm.invoiceAmount) || 0;
-      const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
-      const discountAmt = parseFloat(executeExpenseForm.supplierDiscount) || 0;
-      if (invAmt <= 0) { showToast('請輸入發票金額', 'error'); return; }
-      const expected = purchaseTotal + taxAmt - discountAmt;
-      if (Math.abs(invAmt - expected) > 0.01) {
-        showToast(`發票金額不符！\n發票金額: ${invAmt.toLocaleString()}\n應為: 進貨金額 ${purchaseTotal.toLocaleString()} + 營業稅 ${taxAmt.toLocaleString()} - 廠商折讓 ${discountAmt.toLocaleString()} = ${expected.toLocaleString()}`, 'error');
-        return;
-      }
-    }
-
-    setSubmittingExpense(true);
-    try {
-      const payload = {
-        templateId: parseInt(selectedExpenseTemplateId, 10),
-        warehouse: executeExpenseForm.warehouse,
-        expenseMonth: executeExpenseForm.expenseMonth,
-        supplierId: parseInt(executeExpenseForm.supplierId, 10),
-        supplierName: executeExpenseForm.supplierName,
-        paymentTerms: executeExpenseForm.paymentTerms || '月結',
-        taxType: executeExpenseForm.taxType || null,
-        department: executeExpenseForm.department || '',
-        items: validItems.map(item => {
-          const product = products.find(p => p.id === parseInt(item.productId, 10));
-          const isInStock = !!product?.isInStock;
-          const putInInventory = isInStock && !!item.putInInventory;
-          return {
-            productId: parseInt(item.productId, 10),
-            quantity: parseInt(item.quantity, 10) || 1,
-            unitPrice: parseFloat(item.unitPrice) || 0,
-            note: item.note || '',
-            putInInventory,
-            inventoryWarehouse: putInInventory ? (item.inventoryWarehouse?.trim() || null) : null
-          };
-        }),
-        invoiceNo: executeExpenseForm.invoiceNo || null,
-        invoiceDate: executeExpenseForm.invoiceDate || null,
-        invoiceTitle: executeExpenseForm.invoiceTitle || null,
-        invoiceAmount: hasInvoice ? parseFloat(executeExpenseForm.invoiceAmount) : null,
-        taxAmount: hasInvoice ? (parseFloat(executeExpenseForm.taxAmount) || 0) : null,
-        supplierDiscount: hasInvoice ? (parseFloat(executeExpenseForm.supplierDiscount) || 0) : null,
-        createdBy: session?.user?.name || session?.user?.email || '系統',
-        note: executeExpenseForm.note || null,
-        allowDuplicate: false
-      };
-      const res = await fetch('/api/expense-records/execute-purchase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      let data;
-      try {
-        data = await res.json();
-      } catch (_) {
-        const text = await res.text();
-        setSubmittingExpense(false);
-        showToast(`執行失敗 (${res.status})：回應無法解析。請確認已登入並重試。`, 'error');
-        return;
-      }
-      if (res.ok) {
-        showToast(data.message || '已建立進銷存每月費用記錄', 'success');
-        setSelectedExpenseTemplateId('');
-        setExecuteExpenseForm({
-          warehouse: '',
-          expenseMonth: todayStr().slice(0, 7),
-          supplierId: '',
-          supplierName: '',
-          paymentTerms: '月結',
-          taxType: '',
-          department: '',
-          items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }],
-          invoiceNo: '',
-          invoiceDate: '',
-          invoiceTitle: '',
-          invoiceAmount: '',
-          taxAmount: '',
-          supplierDiscount: '',
-          note: ''
-        });
-        if (monthlyExpenseSubTab !== 'records') setMonthlyExpenseSubTab('records');
-        fetchExpenseRecords();
-      } else if (res.status === 409 && data?.code === 'CONFLICT_UNIQUE') {
-        // data.error is the message string (production-safe)
-        if (await confirm((typeof data?.error === 'string' ? data.error : '此月份已有記錄') + '\n\n是否仍要再建立一筆？', { title: '重複建立確認', danger: false })) {
-          payload.allowDuplicate = true;
-          const res2 = await fetch('/api/expense-records/execute-purchase', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload)
-          });
-          const data2 = await res2.json().catch(() => ({}));
-          if (res2.ok) {
-            showToast(data2.message || '已建立', 'success');
-            setSelectedExpenseTemplateId('');
-            setExecuteExpenseForm({
-              warehouse: '',
-              expenseMonth: todayStr().slice(0, 7),
-              supplierId: '',
-              supplierName: '',
-              paymentTerms: '月結',
-              taxType: '',
-              department: '',
-              items: [{ productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }],
-              invoiceNo: '',
-              invoiceDate: '',
-              invoiceTitle: '',
-              invoiceAmount: '',
-              taxAmount: '',
-              supplierDiscount: '',
-              note: ''
-            });
-            if (monthlyExpenseSubTab !== 'records') setMonthlyExpenseSubTab('records');
-            fetchExpenseRecords();
-          } else {
-            const msg = data2?.error?.message ?? (typeof data2?.error === 'string' ? data2.error : null) ?? '執行失敗';
-            showToast(msg, 'error');
-          }
-        }
-      } else {
-        const msg = data?.error?.message ?? (typeof data?.error === 'string' ? data.error : null) ?? '執行失敗';
-        showToast(msg, 'error');
-      }
-    } catch (err) {
-      showToast('執行失敗: ' + (err?.message || String(err)), 'error');
-    }
-    setSubmittingExpense(false);
-  }
 
   // 從 URL 參數自動開啟編輯（從發票頁面跳轉過來）
   useEffect(() => {
@@ -551,144 +185,21 @@ function PurchasingPageInner() {
     }
   }, [allPurchases, suppliers, products]);
 
-  async function fetchInvoices() {
-    try {
-      const response = await fetch('/api/sales');
-      if (!response.ok) { setInvoices([]); return; }
-      const data = await response.json();
-      setInvoices(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('取得發票資料失敗:', error);
-      setInvoices([]);
-    }
-  }
-
-  // 建立已核銷品項ID集合
-  const invoicedItemIds = (() => {
-    const ids = new Set();
-    invoices.forEach(invoice => {
-      if (invoice.items) {
-        invoice.items.forEach(item => {
-          if (item.purchaseItemId) {
-            ids.add(item.purchaseItemId);
-          }
-        });
-      }
-    });
-    return ids;
-  })();
-
   // 檢查某個進貨品項是否已核銷
   function isItemInvoiced(purchaseId, itemIndex) {
-    const itemId = `${purchaseId}-${itemIndex}`;
-    return invoicedItemIds.has(itemId);
+    return invoicedIds.has(`${purchaseId}-${itemIndex}`);
   }
 
   /** 進貨折讓確認後 PurchaseMaster.status；用於發票狀態欄與進項發票「類型」連動 */
   function getPurchaseReturnInvoiceTag(purchase) {
     if (!purchase?.status) return null;
-    if (purchase.status === '已退貨') {
+    if (purchase.status === ALLOWANCE_STATUS.RETURNED) {
       return { label: '全額退貨', className: 'bg-rose-100 text-rose-800 border border-rose-200' };
     }
-    if (purchase.status === '部分退貨') {
+    if (purchase.status === ALLOWANCE_STATUS.PARTIAL_RETURN) {
       return { label: '部分退貨', className: 'bg-amber-100 text-amber-900 border border-amber-200' };
     }
     return null;
-  }
-
-  async function fetchWarehouseDepartments() {
-    try {
-      const response = await fetch('/api/warehouse-departments');
-      if (!response.ok) { showToast('載入館別資料失敗', 'error'); return; }
-      const data = await response.json();
-      setWarehouseDepartments((data && data.byName) ? data.byName : (data || {}));
-      if (data && Array.isArray(data.list)) setWarehouseList(data.list);
-    } catch (error) {
-      console.error('取得館別部門失敗:', error);
-      showToast('載入館別資料失敗', 'error');
-    }
-  }
-
-  async function handleAddWarehouse() {
-    if (!newWarehouseName.trim()) return;
-    try {
-      const response = await fetch('/api/warehouse-departments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'addWarehouse', name: newWarehouseName.trim() })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWarehouseDepartments((data && data.byName) ? data.byName : data);
-        setNewWarehouseName('');
-      } else {
-        const error = await response.json();
-        showToast(error.error || '新增失敗', 'error');
-      }
-    } catch (error) {
-      showToast('新增館別失敗', 'error');
-    }
-  }
-
-  async function handleDeleteWarehouse(name) {
-    if (!(await confirm(`確定要刪除館別「${name}」及其所有部門嗎？`, { title: '刪除確認', danger: true }))) return;
-    try {
-      const response = await fetch('/api/warehouse-departments', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteWarehouse', name })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWarehouseDepartments((data && data.byName) ? data.byName : data);
-        if (formData.warehouse === name) {
-          setFormData({ ...formData, warehouse: '', department: '' });
-        }
-      }
-    } catch (error) {
-      showToast('刪除館別失敗', 'error');
-    }
-  }
-
-  async function handleAddDepartment() {
-    if (!newDeptWarehouse || !newDeptName.trim()) return;
-    try {
-      const response = await fetch('/api/warehouse-departments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'addDepartment', warehouse: newDeptWarehouse, name: newDeptName.trim() })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWarehouseDepartments((data && data.byName) ? data.byName : data);
-        setNewDeptName('');
-      } else {
-        const error = await response.json();
-        showToast(error.error || '新增失敗', 'error');
-      }
-    } catch (error) {
-      showToast('新增部門失敗', 'error');
-    }
-  }
-
-  async function handleDeleteDepartment(warehouse, deptName) {
-    if (!(await confirm(`確定要刪除「${warehouse}」的部門「${deptName}」嗎？`, { title: '刪除確認', danger: true }))) return;
-    try {
-      const response = await fetch('/api/warehouse-departments', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteDepartment', warehouse, name: deptName })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWarehouseDepartments((data && data.byName) ? data.byName : data);
-        if (formData.warehouse === warehouse && formData.department === deptName) {
-          setFormData({ ...formData, department: '' });
-        }
-      }
-    } catch (error) {
-      showToast('刪除部門失敗', 'error');
-    }
   }
 
   // 產品搜尋過濾（產品與廠商為獨立資料，不互相篩選）
@@ -745,16 +256,30 @@ function PurchasingPageInner() {
         return;
       }
       const result = await response.json();
+      let purchaseList = [];
       if (result.data && result.pagination) {
+        purchaseList = result.data;
         setAllPurchases(result.data);
         setPurchases(result.data);
         setTotalCount(result.pagination.totalCount);
         setCurrentPage(result.pagination.page);
       } else {
-        const list = Array.isArray(result) ? result : [];
-        setAllPurchases(list);
-        setPurchases(list);
-        setTotalCount(list.length);
+        purchaseList = Array.isArray(result) ? result : [];
+        setAllPurchases(purchaseList);
+        setPurchases(purchaseList);
+        setTotalCount(purchaseList.length);
+      }
+      // Fetch invoiced IDs scoped to only visible purchases
+      const visibleIds = purchaseList.map(p => p.id).filter(Boolean);
+      if (visibleIds.length > 0) {
+        try {
+          const invRes = await fetch(`/api/purchasing/invoiced-ids?purchaseIds=${visibleIds.join(',')}`);
+          setInvoicedIds(invRes.ok ? new Set(await invRes.json()) : new Set());
+        } catch (_) {
+          setInvoicedIds(new Set());
+        }
+      } else {
+        setInvoicedIds(new Set());
       }
       setLoading(false);
     } catch (error) {
@@ -777,18 +302,13 @@ function PurchasingPageInner() {
     fetchPurchases(1, itemsPerPage, emptyFilter);
   }
 
-  function getSupplierName(supplierId) {
-    const supplier = suppliers.find(s => s.id === supplierId);
-    return supplier ? supplier.name : '未知廠商';
-  }
-
   const { sortKey: purSortKey, sortDir: purSortDir, toggleSort: togglePurSort } = useColumnSort('purchaseDate', 'desc');
   const sortedPurchases = useMemo(() => {
     const acc = {
       purchaseNo: (r) => r.purchaseNo || '',
       warehouse: (r) => r.warehouse || '',
       department: (r) => r.department || '',
-      supplier: (r) => getSupplierName(r.supplierId),
+      supplier: (r) => r.supplierName || '',
       purchaseDate: (r) => r.purchaseDate || '',
       totalAmount: (r) => Number(r.totalAmount || r.amount || 0),
       stockStatus: (r) => {
@@ -801,7 +321,7 @@ function PurchasingPageInner() {
         return Object.keys(m).sort().map((k) => `${k}:${m[k]}`).join('|');
       },
       invoiceStatus: (r) => {
-        const ret = r.status === '已退貨' ? '1' : r.status === '部分退貨' ? '2' : '0';
+        const ret = r.status === ALLOWANCE_STATUS.RETURNED ? '1' : r.status === ALLOWANCE_STATUS.PARTIAL_RETURN ? '2' : '0';
         if (!r.items?.length) return `${ret}-0-1`;
         let inv = 0;
         let uni = 0;
@@ -813,7 +333,7 @@ function PurchasingPageInner() {
       },
     };
     return sortRows(purchases, purSortKey, purSortDir, acc);
-  }, [purchases, purSortKey, purSortDir, suppliers, invoices]);
+  }, [purchases, purSortKey, purSortDir, suppliers, invoicedIds]);
 
   function handleViewDetails(purchaseId) {
     // 切換展開/收回狀態
@@ -915,6 +435,7 @@ function PurchasingPageInner() {
   async function fetchRecentPurchases(productId) {
     setLoadingHistory(true);
     setPriceCache(null);
+    setAllProductPurchases([]);
     try {
       const [purchaseRes, cacheRes] = await Promise.all([
         fetch(`/api/products/${productId}/purchases`),
@@ -922,8 +443,11 @@ function PurchasingPageInner() {
       ]);
       if (purchaseRes.ok) {
         const data = await purchaseRes.json();
-        setRecentPurchases((data.purchases || []).slice(0, 3));
+        const all = data.purchases || [];
+        setAllProductPurchases(all);
+        setRecentPurchases(all.slice(0, 5));
       } else {
+        setAllProductPurchases([]);
         setRecentPurchases([]);
       }
       if (cacheRes && cacheRes.ok) {
@@ -937,6 +461,9 @@ function PurchasingPageInner() {
       setLoadingHistory(false);
     }
   }
+
+  // handleReorderItem 已透過 useReorderSuggestions 的 onApply callback 實作
+  const handleReorderItem = _handleReorderItem;
 
   function addItem() {
     if (!newItem.productId || !newItem.quantity || !newItem.unitPrice) {
@@ -1096,7 +623,7 @@ function PurchasingPageInner() {
             <ExportButtons
               data={purchases.map(p => ({
                 ...p,
-                supplierName: getSupplierName(p.supplierId),
+                supplierName: p.supplierName || '',
                 itemCount: p.items?.length || 0,
               }))}
               columns={EXPORT_CONFIGS.purchasing.columns}
@@ -1104,9 +631,24 @@ function PurchasingPageInner() {
               title="進貨單管理"
               sheetName="進貨單"
             />
+            {reorderSuggestions.length > 0 && (
+              <button
+                onClick={() => setShowReorderPanel(s => !s)}
+                className="relative bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 flex items-center gap-2"
+              >
+                📦 補貨建議
+                <span className="bg-white text-amber-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{reorderSuggestions.length}</span>
+              </button>
+            )}
             {isLoggedIn && (
               <button
-                onClick={() => setShowAddForm(!showAddForm)}
+                onClick={() => {
+                  setShowAddForm(s => !s);
+                  setEditingPurchase(null);
+                  setItems([]);
+                  setSupplierSearch('');
+                  setFormData({ warehouse: '', department: '', supplierId: '', purchaseDate: todayStr(), paymentTerms: '月結' });
+                }}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
               >
                 ➕ 新增進貨單
@@ -1114,6 +656,16 @@ function PurchasingPageInner() {
             )}
           </div>
         </div>
+
+        {/* 補貨建議 Panel */}
+        {showReorderPanel && (
+          <ReorderSuggestionsPanel
+            suggestions={reorderSuggestions}
+            onClose={() => setShowReorderPanel(false)}
+            onReorder={handleReorderItem}
+            isLoggedIn={isLoggedIn}
+          />
+        )}
 
         {/* 新增進貨單表單 */}
         {showAddForm && (
@@ -1194,6 +746,7 @@ function PurchasingPageInner() {
                             }`}
                           >
                             <span className="font-medium">{s.name}</span>
+                            {s.isBlacklisted && <span className="ml-1 px-1 py-0.5 bg-red-100 text-red-700 rounded text-xs font-bold" title={s.blacklistReason || '黑名單廠商'}>🚫黑名單</span>}
                             {s.taxId && <span className="text-gray-400 ml-2 text-xs">{s.taxId}</span>}
                             {s.contact && <span className="text-gray-400 ml-2 text-xs">({s.contact})</span>}
                           </button>
@@ -1204,6 +757,19 @@ function PurchasingPageInner() {
                     </div>
                   )}
                 </div>
+                {/* 黑名單廠商警告 */}
+                {(() => {
+                  const sel = suppliers.find(s => s.id.toString() === formData.supplierId);
+                  return sel?.isBlacklisted ? (
+                    <div className="col-span-2 flex items-start gap-2 px-3 py-2 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700">
+                      <span className="text-base shrink-0">🚫</span>
+                      <div>
+                        <span className="font-semibold">此廠商已列入黑名單</span>
+                        {sel.blacklistReason && <span className="ml-1">— {sel.blacklistReason}</span>}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 <div>
                   <label htmlFor="f-23" className="block text-sm font-medium text-gray-700 mb-1">
                     進貨日期 *
@@ -1396,6 +962,7 @@ function PurchasingPageInner() {
                           if (!e.target.value.trim()) {
                             setNewItem({ ...newItem, productId: '' });
                             setRecentPurchases([]);
+                            setAllProductPurchases([]);
                           }
                         }}
                         onFocus={() => setShowProductDropdown(true)}
@@ -1440,6 +1007,18 @@ function PurchasingPageInner() {
                       />
                     </div>
                     <div>
+                      {(() => {
+                        const sid = formData.supplierId ? parseInt(formData.supplierId) : null;
+                        const last = sid ? allProductPurchases.find(r => r.supplierId === sid) : null;
+                        return last ? (
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-xs text-green-700 font-medium">本廠商上次：NT$ {last.unitPrice.toFixed(2)}</span>
+                            <button type="button"
+                              onClick={() => setNewItem(n => ({ ...n, unitPrice: String(last.unitPrice) }))}
+                              className="px-1.5 py-0.5 bg-green-600 text-white rounded text-xs hover:bg-green-700">套用</button>
+                          </div>
+                        ) : null;
+                      })()}
                       <input
                         type="number"
                         step="0.01"
@@ -1510,21 +1089,70 @@ function PurchasingPageInner() {
                           <tbody className="divide-y divide-blue-200">
                             {(() => {
                               const minPrice = Math.min(...recentPurchases.map(r => r.unitPrice));
-                              return recentPurchases.map((record, idx) => (
-                                <tr key={idx} className="bg-white">
-                                  <td className="px-3 py-1.5 text-xs">{record.purchaseDate}</td>
-                                  <td className={`px-3 py-1.5 text-xs font-semibold ${record.unitPrice === minPrice ? 'text-red-600' : ''}`}>
-                                    NT$ {record.unitPrice.toFixed(2)}
-                                  </td>
-                                  <td className="px-3 py-1.5 text-xs">{record.quantity}</td>
-                                  <td className="px-3 py-1.5 text-xs">{record.supplierName}</td>
-                                </tr>
-                              ));
+                              const curSid = formData.supplierId ? parseInt(formData.supplierId) : null;
+                              return recentPurchases.map((record, idx) => {
+                                const isCurrent = curSid && record.supplierId === curSid;
+                                return (
+                                  <tr key={idx} className={isCurrent ? 'bg-green-50' : 'bg-white'}>
+                                    <td className="px-3 py-1.5 text-xs">{record.purchaseDate}</td>
+                                    <td className={`px-3 py-1.5 text-xs font-semibold ${record.unitPrice === minPrice ? 'text-red-600' : ''}`}>
+                                      NT$ {record.unitPrice.toFixed(2)}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-xs">{record.quantity}</td>
+                                    <td className="px-3 py-1.5 text-xs">
+                                      {record.supplierName}
+                                      {isCurrent && <span className="ml-1 text-green-600 text-xs">★</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              });
                             })()}
                           </tbody>
                         </table>
                       ) : (
                         <p className="text-xs text-gray-500">此產品尚無採購記錄</p>
+                      )}
+
+                      {/* 各廠商最新比價 */}
+                      {allProductPurchases.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-blue-200">
+                          <h5 className="text-xs font-semibold text-blue-700 mb-1">各廠商最新比價</h5>
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-blue-50">
+                                <th className="px-2 py-1 text-left font-medium">廠商</th>
+                                <th className="px-2 py-1 text-right font-medium">最新單價</th>
+                                <th className="px-2 py-1 text-left font-medium text-gray-500">最近進貨</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-blue-100">
+                              {(() => {
+                                const bySupplier = {};
+                                allProductPurchases.forEach(r => {
+                                  if (!bySupplier[r.supplierId] || r.purchaseDate > bySupplier[r.supplierId].purchaseDate) {
+                                    bySupplier[r.supplierId] = r;
+                                  }
+                                });
+                                const rows = Object.values(bySupplier).sort((a, b) => a.unitPrice - b.unitPrice);
+                                const minPrice = rows.length > 0 ? rows[0].unitPrice : null;
+                                const curSid = formData.supplierId ? parseInt(formData.supplierId) : null;
+                                return rows.map(r => (
+                                  <tr key={r.supplierId} className={r.supplierId === curSid ? 'bg-green-50 font-semibold' : 'bg-white'}>
+                                    <td className="px-2 py-1">
+                                      {r.supplierName}
+                                      {r.supplierId === curSid && <span className="ml-1 text-green-600">★</span>}
+                                    </td>
+                                    <td className={`px-2 py-1 text-right ${r.unitPrice === minPrice ? 'text-green-600 font-bold' : ''}`}>
+                                      NT$ {r.unitPrice.toFixed(2)}
+                                      {r.unitPrice === minPrice && <span className="ml-1 text-xs">最低</span>}
+                                    </td>
+                                    <td className="px-2 py-1 text-gray-500">{r.purchaseDate}</td>
+                                  </tr>
+                                ));
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
 
                       {/* Price Cache Comparison */}
@@ -1714,7 +1342,7 @@ function PurchasingPageInner() {
                         <td className="px-4 py-3 text-sm">{purchase.purchaseNo}</td>
                         <td className="px-4 py-3 text-sm">{purchase.warehouse || '-'}</td>
                         <td className="px-4 py-3 text-sm">{purchase.department || '-'}</td>
-                        <td className="px-4 py-3 text-sm">{getSupplierName(purchase.supplierId)}</td>
+                        <td className="px-4 py-3 text-sm">{purchase.supplierName || '-'}</td>
                         <td className="px-4 py-3 text-sm">{purchase.purchaseDate}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-blue-600">NT$ {totalAmount.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm">
@@ -1730,8 +1358,8 @@ function PurchasingPageInner() {
                                   <span key={status} className={`px-2 py-0.5 rounded text-xs ${
                                     status === '已入庫' ? 'bg-green-100 text-green-800' :
                                     status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
-                                    status === '已退貨' ? 'bg-orange-100 text-orange-800' :
-                                    status === '部分退貨' ? 'bg-amber-100 text-amber-800' :
+                                    status === ALLOWANCE_STATUS.RETURNED ? 'bg-orange-100 text-orange-800' :
+                                    status === ALLOWANCE_STATUS.PARTIAL_RETURN ? 'bg-amber-100 text-amber-800' :
                                     'bg-gray-100 text-gray-800'
                                   }`}>
                                     {status}{count > 1 ? ` x${count}` : ''}
@@ -1743,8 +1371,8 @@ function PurchasingPageInner() {
                             <span className={`px-2 py-1 rounded text-xs ${
                               purchase.status === '已入庫' ? 'bg-green-100 text-green-800' :
                               purchase.status === '待入庫' ? 'bg-yellow-100 text-yellow-800' :
-                              purchase.status === '已退貨' ? 'bg-orange-100 text-orange-800' :
-                              purchase.status === '部分退貨' ? 'bg-amber-100 text-amber-800' :
+                              purchase.status === ALLOWANCE_STATUS.RETURNED ? 'bg-orange-100 text-orange-800' :
+                              purchase.status === ALLOWANCE_STATUS.PARTIAL_RETURN ? 'bg-amber-100 text-amber-800' :
                               'bg-red-100 text-red-800'
                             }`}>
                               {purchase.status}
@@ -1853,7 +1481,7 @@ function PurchasingPageInner() {
                                 </div>
                                 <div>
                                   <span className="text-sm font-medium text-gray-600">廠商：</span>
-                                  <span className="text-sm text-gray-800">{getSupplierName(purchase.supplierId)}</span>
+                                  <span className="text-sm text-gray-800">{purchase.supplierName || '未知廠商'}</span>
                                 </div>
                                 <div>
                                   <span className="text-sm font-medium text-gray-600">日期：</span>
@@ -1991,666 +1619,15 @@ function PurchasingPageInner() {
         )}
 
         {purchasePageTab === 'monthlyExpense' && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold">進銷存每月費用</h2>
-            <div className="flex gap-2 border-b border-gray-200 mb-4">
-              <button
-                type="button"
-                onClick={() => setMonthlyExpenseSubTab('templates')}
-                className={`px-3 py-2 text-sm rounded-t ${monthlyExpenseSubTab === 'templates' ? 'bg-orange-100 text-orange-800 border border-b-0 border-orange-300' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                費用範本
-              </button>
-              <button
-                type="button"
-                onClick={() => setMonthlyExpenseSubTab('execute')}
-                className={`px-3 py-2 text-sm rounded-t ${monthlyExpenseSubTab === 'execute' ? 'bg-orange-100 text-orange-800 border border-b-0 border-orange-300' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                快速執行
-              </button>
-              <button
-                type="button"
-                onClick={() => setMonthlyExpenseSubTab('records')}
-                className={`px-3 py-2 text-sm rounded-t ${monthlyExpenseSubTab === 'records' ? 'bg-orange-100 text-orange-800 border border-b-0 border-orange-300' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                執行記錄
-              </button>
-            </div>
-
-            {monthlyExpenseSubTab === 'templates' && (
-              <div className="bg-white rounded-lg border p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <p className="text-gray-600 text-sm">依廠商建立每月固定進貨範本，執行時自動帶入廠商與品項。</p>
-                  <button type="button" onClick={() => { resetExpTemplateForm(); setShowExpTemplateForm(true); }}
-                    className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 text-sm font-medium">
-                    + 新增範本
-                  </button>
-                </div>
-
-                {/* Template Form */}
-                {showExpTemplateForm && (
-                  <div className="border border-orange-200 rounded-lg p-4 mb-4 bg-orange-50">
-                    <h4 className="text-md font-semibold mb-3">{editingExpTemplate ? '編輯範本' : '新增範本'}</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                      <div>
-                        <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">範本名稱 *</label>
-                        <input id="f" value={expTemplateForm.name}
-                          onChange={e => setExpTemplateForm(p => ({ ...p, name: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="例: OO食品每月進貨" />
-                      </div>
-                      <div>
-                        <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
-                        <select id="f-2" value={expTemplateForm.defaultSupplierId}
-                          onChange={e => {
-                            const sid = e.target.value;
-                            const s = suppliers.find(s => s.id === parseInt(sid));
-                            setExpTemplateForm(p => ({ ...p, defaultSupplierId: sid, paymentMethod: s?.paymentTerms || p.paymentMethod }));
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                          <option value="">選擇廠商</option>
-                          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="f-13" className="block text-sm font-medium text-gray-700 mb-1">付款方式 (連動廠商)</label>
-                        <input id="f-13" value={expTemplateForm.paymentMethod}
-                          onChange={e => setExpTemplateForm(p => ({ ...p, paymentMethod: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="月結" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                      <div>
-                        <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">預設館別</label>
-                        <select id="f-14" value={expTemplateForm.warehouse}
-                          onChange={e => setExpTemplateForm(p => ({ ...p, warehouse: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                          <option value="">不限</option>
-                          {warehousesList.map(w => <option key={w} value={w}>{w}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="f-15" className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
-                        <select id="f-15" value={expTemplateForm.defaultTaxType}
-                          onChange={e => setExpTemplateForm(p => ({ ...p, defaultTaxType: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                          <option value="">不指定</option>
-                          <option value="應稅">應稅</option>
-                          <option value="免稅">免稅</option>
-                          <option value="零稅率">零稅率</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="f-16" className="block text-sm font-medium text-gray-700 mb-1">說明</label>
-                        <input id="f-16" value={expTemplateForm.description}
-                          onChange={e => setExpTemplateForm(p => ({ ...p, description: e.target.value }))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="範本說明..." />
-                      </div>
-                    </div>
-                    {/* Product Items Table */}
-                    <h5 className="text-sm font-semibold mb-2">預設進貨品項</h5>
-                    <table className="w-full border-collapse border border-gray-300 text-sm mb-2">
-                      <thead className="sticky top-0 z-10 bg-gray-100">
-                        <tr className="bg-gray-100">
-                          <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
-                          <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
-                          <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
-                          <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left w-36">庫存地點</th>
-                          <th className="border border-gray-300 px-2 py-2 w-10"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expTemplateForm.purchaseItems.map((item, idx) => {
-                          const product = products.find(p => p.id === parseInt(item.productId));
-                          const needInventory = !!product?.isInStock;
-                          return (
-                            <tr key={idx}>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <select value={item.productId}
-                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, productId: e.target.value, inventoryWarehouse: '' } : it) }))}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                                  <option value="">選擇商品</option>
-                                  {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
-                                </select>
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <input type="number" min={1} value={item.quantity}
-                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it) }))}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <input type="number" step="0.01" value={item.unitPrice}
-                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, unitPrice: e.target.value } : it) }))}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1 text-right font-medium">
-                                {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                <input value={item.note}
-                                  onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, note: e.target.value } : it) }))}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1">
-                                {needInventory ? (
-                                  <select value={item.inventoryWarehouse || ''}
-                                    onChange={e => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.map((it, i) => i === idx ? { ...it, inventoryWarehouse: e.target.value } : it) }))}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                                    <option value="">選擇庫存地點</option>
-                                    {storageLocationsList.map(w => <option key={w} value={w}>{w}</option>)}
-                                  </select>
-                                ) : (
-                                  <span className="text-gray-400 text-xs">不需入庫</span>
-                                )}
-                              </td>
-                              <td className="border border-gray-300 px-2 py-1 text-center">
-                                {expTemplateForm.purchaseItems.length > 1 && (
-                                  <button type="button" onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: p.purchaseItems.filter((_, i) => i !== idx) }))}
-                                    className="text-red-500 hover:text-red-700 text-lg">✕</button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot>
-                        <tr className="bg-gray-50">
-                          <td colSpan={3} className="border border-gray-300 px-2 py-2 text-right font-semibold">合計</td>
-                          <td className="border border-gray-300 px-2 py-2 text-right font-bold">
-                            {expTemplateForm.purchaseItems.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unitPrice) || 0), 0).toLocaleString()}
-                          </td>
-                          <td colSpan={3} className="border border-gray-300 px-2 py-2"></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                    <button type="button"
-                      onClick={() => setExpTemplateForm(p => ({ ...p, purchaseItems: [...p.purchaseItems, { productId: '', quantity: 1, unitPrice: '', note: '', inventoryWarehouse: '' }] }))}
-                      className="text-sm text-orange-600 hover:underline mb-3">
-                      + 新增品項
-                    </button>
-                    <div className="flex gap-2 justify-end mt-2">
-                      <button type="button" onClick={resetExpTemplateForm}
-                        className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100">取消</button>
-                      <button type="button" onClick={handleSaveExpTemplate}
-                        disabled={templateSaving}
-                        className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 font-medium disabled:opacity-50">
-                        {templateSaving ? '儲存中…' : (editingExpTemplate ? '更新範本' : '儲存範本')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Template List */}
-                <table className="w-full border-collapse border border-gray-300 text-sm">
-                  <thead className="sticky top-0 z-10 bg-gray-100">
-                    <tr className="bg-gray-100">
-                      <th className="border border-gray-300 px-2 py-2 text-left">範本名稱</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">廠商</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">付款方式</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">館別</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center">品項數</th>
-                      <th className="border border-gray-300 px-2 py-2 text-right">預估金額</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center">狀態</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expenseTemplates.map(t => {
-                      const itemCount = Array.isArray(t.purchaseItems) ? t.purchaseItems.length : 0;
-                      const totalAmt = Array.isArray(t.purchaseItems) ? t.purchaseItems.reduce((s, i) => s + (i.quantity || 0) * (i.unitPrice || 0), 0) : 0;
-                      return (
-                        <tr key={t.id} className={t.isActive === false ? 'opacity-50' : ''}>
-                          <td className="border border-gray-300 px-2 py-2">
-                            <div className="font-medium">{t.name}</div>
-                            {t.description && <div className="text-xs text-gray-500">{t.description}</div>}
-                          </td>
-                          <td className="border border-gray-300 px-2 py-2">{suppliers.find(s => s.id === t.defaultSupplierId)?.name || '-'}</td>
-                          <td className="border border-gray-300 px-2 py-2">{t.paymentMethod || '-'}</td>
-                          <td className="border border-gray-300 px-2 py-2">{t.warehouse || '不限'}</td>
-                          <td className="border border-gray-300 px-2 py-2 text-center">{itemCount}</td>
-                          <td className="border border-gray-300 px-2 py-2 text-right">{totalAmt > 0 ? totalAmt.toLocaleString() : '-'}</td>
-                          <td className="border border-gray-300 px-2 py-2 text-center">
-                            <span className={`px-2 py-0.5 rounded text-xs ${t.isActive !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                              {t.isActive !== false ? '啟用' : '停用'}
-                            </span>
-                          </td>
-                          <td className="border border-gray-300 px-2 py-2 text-center">
-                            <div className="flex gap-1 justify-center flex-wrap">
-                              <button type="button" onClick={() => handleEditExpTemplate(t)}
-                                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 text-blue-600">編輯</button>
-                              <button type="button" onClick={() => handleToggleExpTemplateActive(t)}
-                                className={`px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 ${t.isActive !== false ? 'text-red-600' : 'text-green-600'}`}>
-                                {t.isActive !== false ? '停用' : '啟用'}
-                              </button>
-                              <button type="button" onClick={() => handleDeleteExpTemplate(t.id)}
-                                className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 text-red-600">刪除</button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {expenseTemplates.length === 0 && !showExpTemplateForm && <p className="text-gray-500 mt-2">尚無進銷存每月費用範本，請點擊上方「+ 新增範本」建立。</p>}
-              </div>
-            )}
-
-            {monthlyExpenseSubTab === 'execute' && (
-              <div className="bg-white rounded-lg border p-6">
-                <h3 className="text-lg font-semibold mb-4">快速執行</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">選擇範本 *</label>
-                    <select id="f-3" value={selectedExpenseTemplateId}
-                      onChange={e => handleSelectExpenseTemplate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                      <option value="">-- 選擇範本 --</option>
-                      {expenseTemplates.filter(t => t.isActive !== false).map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="f-27" className="block text-sm font-medium text-gray-700 mb-1">館別 *</label>
-                    <select id="f-27" value={executeExpenseForm.warehouse}
-                      onChange={e => setExecuteExpenseForm(prev => ({ ...prev, warehouse: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                      <option value="">選擇館別</option>
-                      {warehousesList.map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="f-17" className="block text-sm font-medium text-gray-700 mb-1">費用月份 *</label>
-                    <input id="f-17" type="month" value={executeExpenseForm.expenseMonth}
-                      onChange={e => setExecuteExpenseForm(prev => ({ ...prev, expenseMonth: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-                  </div>
-                </div>
-
-                {/* Supplier selection */}
-                {selectedExpenseTemplateId && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label htmlFor="f-18" className="block text-sm font-medium text-gray-700 mb-1">廠商 *</label>
-                      <select id="f-18"
-                        value={executeExpenseForm.supplierId}
-                        onChange={e => {
-                          const sid = e.target.value;
-                          const s = suppliers.find(s => s.id === parseInt(sid));
-                          setExecuteExpenseForm(prev => ({
-                            ...prev,
-                            supplierId: sid,
-                            supplierName: s ? s.name : '',
-                            // 付款方式連動廠商預設值，若廠商未設定則預設為「月結」
-                            paymentTerms: s?.paymentTerms || '月結'
-                          }));
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                      >
-                        <option value="">選擇廠商</option>
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="f-19" className="block text-sm font-medium text-gray-700 mb-1">付款方式</label>
-                      <select id="f-19" value={executeExpenseForm.paymentTerms}
-                        onChange={e => setExecuteExpenseForm(prev => ({ ...prev, paymentTerms: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                        <option value="">請選擇付款方式</option>
-                        {(paymentMethodOptions.length > 0 ? paymentMethodOptions : ['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']).map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {executeExpenseForm.taxType && (
-                      <div>
-                        <label htmlFor="f-20" className="block text-sm font-medium text-gray-700 mb-1">稅別</label>
-                        <input id="f-20" value={executeExpenseForm.taxType} readOnly
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {selectedExpenseTemplateId && (
-                  <>
-                    {/* Product Items */}
-                    <div className="mb-4">
-                      <h4 className="text-sm font-semibold mb-2">進貨品項（需入庫品項將連動至 <Link href="/inventory" className="text-orange-600 hover:underline">庫存</Link>）</h4>
-                      <table className="w-full border-collapse border border-gray-300 text-sm">
-                        <thead className="sticky top-0 z-10 bg-gray-100">
-                          <tr className="bg-gray-100">
-                            <th className="border border-gray-300 px-2 py-2 text-left">商品</th>
-                            <th className="border border-gray-300 px-2 py-2 w-20">數量</th>
-                            <th className="border border-gray-300 px-2 py-2 w-28">單價</th>
-                            <th className="border border-gray-300 px-2 py-2 w-28 text-right">小計</th>
-                            <th className="border border-gray-300 px-2 py-2 text-left">備註</th>
-                            <th className="border border-gray-300 px-2 py-2 text-center w-24">是否入庫</th>
-                            <th className="border border-gray-300 px-2 py-2 text-left w-36">庫存地點</th>
-                            <th className="border border-gray-300 px-2 py-2 w-10"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {executeExpenseForm.items.map((item, idx) => {
-                            const product = products.find(p => p.id === parseInt(item.productId, 10));
-                            const isInStock = !!product?.isInStock;
-                            return (
-                              <tr key={idx}>
-                                <td className="border border-gray-300 px-2 py-1">
-                                  <select value={item.productId}
-                                    onChange={e => {
-                                      const pid = e.target.value;
-                                      const p = products.find(x => x.id === parseInt(pid, 10));
-                                      updateExecuteExpenseItem(idx, 'productId', pid);
-                                      if (p?.isInStock) {
-                                        setExecuteExpenseForm(prev => ({
-                                          ...prev,
-                                          items: prev.items.map((it, i) => i === idx ? { ...it, putInInventory: true, inventoryWarehouse: '' } : it)
-                                        }));
-                                      }
-                                    }}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                                    <option value="">選擇商品</option>
-                                    {products.map(p => <option key={p.id} value={p.id}>{p.code || ''} - {p.name}</option>)}
-                                  </select>
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1">
-                                  <input type="number" min={1} value={item.quantity}
-                                    onChange={e => updateExecuteExpenseItem(idx, 'quantity', e.target.value)}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1">
-                                  <input type="number" step="0.01" value={item.unitPrice}
-                                    onChange={e => updateExecuteExpenseItem(idx, 'unitPrice', e.target.value)}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1 text-right font-medium">
-                                  {((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)).toLocaleString()}
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1">
-                                  <input value={item.note}
-                                    onChange={e => updateExecuteExpenseItem(idx, 'note', e.target.value)}
-                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="備註" />
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1 text-center">
-                                  {isInStock ? (
-                                    <label className="inline-flex items-center gap-1">
-                                      <input type="checkbox" checked={!!item.putInInventory}
-                                        onChange={e => updateExecuteExpenseItem(idx, 'putInInventory', e.target.checked)}
-                                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
-                                      <span className="text-xs">入庫</span>
-                                    </label>
-                                  ) : (
-                                    <span className="text-gray-400 text-xs">不需入庫</span>
-                                  )}
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1">
-                                  {isInStock && item.putInInventory ? (
-                                    <select value={item.inventoryWarehouse || ''}
-                                      onChange={e => updateExecuteExpenseItem(idx, 'inventoryWarehouse', e.target.value)}
-                                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                                      <option value="">選擇庫存地點</option>
-                                      {storageLocationsList.map(w => <option key={w} value={w}>{w}</option>)}
-                                    </select>
-                                  ) : isInStock ? (
-                                    <span className="text-gray-400 text-xs">勾選入庫後選擇</span>
-                                  ) : (
-                                    <span className="text-gray-400 text-xs">-</span>
-                                  )}
-                                </td>
-                                <td className="border border-gray-300 px-2 py-1 text-center">
-                                  {executeExpenseForm.items.length > 1 && (
-                                    <button type="button" onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }))}
-                                      className="text-red-500 hover:text-red-700 text-lg">✕</button>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-gray-50">
-                            <td colSpan={3} className="border border-gray-300 px-2 py-2 text-right font-semibold">進貨金額合計</td>
-                            <td className="border border-gray-300 px-2 py-2 text-right font-bold text-lg">
-                              {getExecPurchaseTotal().toLocaleString()}
-                            </td>
-                            <td colSpan={2} className="border border-gray-300 px-2 py-2"></td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                      <button type="button"
-                        onClick={() => setExecuteExpenseForm(prev => ({ ...prev, items: [...prev.items, { productId: '', quantity: 1, unitPrice: '', note: '', putInInventory: true, inventoryWarehouse: '' }] }))}
-                        className="mt-2 text-sm text-orange-600 hover:underline">
-                        + 新增品項
-                      </button>
-                    </div>
-
-                    {/* Invoice Section */}
-                    <div className="border-2 border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
-                      <h4 className="text-md font-semibold mb-3 text-blue-800">發票資訊（填寫後會同時建立發票記錄）</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                        <div>
-                          <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">發票號碼</label>
-                          <input id="f-4" value={executeExpenseForm.invoiceNo}
-                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceNo: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="例: AB-12345678" />
-                        </div>
-                        <div>
-                          <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">發票日期</label>
-                          <input id="f-5" type="date" value={executeExpenseForm.invoiceDate}
-                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                        </div>
-                        <div>
-                          <label htmlFor="f-25" className="block text-sm font-medium text-gray-700 mb-1">
-                            發票抬頭
-                            {invoiceTitles.length === 0 && (
-                              <Link href="/settings" className="text-xs text-blue-600 hover:underline ml-1">（請先至設定新增）</Link>
-                            )}
-                          </label>
-                          <select id="f-25"
-                            value={invoiceTitles.some(t => t.title === executeExpenseForm.invoiceTitle) ? executeExpenseForm.invoiceTitle : (executeExpenseForm.invoiceTitle ? '__other__' : '')}
-                            onChange={e => {
-                              const v = e.target.value;
-                              setExecuteExpenseForm(prev => ({ ...prev, invoiceTitle: v === '__other__' ? '' : v }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                          >
-                            <option value="">請選擇</option>
-                            {invoiceTitles.map(t => (
-                              <option key={t.id} value={t.title}>{t.title}{t.taxId ? ` (${t.taxId})` : ''}</option>
-                            ))}
-                            <option value="__other__">其他（手動輸入）</option>
-                          </select>
-                          {(executeExpenseForm.invoiceTitle && !invoiceTitles.some(t => t.title === executeExpenseForm.invoiceTitle)) && (
-                            <input
-                              value={executeExpenseForm.invoiceTitle}
-                              onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceTitle: e.target.value }))}
-                              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                              placeholder="輸入發票抬頭"
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-                        <div>
-                          <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">營業稅類型</label>
-                          <select id="f-6" value={executeExpenseForm.taxType}
-                            onChange={e => {
-                              const newTaxType = e.target.value;
-                              const purchaseAmt = getExecPurchaseTotal();
-                              const autoTax = calcTaxAmount(purchaseAmt, newTaxType);
-                              const discount = parseFloat(executeExpenseForm.supplierDiscount) || 0;
-                              setExecuteExpenseForm(prev => ({
-                                ...prev,
-                                taxType: newTaxType,
-                                taxAmount: String(autoTax),
-                                invoiceAmount: String(purchaseAmt + autoTax - discount)
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            <option value="">不指定</option>
-                            <option value="應稅">應稅 (5%)</option>
-                            <option value="免稅">免稅</option>
-                            <option value="零稅率">零稅率</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">營業稅金額</label>
-                          <input id="f-7" type="number" step="1" value={executeExpenseForm.taxAmount}
-                            onChange={e => {
-                              const taxAmt = parseFloat(e.target.value) || 0;
-                              const purchaseAmt = getExecPurchaseTotal();
-                              const discount = parseFloat(executeExpenseForm.supplierDiscount) || 0;
-                              setExecuteExpenseForm(prev => ({
-                                ...prev,
-                                taxAmount: e.target.value,
-                                invoiceAmount: String(purchaseAmt + taxAmt - discount)
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0" />
-                        </div>
-                        <div>
-                          <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">廠商折讓金額</label>
-                          <input id="f-8" type="number" step="1" value={executeExpenseForm.supplierDiscount}
-                            onChange={e => {
-                              const discount = parseFloat(e.target.value) || 0;
-                              const purchaseAmt = getExecPurchaseTotal();
-                              const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
-                              setExecuteExpenseForm(prev => ({
-                                ...prev,
-                                supplierDiscount: e.target.value,
-                                invoiceAmount: String(purchaseAmt + taxAmt - discount)
-                              }));
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="0" />
-                        </div>
-                        <div>
-                          <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">發票金額</label>
-                          <input id="f-9" type="number" step="1" value={executeExpenseForm.invoiceAmount}
-                            onChange={e => setExecuteExpenseForm(prev => ({ ...prev, invoiceAmount: e.target.value }))}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-bold" placeholder="0" />
-                        </div>
-                      </div>
-                      {/* Validation display */}
-                      {executeExpenseForm.invoiceNo?.trim() && (() => {
-                        const purchaseAmt = getExecPurchaseTotal();
-                        const taxAmt = parseFloat(executeExpenseForm.taxAmount) || 0;
-                        const discount = parseFloat(executeExpenseForm.supplierDiscount) || 0;
-                        const invAmt = parseFloat(executeExpenseForm.invoiceAmount) || 0;
-                        const expected = purchaseAmt + taxAmt - discount;
-                        const isValid = Math.abs(invAmt - expected) < 0.01;
-                        return (
-                          <div className={`text-sm p-2 rounded ${isValid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            驗證：進貨金額 {purchaseAmt.toLocaleString()} + 營業稅 {taxAmt.toLocaleString()} - 廠商折讓 {discount.toLocaleString()} = {expected.toLocaleString()}
-                            {isValid ? ' ✓ 與發票金額一致' : ` ✗ 發票金額 ${invAmt.toLocaleString()} 不符`}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Note */}
-                    <div className="mb-4">
-                      <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                      <input id="f-10" value={executeExpenseForm.note}
-                        onChange={e => setExecuteExpenseForm(prev => ({ ...prev, note: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="選填" />
-                    </div>
-
-                    {/* Data flow info */}
-                    <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600">
-                      <strong>執行後資料流向：</strong>
-                      <br />→ 進貨管理：自動建立進貨單 (PUR-XXXXXX)
-                      {executeExpenseForm.invoiceNo?.trim() && <><br />→ 發票管理：自動建立發票記錄 (INV-XXXXXX)</>}
-                      <br />→ 費用記錄：建立本筆費用執行記錄 (EXP-XXXXXX)
-                    </div>
-
-                    <button type="button" onClick={handleExecutePurchaseExpense}
-                      disabled={submittingExpense}
-                      className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50 font-medium">
-                      {submittingExpense ? '執行中...' : '執行並建立記錄'}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {monthlyExpenseSubTab === 'records' && (
-              <div className="bg-white rounded-lg border p-4">
-                <div className="flex flex-wrap gap-4 mb-4">
-                  <div>
-                    <label htmlFor="f-11" className="block text-xs text-gray-600 mb-1">月份</label>
-                    <input id="f-11" type="month" value={expenseRecordFilter.month}
-                      onChange={e => setExpenseRecordFilter(prev => ({ ...prev, month: e.target.value }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm" />
-                  </div>
-                  <div>
-                    <label htmlFor="f-12" className="block text-xs text-gray-600 mb-1">館別</label>
-                    <select id="f-12" value={expenseRecordFilter.warehouse}
-                      onChange={e => setExpenseRecordFilter(prev => ({ ...prev, warehouse: e.target.value }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="">全部</option>
-                      {warehousesList.map(w => <option key={w} value={w}>{w}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="f-21" className="block text-xs text-gray-600 mb-1">狀態</label>
-                    <select id="f-21" value={expenseRecordFilter.status}
-                      onChange={e => setExpenseRecordFilter(prev => ({ ...prev, status: e.target.value }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="">全部</option>
-                      <option value="待確認">待確認</option>
-                      <option value="已確認">已確認</option>
-                      <option value="已作廢">已作廢</option>
-                    </select>
-                  </div>
-                </div>
-                {expenseRecordsLoading ? (
-                  <p className="text-gray-500">載入中...</p>
-                ) : expenseRecords.length === 0 ? (
-                  <p className="text-gray-500">尚無進銷存每月費用記錄</p>
-                ) : (
-                  <table className="w-full border-collapse border border-gray-300 text-sm">
-                    <thead className="sticky top-0 z-10 bg-gray-100">
-                      <tr className="bg-gray-100">
-                        <th className="border border-gray-300 px-2 py-2 text-left">記錄單號</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left">範本</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left">月份</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left">館別</th>
-                        <th className="border border-gray-300 px-2 py-2 text-right">金額</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left">關聯單號</th>
-                        <th className="border border-gray-300 px-2 py-2 text-left">狀態</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {expenseRecords.map(r => (
-                        <tr key={r.id}>
-                          <td className="border border-gray-300 px-2 py-2 font-mono text-xs">{r.recordNo}</td>
-                          <td className="border border-gray-300 px-2 py-2">{r.template?.name || '-'}</td>
-                          <td className="border border-gray-300 px-2 py-2">{r.expenseMonth}</td>
-                          <td className="border border-gray-300 px-2 py-2">{r.warehouse}</td>
-                          <td className="border border-gray-300 px-2 py-2 text-right">{Number(r.totalDebit).toLocaleString()}</td>
-                          <td className="border border-gray-300 px-2 py-2">
-                            {r.purchaseNo && <span className="text-blue-600">{r.purchaseNo}</span>}
-                            {r.paymentOrderNo && <span className="text-blue-600 ml-1">{r.paymentOrderNo}</span>}
-                            {!r.purchaseNo && !r.paymentOrderNo && '-'}
-                          </td>
-                          <td className="border border-gray-300 px-2 py-2">
-                            <span className={`px-2 py-0.5 rounded text-xs ${r.status === '已確認' ? 'bg-green-100 text-green-800' : r.status === '已作廢' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                              {r.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-          </div>
+          <MonthlyExpenseTab
+            expense={expense}
+            suppliers={suppliers}
+            products={products}
+            warehousesList={warehousesList}
+            storageLocationsList={storageLocationsList}
+            paymentMethodOptions={paymentMethodOptions}
+            invoiceTitles={invoiceTitles}
+          />
         )}
       </main>
     </div>

@@ -6,6 +6,9 @@ import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { validatePasswordStrength } from '@/lib/password-policy';
 import { validateBody } from '@/lib/validate-body';
+import { rateLimit } from '@/lib/rate-limiter';
+
+const limitUserCreate = rateLimit({ max: 10, windowMs: 60_000, key: 'user_create' });
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +56,9 @@ export async function GET(request) {
 
 // POST create user (admin only)
 export async function POST(request) {
+  const limited = limitUserCreate(request);
+  if (limited) return limited;
+
   try {
     const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'admin') {

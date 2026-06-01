@@ -41,6 +41,7 @@ export async function GET(request) {
       where.OR = [
         { purchaseNo: { contains: keyword, mode: 'insensitive' } },
         { warehouse: { contains: keyword, mode: 'insensitive' } },
+        { supplier: { name: { contains: keyword, mode: 'insensitive' } } },
       ];
     }
 

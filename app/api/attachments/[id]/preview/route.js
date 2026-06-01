@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireModuleViewPermission } from '@/lib/api-auth';
@@ -13,7 +13,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (Number.isNaN(id)) {
       return createErrorResponse('VALIDATION_FAILED', '附件 ID 格式錯誤', 400);
     }

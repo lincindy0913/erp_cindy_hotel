@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
 import { nextSequence } from '@/lib/sequence-generator';
+import { ALLOWANCE_STATUS } from '@/lib/allowance-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,7 +129,7 @@ export async function POST(request) {
           amount: parseFloat(data.amount || data.totalAmount),
           tax: parseFloat(data.tax || 0),
           totalAmount: parseFloat(data.totalAmount),
-          status: data.status || '草稿',
+          status: data.status || ALLOWANCE_STATUS.DRAFT,
           reason: data.reason?.trim() || null,
           note: data.note?.trim() || null,
           createdBy: data.createdBy?.trim() || null,

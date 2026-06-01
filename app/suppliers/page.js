@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { useSupplierContracts } from '@/hooks/useSupplierContracts';
+import SupplierForm from '@/components/suppliers/SupplierForm';
 
 export default function SuppliersPage() {
   const { data: session } = useSession();
@@ -33,8 +35,8 @@ export default function SuppliersPage() {
     industryCategory: '',
     sortOrder: '',
   });
-  const [contracts, setContracts] = useState([]);
-  const [uploadingContract, setUploadingContract] = useState(false);
+  const { contracts, setContracts, uploadingContract, fetchContracts, handleUploadContract, handleDeleteContract } =
+    useSupplierContracts({ showToast, confirm, editingSupplier });
   const [supplierSaving, setSupplierSaving] = useState(false);
   const [allSuppliers, setAllSuppliers] = useState([]);
   const [sortType, setSortType] = useState('id-asc');
@@ -53,7 +55,7 @@ export default function SuppliersPage() {
   const [showTermsManager, setShowTermsManager] = useState(false);
   const [newTermName, setNewTermName] = useState('');
 
-  const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '', checkPayee: '', industryCategory: '', sortOrder: '' };
+  const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '', checkPayee: '', industryCategory: '', sortOrder: '', rating: null, isBlacklisted: false, blacklistReason: '', blacklistedAt: null };
 
   useEffect(() => {
     fetchSuppliers();
@@ -343,6 +345,10 @@ export default function SuppliersPage() {
       checkPayee: supplier.checkPayee || '',
       industryCategory: supplier.industryCategory || '',
       sortOrder: supplier.sortOrder != null ? String(supplier.sortOrder) : '',
+      rating: supplier.rating ?? null,
+      isBlacklisted: supplier.isBlacklisted || false,
+      blacklistReason: supplier.blacklistReason || '',
+      blacklistedAt: supplier.blacklistedAt || null,
     });
     fetchContracts(supplier.id);
   }
@@ -369,71 +375,6 @@ export default function SuppliersPage() {
     }
   }
 
-  // 合約相關功能
-  async function fetchContracts(supplierId) {
-    try {
-      const response = await fetch(`/api/suppliers/${supplierId}/contracts`);
-      if (response.ok) {
-        const data = await response.json();
-        setContracts(data);
-      }
-    } catch (error) {
-      console.error('取得合約清單失敗:', error);
-    }
-  }
-
-  async function handleUploadContract(e) {
-    const file = e.target.files[0];
-    if (!file || !editingSupplier) return;
-
-    setUploadingContract(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`/api/suppliers/${editingSupplier.id}/contracts`, {
-        method: 'POST',
-        body: formData
-      });
-
-      if (response.ok) {
-        showToast('合約上傳成功！', 'success');
-        await fetchContracts(editingSupplier.id);
-      } else {
-        const error = await response.json();
-        showToast('上傳失敗：' + (error.error || '未知錯誤'), 'error');
-      }
-    } catch (error) {
-      console.error('上傳合約失敗:', error);
-      showToast('上傳合約失敗，請稍後再試', 'error');
-    } finally {
-      setUploadingContract(false);
-      e.target.value = '';
-    }
-  }
-
-  async function handleDeleteContract(contractId) {
-    if (!(await confirm('確定要刪除這份合約嗎？', { title: '刪除確認', danger: true }))) return;
-
-    try {
-      const response = await fetch(`/api/suppliers/${editingSupplier.id}/contracts/${contractId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        showToast('合約已刪除', 'success');
-        await fetchContracts(editingSupplier.id);
-      } else {
-        const error = await response.json();
-        const msg = error?.error?.message || (typeof error?.error === 'string' ? error.error : '未知錯誤');
-        showToast('刪除失敗：' + msg, 'error');
-      }
-    } catch (error) {
-      console.error('刪除合約失敗:', error);
-      showToast('刪除合約失敗，請稍後再試', 'error');
-    }
-  }
-
   function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -455,7 +396,13 @@ export default function SuppliersPage() {
       <main className="max-w-full mx-auto px-4 py-8">
         {/* 頁面標題 */}
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">廠商管理</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">廠商管理</h2>
+            <Link href="/suppliers/payment-health"
+              className="px-3 py-1.5 text-sm bg-teal-50 border border-teal-300 text-teal-700 rounded-lg hover:bg-teal-100">
+              📊 付款健康度
+            </Link>
+          </div>
           <div className="flex gap-3 items-center">
             {/* 搜尋欄 */}
             <div className="relative">
@@ -589,213 +536,20 @@ export default function SuppliersPage() {
 
         {/* 新增/編輯廠商表單 */}
         {showAddForm && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border-2 border-blue-200">
-            <h3 className="text-lg font-semibold mb-4">{editingSupplier ? '編輯廠商' : '新增廠商'}</h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="f" className="block text-sm font-medium text-gray-700 mb-1">廠商名稱 *</label>
-                <input id="f" type="text" required value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label htmlFor="f-2" className="block text-sm font-medium text-gray-700 mb-1">統一編號 *</label>
-                <input id="f-2" type="text" required value={formData.taxId}
-                  onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label htmlFor="f-3" className="block text-sm font-medium text-gray-700 mb-1">聯絡人 *</label>
-                <input id="f-3" type="text" required value={formData.contact}
-                  onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label htmlFor="f-4" className="block text-sm font-medium text-gray-700 mb-1">負責人 *</label>
-                <input id="f-4" type="text" required value={formData.personInCharge}
-                  onChange={(e) => setFormData({ ...formData, personInCharge: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：王經理" />
-              </div>
-              <div>
-                <label htmlFor="f-5" className="block text-sm font-medium text-gray-700 mb-1">聯絡電話 *</label>
-                <input id="f-5" type="text" required value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：02-1234-5678" />
-              </div>
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input id="email" type="email" value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：contact@example.com" />
-              </div>
-              <div className="col-span-2">
-                <label htmlFor="f-6" className="block text-sm font-medium text-gray-700 mb-1">地址</label>
-                <input id="f-6" type="text" value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：台北市信義區信義路五段7號" />
-              </div>
-              <div>
-                <label htmlFor="link-href-settings-financ" className="block text-sm font-medium text-gray-700 mb-1">
-                  付款條件（<Link href="/settings#finance" className="text-blue-600 hover:underline text-xs">設定</Link>）
-                </label>
-                <select id="link-href-settings-financ" value={formData.paymentTerms}
-                  onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {paymentTermsOptions.map(term => (
-                    <option key={term} value={term}>{term}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-14" className="block text-sm font-medium text-gray-700 mb-1">付款狀態</label>
-                <select id="f-14" value={formData.paymentStatus}
-                  onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="未付款">未付款</option>
-                  <option value="已付款">已付款</option>
-                  <option value="部分付款">部分付款</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-7" className="block text-sm font-medium text-gray-700 mb-1">合約日期</label>
-                <input id="f-7" type="date" value={formData.contractDate}
-                  onChange={(e) => setFormData({ ...formData, contractDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label htmlFor="f-8" className="block text-sm font-medium text-gray-700 mb-1">合約到期日期</label>
-                <input id="f-8" type="date" value={formData.contractEndDate}
-                  onChange={(e) => setFormData({ ...formData, contractEndDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              {/* 合約檔案上傳區域 */}
-              <div className="col-span-2 border-t border-gray-200 pt-4 mt-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">合約檔案</label>
-                {editingSupplier ? (
-                  <div>
-                    {/* 上傳按鈕 */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm cursor-pointer ${
-                        uploadingContract ? 'bg-gray-300 text-gray-500' : 'bg-green-600 text-white hover:bg-green-700'
-                      }`}>
-                        <span>{uploadingContract ? '上傳中...' : '+ 上傳合約'}</span>
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
-                          onChange={handleUploadContract}
-                          disabled={uploadingContract}
-                        />
-                      </label>
-                      <span className="text-xs text-gray-500">支援 PDF、Word、Excel、圖片，上限 10MB</span>
-                    </div>
-
-                    {/* 合約清單 */}
-                    {contracts.length > 0 ? (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50 sticky top-0 z-10">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">檔案名稱</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">大小</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">上傳日期</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">操作</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {contracts.map((contract) => (
-                              <tr key={contract.id} className="hover:bg-gray-50">
-                                <td className="px-3 py-2 text-xs">
-                                  <a
-                                    href={`/api/suppliers/${editingSupplier.id}/contracts/${contract.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline"
-                                    title={contract.fileName}
-                                  >
-                                    {contract.fileName}
-                                  </a>
-                                </td>
-                                <td className="px-3 py-2 text-xs text-gray-500">{formatFileSize(contract.fileSize)}</td>
-                                <td className="px-3 py-2 text-xs text-gray-500">
-                                  {new Date(contract.uploadDate).toLocaleDateString('zh-TW')}
-                                </td>
-                                <td className="px-3 py-2 text-xs">
-                                  <div className="flex gap-2">
-                                    <a
-                                      href={`/api/suppliers/${editingSupplier.id}/contracts/${contract.id}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:underline"
-                                    >
-                                      下載
-                                    </a>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteContract(contract.id)}
-                                      className="text-red-600 hover:underline"
-                                    >
-                                      刪除
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-400 py-2">尚無合約檔案</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-400 py-2">請先儲存廠商資料後，再編輯此廠商即可上傳合約</p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="f-9" className="block text-sm font-medium text-gray-700 mb-1">支票抬頭</label>
-                <input id="f-9" type="text" value={formData.checkPayee}
-                  onChange={(e) => setFormData({ ...formData, checkPayee: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：統一企業股份有限公司" />
-              </div>
-              <div>
-                <label htmlFor="f-10" className="block text-sm font-medium text-gray-700 mb-1">行業類別</label>
-                <input id="f-10" type="text" value={formData.industryCategory}
-                  onChange={(e) => setFormData({ ...formData, industryCategory: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="例如：食品、水電、工程" />
-              </div>
-              <div>
-                <label htmlFor="f-11" className="block text-sm font-medium text-gray-700 mb-1">顯示順序</label>
-                <input id="f-11" type="number" min="0" value={formData.sortOrder}
-                  onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="數字越小越前面" />
-              </div>
-              <div className="col-span-2">
-                <label htmlFor="f-12" className="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                <textarea id="f-12" value={formData.remarks}
-                  onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows="3" placeholder="輸入備註事項..." />
-              </div>
-              <div className="col-span-2 flex justify-end gap-3">
-                <button type="button" onClick={() => { setShowAddForm(false); setEditingSupplier(null); setFormData(emptyForm); setContracts([]); }}
-                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" disabled={supplierSaving}>
-                  取消
-                </button>
-                <button type="submit" disabled={supplierSaving} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                  {supplierSaving ? '儲存中…' : (editingSupplier ? '更新' : '儲存')}
-                </button>
-              </div>
-            </form>
-          </div>
+          <SupplierForm
+            formData={formData}
+            setFormData={setFormData}
+            editingSupplier={editingSupplier}
+            supplierSaving={supplierSaving}
+            paymentTermsOptions={paymentTermsOptions}
+            contracts={contracts}
+            uploadingContract={uploadingContract}
+            handleUploadContract={handleUploadContract}
+            handleDeleteContract={handleDeleteContract}
+            formatFileSize={formatFileSize}
+            onSubmit={handleSubmit}
+            onCancel={() => { setShowAddForm(false); setEditingSupplier(null); setFormData(emptyForm); setContracts([]); }}
+          />
         )}
 
         {/* 廠商列表 */}
@@ -903,7 +657,19 @@ export default function SuppliersPage() {
                   return (
                     <tr key={supplier.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${expiryStatus === 'expired' ? 'bg-red-50' : expiryStatus === 'warning' ? 'bg-yellow-50' : ''}`}>
                       <td className="px-2 py-2 text-xs font-medium">{supplier.id}</td>
-                      <td className="px-2 py-2 text-xs truncate" title={supplier.name}>{supplier.name}</td>
+                      <td className="px-2 py-2 text-xs" title={supplier.name}>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {supplier.isBlacklisted && (
+                              <span className="px-1 py-0.5 bg-red-100 text-red-700 rounded text-xs font-bold shrink-0" title={supplier.blacklistReason || '黑名單'}>🚫</span>
+                            )}
+                            <span className="truncate">{supplier.name}</span>
+                          </div>
+                          {supplier.rating && (
+                            <span className="text-yellow-400 text-xs leading-none">{'★'.repeat(supplier.rating)}{'☆'.repeat(5 - supplier.rating)}</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-2 py-2 text-xs">{supplier.taxId || '-'}</td>
                       <td className="px-2 py-2 text-xs truncate" title={supplier.contact}>{supplier.contact || '-'}</td>
                       <td className="px-2 py-2 text-xs truncate" title={supplier.personInCharge}>{supplier.personInCharge || '-'}</td>

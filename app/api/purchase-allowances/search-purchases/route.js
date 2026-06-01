@@ -43,6 +43,7 @@ export async function GET(request) {
       if (dateTo)   where.purchaseDate.lte = dateTo;
     }
 
+    const LIMIT = 200;
     const purchases = await prisma.purchaseMaster.findMany({
       where,
       include: {
@@ -52,8 +53,10 @@ export async function GET(request) {
         },
       },
       orderBy: { id: 'desc' },
-      take: 100,
+      take: LIMIT + 1,
     });
+    const truncated = purchases.length > LIMIT;
+    if (truncated) purchases.splice(LIMIT);
 
     if (purchases.length === 0) return NextResponse.json([]);
 
@@ -86,12 +89,12 @@ export async function GET(request) {
     for (const sm of salesMasters) salesById[sm.id] = sm;
 
     // 4. 找付款單（PaymentOrder.invoiceIds 包含 salesMaster.id，且已執行）
-    const allPaymentOrders = allSalesIds.length > 0
+    const supplierIds = [...new Set(purchases.map(p => p.supplierId).filter(Boolean))];
+    const allPaymentOrders = allSalesIds.length > 0 && supplierIds.length > 0
       ? await prisma.paymentOrder.findMany({
-          where: { status: '已執行' },
+          where: { status: '已執行', supplierId: { in: supplierIds } },
           select: { id: true, orderNo: true, supplierId: true, supplierName: true, warehouse: true, invoiceIds: true },
           orderBy: { createdAt: 'desc' },
-          take: 500,
         })
       : [];
 
@@ -151,7 +154,7 @@ export async function GET(request) {
     if (onlyPaid) filtered = results.filter(r => !!r.paymentOrderNo);
     else if (onlyUnpaid) filtered = results.filter(r => !r.paymentOrderNo);
 
-    return NextResponse.json(filtered);
+    return NextResponse.json({ data: filtered, truncated, totalCount: filtered.length });
   } catch (error) {
     console.error('GET /api/purchase-allowances/search-purchases error:', error.message || error);
     return handleApiError(error);

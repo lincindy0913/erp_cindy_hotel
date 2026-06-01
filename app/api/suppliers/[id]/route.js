@@ -10,7 +10,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const supplier = await prisma.supplier.findUnique({ where: { id } });
 
     if (!supplier) {
@@ -33,7 +33,7 @@ export async function PUT(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const existing = await prisma.supplier.findUnique({ where: { id } });
@@ -43,6 +43,21 @@ export async function PUT(request, { params }) {
 
     if (!data.name || !String(data.name).trim()) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫廠商名稱', 400);
+    }
+
+    // 統一編號唯一性檢查（排除自身，含已停用廠商）
+    const taxId = data.taxId && String(data.taxId).trim() ? String(data.taxId).trim() : null;
+    if (taxId) {
+      const dup = await prisma.supplier.findFirst({
+        where: { taxId, id: { not: id } },
+        select: { id: true, name: true, isActive: true },
+      });
+      if (dup) {
+        return NextResponse.json({
+          error: `統一編號 ${taxId} 已被廠商「${dup.name}」使用${!dup.isActive ? '（已停用）' : ''}，不可重複`,
+          code: 'SUPPLIER_TAX_ID_DUPLICATE',
+        }, { status: 409 });
+      }
     }
 
     const updated = await prisma.supplier.update({
@@ -63,6 +78,12 @@ export async function PUT(request, { params }) {
         checkPayee: data.checkPayee && String(data.checkPayee).trim() ? String(data.checkPayee).trim() : null,
         industryCategory: data.industryCategory && String(data.industryCategory).trim() ? String(data.industryCategory).trim() : null,
         sortOrder: data.sortOrder != null && data.sortOrder !== '' ? parseInt(data.sortOrder) : null,
+        rating: data.rating != null && data.rating !== '' ? parseInt(data.rating) : null,
+        isBlacklisted: data.isBlacklisted === true || data.isBlacklisted === 'true',
+        blacklistReason: data.blacklistReason?.trim() || null,
+        blacklistedAt: (data.isBlacklisted === true || data.isBlacklisted === 'true')
+          ? (data.blacklistedAt ? new Date(data.blacklistedAt) : new Date())
+          : null,
       }
     });
 
@@ -90,7 +111,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const { searchParams } = new URL(request.url);
     const deactivate = searchParams.get('deactivate') === 'true';
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET  /api/pms-income/vendor-billing/[id]/items   — 項目列表
  * POST /api/pms-income/vendor-billing/[id]/items   — 新增項目（並重算 totalAmount）
  */
@@ -15,7 +15,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const billingId = parseInt(params.id);
+    const billingId = parseInt((await params).id);
     const items = await prisma.vendorItineraryItem.findMany({
       where: { billingId },
       orderBy: { id: 'asc' },
@@ -31,7 +31,7 @@ export async function POST(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const billingId = parseInt(params.id);
+    const billingId = parseInt((await params).id);
     const body = await request.json();
     const { description, guestName, checkInDate, checkOutDate, roomType, quantity, unitPrice, notes } = body;
 

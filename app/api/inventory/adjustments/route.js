@@ -4,6 +4,7 @@ import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,12 +116,16 @@ export async function POST(request) {
       },
     });
 
-    return NextResponse.json({
-      ...created,
-      systemQty,
-      actualQty,
-      diff,
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.INVENTORY_ADJUSTMENT_CREATE,
+      targetModule: 'inventory_adjustments',
+      targetRecordId: created.id,
+      targetRecordNo: created.countNo,
+      afterState: { product: product.name, warehouse, systemQty, actualQty, diff },
+      note: reason || `手動調整：${product.name}`,
     });
+
+    return NextResponse.json({ ...created, systemQty, actualQty, diff });
   } catch (error) {
     return handleApiError(error);
   }

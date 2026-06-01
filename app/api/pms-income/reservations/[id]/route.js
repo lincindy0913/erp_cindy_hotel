@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
@@ -13,7 +13,7 @@ export async function DELETE(request, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.PMS_IMPORT]);
   if (!auth.ok) return auth.response;
 
-  const id = parseInt(params.id);
+  const id = parseInt((await params).id);
   if (!id) return createErrorResponse('VALIDATION_FAILED', '無效的 ID', 400);
 
   try {
@@ -44,7 +44,7 @@ export async function PATCH(request, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.PMS_IMPORT]);
   if (!auth.ok) return auth.response;
 
-  const id = parseInt(params.id);
+  const id = parseInt((await params).id);
   if (!id) return createErrorResponse('VALIDATION_FAILED', '無效的 ID', 400);
 
   try {

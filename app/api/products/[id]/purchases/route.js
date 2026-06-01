@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
@@ -9,7 +9,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const productId = parseInt(params.id);
+    const productId = parseInt((await params).id);
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
@@ -22,7 +22,7 @@ export async function GET(request, { params }) {
       include: {
         purchaseMaster: {
           include: {
-            supplier: { select: { name: true } }
+            supplier: { select: { id: true, name: true } }
           }
         }
       },
@@ -36,6 +36,7 @@ export async function GET(request, { params }) {
       purchaseNo: detail.purchaseMaster.purchaseNo,
       warehouse: detail.purchaseMaster.warehouse || '',
       department: detail.purchaseMaster.department || '',
+      supplierId: detail.purchaseMaster.supplierId,
       supplierName: detail.purchaseMaster.supplier?.name || '未知廠商',
       purchaseDate: detail.purchaseMaster.purchaseDate,
       paymentTerms: detail.purchaseMaster.paymentTerms || '',

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PATCH  /api/owner-expenses/[id] — 更新（含確認）
  * DELETE /api/owner-expenses/[id] — 刪除單筆
  */
@@ -24,7 +24,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id   = parseInt(params.id);
+    const id   = parseInt((await params).id);
     const body = await request.json();
     const { totalAmount, invoiceCount, status, note } = body;
     const data = {};
@@ -58,7 +58,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    await prisma.ownerMonthlyExpense.delete({ where: { id: parseInt(params.id) } });
+    await prisma.ownerMonthlyExpense.delete({ where: { id: parseInt((await params).id) } });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleApiError(error);

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /api/rentals/contracts/[id]/history
  * 查詢合約的 audit_log 變更歷史（最近 50 筆）
  */
@@ -15,7 +15,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const contractId = parseInt(params.id);
+    const contractId = parseInt((await params).id);
     if (!contractId) return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 id', 400);
 
     const logs = await prisma.auditLog.findMany({

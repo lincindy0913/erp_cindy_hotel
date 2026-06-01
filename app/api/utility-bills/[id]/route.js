@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -44,7 +44,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
     const record = await prisma.utilityBillRecord.findUnique({
@@ -72,7 +72,7 @@ export async function PUT(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
     const body = await request.json();
@@ -113,7 +113,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
     const record = await prisma.utilityBillRecord.findUnique({ where: { id } });
@@ -191,7 +191,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
     await prisma.utilityBillRecord.delete({ where: { id } });

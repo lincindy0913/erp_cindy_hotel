@@ -1,4 +1,4 @@
-/**
+﻿/**
  * DELETE /api/rentals/year-locks/[year] — 解除年度結算鎖定
  */
 import { NextResponse } from 'next/server';
@@ -14,7 +14,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const year = parseInt(params.year);
+    const year = parseInt((await params).year);
     const lock = await prisma.rentalYearLock.findUnique({ where: { year } });
     if (!lock) return createErrorResponse('NOT_FOUND', `${year} 年未鎖定`, 404);
 

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
@@ -14,7 +14,7 @@ export async function PUT(request, { params }) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const role = await prisma.role.findUnique({ where: { id } });
@@ -47,7 +47,7 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const role = await prisma.role.findUnique({ where: { id } });
 
     if (!role) {

@@ -8,6 +8,7 @@ import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
+import { ALLOWANCE_STATUS } from '@/lib/allowance-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export async function POST(request, { params }) {
 
   try {
     const session = auth.session;
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const body = await request.json();
     const { accountId, refundDate } = body;
 
@@ -30,7 +31,7 @@ export async function POST(request, { params }) {
         include: { details: true },
       });
       if (!allowance) throw new Error('NOT_FOUND:找不到退貨單');
-      if (allowance.status !== '草稿') throw new Error(`IDEMPOTENT:無法確認：目前狀態為「${allowance.status}」`);
+      if (allowance.status !== ALLOWANCE_STATUS.DRAFT) throw new Error(`IDEMPOTENT:無法確認：目前狀態為「${allowance.status}」`);
 
       const totalAmount = Number(allowance.totalAmount);
       if (totalAmount <= 0) throw new Error('退貨金額必須大於 0');
@@ -143,7 +144,7 @@ export async function POST(request, { params }) {
 
       // ====== 狀態更新 ======
       const extraActions = [];
-      const statusToSet = isFullReturn ? '已退貨' : '部分退貨';
+      const statusToSet = isFullReturn ? ALLOWANCE_STATUS.RETURNED : ALLOWANCE_STATUS.PARTIAL_RETURN;
 
       // 1. 更新付款單狀態（全額退貨→已退貨，部分退貨→部分退貨）
       {
@@ -249,7 +250,7 @@ export async function POST(request, { params }) {
       await tx.purchaseAllowance.update({
         where: { id },
         data: {
-          status: '已確認',
+          status: ALLOWANCE_STATUS.CONFIRMED,
           refundAccountId: parseInt(accountId),
           cashTransactionId: cashTx.id,
           cashTransactionNo: txNo,

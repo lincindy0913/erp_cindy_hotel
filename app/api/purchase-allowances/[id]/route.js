@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertWarehouseAccess } from '@/lib/warehouse-access';
+import { ALLOWANCE_STATUS } from '@/lib/allowance-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const record = await prisma.purchaseAllowance.findUnique({
       where: { id },
       include: { details: true },
@@ -48,7 +49,7 @@ export async function PUT(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const existing = await prisma.purchaseAllowance.findUnique({ where: { id } });
@@ -59,8 +60,8 @@ export async function PUT(request, { params }) {
       if (!wa.ok) return wa.response;
     }
 
-    if (existing.status !== '草稿') {
-      return createErrorResponse('VALIDATION_FAILED', `無法編輯：目前狀態為「${existing.status}」，僅「草稿」可編輯`, 400);
+    if (existing.status !== ALLOWANCE_STATUS.DRAFT) {
+      return createErrorResponse('VALIDATION_FAILED', `無法編輯：目前狀態為「${existing.status}」，僅「${ALLOWANCE_STATUS.DRAFT}」可編輯`, 400);
     }
 
     // ── cross-check 金額一致性 ──────────────────────────────
@@ -159,7 +160,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const existing = await prisma.purchaseAllowance.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到折讓單', 404);
 
@@ -168,8 +169,8 @@ export async function DELETE(request, { params }) {
       if (!wa.ok) return wa.response;
     }
 
-    if (existing.status !== '草稿') {
-      return createErrorResponse('VALIDATION_FAILED', `無法刪除：目前狀態為「${existing.status}」，僅「草稿」可刪除`, 400);
+    if (existing.status !== ALLOWANCE_STATUS.DRAFT) {
+      return createErrorResponse('VALIDATION_FAILED', `無法刪除：目前狀態為「${existing.status}」，僅「${ALLOWANCE_STATUS.DRAFT}」可刪除`, 400);
     }
 
     await prisma.purchaseAllowance.delete({ where: { id } });

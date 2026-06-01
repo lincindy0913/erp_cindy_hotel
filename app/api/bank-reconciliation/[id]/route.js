@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -12,7 +12,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const stmt = await prisma.bankStatement.findUnique({
       where: { id },
       include: { lines: { orderBy: [{ txDate: 'asc' }, { id: 'asc' }] } },
@@ -78,7 +78,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id   = parseInt(params.id);
+    const id   = parseInt((await params).id);
     const data = await request.json();
     const existing = await prisma.bankStatement.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到調節表', 404);

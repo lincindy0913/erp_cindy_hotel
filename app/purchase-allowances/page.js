@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { todayStr } from '@/lib/localDate';
+import { ALLOWANCE_STATUS } from '@/lib/allowance-statuses';
 
 export default function PurchaseAllowancesPage() {
   const { data: session } = useSession();
@@ -26,6 +27,7 @@ export default function PurchaseAllowancesPage() {
   const [purchaseFilterWarehouse, setPurchaseFilterWarehouse] = useState('');
   const [purchaseFilterPaidOnly, setPurchaseFilterPaidOnly] = useState('all'); // 'all' | 'paid' | 'unpaid'
   const [purchaseListResults, setPurchaseListResults] = useState([]);
+  const [purchaseListTruncated, setPurchaseListTruncated] = useState(false);
   const [purchaseListLoading, setPurchaseListLoading] = useState(false);
   const [purchaseListSearched, setPurchaseListSearched] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
@@ -93,7 +95,13 @@ export default function PurchaseAllowancesPage() {
       if (purchaseFilterPaidOnly === 'unpaid') params.set('onlyPaid', 'false');
       const res = await fetch(`/api/purchase-allowances/search-purchases?${params}`);
       const data = await res.json();
-      setPurchaseListResults(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) {
+        setPurchaseListResults(data);
+        setPurchaseListTruncated(false);
+      } else {
+        setPurchaseListResults(data.data || []);
+        setPurchaseListTruncated(data.truncated || false);
+      }
     } catch {
       setPurchaseListResults([]);
     }
@@ -127,7 +135,8 @@ export default function PurchaseAllowancesPage() {
   // Select purchase and auto-populate form (連動發票單號、付款單號、品項)
   function selectPurchase(p) {
     setSelectedPurchase(p);
-    setPurchaseListResults([]);  // fix: was setPurchaseResults (undefined)
+    setPurchaseListResults([]);
+    setPurchaseListTruncated(false);
     setPurchaseSearch('');
     const items = (p.details || []).map(d => ({
       productId: d.productId,
@@ -180,8 +189,8 @@ export default function PurchaseAllowancesPage() {
     syncPurchaseItemsToForm(updated, selectedPurchase);
   }
 
-  const draftRecords = useMemo(() => records.filter(r => r.status === '草稿'), [records]);
-  const confirmedRecords = useMemo(() => records.filter(r => r.status === '已確認'), [records]);
+  const draftRecords = useMemo(() => records.filter(r => r.status === ALLOWANCE_STATUS.DRAFT), [records]);
+  const confirmedRecords = useMemo(() => records.filter(r => r.status === ALLOWANCE_STATUS.CONFIRMED), [records]);
   const bankAccounts = accounts.filter(a => a.isActive && (a.type === '銀行存款' || a.type === '現金'));
 
   // Filter records
@@ -227,6 +236,7 @@ export default function PurchaseAllowancesPage() {
     setPurchaseItems([]);
     setPurchaseSearch('');
     setPurchaseListResults([]);
+    setPurchaseListTruncated(false);
     setPurchaseListSearched(false);
   }
 
@@ -575,6 +585,11 @@ export default function PurchaseAllowancesPage() {
                 </div>
 
                 {/* Results list */}
+                {purchaseListTruncated && (
+                  <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, fontSize: '0.8rem', color: '#92400e', marginBottom: 6 }}>
+                    結果超過 200 筆，僅顯示最新 200 筆。請縮小日期範圍或加入其他篩選條件。
+                  </div>
+                )}
                 {purchaseListSearched && !purchaseListLoading && (
                   purchaseListResults.length === 0 ? (
                     <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.875rem', color: '#9ca3af', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>

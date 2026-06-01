@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -15,7 +15,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const order = await prisma.paymentOrder.findUnique({
       where: { id },
       include: { executions: true },
@@ -47,7 +47,7 @@ export async function PUT(request, { params }) {
 
   try {
     const session = auth.session;
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const result = await prisma.$transaction(async (tx) => {
@@ -196,7 +196,7 @@ export async function DELETE(request, { params }) {
 
   try {
     const session = authDel.session;
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     const deletedOrder = await prisma.$transaction(async (tx) => {
       // Re-read inside transaction

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
@@ -24,7 +24,7 @@ export async function GET(request, { params }) {
   }
 
   try {
-    const orderId = parseInt(params.id);
+    const orderId = parseInt((await params).id);
     if (isNaN(orderId)) {
       return createErrorResponse('VALIDATION_FAILED', '無效的付款單 ID', 400);
     }

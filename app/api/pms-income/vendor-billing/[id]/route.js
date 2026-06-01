@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET    /api/pms-income/vendor-billing/[id]
  * PATCH  /api/pms-income/vendor-billing/[id]
  * DELETE /api/pms-income/vendor-billing/[id]
@@ -16,7 +16,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const billing = await prisma.vendorItineraryBilling.findUnique({
       where: { id },
       include: {
@@ -47,7 +47,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id   = parseInt(params.id);
+    const id   = parseInt((await params).id);
     const body = await request.json();
 
     const existing = await prisma.vendorItineraryBilling.findUnique({ where: { id } });
@@ -90,7 +90,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const existing = await prisma.vendorItineraryBilling.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '帳單不存在', 404);
     if (existing.status === '已結帳') return createErrorResponse('INVALID_OPERATION', '已結帳帳單不可刪除', 400);

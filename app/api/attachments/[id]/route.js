@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireModuleViewPermission, requirePermission } from '@/lib/api-auth';
@@ -34,7 +34,7 @@ async function checkAttachmentWarehouseAccess(session, attachment) {
 // GET - download attachment
 export async function GET(request, { params }) {
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (Number.isNaN(id)) {
       return createErrorResponse('VALIDATION_FAILED', '附件 ID 格式錯誤', 400);
     }
@@ -65,7 +65,7 @@ export async function GET(request, { params }) {
 // DELETE - delete attachment
 export async function DELETE(request, { params }) {
   try {
-    const id = parseInt(params.id, 10);
+    const id = parseInt((await params).id, 10);
     if (Number.isNaN(id)) {
       return createErrorResponse('VALIDATION_FAILED', '附件 ID 格式錯誤', 400);
     }

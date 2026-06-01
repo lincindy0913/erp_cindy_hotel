@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -12,7 +12,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const lineId = parseInt(params.lineId);
+    const lineId = parseInt((await params).lineId);
     const data   = await request.json();
 
     const updated = await prisma.bankReconLine.update({
@@ -43,7 +43,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    await prisma.bankReconLine.delete({ where: { id: parseInt(params.lineId) } });
+    await prisma.bankReconLine.delete({ where: { id: parseInt((await params).lineId) } });
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);

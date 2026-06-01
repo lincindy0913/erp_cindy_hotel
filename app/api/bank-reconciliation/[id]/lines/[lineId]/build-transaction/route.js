@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -15,8 +15,8 @@ export async function POST(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const stmtId = parseInt(params.id);
-    const lineId = parseInt(params.lineId);
+    const stmtId = parseInt((await params).id);
+    const lineId = parseInt((await params).lineId);
     const body = await request.json().catch(() => ({}));
     const { categoryId, description: descOverride } = body;
 

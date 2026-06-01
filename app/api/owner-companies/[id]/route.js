@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PATCH  /api/owner-companies/[id] — 編輯公司資料
  * DELETE /api/owner-companies/[id] — 刪除公司（軟刪除 isActive=false）
  */
@@ -15,7 +15,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const { companyName, taxId, note, sortOrder, isActive } = await request.json();
     const data = {};
     if (companyName  !== undefined) data.companyName = companyName.trim();
@@ -36,7 +36,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     // 軟刪除：停用而非真正刪除，保留歷史記錄
     await prisma.ownerCompany.update({ where: { id }, data: { isActive: false } });
     return NextResponse.json({ ok: true });

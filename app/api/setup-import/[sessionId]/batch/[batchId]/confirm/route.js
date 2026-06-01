@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
@@ -16,8 +16,8 @@ export async function POST(request, { params }) {
     const session = await getServerSession(authOptions).catch(() => null);
     const userName = session?.user?.name || session?.user?.email || 'system';
 
-    const batchId = parseInt(params.batchId);
-    const sessionId = parseInt(params.sessionId);
+    const batchId = parseInt((await params).batchId);
+    const sessionId = parseInt((await params).sessionId);
 
     const batch = await prisma.importBatch.findUnique({
       where: { id: batchId },

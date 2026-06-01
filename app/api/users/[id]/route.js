@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
@@ -16,7 +16,7 @@ export async function GET(request, { params }) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -50,7 +50,7 @@ export async function PUT(request, { params }) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const user = await prisma.user.findUnique({
@@ -142,7 +142,7 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('FORBIDDEN', '權限不足', 403);
     }
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     if (id === parseInt(session.user.id)) {
       return createErrorResponse('VALIDATION_FAILED', '無法停用目前登入的使用者', 400);

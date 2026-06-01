@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
@@ -21,7 +21,7 @@ export async function POST(request, { params }) {
     const session = await getServerSession(authOptions).catch(() => null);
     const userName = session?.user?.name || session?.user?.email || 'system';
 
-    const sessionId = parseInt(params.sessionId);
+    const sessionId = parseInt((await params).sessionId);
     const importSession = await prisma.importSession.findUnique({ where: { id: sessionId } });
     if (!importSession) {
       return NextResponse.json({ error: '匯入作業不存在', code: 'NOT_FOUND' }, { status: 404 });

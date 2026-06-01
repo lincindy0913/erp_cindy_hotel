@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-access';
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,14 @@ export async function POST(request) {
       include: { product: { select: { id: true, code: true, name: true, unit: true } } },
     });
     }); // end $transaction
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.INVENTORY_REQUISITION_CREATE,
+      targetModule: 'inventory_requisitions',
+      targetRecordId: created.id,
+      targetRecordNo: created.requisitionNo,
+      afterState: { warehouse, department: department || null, productId: Number(productId), quantity: Number(quantity) },
+    });
 
     return NextResponse.json(created);
   } catch (error) {

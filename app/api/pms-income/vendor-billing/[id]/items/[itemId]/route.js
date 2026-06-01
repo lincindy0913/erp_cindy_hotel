@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PATCH  /api/pms-income/vendor-billing/[id]/items/[itemId]
  * DELETE /api/pms-income/vendor-billing/[id]/items/[itemId]
  */
@@ -23,8 +23,8 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const billingId = parseInt(params.id);
-    const itemId    = parseInt(params.itemId);
+    const billingId = parseInt((await params).id);
+    const itemId    = parseInt((await params).itemId);
     const body      = await request.json();
 
     const billing = await prisma.vendorItineraryBilling.findUnique({ where: { id: billingId } });
@@ -64,8 +64,8 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const billingId = parseInt(params.id);
-    const itemId    = parseInt(params.itemId);
+    const billingId = parseInt((await params).id);
+    const itemId    = parseInt((await params).itemId);
 
     const billing = await prisma.vendorItineraryBilling.findUnique({ where: { id: billingId } });
     if (!billing) return createErrorResponse('NOT_FOUND', '帳單不存在', 404);

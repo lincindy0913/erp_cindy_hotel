@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -16,7 +16,7 @@ export async function POST(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id  = parseInt(params.id);
+    const id  = parseInt((await params).id);
     const stmt = await prisma.creditCardStatement.findUnique({ where: { id } });
     if (!stmt) return createErrorResponse('NOT_FOUND', '找不到對帳單', 404);
     if (stmt.status === '已建帳') {

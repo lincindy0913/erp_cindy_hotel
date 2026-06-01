@@ -55,8 +55,7 @@ export async function GET(request) {
       pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) }
     });
   } catch (error) {
-    console.error('查詢廠商錯誤:', error.message || error);
-    return NextResponse.json([]);
+    return handleApiError(error);
   }
 }
 
@@ -77,6 +76,21 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請填寫廠商名稱', 400);
     }
 
+    // 統一編號唯一性檢查（含已停用廠商）
+    const taxId = data.taxId && String(data.taxId).trim() ? String(data.taxId).trim() : null;
+    if (taxId) {
+      const dup = await prisma.supplier.findUnique({
+        where: { taxId },
+        select: { id: true, name: true, isActive: true },
+      });
+      if (dup) {
+        return NextResponse.json({
+          error: `統一編號 ${taxId} 已被廠商「${dup.name}」使用${!dup.isActive ? '（已停用）' : ''}，不可重複建立`,
+          code: 'SUPPLIER_TAX_ID_DUPLICATE',
+        }, { status: 409 });
+      }
+    }
+
     const newSupplier = await prisma.supplier.create({
       data: {
         name: String(data.name).trim(),
@@ -94,6 +108,10 @@ export async function POST(request) {
         checkPayee: data.checkPayee && String(data.checkPayee).trim() ? String(data.checkPayee).trim() : null,
         industryCategory: data.industryCategory && String(data.industryCategory).trim() ? String(data.industryCategory).trim() : null,
         sortOrder: data.sortOrder != null && data.sortOrder !== '' ? parseInt(data.sortOrder) : null,
+        rating: data.rating != null && data.rating !== '' ? parseInt(data.rating) : null,
+        isBlacklisted: data.isBlacklisted === true || data.isBlacklisted === 'true',
+        blacklistReason: data.blacklistReason?.trim() || null,
+        blacklistedAt: (data.isBlacklisted === true || data.isBlacklisted === 'true') ? new Date() : null,
       }
     });
 

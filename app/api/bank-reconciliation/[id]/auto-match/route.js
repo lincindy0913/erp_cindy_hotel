@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -50,7 +50,7 @@ export async function POST(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id   = parseInt(params.id);
+    const id   = parseInt((await params).id);
     const body = await request.json().catch(() => ({}));
     const minScore = body.minScore ?? 50; // 預設信心分 50 分以上才自動配對
 

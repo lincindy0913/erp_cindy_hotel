@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET    /api/bnb/[id] — 取得單筆訂房記錄
  * PATCH  /api/bnb/[id] — 更新付款明細或備註
  * DELETE /api/bnb/[id] — 刪除單筆記錄
@@ -138,7 +138,7 @@ export async function GET(request, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.BNB_VIEW, PERMISSIONS.BNB_EDIT]);
   if (!auth.ok) return auth.response;
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const record = await prisma.bnbBookingRecord.findUnique({ where: { id } });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到此訂房記錄', 404);
     return NextResponse.json(record);
@@ -153,7 +153,7 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     const record = await prisma.bnbBookingRecord.findUnique({
       where: { id },
@@ -304,7 +304,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const { searchParams } = new URL(request.url);
     const restore = searchParams.get('restore') === 'true';
 

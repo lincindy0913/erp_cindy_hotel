@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
@@ -13,7 +13,7 @@ export async function GET(request, { params }) {
     const auth = await requirePermission(PERMISSIONS.EXPENSE_VIEW);
     if (!auth.ok) return auth.response;
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const record = await prisma.employeeAdvance.findUnique({ where: { id } });
     if (!record) {
       return createErrorResponse('NOT_FOUND', '找不到代墊款記錄', 404);
@@ -30,7 +30,7 @@ export async function PUT(request, { params }) {
     const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
     if (!auth.ok) return auth.response;
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const body = await request.json();
 
     const existing = await prisma.employeeAdvance.findUnique({ where: { id } });
@@ -100,7 +100,7 @@ export async function DELETE(request, { params }) {
     const auth = await requirePermission(PERMISSIONS.EXPENSE_CREATE);
     if (!auth.ok) return auth.response;
 
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     const existing = await prisma.employeeAdvance.findUnique({ where: { id } });
     if (!existing) {

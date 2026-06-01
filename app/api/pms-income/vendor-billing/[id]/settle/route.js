@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/pms-income/vendor-billing/[id]/settle
  *
  * 結帳廠商行程帳單，建立對應金流：
@@ -24,7 +24,7 @@ export async function POST(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const billingId = parseInt(params.id);
+    const billingId = parseInt((await params).id);
     const body = await request.json();
     const { accountId, settleDate } = body;
 

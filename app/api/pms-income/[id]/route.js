@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
@@ -13,7 +13,7 @@ export async function PUT(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const existing = await prisma.pmsIncomeRecord.findUnique({ where: { id } });
@@ -73,7 +73,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     const existing = await prisma.pmsIncomeRecord.findUnique({ where: { id } });
     if (!existing) {

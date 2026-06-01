@@ -9,7 +9,7 @@ export async function PUT(req, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_EDIT, PERMISSIONS.PURCHASING_EDIT]);
   if (!auth.ok) return auth.response;
 
-  const id = Number(params.id);
+  const id = Number((await params).id);
   const body = await req.json();
 
   const err = validateExpenseBody(body);
@@ -43,7 +43,7 @@ export async function DELETE(req, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.ENGINEERING_EDIT, PERMISSIONS.PURCHASING_EDIT]);
   if (!auth.ok) return auth.response;
 
-  const id = Number(params.id);
+  const id = Number((await params).id);
   try {
     await prisma.companyExpense.delete({ where: { id } });
     return NextResponse.json({ ok: true });

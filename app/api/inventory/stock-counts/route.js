@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,15 @@ export async function POST(request) {
       },
     });
     }); // end $transaction
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.INVENTORY_STOCK_COUNT_CREATE,
+      targetModule: 'inventory_stock_counts',
+      targetRecordId: created.id,
+      targetRecordNo: created.countNo,
+      afterState: { warehouse, itemCount: itemData.length, totalDiff: itemData.reduce((s, i) => s + i.diff, 0) },
+      note: note || null,
+    });
 
     return NextResponse.json(created);
   } catch (error) {

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
@@ -10,7 +10,7 @@ export async function GET(request, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_VIEW, PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const row = await prisma.travelAgencyCommissionConfig.findUnique({ where: { id } });
     if (!row) return createErrorResponse('NOT_FOUND', '找不到此配置', 404);
     return NextResponse.json({
@@ -26,7 +26,7 @@ export async function PUT(request, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_IMPORT, PERMISSIONS.SETTINGS_EDIT, PERMISSIONS.SETTINGS_VIEW]);
   if (!auth.ok) return auth.response;
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const existing = await prisma.travelAgencyCommissionConfig.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到此配置', 404);
     const body = await request.json();
@@ -62,7 +62,7 @@ export async function DELETE(request, { params }) {
   const auth = await requireAnyPermission([PERMISSIONS.PMS_IMPORT, PERMISSIONS.SETTINGS_EDIT]);
   if (!auth.ok) return auth.response;
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     await prisma.travelAgencyCommissionConfig.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {

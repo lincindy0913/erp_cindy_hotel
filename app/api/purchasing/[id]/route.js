@@ -13,21 +13,21 @@ export async function PATCH(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const { detailId, status, inventoryWarehouse } = await request.json();
 
     if (!detailId || !status) {
-      return NextResponse.json({ error: '缺少 detailId 或 status' }, { status: 400 });
+      return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 detailId 或 status', 400);
     }
     if (!['待入庫', '已入庫', '不需入庫'].includes(status)) {
-      return NextResponse.json({ error: '無效的入庫狀態' }, { status: 400 });
+      return createErrorResponse('VALIDATION_FAILED', '無效的入庫狀態', 400);
     }
 
     const detail = await prisma.purchaseDetail.findFirst({
       where: { id: parseInt(detailId), purchaseId: id },
       include: { purchaseMaster: true },
     });
-    if (!detail) return NextResponse.json({ error: '找不到進貨明細' }, { status: 404 });
+    if (!detail) return createErrorResponse('NOT_FOUND', '找不到進貨明細', 404);
 
     const wa = assertWarehouseAccess(auth.session, detail.purchaseMaster.warehouse);
     if (!wa.ok) return wa.response;
@@ -57,7 +57,7 @@ export async function PUT(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     const existing = await prisma.purchaseMaster.findUnique({ where: { id } });
@@ -204,7 +204,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     const existing = await prisma.purchaseMaster.findUnique({ where: { id } });
     if (!existing) {

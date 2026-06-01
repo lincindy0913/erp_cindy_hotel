@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { recalcBalance } from '@/lib/recalc-balance';
@@ -18,7 +18,7 @@ export async function GET(request, { params }) {
   if (!auth.ok) return auth.response;
   
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     const transaction = await prisma.cashTransaction.findUnique({
       where: { id },
@@ -85,7 +85,7 @@ export async function PUT(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
     const data = await request.json();
 
     // Pre-check (non-authoritative, for fast-fail only)
@@ -243,7 +243,7 @@ export async function DELETE(request, { params }) {
   if (!auth.ok) return auth.response;
 
   try {
-    const id = parseInt(params.id);
+    const id = parseInt((await params).id);
 
     // Pre-check for fast-fail and warehouse access (non-authoritative)
     const preCheck = await prisma.cashTransaction.findUnique({ where: { id }, select: { id: true, warehouse: true } });
