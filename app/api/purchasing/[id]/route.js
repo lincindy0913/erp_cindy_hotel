@@ -72,6 +72,23 @@ export async function PUT(request, { params }) {
       const record = await tx.purchaseMaster.findUnique({ where: { id } });
       await assertPeriodOpen(tx, record.purchaseDate, record.warehouse);
 
+      // ── 財務欄位引用保護 ──────────────────────────────────────
+      // 已開發票或已建折讓單時，禁止修改金額／明細等財務欄位
+      const FINANCIAL_FIELDS = ['supplierId', 'purchaseDate', 'amount',
+                                 'totalAmount', 'taxType', 'items'];
+      if (FINANCIAL_FIELDS.some(f => data[f] !== undefined)) {
+        const [invoiceCount, allowanceCount] = await Promise.all([
+          tx.salesDetail.count({ where: { purchaseId: id } }),
+          tx.purchaseAllowance.count({ where: { purchaseId: id } }),
+        ]);
+        if (invoiceCount > 0) {
+          throw new Error('CONFLICT:此進貨單已開立發票，不可修改財務欄位與明細');
+        }
+        if (allowanceCount > 0) {
+          throw new Error('CONFLICT:此進貨單已建立折讓退貨單，不可修改財務欄位與明細');
+        }
+      }
+
       const incomingItems = data.items || [];
 
       // ── Diff-based detail sync ────────────────────────────────
