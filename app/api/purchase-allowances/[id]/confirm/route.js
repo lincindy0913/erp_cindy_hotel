@@ -191,14 +191,19 @@ export async function POST(request, { params }) {
           if (poFallback) poIdForReversal = poFallback.id;
         }
         if (poIdForReversal) {
-          const originalCashTx = await tx.cashTransaction.findFirst({
+          // findMany 取全部未沖銷的交易（split 付款可能有多筆）
+          // reversedById: null 確保不重複沖銷已沖銷的交易
+          const originalCashTxList = await tx.cashTransaction.findMany({
             where: {
               sourceType: 'cashier_payment',
               sourceRecordId: poIdForReversal,
               status: '已確認',
+              reversedById: null,
             },
           });
-          if (originalCashTx) {
+
+          const reversedNos = [];
+          for (const originalCashTx of originalCashTxList) {
             const reversalNo = await nextCashTransactionNo(tx, txDate);
             const reversalTx = await tx.cashTransaction.create({
               data: {
@@ -223,21 +228,19 @@ export async function POST(request, { params }) {
               },
             });
 
-            // Mark original as reversed
             await tx.cashTransaction.update({
               where: { id: originalCashTx.id },
-              data: {
-                status: '已沖銷',
-                reversedById: reversalTx.id,
-              },
+              data: { status: '已沖銷', reversedById: reversalTx.id },
             });
 
-            // Recalculate the original account balance too
             if (originalCashTx.accountId !== parseInt(accountId)) {
               await recalcBalance(tx, originalCashTx.accountId);
             }
+            reversedNos.push(originalCashTx.transactionNo);
+          }
 
-            extraActions.push(`原出納交易 ${originalCashTx.transactionNo} 已沖銷`);
+          if (reversedNos.length > 0) {
+            extraActions.push(`原出納交易 ${reversedNos.join('、')} 已沖銷`);
           }
         }
       }
