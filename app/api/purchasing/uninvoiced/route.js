@@ -44,10 +44,9 @@ export async function GET(request) {
 
     for (const purchase of purchases) {
       if (purchase.details.length > 0) {
-        // 有明細記錄：逐項檢查
-        for (let itemIndex = 0; itemIndex < purchase.details.length; itemIndex++) {
-          const detail = purchase.details[itemIndex];
-          const itemId = `${purchase.id}-${itemIndex}`;
+        // 有明細記錄：用 detail.id 當 key（穩定，不隨順序改變）
+        for (const detail of purchase.details) {
+          const itemId = `${purchase.id}-${detail.id}`;
           if (!invoicedItemIds.has(itemId)) {
             uninvoicedItems.push({
               id: itemId,

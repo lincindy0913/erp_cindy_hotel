@@ -72,7 +72,56 @@ export async function PUT(request, { params }) {
       const record = await tx.purchaseMaster.findUnique({ where: { id } });
       await assertPeriodOpen(tx, record.purchaseDate, record.warehouse);
 
-      await tx.purchaseDetail.deleteMany({ where: { purchaseId: id } });
+      const incomingItems = data.items || [];
+
+      // ── Diff-based detail sync ────────────────────────────────
+      // 1. 取得目前所有明細
+      const currentDetails = await tx.purchaseDetail.findMany({
+        where: { purchaseId: id },
+        select: { id: true },
+      });
+      const currentIds = new Set(currentDetails.map(d => d.id));
+      const incomingIds = new Set(
+        incomingItems.filter(i => i.detailId).map(i => parseInt(i.detailId))
+      );
+
+      // 2. 需刪除的明細（DB 有、incoming 沒帶 detailId 的）
+      const toDeleteIds = [...currentIds].filter(did => !incomingIds.has(did));
+
+      // 3. 防護：確認要刪除的明細未被核銷（purchaseItemId = "${masterId}-${detailId}"）
+      if (toDeleteIds.length > 0) {
+        const referenced = await tx.salesDetail.findFirst({
+          where: { purchaseItemId: { in: toDeleteIds.map(did => `${id}-${did}`) } },
+          select: { purchaseItemId: true },
+        });
+        if (referenced) {
+          throw Object.assign(
+            new Error(`CONFLICT:明細 ${referenced.purchaseItemId} 已被核銷，無法刪除`),
+            { statusCode: 409, code: 'DETAIL_REFERENCED' }
+          );
+        }
+        await tx.purchaseDetail.deleteMany({ where: { id: { in: toDeleteIds }, purchaseId: id } });
+      }
+
+      // 4. UPDATE 既有明細 / INSERT 新明細
+      for (const item of incomingItems) {
+        const detailData = {
+          productId: parseInt(item.productId),
+          quantity: parseInt(item.quantity),
+          unitPrice: parseFloat(item.unitPrice),
+          note: item.note || '',
+          status: item.status || '待入庫',
+          inventoryWarehouse: item.inventoryWarehouse || null,
+        };
+        if (item.detailId && currentIds.has(parseInt(item.detailId))) {
+          await tx.purchaseDetail.update({
+            where: { id: parseInt(item.detailId) },
+            data: detailData,
+          });
+        } else {
+          await tx.purchaseDetail.create({ data: { purchaseId: id, ...detailData } });
+        }
+      }
 
       return await tx.purchaseMaster.update({
         where: { id },
@@ -86,18 +135,8 @@ export async function PUT(request, { params }) {
           amount: parseFloat(data.amount || 0),
           tax: 0,
           totalAmount: data.totalAmount ? parseFloat(data.totalAmount) : parseFloat(data.amount || 0),
-          details: {
-            create: (data.items || []).map(item => ({
-              productId: parseInt(item.productId),
-              quantity: parseInt(item.quantity),
-              unitPrice: parseFloat(item.unitPrice),
-              note: item.note || '',
-              status: item.status || '待入庫',
-              inventoryWarehouse: item.inventoryWarehouse || null
-            }))
-          }
         },
-        include: { details: true }
+        include: { details: true },
       });
     });
 

@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-access';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,15 +66,10 @@ export async function POST(request) {
     }
 
     const date = transferDate || todayStr();
-    const prefix = `TRF-${date.replace(/-/g, '')}`;
-    const last = await prisma.inventoryTransfer.findFirst({
-      where: { transferNo: { startsWith: prefix } },
-      orderBy: { transferNo: 'desc' },
-    });
-    const seq = last ? parseInt(last.transferNo.slice(-4), 10) + 1 : 1;
-    const transferNo = `${prefix}-${String(seq).padStart(4, '0')}`;
 
-    const created = await prisma.inventoryTransfer.create({
+    const created = await prisma.$transaction(async (tx) => {
+      const transferNo = await nextSequence(tx, 'inventoryTransfer', 'transferNo', `TRF-${date.replace(/-/g, '')}-`);
+      return tx.inventoryTransfer.create({
       data: {
         transferNo,
         fromWarehouse,
@@ -91,6 +87,7 @@ export async function POST(request) {
         },
       },
     });
+    }); // end $transaction
 
     return NextResponse.json(created);
   } catch (error) {

@@ -189,8 +189,8 @@ export async function POST(request) {
             totalAmount: invoiceAmount,
             status: '待核銷',
             details: {
-              create: data.items.map((item, idx) => ({
-                purchaseItemId: `${purchaseMaster.id}-${idx}`,
+              create: data.items.map((item) => ({
+                purchaseItemId: item.purchaseItemId || `${purchaseMaster.id}-${item.detailId || item.productId}`,
                 purchaseId: purchaseMaster.id,
                 purchaseNo: purchaseNo,
                 purchaseDate: purchaseDate,

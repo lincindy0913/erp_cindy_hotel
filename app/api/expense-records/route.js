@@ -7,6 +7,7 @@ import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { validateWarehouse } from '@/lib/master-data-validator';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,24 +173,9 @@ export async function POST(request) {
     const record = await prisma.$transaction(async (tx) => {
       await assertPeriodOpen(tx, periodDateStr, data.warehouse.trim());
 
-      // Generate recordNo: EXP-YYYYMMDD-XXXX
-      const today = new Date();
-      const dateStr = localDateStr(today).replace(/-/g, '');
-      const todayStart = `EXP-${dateStr}-`;
-
-      const lastRecord = await tx.commonExpenseRecord.findFirst({
-        where: {
-          recordNo: { startsWith: todayStart }
-        },
-        orderBy: { recordNo: 'desc' }
-      });
-
-      let seq = 1;
-      if (lastRecord) {
-        const lastSeq = parseInt(lastRecord.recordNo.split('-').pop());
-        seq = lastSeq + 1;
-      }
-      const recordNo = `${todayStart}${String(seq).padStart(4, '0')}`;
+      // Generate recordNo: EXP-YYYYMMDD-XXXX — SELECT FOR UPDATE 確保並發安全
+      const dateStr = localDateStr(new Date()).replace(/-/g, '');
+      const recordNo = await nextSequence(tx, 'commonExpenseRecord', 'recordNo', `EXP-${dateStr}-`);
 
       return tx.commonExpenseRecord.create({
         data: {

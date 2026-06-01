@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-access';
 import { validateWarehouse, validateSupplier } from '@/lib/master-data-validator';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,21 +88,12 @@ export async function POST(request) {
     const supErr = await validateSupplier(data.supplierName);
     if (supErr) return createErrorResponse('VALIDATION_FAILED', supErr, 400);
 
-    // Generate allowanceNo: PA-YYYYMMDD-XXXX
-    const dateStr = data.allowanceDate.replace(/-/g, '');
-    const prefix = `PA-${dateStr}-`;
-    const last = await prisma.purchaseAllowance.findFirst({
-      where: { allowanceNo: { startsWith: prefix } },
-      orderBy: { allowanceNo: 'desc' },
-    });
-    let seq = 1;
-    if (last) {
-      const lastSeq = parseInt(last.allowanceNo.split('-').pop());
-      seq = lastSeq + 1;
-    }
-    const allowanceNo = `${prefix}${String(seq).padStart(4, '0')}`;
-
     const record = await prisma.$transaction(async (tx) => {
+      // Generate allowanceNo inside transaction with SELECT FOR UPDATE to prevent race condition
+      const dateStr = data.allowanceDate.replace(/-/g, '');
+      const prefix = `PA-${dateStr}-`;
+      const allowanceNo = await nextSequence(tx, 'purchaseAllowance', 'allowanceNo', prefix);
+
       const allowance = await tx.purchaseAllowance.create({
         data: {
           allowanceNo,

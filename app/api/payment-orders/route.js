@@ -12,6 +12,7 @@ import { authOptions } from '../auth/[...nextauth]/route';
 import { checkIdempotency, saveIdempotency } from '@/lib/idempotency';
 import { requireMoney } from '@/lib/safe-parse';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,19 +190,9 @@ export async function POST(request) {
         }
       }
 
-      // Auto-generate orderNo 在 transaction 內，避免序號衝突
+      // Auto-generate orderNo — SELECT FOR UPDATE 確保並發安全
       const dateStr = localDateStr(now).replace(/-/g, '');
-      const prefix = `PAY-${dateStr}-`;
-      const existing = await tx.paymentOrder.findMany({
-        where: { orderNo: { startsWith: prefix } },
-        select: { orderNo: true },
-      });
-      let maxSeq = 0;
-      for (const item of existing) {
-        const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
-        if (seq > maxSeq) maxSeq = seq;
-      }
-      const orderNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+      const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', `PAY-${dateStr}-`);
 
       const order = await tx.paymentOrder.create({
         data: {
@@ -233,17 +224,7 @@ export async function POST(request) {
       let check = null;
       if (isCheck) {
         const chkDateStr = localDateStr(now).replace(/-/g, '');
-        const chkPrefix = `CHK-${chkDateStr}-`;
-        const existingChecks = await tx.check.findMany({
-          where: { checkNo: { startsWith: chkPrefix } },
-          select: { checkNo: true }
-        });
-        let maxChkSeq = 0;
-        for (const c of existingChecks) {
-          const seq = parseInt(c.checkNo.substring(chkPrefix.length)) || 0;
-          if (seq > maxChkSeq) maxChkSeq = seq;
-        }
-        const checkNo = `${chkPrefix}${String(maxChkSeq + 1).padStart(4, '0')}`;
+        const checkNo = await nextSequence(tx, 'check', 'checkNo', `CHK-${chkDateStr}-`);
         const checkNumber = (data.checkNo && String(data.checkNo).trim()) || `PAY-${orderNo}`;
         const dueDate = data.checkDueDate || data.checkDate || localDateStr(now);
 
@@ -280,17 +261,7 @@ export async function POST(request) {
       let advance = null;
       if (data.isEmployeeAdvance && data.advancedBy) {
         const advDateStr = localDateStr(now).replace(/-/g, '');
-        const advPrefix = `ADV-${advDateStr}-`;
-        const existingAdv = await tx.employeeAdvance.findMany({
-          where: { advanceNo: { startsWith: advPrefix } },
-          select: { advanceNo: true },
-        });
-        let maxAdvSeq = 0;
-        for (const item of existingAdv) {
-          const seq = parseInt(item.advanceNo.substring(advPrefix.length)) || 0;
-          if (seq > maxAdvSeq) maxAdvSeq = seq;
-        }
-        const advanceNo = `${advPrefix}${String(maxAdvSeq + 1).padStart(4, '0')}`;
+        const advanceNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${advDateStr}-`);
 
         advance = await tx.employeeAdvance.create({
           data: {

@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { todayStr, localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,13 +129,6 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少必填欄位：核銷品項', 400);
     }
 
-    const today = todayStr().replace(/-/g, '');
-    const todayPrefix = `INV-${today}-`;
-    const existingCount = await prisma.salesMaster.count({
-      where: { salesNo: { startsWith: todayPrefix } }
-    });
-    const salesNo = `${todayPrefix}${String(existingCount + 1).padStart(4, '0')}`;
-
     const invoiceDate = data.invoiceDate || todayStr();
     const warehouse = isOwnerPrivate
       ? (data.warehouse || null)
@@ -163,6 +157,9 @@ export async function POST(request) {
       if (!isOwnerPrivate) {
         await assertPeriodOpen(tx, invoiceDate, warehouse);
       }
+
+      const today = todayStr().replace(/-/g, '');
+      const salesNo = await nextSequence(tx, 'salesMaster', 'salesNo', `INV-${today}-`);
 
       return tx.salesMaster.create({
         data: {

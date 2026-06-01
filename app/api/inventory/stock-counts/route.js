@@ -4,6 +4,7 @@ import { handleApiError, createErrorResponse } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,13 +58,6 @@ export async function POST(request) {
     }
 
     const date = countDate || todayStr();
-    const prefix = `CNT-${date.replace(/-/g, '')}`;
-    const last = await prisma.stockCount.findFirst({
-      where: { countNo: { startsWith: prefix } },
-      orderBy: { countNo: 'desc' },
-    });
-    const seq = last ? parseInt(last.countNo.slice(-4), 10) + 1 : 1;
-    const countNo = `${prefix}-${String(seq).padStart(4, '0')}`;
 
     const itemData = items.map((i) => {
       const sys = Number(i.systemQty) || 0;
@@ -82,7 +76,9 @@ export async function POST(request) {
       return createErrorResponse('VALIDATION_FAILED', '無有效盤點明細', 400);
     }
 
-    const created = await prisma.stockCount.create({
+    const created = await prisma.$transaction(async (tx) => {
+      const countNo = await nextSequence(tx, 'stockCount', 'countNo', `CNT-${date.replace(/-/g, '')}-`);
+      return tx.stockCount.create({
       data: {
         countNo,
         warehouse,
@@ -97,6 +93,7 @@ export async function POST(request) {
         },
       },
     });
+    }); // end $transaction
 
     return NextResponse.json(created);
   } catch (error) {
