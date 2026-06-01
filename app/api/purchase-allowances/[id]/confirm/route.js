@@ -107,8 +107,11 @@ export async function POST(request, { params }) {
         const deptExpenses = await tx.departmentExpense.findMany({
           where: { year: rollbackYear, month: rollbackMonth, department: originalWarehouse },
         });
-        const matchDE = deptExpenses.find(de => de.category.includes('進貨') || de.category.includes('採購'))
-          || deptExpenses[0];
+        // 只更新有明確採購/進貨 category 的記錄，找不到就跳過
+        // 不用 deptExpenses[0] fallback，避免誤扣不相干類別
+        const matchDE = deptExpenses.find(
+          de => de.category.includes('進貨') || de.category.includes('採購')
+        );
         if (matchDE) {
           const newTotal = Math.max(0, Number(matchDE.totalAmount) - totalAmount);
           const newTax = Math.max(0, Number(matchDE.tax) - Number(allowance.tax || 0));
