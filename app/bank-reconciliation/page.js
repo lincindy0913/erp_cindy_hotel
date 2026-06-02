@@ -2,20 +2,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
 import { useConfirm } from '@/context/ConfirmContext';
+import { RECON_STATUS, RECON_LINE_STATUS } from '@/lib/recon-statuses';
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString('zh-TW'));
 const fmtDate = (d) => d || '—';
 
 const STATUS_BADGE = {
-  '核對中': 'bg-amber-100 text-amber-700',
-  '已平衡': 'bg-green-100 text-green-700',
-  '有差異': 'bg-red-100 text-red-700',
+  [RECON_STATUS.IN_PROGRESS]: 'bg-amber-100 text-amber-700',
+  [RECON_STATUS.BALANCED]:    'bg-green-100 text-green-700',
+  [RECON_STATUS.DIFF]:        'bg-red-100 text-red-700',
 };
 
 const MATCH_BADGE = {
-  '未配對': 'bg-gray-100 text-gray-600',
-  '已配對': 'bg-green-100 text-green-700',
-  '例外核准': 'bg-blue-100 text-blue-700',
+  [RECON_LINE_STATUS.UNMATCHED]:  'bg-gray-100 text-gray-600',
+  [RECON_LINE_STATUS.MATCHED]:    'bg-green-100 text-green-700',
+  [RECON_LINE_STATUS.EXCEPTION]:  'bg-blue-100 text-blue-700',
 };
 
 export default function BankReconciliationPage() {
@@ -140,7 +141,7 @@ export default function BankReconciliationPage() {
     await fetch(`/api/bank-reconciliation/${detail.id}/lines/${lineId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchedTxId: txId, matchStatus: txId ? '已配對' : '未配對' }),
+      body: JSON.stringify({ matchedTxId: txId, matchStatus: txId ? RECON_LINE_STATUS.MATCHED : RECON_LINE_STATUS.UNMATCHED }),
     });
     await loadDetail(detail.id);
   }
@@ -149,7 +150,7 @@ export default function BankReconciliationPage() {
     await fetch(`/api/bank-reconciliation/${detail.id}/lines/${lineId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matchStatus: '例外核准' }),
+      body: JSON.stringify({ matchStatus: RECON_LINE_STATUS.EXCEPTION }),
     });
     await loadDetail(detail.id);
   }
@@ -204,7 +205,7 @@ export default function BankReconciliationPage() {
     const sysBalance = detail.closingSystemBalance ?? 0;
     const bankBalance = detail.closingBankBalance ?? null;
     const diff = bankBalance != null ? bankBalance - sysBalance : null;
-    const unmatchedLines = (detail.lines || []).filter(l => l.matchStatus === '未配對').length;
+    const unmatchedLines = (detail.lines || []).filter(l => l.matchStatus === RECON_LINE_STATUS.UNMATCHED).length;
     const unmatchedSysTxs = (detail.systemTransactions || []).filter(t => !t.isMatched).length;
     return { sysBalance, bankBalance, diff, unmatchedLines, unmatchedSysTxs };
   };
@@ -271,7 +272,7 @@ export default function BankReconciliationPage() {
                     {stats.diff == null ? '—' : (stats.diff >= 0 ? '+' : '') + fmt(stats.diff)}
                   </p>
                   {stats.diff != null && Math.abs(stats.diff) < 1 && (
-                    <button onClick={() => updateStmt({ status: '已平衡' })} className="mt-1 text-xs text-green-700 underline">
+                    <button onClick={() => updateStmt({ status: RECON_STATUS.BALANCED })} className="mt-1 text-xs text-green-700 underline">
                       標記為已平衡
                     </button>
                   )}
@@ -333,7 +334,7 @@ export default function BankReconciliationPage() {
                         <tr><td colSpan={6} className="text-center py-6 text-gray-400">尚無存摺明細</td></tr>
                       )}
                       {(detail.lines || []).map(line => (
-                        <tr key={line.id} className={`hover:bg-gray-50 ${line.matchStatus === '未配對' ? 'bg-amber-50/30' : ''}`}>
+                        <tr key={line.id} className={`hover:bg-gray-50 ${line.matchStatus === RECON_LINE_STATUS.UNMATCHED ? 'bg-amber-50/30' : ''}`}>
                           <td className="px-3 py-2 font-mono">{line.txDate}</td>
                           <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate" title={line.description}>{line.description || '—'}</td>
                           <td className="px-3 py-2 text-right text-green-700">{line.creditAmount > 0 ? fmt(line.creditAmount) : ''}</td>
@@ -346,7 +347,7 @@ export default function BankReconciliationPage() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             <div className="flex gap-1 justify-center flex-wrap">
-                              {line.matchStatus === '未配對' && (
+                              {line.matchStatus === RECON_LINE_STATUS.UNMATCHED && (
                                 <>
                                   <button onClick={() => approveException(line.id)} className="text-[10px] text-blue-600 hover:underline">例外</button>
                                   <button onClick={() => openBuildModal(line)} className="text-[10px] text-green-600 hover:underline font-medium">補建</button>

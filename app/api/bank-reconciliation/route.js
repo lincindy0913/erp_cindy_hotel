@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { calcBalanceDelta } from '@/lib/calc-balance-delta';
+import { RECON_STATUS } from '@/lib/recon-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,7 @@ export async function POST(request) {
         openingBalance,
         openingBankBalance: data.openingBankBalance != null ? Number(data.openingBankBalance) : null,
         closingBankBalance: data.closingBankBalance != null ? Number(data.closingBankBalance) : null,
-        status: '核對中',
+        status: RECON_STATUS.IN_PROGRESS,
         note: data.note || null,
       },
     });

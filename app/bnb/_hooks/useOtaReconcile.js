@@ -274,7 +274,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
     // OTA 傭金
     commAmt, setCommAmt, commMethod, setCommMethod, commNote, setCommNote,
     commSubmitting, commExisting, commSource, setCommSource,
-    commHistRows, commHistLoading, commEditId, commEditData, setCommEditData, commEditSaving,
+    commHistRows, commHistLoading, commEditId, setCommEditId, commEditData, setCommEditData, commEditSaving,
     submitCommission, fetchCommHistory, confirmCommission, cancelCommission,
     startEditComm, saveEditComm,
   };

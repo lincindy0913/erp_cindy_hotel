@@ -15,14 +15,29 @@ export async function PATCH(request, { params }) {
     const lineId = parseInt((await params).lineId);
     const data   = await request.json();
 
+    const patchData = {
+      matchStatus:  data.matchStatus  ?? undefined,
+      note:         data.note         ?? undefined,
+      description:  data.description  ?? undefined,
+    };
+
+    if ('matchedTxId' in data) {
+      if (data.matchedTxId != null) {
+        // 人工配對
+        patchData.matchedTxId = parseInt(data.matchedTxId);
+        patchData.matchScore  = null;
+        patchData.matchedBy   = auth.session?.user?.email ?? 'manual';
+      } else {
+        // 解除配對
+        patchData.matchedTxId = null;
+        patchData.matchScore  = null;
+        patchData.matchedBy   = null;
+      }
+    }
+
     const updated = await prisma.bankReconLine.update({
       where: { id: lineId },
-      data: {
-        matchedTxId:  data.matchedTxId != null  ? parseInt(data.matchedTxId) : undefined,
-        matchStatus:  data.matchStatus  ?? undefined,
-        note:         data.note         ?? undefined,
-        description:  data.description  ?? undefined,
-      },
+      data: patchData,
     });
 
     return NextResponse.json({

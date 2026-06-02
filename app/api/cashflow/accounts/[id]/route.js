@@ -100,12 +100,29 @@ export async function DELETE(request, { params }) {
 
     const toDelete = await prisma.cashAccount.findUnique({ where: { id }, select: { name: true, type: true, warehouse: true } });
 
-    const txCount = await prisma.cashTransaction.count({
-      where: { OR: [{ accountId: id }, { transferAccountId: id }] }
-    });
+    const [txCount, pendingPoCount, activeContractCount] = await Promise.all([
+      prisma.cashTransaction.count({
+        where: { OR: [{ accountId: id }, { transferAccountId: id }] },
+      }),
+      prisma.paymentOrder.count({
+        where: { accountId: id, status: { in: ['草稿', '待出納'] } },
+      }),
+      prisma.rentalContract.count({
+        where: {
+          status: { in: ['active', 'pending'] },
+          OR: [{ rentAccountId: id }, { depositAccountId: id }],
+        },
+      }),
+    ]);
 
     if (txCount > 0) {
       return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', '此帳戶有交易紀錄，無法刪除。請先停用帳戶。', 400);
+    }
+    if (pendingPoCount > 0) {
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此帳戶有 ${pendingPoCount} 筆未執行付款單，無法刪除。請先修改付款單的出款帳戶。`, 400);
+    }
+    if (activeContractCount > 0) {
+      return createErrorResponse('ACCOUNT_HAS_DEPENDENCIES', `此帳戶被 ${activeContractCount} 份有效租約引用，無法刪除。請先更新租約的收租/押金帳戶。`, 400);
     }
 
     await prisma.cashAccount.delete({ where: { id } });

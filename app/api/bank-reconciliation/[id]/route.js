@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { calcBalanceDelta } from '@/lib/calc-balance-delta';
+import { RECON_STATUS } from '@/lib/recon-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,7 +102,7 @@ export async function PATCH(request, { params }) {
     if (data.status != null) {
       status = data.status;
     } else if (effectiveClosingBank != null) {
-      status = Math.abs(effectiveClosingBank - closingSystem) < 0.005 ? '已平衡' : '有差異';
+      status = Math.abs(effectiveClosingBank - closingSystem) < 0.005 ? RECON_STATUS.BALANCED : RECON_STATUS.DIFF;
     } else {
       status = existing.status;
     }
@@ -113,8 +114,8 @@ export async function PATCH(request, { params }) {
         closingBankBalance: data.closingBankBalance != null ? Number(data.closingBankBalance) : existing.closingBankBalance,
         status,
         note: data.note ?? existing.note,
-        reconciledAt: status === '已平衡' && existing.status !== '已平衡' ? new Date() : existing.reconciledAt,
-        reconciledBy: status === '已平衡' && existing.status !== '已平衡' ? (auth.user?.name || auth.user?.email || null) : existing.reconciledBy,
+        reconciledAt: status === RECON_STATUS.BALANCED && existing.status !== RECON_STATUS.BALANCED ? new Date() : existing.reconciledAt,
+        reconciledBy: status === RECON_STATUS.BALANCED && existing.status !== RECON_STATUS.BALANCED ? (auth.user?.name || auth.user?.email || null) : existing.reconciledBy,
       },
     });
 

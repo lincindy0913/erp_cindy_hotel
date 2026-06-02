@@ -40,11 +40,16 @@ export async function GET(request) {
     if (sourceType) {
       // Support category-based filtering (maps to multiple sourceType values)
       const categoryMap = {
-        '進銷存': ['payment_order', 'purchasing', 'check_reissue'],
+        '進銷存': ['payment_order', 'purchasing', 'purchase_allowance', 'check_reissue'],
         '固定費用': ['common_expense', 'fixed_expense', 'expense'],
-        '租屋': ['rental_deposit_out', 'rental_deposit_in', 'rental'],
-        '貸款': ['loan_predeposit', 'loan_payment'],
-        '工程': ['engineering'],
+        '租屋':    ['rental_deposit_in', 'rental_deposit_out', 'rental_income', 'rental_tax', 'rental_utility_income'],
+        '維修':    ['maintenance'],
+        '貸款':    ['loan_predeposit', 'loan_payment', 'shareholder_loan'],
+        '工程':    ['engineering', 'engineering_contract', 'engineering_income', 'engineering_material'],
+        '民宿':    ['bnb_ota_commission'],
+        '水電':    ['utility_bill'],
+        'PMS':     ['pms_manual_commission', 'pms_credit_card_fee', 'pms_credit_card_settlement',
+                    'pms_income_fee', 'pms_income_record', 'pms_income_settlement'],
       };
       if (categoryMap[sourceType]) {
         where.sourceType = { in: categoryMap[sourceType] };
@@ -53,9 +58,9 @@ export async function GET(request) {
       }
     }
     if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) where.createdAt.gte = new Date(dateFrom + 'T00:00:00.000Z');
-      if (dateTo) where.createdAt.lte = new Date(dateTo + 'T23:59:59.999Z');
+      where.dueDate = {};
+      if (dateFrom) where.dueDate.gte = dateFrom;
+      if (dateTo) where.dueDate.lte = dateTo;
     }
     if (keyword) {
       where.OR = [
@@ -74,6 +79,7 @@ export async function GET(request) {
       amount: Number(o.amount),
       discount: Number(o.discount),
       netAmount: Number(o.netAmount),
+      invoicedAmount: o.invoicedAmount != null ? Number(o.invoicedAmount) : null,
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
       rejectedAt: o.rejectedAt ? o.rejectedAt.toISOString() : null,
@@ -85,15 +91,20 @@ export async function GET(request) {
       })),
     });
 
-    // 不分頁模式（向下相容：page 未帶或 all=true），上限 1000 筆
+    // 不分頁模式（向下相容：page 未帶或 all=true），上限 500 筆
     if (all || page === 0) {
+      const CAP = 500;
       const orders = await prisma.paymentOrder.findMany({
         where,
         include: { executions: true },
         orderBy: { createdAt: 'desc' },
-        take: 1000,
+        take: CAP + 1,  // 多取一筆判斷是否截斷
       });
-      return NextResponse.json(orders.map(formatOrder));
+      const hasMore = orders.length > CAP;
+      return NextResponse.json({
+        data: orders.slice(0, CAP).map(formatOrder),
+        hasMore,
+      });
     }
 
     // 分頁模式
@@ -205,6 +216,7 @@ export async function POST(request) {
           amount: data.amount || 0,
           discount: data.discount || 0,
           netAmount: data.netAmount,
+          invoicedAmount: data.invoiceIds?.length > 0 ? data.netAmount : null,
           dueDate: data.dueDate || null,
           accountId: isCheck && checkAccountId ? checkAccountId : (data.accountId ? parseInt(data.accountId) : null),
           checkNo: data.checkNo || null,

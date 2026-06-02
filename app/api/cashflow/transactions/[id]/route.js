@@ -162,7 +162,12 @@ export async function PUT(request, { params }) {
         await recalcBalance(tx, updated.accountId);
         return {
           result: updated,
-          beforeState: { amount: Number(existing.amount), fee: Number(existing.fee) },
+          beforeState: {
+            transactionDate: existing.transactionDate,
+            amount:          Number(existing.amount),
+            fee:             Number(existing.fee),
+            description:     existing.description,
+          },
           updateData: transferUpdateData,
           transactionNo: existing.transactionNo,
         };
@@ -193,7 +198,21 @@ export async function PUT(request, { params }) {
       if (data.amount !== undefined) updateData.amount = parseFloat(data.amount);
       if (data.fee !== undefined) updateData.fee = parseFloat(data.fee);
       if (data.hasFee !== undefined) updateData.hasFee = data.hasFee;
-      if (data.accountingSubject !== undefined) updateData.accountingSubject = data.accountingSubject || null;
+      if (data.accountingSubject !== undefined) {
+        updateData.accountingSubject = data.accountingSubject || null;
+      } else if (data.categoryId !== undefined) {
+        // categoryId changed but accountingSubject not explicitly provided → auto-sync from new category
+        const newCatId = data.categoryId ? parseInt(data.categoryId) : null;
+        if (newCatId) {
+          const cat = await tx.cashCategory.findUnique({
+            where: { id: newCatId },
+            select: { accountingSubject: { select: { name: true } } },
+          });
+          updateData.accountingSubject = cat?.accountingSubject?.name ?? null;
+        } else {
+          updateData.accountingSubject = null;
+        }
+      }
       if (data.paymentTerms !== undefined) updateData.paymentTerms = data.paymentTerms || null;
       if (data.description !== undefined) updateData.description = data.description || null;
       if (data.paymentNo !== undefined) updateData.paymentNo = data.paymentNo || null;
@@ -207,7 +226,17 @@ export async function PUT(request, { params }) {
 
       return {
         result: updated,
-        beforeState: { amount: Number(existing.amount), fee: Number(existing.fee) },
+        beforeState: {
+          transactionDate:   existing.transactionDate,
+          amount:            Number(existing.amount),
+          fee:               Number(existing.fee),
+          categoryId:        existing.categoryId,
+          supplierId:        existing.supplierId,
+          accountingSubject: existing.accountingSubject,
+          paymentTerms:      existing.paymentTerms,
+          description:       existing.description,
+          paymentNo:         existing.paymentNo,
+        },
         updateData,
         transactionNo: existing.transactionNo,
       };

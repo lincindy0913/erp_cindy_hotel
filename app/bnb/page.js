@@ -233,6 +233,36 @@ function BnbPage() {
     handleMark, handleClearMark, handleAutoMatch,
   } = useDepositMatch();
 
+  // ── 老闆收取 state ───────────────────────────────────────────
+  const [bwMonth,       setBwMonth]       = useState(() => todayStr().slice(0, 7));
+  const [bwWarehouse,   setBwWarehouse]   = useState('');
+  const [bwViewMode,    setBwViewMode]    = useState('detail');
+  const [bwYear,        setBwYear]        = useState(() => String(new Date().getFullYear()));
+  const [bwData,        setBwData]        = useState(null);
+  const [bwLoading,     setBwLoading]     = useState(false);
+  const [bwSummary,     setBwSummary]     = useState(null);
+  const [bwSummaryLoad, setBwSummaryLoad] = useState(false);
+
+  const fetchBossWithdraw = useCallback(async () => {
+    setBwLoading(true);
+    try {
+      const q = new URLSearchParams({ month: bwMonth });
+      if (bwWarehouse) q.set('warehouse', bwWarehouse);
+      const res = await fetch(`/api/bnb/boss-withdraw?${q}`);
+      if (res.ok) setBwData(await res.json());
+    } catch { /* ignore */ } finally { setBwLoading(false); }
+  }, [bwMonth, bwWarehouse]);
+
+  const fetchBossWithdrawSummary = useCallback(async () => {
+    setBwSummaryLoad(true);
+    try {
+      const q = new URLSearchParams({ year: bwYear, summary: 'true' });
+      if (bwWarehouse) q.set('warehouse', bwWarehouse);
+      const res = await fetch(`/api/bnb/boss-withdraw?${q}`);
+      if (res.ok) setBwSummary(await res.json());
+    } catch { /* ignore */ } finally { setBwSummaryLoad(false); }
+  }, [bwYear, bwWarehouse]);
+
   // ── 存簿匯入 modal state ──────────────────────────────────────
   const [showBankImport, setShowBankImport] = useState(false);
   const [bankImportLines, setBankImportLines] = useState([]);

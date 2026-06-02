@@ -35,6 +35,7 @@ export async function GET(request, { params }) {
       amount: Number(order.amount),
       discount: Number(order.discount),
       netAmount: Number(order.netAmount),
+      invoicedAmount: order.invoicedAmount != null ? Number(order.invoicedAmount) : null,
     });
   } catch (error) {
     return handleApiError(error);
@@ -91,6 +92,7 @@ export async function PUT(request, { params }) {
             rejectedBy: null,
             rejectedAt: null,
             rejectedReason: null,
+            version: { increment: 1 },
           },
         });
         return { action: 'resubmit', order, afterStatus: '待出納', message: '付款單已重新提交出納' };
@@ -108,6 +110,7 @@ export async function PUT(request, { params }) {
             rejectedBy: session?.user?.email || null,
             rejectedAt: new Date(),
             rejectedReason: data.reason || null,
+            version: { increment: 1 },
           },
         });
         return { action: 'reject', order, afterStatus: '已拒絕', message: '付款單已拒絕，請修改後重新送出' };
@@ -117,6 +120,9 @@ export async function PUT(request, { params }) {
       if (data.action === 'void') {
         if (order.status === '已作廢') {
           throw new Error('IDEMPOTENT:此付款單已作廢');
+        }
+        if (order.status === '已執行') {
+          throw new Error('VALIDATION:已執行的付款單不可作廢，請改以沖銷方式處理');
         }
         await tx.paymentOrder.update({
           where: { id },
@@ -144,17 +150,6 @@ export async function PUT(request, { params }) {
       if (data.discount !== undefined) updateData.discount = data.discount;
       if (data.netAmount !== undefined) updateData.netAmount = data.netAmount;
       if (data.amount !== undefined) updateData.amount = data.amount;
-      if (data.status === '待出納') {
-        updateData.status = '待出納';
-        updateData.rejectedBy = null;
-        updateData.rejectedAt = null;
-        updateData.rejectedReason = null;
-      }
-      if (order.status === '待出納' && Object.keys(updateData).length > 0) {
-        updateData.rejectedBy = null;
-        updateData.rejectedAt = null;
-        updateData.rejectedReason = null;
-      }
 
       await tx.paymentOrder.update({ where: { id }, data: { ...updateData, version: { increment: 1 } } });
       return { action: 'update', order, afterState: updateData, message: '付款單已更新' };
@@ -174,7 +169,15 @@ export async function PUT(request, { params }) {
         targetModule: 'payment-orders',
         targetRecordId: id,
         targetRecordNo: result.order.orderNo,
-        beforeState: { status: result.order.status, amount: Number(result.order.amount), paymentMethod: result.order.paymentMethod },
+        beforeState: {
+          status: result.order.status,
+          amount: Number(result.order.amount),
+          paymentMethod: result.order.paymentMethod,
+          ...(result.action === 'resubmit' && {
+            rejectedBy: result.order.rejectedBy,
+            rejectedReason: result.order.rejectedReason,
+          }),
+        },
         afterState: result.afterState || { status: result.afterStatus },
         note,
       });

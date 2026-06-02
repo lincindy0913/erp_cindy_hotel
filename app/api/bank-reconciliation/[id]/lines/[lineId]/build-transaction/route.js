@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { RECON_LINE_STATUS } from '@/lib/recon-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function POST(request, { params }) {
       include: { bankStatement: { include: { account: true } } },
     });
     if (!line) return createErrorResponse('NOT_FOUND', '找不到存摺明細', 404);
-    if (line.matchStatus === '已配對') {
+    if (line.matchStatus === RECON_LINE_STATUS.MATCHED) {
       return createErrorResponse('VALIDATION_FAILED', '此明細已配對，無法重複補建', 400);
     }
 
@@ -65,7 +66,7 @@ export async function POST(request, { params }) {
 
       await tx.bankReconLine.update({
         where: { id: lineId },
-        data: { matchedTxId: cashTx.id, matchStatus: '已配對' },
+        data: { matchedTxId: cashTx.id, matchStatus: RECON_LINE_STATUS.MATCHED },
       });
 
       await recalcBalance(tx, stmt.accountId);

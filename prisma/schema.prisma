@@ -2160,6 +2160,7 @@ model PaymentOrder {
   amount         Decimal   @db.Decimal(12, 2)
   discount       Decimal   @default(0) @db.Decimal(12, 2)
   netAmount      Decimal   @map("net_amount") @db.Decimal(12, 2)
+  invoicedAmount Decimal?  @map("invoiced_amount") @db.Decimal(12, 2) // 建立時快照，永不更新
   dueDate        String?   @map("due_date") @db.VarChar(20)
   accountId      Int?      @map("account_id")
   checkNo        String?   @map("check_no") @db.VarChar(50)
@@ -3739,6 +3740,8 @@ model BankReconLine {
   runningBalance   Decimal? @map("running_balance") @db.Decimal(12, 2)             // 存摺餘額
   matchedTxId      Int?     @map("matched_tx_id")  // 配對的 CashTransaction.id
   matchStatus      String   @default("未配對") @map("match_status") @db.VarChar(20) // 未配對|已配對|例外核准
+  matchScore       Int?     @map("match_score")                                      // 自動配對信心分（null = 人工配對）
+  matchedBy        String?  @map("matched_by") @db.VarChar(100)                     // 'auto' | user email
   note             String?  @db.VarChar(500)
   createdAt        DateTime @default(now()) @map("created_at")
 

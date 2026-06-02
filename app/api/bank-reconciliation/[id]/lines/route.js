@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { RECON_LINE_STATUS } from '@/lib/recon-statuses';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ export async function POST(request, { params }) {
           debitAmount:     Number(r.debitAmount  ?? 0),
           runningBalance:  r.runningBalance != null ? Number(r.runningBalance) : null,
           matchedTxId:     r.matchedTxId   ? parseInt(r.matchedTxId) : null,
-          matchStatus:     r.matchedTxId   ? '已配對' : '未配對',
+          matchStatus:     r.matchedTxId   ? RECON_LINE_STATUS.MATCHED : RECON_LINE_STATUS.UNMATCHED,
           note:            r.note || null,
         },
       }))

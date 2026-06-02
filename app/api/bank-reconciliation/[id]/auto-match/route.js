@@ -3,18 +3,21 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
-import { localDateStr } from '@/lib/localDate';
+import { RECON_LINE_STATUS } from '@/lib/recon-statuses';
 
 export const dynamic = 'force-dynamic';
 
+function utcDate(dateStr) {
+  return new Date(dateStr + 'T00:00:00Z');
+}
+
 function datePlusDays(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return localDateStr(d);
+  const ms = utcDate(dateStr).getTime() + days * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 function dayDiff(a, b) {
-  return Math.abs((new Date(a) - new Date(b)) / 86400000);
+  return Math.abs((utcDate(a) - utcDate(b)) / 86400000);
 }
 
 // 從描述中抽取帳號末5碼（如 "**1234 5" 或 "末5碼:12345"）
@@ -24,12 +27,18 @@ function extractAtmTail(desc) {
   return m ? m[1] : null;
 }
 
+// 金額容差：與 gate 共用，避免兩處規則不一致
+function amtTolerance(amt) {
+  return Math.max(10, Math.abs(amt) * 0.01);
+}
+
 function confidenceScore(lineAmt, txAmt, lineDate, txDate, lineDesc, txDesc) {
   let score = 0;
   const amtDiff = Math.abs(txAmt - lineAmt);
   if (amtDiff === 0) score += 50;
   else if (amtDiff <= 1) score += 40;
   else if (amtDiff <= 10) score += 20;
+  else if (amtDiff <= amtTolerance(lineAmt)) score += 10; // 百分比容差內但 >10，低信心
 
   const dDiff = dayDiff(lineDate, txDate);
   if (dDiff === 0) score += 30;
@@ -83,7 +92,7 @@ export async function POST(request, { params }) {
     );
 
     // 未配對的存摺明細
-    const unmatched = stmt.lines.filter(l => l.matchStatus === '未配對');
+    const unmatched = stmt.lines.filter(l => l.matchStatus === RECON_LINE_STATUS.UNMATCHED);
 
     let autoMatched  = 0;
     let suggested    = 0;
@@ -101,7 +110,7 @@ export async function POST(request, { params }) {
             const txAmt = t.type === '收入' ? Number(t.amount) : -Number(t.amount);
             const dDiff = dayDiff(lineDate, t.transactionDate);
             if (dDiff > 3) return null;
-            if (Math.abs(txAmt - lineAmt) > Math.max(10, Math.abs(lineAmt) * 0.01)) return null;
+            if (Math.abs(txAmt - lineAmt) > amtTolerance(lineAmt)) return null;
             const score = confidenceScore(lineAmt, txAmt, lineDate, t.transactionDate, line.description, t.description);
             return { tx: t, score };
           })
@@ -116,7 +125,7 @@ export async function POST(request, { params }) {
           // 自動確認配對
           await tx.bankReconLine.update({
             where: { id: line.id },
-            data: { matchedTxId: best.tx.id, matchStatus: '已配對' },
+            data: { matchedTxId: best.tx.id, matchStatus: RECON_LINE_STATUS.MATCHED, matchScore: best.score, matchedBy: 'auto' },
           });
           usedTxIds.add(best.tx.id);
           autoMatched++;
