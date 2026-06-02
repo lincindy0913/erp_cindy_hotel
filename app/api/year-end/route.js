@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-han
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { calcAllQtysForWarehouse } from '@/lib/inventory-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,35 +130,18 @@ export async function POST(request) {
       // ======================================================
       const inStockProducts = await prisma.product.findMany({
         where: { isInStock: true, isActive: true },
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          costPrice: true,
-          purchaseDetails: {
-            select: { quantity: true, status: true }
-          }
-        }
+        select: { id: true, code: true, name: true, costPrice: true },
       });
 
-      const productIds = inStockProducts.map(p => p.id);
-      const salesByProduct = productIds.length > 0
-        ? await prisma.salesDetail.groupBy({
-            by: ['productId'],
-            where: { productId: { in: productIds } },
-            _sum: { quantity: true }
-          })
-        : [];
-      const soldMap = new Map(salesByProduct.map(s => [s.productId, s._sum.quantity || 0]));
+      // 用 calcAllQtysForWarehouse 取得完整現存量
+      // （purchase - requisition - transferOut + transferIn + stockCountAdj）
+      // warehouse=null → 全倉合計，與 inventory GET v2 邏輯一致
+      const qtyMap = await calcAllQtysForWarehouse(prisma, null);
 
       const inventorySnapshots = [];
       for (const product of inStockProducts) {
-        const totalPurchased = product.purchaseDetails
-          .filter(d => d.status === '已入庫')
-          .reduce((sum, d) => sum + (d.quantity || 0), 0);
-        const totalSold = soldMap.get(product.id) || 0;
-        const currentQty = totalPurchased - totalSold;
-        const costPrice = Number(product.costPrice);
+        const currentQty = qtyMap.get(product.id) || 0;
+        const costPrice  = Number(product.costPrice);
         const isNegative = currentQty < 0;
         const closingQty = isNegative ? 0 : currentQty;
         inventorySnapshots.push({
