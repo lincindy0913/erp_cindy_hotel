@@ -7,6 +7,7 @@ import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-acces
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getSystemQty } from '@/lib/inventory-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,12 @@ export async function POST(request) {
     const date = requisitionDate || todayStr();
 
     const created = await prisma.$transaction(async (tx) => {
+      // 在 transaction 內即時查現存量，防止超領
+      const available = await getSystemQty(tx, Number(productId), warehouse);
+      if (available < Number(quantity)) {
+        throw new Error(`VALIDATION:庫存不足，現存 ${available} ${available === 1 ? '件' : '件'}，領用數量 ${quantity} 件`);
+      }
+
       const requisitionNo = await nextSequence(tx, 'inventoryRequisition', 'requisitionNo', `REQ-${date.replace(/-/g, '')}-`);
       return tx.inventoryRequisition.create({
       data: {
