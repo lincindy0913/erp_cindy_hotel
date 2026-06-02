@@ -74,7 +74,8 @@ export async function GET(request) {
       });
 
       // Calculate post-snapshot increments
-      const snapshotEndDate = `${snapshotYear}-${String(snapshotMonth).padStart(2, '0')}-31`;
+      const lastDay = new Date(snapshotYear, snapshotMonth, 0).getDate();
+      const snapshotEndDate = `${snapshotYear}-${String(snapshotMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
       // Post-snapshot purchases (只計入已入庫的明細)
       const postPurchases = await prisma.purchaseDetail.findMany({
