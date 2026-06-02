@@ -359,11 +359,17 @@ export async function POST(request) {
         }
 
         // 7b. Update each CashAccount's opening balance for the next year
-        //     (THIS IS THE ONLY LIVE-DATA MODIFICATION — must be atomic with status)
-        await Promise.all(cashAccounts.map(account =>
+        //     Re-fetch inside tx so we use the latest currentBalance,
+        //     not the value read at line ~188 which may be stale after
+        //     the long pre-computation phase (1-30s window for race conditions).
+        const freshAccounts = await tx.cashAccount.findMany({
+          where: { isActive: true },
+          select: { id: true, currentBalance: true },
+        });
+        await Promise.all(freshAccounts.map(a =>
           tx.cashAccount.update({
-            where: { id: account.id },
-            data: { openingBalance: account.currentBalance }
+            where: { id: a.id },
+            data: { openingBalance: a.currentBalance },
           })
         ));
 
