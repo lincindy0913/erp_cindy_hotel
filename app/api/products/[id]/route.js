@@ -41,6 +41,11 @@ export async function PUT(request, { params }) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '列入庫存時必須填寫倉庫位置', 400);
     }
 
+    if (data.code !== undefined && data.code !== existing.code) {
+      const conflict = await prisma.product.findFirst({ where: { code: data.code, id: { not: id } } });
+      if (conflict) return createErrorResponse('CONFLICT_UNIQUE', `產品代碼「${data.code}」已存在`, 409);
+    }
+
     const updated = await prisma.product.update({
       where: { id },
       data: {
