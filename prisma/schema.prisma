@@ -96,6 +96,8 @@ model Supplier {
   expenses            Expense[]
   cashTransactions    CashTransaction[] @relation("SupplierCashTransactions")
   vendorBillings      VendorItineraryBilling[]
+  companyInputInvoices CompanyInputInvoice[]
+  companyExpenses      CompanyExpense[]
 
   @@index([sortOrder])
   @@index([paymentStatus])
@@ -3860,6 +3862,7 @@ model CompanyExpense {
   invoiceType String?  @map("invoice_type") @db.VarChar(30)
   vendorTaxId String?  @map("vendor_tax_id") @db.VarChar(20)
   vendorName  String?  @map("vendor_name") @db.VarChar(255)
+  supplierId  Int?     @map("supplier_id")
   itemName    String?  @map("item_name") @db.VarChar(500)
   amount      Decimal  @default(0) @db.Decimal(14, 2)
   taxAmount   Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
@@ -3870,8 +3873,11 @@ model CompanyExpense {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
   @@index([expenseDate])
   @@index([period])
+  @@index([supplierId])
   @@map("company_expenses")
 }
 
@@ -3881,6 +3887,7 @@ model CompanyInputInvoice {
   invoiceNo   String?  @map("invoice_no") @db.VarChar(100)
   vendorTaxId String?  @map("vendor_tax_id") @db.VarChar(20)
   vendorName  String?  @map("vendor_name") @db.VarChar(255)
+  supplierId  Int?     @map("supplier_id")
   materialType String? @map("material_type") @db.VarChar(100)
   itemName    String?  @map("item_name") @db.VarChar(500)
   amount      Decimal  @default(0) @db.Decimal(14, 2)
@@ -3893,10 +3900,12 @@ model CompanyInputInvoice {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  project EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project  EngineeringProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  supplier Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([invoiceDate])
   @@index([projectId])
+  @@index([supplierId])
   @@index([period])
   @@map("company_input_invoices")
 }

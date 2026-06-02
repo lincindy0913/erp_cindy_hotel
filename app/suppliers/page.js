@@ -49,6 +49,7 @@ export default function SuppliersPage() {
   const [showDateFilterMenu, setShowDateFilterMenu] = useState(false);
   const [dateFilterType, setDateFilterType] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // 付款條件選項管理
   const [paymentTermsOptions, setPaymentTermsOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
@@ -56,6 +57,15 @@ export default function SuppliersPage() {
   const [newTermName, setNewTermName] = useState('');
 
   const emptyForm = { name: '', taxId: '', contact: '', personInCharge: '', phone: '', address: '', email: '', paymentTerms: '月結', contractDate: '', contractEndDate: '', paymentStatus: '未付款', remarks: '', checkPayee: '', industryCategory: '', sortOrder: '', rating: null, isBlacklisted: false, blacklistReason: '', blacklistedAt: null };
+
+  const now = new Date();
+  const expiringItems = allSuppliers.filter(s => {
+    if (!s.contractEndDate) return false;
+    const days = Math.ceil((new Date(s.contractEndDate) - now) / 86400000);
+    return days < 30;
+  });
+  const expiredItems = expiringItems.filter(s => new Date(s.contractEndDate) < now);
+  const soonItems    = expiringItems.filter(s => new Date(s.contractEndDate) >= now);
 
   useEffect(() => {
     fetchSuppliers();
@@ -394,6 +404,20 @@ export default function SuppliersPage() {
       <Navigation borderColor="border-teal-500" />
 
       <main className="max-w-full mx-auto px-4 py-8">
+        {!bannerDismissed && expiringItems.length > 0 && (
+          <div className="bg-red-50 border-l-4 border-red-500 rounded p-3 mb-4 flex items-start justify-between gap-3">
+            <div className="text-sm text-red-700">
+              <span className="font-semibold">⚠️ 合約到期警告：</span>
+              {expiredItems.length > 0 && (
+                <span>已過期 <b>{expiredItems.length}</b> 家（{expiredItems.map(s => s.name).join('、')}）。</span>
+              )}
+              {soonItems.length > 0 && (
+                <span>30 天內到期 <b>{soonItems.length}</b> 家（{soonItems.map(s => s.name).join('、')}）。</span>
+              )}
+            </div>
+            <button onClick={() => setBannerDismissed(true)} className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0">×</button>
+          </div>
+        )}
         {/* 頁面標題 */}
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">

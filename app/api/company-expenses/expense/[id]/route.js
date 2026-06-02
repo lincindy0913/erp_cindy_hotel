@@ -24,6 +24,7 @@ export async function PUT(req, { params }) {
         invoiceType: body.invoiceType || null,
         vendorTaxId: body.vendorTaxId || null,
         vendorName:  body.vendorName  || null,
+        supplierId:  body.supplierId  ? Number(body.supplierId) : null,
         itemName:    body.itemName    || null,
         amount:      Number(body.amount      || 0),
         taxAmount:   Number(body.taxAmount   || 0),
@@ -32,6 +33,7 @@ export async function PUT(req, { params }) {
         period:      body.period      || null,
         note:        body.note        || null,
       },
+      include: { supplier: { select: { id: true, name: true, taxId: true } } },
     });
     return NextResponse.json(row);
   } catch (e) {

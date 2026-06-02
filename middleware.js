@@ -50,6 +50,8 @@ const RATE_LIMITS = {
   '/api/backup':         { windowMs: 60_000, max: 30 },         // backup ops: 30 per min (GET polling + POST triggers)
   '/api/users':          { windowMs: 60_000, max: 20 },         // user management: 20 per min
   '/api/roles':          { windowMs: 60_000, max: 20 },         // role management: 20 per min
+  '/api/suppliers':      { windowMs: 60_000, max: 60 },         // supplier CRUD + contract upload: 60 per min
+  '/api/purchasing':     { windowMs: 60_000, max: 30 },         // purchase order creation: 30 per min
   '/api/payment-orders': { windowMs: 60_000, max: 30 },         // payment orders: 30 per min
   '/api/cashier':        { windowMs: 60_000, max: 30 },         // cashier execute: 30 per min
   '/api/year-end':       { windowMs: 60_000, max: 10 },         // year-end: 10 per min

@@ -22,7 +22,10 @@ export async function GET(req) {
       else if (projectIdParam) where.projectId = parseInt(projectIdParam);
       const rows = await prisma.companyInputInvoice.findMany({
         where,
-        include: { project: { select: { id: true, code: true, name: true } } },
+        include: {
+          project:  { select: { id: true, code: true, name: true } },
+          supplier: { select: { id: true, name: true, taxId: true } },
+        },
         orderBy: [{ period: 'asc' }, { invoiceDate: 'asc' }, { id: 'asc' }],
       });
       return NextResponse.json(rows);
@@ -31,6 +34,7 @@ export async function GET(req) {
     const where = period ? { period } : {};
     const rows = await prisma.companyExpense.findMany({
       where,
+      include: { supplier: { select: { id: true, name: true, taxId: true } } },
       orderBy: [{ expenseDate: 'desc' }, { id: 'desc' }],
     });
     return NextResponse.json(rows);
@@ -53,21 +57,25 @@ export async function POST(req) {
 
       const row = await prisma.companyInputInvoice.create({
         data: {
-          invoiceDate: body.invoiceDate,
-          invoiceNo:   body.invoiceNo   || null,
-          vendorTaxId: body.vendorTaxId || null,
-          vendorName:  body.vendorName  || null,
+          invoiceDate:  body.invoiceDate,
+          invoiceNo:    body.invoiceNo    || null,
+          vendorTaxId:  body.vendorTaxId  || null,
+          vendorName:   body.vendorName   || null,
+          supplierId:   body.supplierId   ? Number(body.supplierId) : null,
           materialType: body.materialType || null,
-          itemName:    body.itemName    || null,
-          amount:      Number(body.amount    || 0),
-          taxAmount:   Number(body.taxAmount || 0),
-          totalAmount: Number(body.totalAmount || 0),
-          projectId:   body.projectId ? Number(body.projectId) : null,
-          location:    body.location   || null,
-          period:      body.period     || null,
-          note:        body.note       || null,
+          itemName:     body.itemName     || null,
+          amount:       Number(body.amount      || 0),
+          taxAmount:    Number(body.taxAmount   || 0),
+          totalAmount:  Number(body.totalAmount || 0),
+          projectId:    body.projectId ? Number(body.projectId) : null,
+          location:     body.location    || null,
+          period:       body.period      || null,
+          note:         body.note        || null,
         },
-        include: { project: { select: { id: true, code: true, name: true } } },
+        include: {
+          project:  { select: { id: true, code: true, name: true } },
+          supplier: { select: { id: true, name: true, taxId: true } },
+        },
       });
       return NextResponse.json(row, { status: 201 });
     }
@@ -82,6 +90,7 @@ export async function POST(req) {
         invoiceType: body.invoiceType || null,
         vendorTaxId: body.vendorTaxId || null,
         vendorName:  body.vendorName  || null,
+        supplierId:  body.supplierId  ? Number(body.supplierId) : null,
         itemName:    body.itemName    || null,
         amount:      Number(body.amount      || 0),
         taxAmount:   Number(body.taxAmount   || 0),
@@ -90,6 +99,7 @@ export async function POST(req) {
         period:      body.period      || null,
         note:        body.note        || null,
       },
+      include: { supplier: { select: { id: true, name: true, taxId: true } } },
     });
     return NextResponse.json(row, { status: 201 });
   } catch (e) {

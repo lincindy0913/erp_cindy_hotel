@@ -6,70 +6,140 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import { useToast } from '@/context/ToastContext';
-import { useConfirm } from '@/context/ConfirmContext';
-import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import { SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
+import { usePaymentOrders } from './_hooks/usePaymentOrders';
+import { usePaymentForm } from './_hooks/usePaymentForm';
+import { useFinanceSearch } from './_hooks/useFinanceSearch';
+import { usePaymentOptions } from './_hooks/usePaymentOptions';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
-  const confirm = useConfirm();
   const isLoggedIn = !!session;
-  const [orders, setOrders] = useState([]);
+
+  // ── 付款單列表、操作、狀態 ──────────────────────────────────────────────
+  const {
+    orders,
+    loading,
+    expandedOrders,
+    selectedOrderIds,
+    activeTab, setActiveTab,
+    batchSubmitting,
+    submittingOrderId,
+    highlightOrderNo,
+    fetchOrders,
+    handleDelete,
+    handleOrderToggle,
+    handleSelectAllOrders: handleSelectAllOrdersBase,
+    handleBatchSubmitToCashier: handleBatchSubmitToCashierBase,
+    handleSubmitToCashier,
+    handleResubmit,
+    handleVoid,
+    handleViewDetails,
+    getStatusBadge,
+  } = usePaymentOrders();
+
+  // ── 付款條件 / 方式 / 帳戶選項 ─────────────────────────────────────────
+  const {
+    paymentTermsOptions, setPaymentTermsOptions,
+    showTermsManager, setShowTermsManager,
+    newTermName, setNewTermName,
+    paymentMethodOptions, setPaymentMethodOptions,
+    showMethodManager, setShowMethodManager,
+    newMethodName, setNewMethodName,
+    checkAccountOptions, setCheckAccountOptions,
+    showAccountManager, setShowAccountManager,
+    newAccountName, setNewAccountName,
+    accountSearch, setAccountSearch,
+    showAccountDropdown, setShowAccountDropdown,
+    cashAccounts,
+    fetchCashAccounts,
+  } = usePaymentOptions({ orders });
+
+  // ── 未付款發票 / 廠商 / 發票（非 hook 管理的資料源） ─────────────────
   const [unpaidInvoices, setUnpaidInvoices] = useState([]);
   const [allInvoices, setAllInvoices] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingInvoices, setLoadingInvoices] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
+
+  // ── 付款表單 ───────────────────────────────────────────────────────────
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState(new Set());
-  const [expandedOrders, setExpandedOrders] = useState(new Set());
-  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set()); // 付款單勾選，供批量提交出納
-  const [activeTab, setActiveTab] = useState('draft');
 
-  // 付款條件選項管理
-  const [paymentTermsOptions, setPaymentTermsOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
-  const [showTermsManager, setShowTermsManager] = useState(false);
-  const [newTermName, setNewTermName] = useState('');
-
-  // 付款方式選項管理
-  const [paymentMethodOptions, setPaymentMethodOptions] = useState(['月結', '現金', '支票', '轉帳', '信用卡', '員工代付']);
-  const [showMethodManager, setShowMethodManager] = useState(false);
-  const [newMethodName, setNewMethodName] = useState('');
-
-  // 開票賬戶選項管理（可搜尋下拉）
-  const [checkAccountOptions, setCheckAccountOptions] = useState([]);
-  const [showAccountManager, setShowAccountManager] = useState(false);
-  const [newAccountName, setNewAccountName] = useState('');
-  const [accountSearch, setAccountSearch] = useState('');
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
-
-  // 付款帳戶（CashAccount）
-  const [cashAccounts, setCashAccounts] = useState([]);
-
-  // 篩選條件（新增付款單用）
-  const [filterData, setFilterData] = useState({
-    yearMonth: '',
-    supplierId: '',
-    warehouse: '',
-    paymentTerms: ''
+  const {
+    showAddForm, setShowAddForm,
+    loadingInvoices, setLoadingInvoices,
+    formSaving,
+    filterData, setFilterData,
+    formData, setFormData,
+    calculateTotal,
+    calculateTotalForSet,
+    handleInvoiceToggle,
+    handleSelectAll,
+    resetFilterAndForm,
+    handleSubmit,
+    getSupplierName,
+    getLastCheckValues,
+  } = usePaymentForm({
+    suppliers,
+    unpaidInvoices,
+    selectedInvoiceIds,
+    setSelectedInvoiceIds,
+    paymentMethodOptions,
+    setPaymentMethodOptions,
+    onAfterSubmit: () => {
+      setUnpaidInvoices([]);
+      setActiveTab('draft');
+      fetchOrders();
+    },
   });
 
-  // 搜尋篩選（付款單列表用）
-  const [finSearchDateFrom, setFinSearchDateFrom] = useState('');
-  const [finSearchDateTo, setFinSearchDateTo] = useState('');
-  const [finSearchWarehouse, setFinSearchWarehouse] = useState('');
-  const [finSearchSupplierId, setFinSearchSupplierId] = useState('');
-  const [finSearchPaymentMethod, setFinSearchPaymentMethod] = useState('');
+  // ── 搜尋篩選 / Tab / 排序 ──────────────────────────────────────────────
+  const {
+    finSearchDateFrom, setFinSearchDateFrom,
+    finSearchDateTo, setFinSearchDateTo,
+    finSearchWarehouse, setFinSearchWarehouse,
+    finSearchSupplierId, setFinSearchSupplierId,
+    finSearchPaymentMethod, setFinSearchPaymentMethod,
+    draftOrders,
+    pendingOrders,
+    executedOrders,
+    rejectedOrders,
+    advancedOrders,
+    returnedOrders,
+    TABS,
+    finSortKey,
+    finSortDir,
+    toggleFinSort,
+    getDisplayOrders: getDisplayOrdersForTab,
+    getFilteredDisplayOrders,
+    getSortedDisplayOrders,
+  } = useFinanceSearch({ orders, suppliers, paymentMethodOptions });
 
-  // 按付款單的館別列印草稿報表
+  // ── 本地衍生計算（JSX 直接使用的 const） ───────────────────────────────
+  const rawDisplayOrders = getDisplayOrdersForTab(activeTab);
+  const displayOrders = useMemo(
+    () => getFilteredDisplayOrders(activeTab),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawDisplayOrders, finSearchDateFrom, finSearchDateTo, finSearchWarehouse, finSearchSupplierId, finSearchPaymentMethod]
+  );
+  const sortedDisplayOrders = useMemo(
+    () => getSortedDisplayOrders(displayOrders),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displayOrders, finSortKey, finSortDir]
+  );
+
+  // ── Wrapper：hook 版需要傳 displayOrders 參數 ──────────────────────────
+  function getDisplayOrders() { return getDisplayOrdersForTab(activeTab); }
+  function handleSelectAllOrders() { handleSelectAllOrdersBase(displayOrders); }
+  function handleBatchSubmitToCashier() { handleBatchSubmitToCashierBase(displayOrders); }
+
+  // ── 報表相關狀態（非 hook 管理） ──────────────────────────────────────
   const [showWarehouseReportModal, setShowWarehouseReportModal] = useState(false);
   const [reportMonth, setReportMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [reportWarehouse, setReportWarehouse] = useState('');
-  // 按進貨單的館別列印
   const [showPurchaseReportModal, setShowPurchaseReportModal] = useState(false);
   const [purchaseReportMonth, setPurchaseReportMonth] = useState(() => {
     const d = new Date();
@@ -81,135 +151,16 @@ export default function PaymentPage() {
   const [purchaseReportSupplierId, setPurchaseReportSupplierId] = useState('');
   const [purchaseReportData, setPurchaseReportData] = useState(null);
   const [purchaseReportLoading, setPurchaseReportLoading] = useState(false);
-  const [batchSubmitting, setBatchSubmitting] = useState(false);
-  const [submittingOrderId, setSubmittingOrderId] = useState(null);
-  const [formSaving, setFormSaving] = useState(false);
 
-  // 表單資料
-  const [formData, setFormData] = useState({
-    paymentMethod: '月結',
-    checkIssueDate: '',
-    checkDate: '',
-    checkNo: '',
-    checkAccountId: '',
-    note: '',
-    discount: '',
-    paymentAmount: '',
-    paymentDate: '',
-    accountId: '',
-    advancedBy: '',
-    advancePaymentMethod: '',
-  });
-
-  const [highlightOrderNo, setHighlightOrderNo] = useState(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setHighlightOrderNo(params.get('highlight'));
-  }, []);
-
+  // ── 初始資料載入 ────────────────────────────────────────────────────────
   useEffect(() => {
     fetchOrders();
     fetchSuppliers();
     fetchAllInvoices();
     fetchCashAccounts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 切換分頁時清空付款單勾選
-  useEffect(() => {
-    setSelectedOrderIds(new Set());
-  }, [activeTab]);
-
-  // 從現有付款紀錄中提取開票賬戶選項
-  useEffect(() => {
-    if (orders.length > 0) {
-      const accounts = [...new Set(orders.map(p => p.checkAccount).filter(Boolean))];
-      setCheckAccountOptions(prev => {
-        const merged = [...new Set([...prev, ...accounts])];
-        return merged;
-      });
-    }
-  }, [orders]);
-
-  // 從 payment-voucher 跳轉過來時，自動切換 tab、展開並捲動到目標付款單
-  useEffect(() => {
-    if (!highlightOrderNo || orders.length === 0) return;
-    const target = orders.find(o => o.orderNo === highlightOrderNo);
-    if (!target) return;
-    const statusToTab = { '草稿': 'draft', '待出納': 'pending', '已執行': 'executed', '已拒絕': 'rejected', '已代墊': 'advanced', '已退貨': 'returned' };
-    const tab = statusToTab[target.status] || 'draft';
-    setActiveTab(tab);
-    setExpandedOrders(prev => new Set([...prev, target.id]));
-    setTimeout(() => {
-      const el = document.getElementById(`order-row-${target.id}`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 150);
-  }, [orders, highlightOrderNo]);
-
-  // 當勾選的發票變動時，自動更新付款金額（含支票金額）
-  useEffect(() => {
-    if (selectedInvoiceIds.size > 0) {
-      const total = parseFloat(calculateTotal()) || 0;
-      const discountNum = parseFloat(formData.discount) || 0;
-      setFormData(prev => ({
-        ...prev,
-        paymentAmount: (total - discountNum).toFixed(2)
-      }));
-    }
-  }, [selectedInvoiceIds]);
-
-  const FINANCE_LAST_CHECK_KEY = 'finance_lastCheck';
-  function getLastCheckValues() {
-    try {
-      const raw = typeof window !== 'undefined' && window.localStorage.getItem(FINANCE_LAST_CHECK_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  }
-  function saveLastCheckValues(data) {
-    try {
-      if (typeof window !== 'undefined' && data) {
-        window.localStorage.setItem(FINANCE_LAST_CHECK_KEY, JSON.stringify({
-          checkIssueDate: data.checkIssueDate || '',
-          checkDate: data.checkDate || '',
-          checkNo: data.checkNo || '',
-          checkAccountId: data.checkAccountId || ''
-        }));
-      }
-    } catch (_) {}
-  }
-
-  // 付款方式為支票時，付款日期／支票日期／開票帳戶預設為上一次選取
-  useEffect(() => {
-    if (formData.paymentMethod !== '支票') return;
-    const last = getLastCheckValues();
-    if (!last) return;
-    const needIssue = !formData.checkIssueDate?.trim();
-    const needDate = !formData.checkDate?.trim();
-    const needAccount = !formData.checkAccountId;
-    if (!needIssue && !needDate && !needAccount) return;
-    setFormData(prev => ({
-      ...prev,
-      ...(needIssue && last.checkIssueDate ? { checkIssueDate: last.checkIssueDate } : {}),
-      ...(needDate && last.checkDate ? { checkDate: last.checkDate } : {}),
-      ...(needAccount && last.checkAccountId ? { checkAccountId: String(last.checkAccountId) } : {})
-    }));
-  }, [formData.paymentMethod]);
-
-  async function fetchOrders() {
-    try {
-      const response = await fetch('/api/payment-orders');
-      if (!response.ok) { setOrders([]); setLoading(false); return; }
-      const data = await response.json();
-      setOrders(Array.isArray(data) ? data : []);
-      setLoading(false);
-    } catch (error) {
-      console.error('取得付款單列表失敗:', error);
-      setOrders([]);
-      setLoading(false);
-    }
-  }
 
   async function fetchSuppliers() {
     try {
@@ -232,18 +183,6 @@ export default function PaymentPage() {
     } catch (error) {
       console.error('取得發票列表失敗:', error);
       setAllInvoices([]);
-    }
-  }
-
-  async function fetchCashAccounts() {
-    try {
-      const response = await fetch('/api/cashflow/accounts');
-      if (!response.ok) { setCashAccounts([]); return; }
-      const data = await response.json();
-      setCashAccounts(Array.isArray(data) ? data.filter(a => a.isActive) : []);
-    } catch (error) {
-      console.error('取得帳戶列表失敗:', error);
-      setCashAccounts([]);
     }
   }
 
@@ -281,360 +220,7 @@ export default function PaymentPage() {
     }
   }
 
-  function getSupplierName(supplierId) {
-    const supplier = suppliers.find(s => s.id === supplierId);
-    return supplier ? supplier.name : '未知廠商';
-  }
 
-  // Auto-fill payment method from supplier's default paymentTerms
-  function autoFillPaymentMethod(newSelected) {
-    if (newSelected.size === 0) return;
-    const firstInvoiceId = [...newSelected][0];
-    const firstInvoice = unpaidInvoices.find(inv => inv.id === firstInvoiceId);
-    if (firstInvoice?.supplierId) {
-      const supplier = suppliers.find(s => s.id === firstInvoice.supplierId);
-      if (supplier?.paymentTerms) {
-        const method = supplier.paymentTerms;
-        if (!paymentMethodOptions.includes(method)) {
-          setPaymentMethodOptions(prev => [...prev, method]);
-        }
-        setFormData(prev => ({ ...prev, paymentMethod: method }));
-      }
-    }
-  }
-
-  function updatePaymentAmountForSet(newSelected) {
-    const newTotal = calculateTotalForSet(newSelected);
-    const discountNum = parseFloat(formData.discount) || 0;
-    setFormData(prev => ({ ...prev, paymentAmount: Math.max(0, newTotal - discountNum).toFixed(2) }));
-  }
-
-  function handleInvoiceToggle(invoiceId) {
-    const newSelected = new Set(selectedInvoiceIds);
-    if (newSelected.has(invoiceId)) {
-      newSelected.delete(invoiceId);
-    } else {
-      newSelected.add(invoiceId);
-    }
-    setSelectedInvoiceIds(newSelected);
-    autoFillPaymentMethod(newSelected);
-    updatePaymentAmountForSet(newSelected);
-  }
-
-  function handleSelectAll() {
-    if (selectedInvoiceIds.size === unpaidInvoices.length && unpaidInvoices.length > 0) {
-      setSelectedInvoiceIds(new Set());
-      setFormData(prev => ({ ...prev, paymentAmount: '0.00' }));
-    } else {
-      const newSelected = new Set(unpaidInvoices.map(inv => inv.id));
-      setSelectedInvoiceIds(newSelected);
-      autoFillPaymentMethod(newSelected);
-      updatePaymentAmountForSet(newSelected);
-    }
-  }
-
-  function calculateTotalForSet(selectedSet) {
-    let total = 0;
-    selectedSet.forEach(invoiceId => {
-      const invoice = unpaidInvoices.find(inv => inv.id === invoiceId);
-      if (invoice) {
-        total += parseFloat(invoice.totalAmount || (invoice.amount || 0) + (invoice.tax || 0));
-      }
-    });
-    return total;
-  }
-
-  function calculateTotal() {
-    return calculateTotalForSet(selectedInvoiceIds).toFixed(2);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-
-    if (selectedInvoiceIds.size === 0) {
-      showToast('請至少勾選一張發票進行付款', 'error');
-      return;
-    }
-
-    // 會計折讓與付款金額驗證
-    const invoiceTotal = parseFloat(calculateTotal());
-    const discountVal = parseFloat(formData.discount) || 0;
-    const paymentAmountVal = parseFloat(formData.paymentAmount) || 0;
-    const expectedPayment = invoiceTotal - discountVal;
-
-    if (Math.abs(expectedPayment - paymentAmountVal) > 0.01) {
-      showToast(`付款金額驗證失敗！\n\n發票總金額：NT$ ${invoiceTotal.toFixed(2)}\n會計折讓：NT$ ${discountVal.toFixed(2)}\n應付金額：NT$ ${expectedPayment.toFixed(2)}\n輸入付款金額：NT$ ${paymentAmountVal.toFixed(2)}\n\n「發票總金額 - 會計折讓」必須等於「付款金額」`, 'error');
-      return;
-    }
-
-    // 從選取的發票推導供應商和倉別
-    const firstInvoice = unpaidInvoices.find(inv => selectedInvoiceIds.has(inv.id));
-    const supplierId = firstInvoice?.supplierId || null;
-    const supplierName = firstInvoice?.supplierName || (supplierId ? getSupplierName(supplierId) : null);
-    const warehouse = firstInvoice?.warehouse || null;
-
-    const isCheck = formData.paymentMethod === '支票';
-
-    if (isCheck) {
-      if (!formData.checkIssueDate?.trim()) {
-        showToast('請填寫付款(開票)日期', 'error');
-        return;
-      }
-      if (!formData.checkDate?.trim()) {
-        showToast('請填寫支票日期', 'error');
-        return;
-      }
-      if (!formData.checkNo?.trim()) {
-        showToast('請填寫支票號碼', 'error');
-        return;
-      }
-      if (!formData.checkAccountId) {
-        showToast('請選擇開票帳戶（資金帳戶）', 'error');
-        return;
-      }
-      if (!formData.paymentAmount || parseFloat(formData.paymentAmount) <= 0) {
-        showToast('請先勾選發票，支票金額將自動帶入勾選發票的加總金額', 'error');
-        return;
-      }
-    }
-
-    setFormSaving(true);
-    try {
-      const orderData = {
-        invoiceIds: Array.from(selectedInvoiceIds),
-        supplierId,
-        supplierName,
-        warehouse,
-        paymentMethod: formData.paymentMethod,
-        amount: invoiceTotal,
-        discount: discountVal,
-        netAmount: paymentAmountVal,
-        note: formData.note || null,
-        status: '草稿',
-      };
-
-      if (isCheck) {
-        // 支票：傳送支票相關欄位，後端會自動建立 Check 記錄；開票帳戶連動資金帳戶
-        orderData.checkIssueDate = formData.checkIssueDate || null;
-        orderData.checkDueDate = formData.checkDate || null;
-        orderData.checkNo = formData.checkNo || null;
-        orderData.checkAccountId = formData.checkAccountId ? parseInt(formData.checkAccountId) : null;
-      } else {
-        // 非支票：付款日期、付款帳戶
-        orderData.dueDate = formData.paymentDate || null;
-        orderData.accountId = formData.accountId ? parseInt(formData.accountId) : null;
-      }
-
-      // 員工代墊款：傳送代墊員工資訊
-      if ((formData.paymentMethod === '員工代付' || formData.paymentMethod === '信用卡') && formData.advancedBy) {
-        orderData.isEmployeeAdvance = true;
-        orderData.advancedBy = formData.advancedBy;
-        orderData.advancePaymentMethod = formData.advancePaymentMethod || formData.paymentMethod;
-      }
-
-      const response = await fetch('/api/payment-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderData)
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (isCheck) saveLastCheckValues(formData);
-        const checkMsg = result.linkedCheckNo ? `\n已自動建立支票記錄：${result.linkedCheckNo}` : '';
-        showToast(`付款單建立成功（草稿）！${checkMsg}`, 'success');
-        setShowAddForm(false);
-        setSelectedInvoiceIds(new Set());
-        setUnpaidInvoices([]);
-        resetFilterAndForm();
-        setActiveTab('draft');
-        fetchOrders();
-      } else {
-        const error = await response.json();
-        showToast('建立失敗：' + (error.error || error.message || '未知錯誤'), 'error');
-      }
-    } catch (error) {
-      console.error('建立付款單失敗:', error);
-      showToast('建立付款單失敗，請稍後再試', 'error');
-    } finally {
-      setFormSaving(false);
-    }
-  }
-
-  function resetFilterAndForm() {
-    setFilterData({ yearMonth: '', supplierId: '', warehouse: '', paymentTerms: '' });
-    setFormData({
-      paymentMethod: '月結',
-      checkIssueDate: '',
-      checkDate: '',
-      checkNo: '',
-      checkAccountId: '',
-      note: '',
-      discount: '',
-      paymentAmount: '',
-      paymentDate: '',
-      accountId: ''
-    });
-  }
-
-  async function handleDelete(orderId) {
-    if (!(await confirm('確定要刪除這筆付款單嗎？', { title: '刪除確認', danger: true }))) return;
-
-    try {
-      const response = await fetch(`/api/payment-orders/${orderId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        showToast('付款單刪除成功！', 'success');
-        fetchOrders();
-      } else {
-        const error = await response.json();
-        showToast('刪除失敗：' + (error.error || error.message || '未知錯誤'), 'error');
-      }
-    } catch (error) {
-      console.error('刪除付款單失敗:', error);
-      showToast('刪除付款單失敗，請稍後再試', 'error');
-    }
-  }
-
-  function handleOrderToggle(orderId) {
-    const newSelected = new Set(selectedOrderIds);
-    if (newSelected.has(orderId)) newSelected.delete(orderId);
-    else newSelected.add(orderId);
-    setSelectedOrderIds(newSelected);
-  }
-
-  function handleSelectAllOrders() {
-    const current = getDisplayOrders();
-    const canSelect = current.filter(o => o.status === '草稿' || o.status === '已拒絕');
-    if (selectedOrderIds.size === canSelect.length && canSelect.length > 0) {
-      setSelectedOrderIds(new Set());
-    } else {
-      setSelectedOrderIds(new Set(canSelect.map(o => o.id)));
-    }
-  }
-
-  async function handleBatchSubmitToCashier() {
-    const ids = Array.from(selectedOrderIds);
-    if (ids.length === 0) return;
-    const orders = displayOrders.filter(o => ids.includes(o.id));
-    const draftCount = orders.filter(o => o.status === '草稿').length;
-    const rejectedCount = orders.filter(o => o.status === '已拒絕').length;
-    const isSubmit = draftCount > 0 && rejectedCount === 0;
-    const isResubmit = rejectedCount > 0 && draftCount === 0;
-    const isMixed = draftCount > 0 && rejectedCount > 0;
-    const actionLabel = isSubmit ? '提交出納' : isResubmit ? '重新提交' : '提交/重新提交';
-    if (!(await confirm(`確定要將選取的 ${ids.length} 筆付款單${actionLabel}嗎？`, { title: '批次提交確認', danger: false }))) return;
-
-    setBatchSubmitting(true);
-    try {
-      let ok = 0;
-      const errors = [];
-      for (const orderId of ids) {
-        const order = orders.find(o => o.id === orderId);
-        const action = order?.status === '已拒絕' ? 'resubmit' : 'submit';
-        try {
-          const response = await fetch(`/api/payment-orders/${orderId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action })
-          });
-          if (response.ok) ok++;
-          else {
-            const err = await response.json();
-            errors.push(`${order?.orderNo || orderId}: ${err.error || err.message || '未知錯誤'}`);
-          }
-        } catch (e) {
-          errors.push(`${order?.orderNo || orderId}: 網路錯誤`);
-        }
-      }
-      if (ok > 0) {
-        setSelectedOrderIds(new Set());
-        fetchOrders();
-        showToast(`成功 ${actionLabel} ${ok} 筆${errors.length ? `，失敗 ${errors.length} 筆` : ''}`, errors.length ? 'warning' : 'success');
-      }
-      if (errors.length > 0) {
-        showToast(`部分失敗：\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...等 ${errors.length} 筆` : ''}`, 'error');
-      }
-    } finally {
-      setBatchSubmitting(false);
-    }
-  }
-
-  async function handleSubmitToCashier(orderId) {
-    if (!(await confirm('確定要提交此付款單到出納嗎？', { title: '提交確認', danger: false }))) return;
-
-    setSubmittingOrderId(orderId);
-    try {
-      const response = await fetch(`/api/payment-orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'submit' })
-      });
-
-      if (response.ok) {
-        showToast('付款單已提交出納！', 'success');
-        fetchOrders();
-      } else {
-        const error = await response.json();
-        showToast('提交失敗：' + (error.error || error.message || '未知錯誤'), 'error');
-      }
-    } catch (error) {
-      console.error('提交出納失敗:', error);
-      showToast('提交出納失敗，請稍後再試', 'error');
-    } finally {
-      setSubmittingOrderId(null);
-    }
-  }
-
-  async function handleResubmit(orderId) {
-    if (!(await confirm('確定要重新提交此付款單到出納嗎？', { title: '重新提交確認', danger: false }))) return;
-
-    setSubmittingOrderId(orderId);
-    try {
-      const response = await fetch(`/api/payment-orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resubmit' })
-      });
-
-      if (response.ok) {
-        showToast('付款單已重新提交出納！', 'success');
-        fetchOrders();
-      } else {
-        const error = await response.json();
-        showToast('重新提交失敗：' + (error.error || error.message || '未知錯誤'), 'error');
-      }
-    } catch (error) {
-      console.error('重新提交失敗:', error);
-      showToast('重新提交失敗，請稍後再試', 'error');
-    } finally {
-      setSubmittingOrderId(null);
-    }
-  }
-
-  async function handleVoid(orderId) {
-    if (!(await confirm('確定要作廢此付款單嗎？此操作不可復原。', { title: '作廢確認', danger: true }))) return;
-
-    try {
-      const response = await fetch(`/api/payment-orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'void' })
-      });
-
-      if (response.ok) {
-        showToast('付款單已作廢！', 'success');
-        fetchOrders();
-      } else {
-        const error = await response.json();
-        showToast('作廢失敗：' + (error.error || error.message || '未知錯誤'), 'error');
-      }
-    } catch (error) {
-      console.error('作廢失敗:', error);
-    }
-  }
 
   function getInvoicesForOrder(order) {
     if (order.invoiceIds && Array.isArray(order.invoiceIds)) {
@@ -646,81 +232,6 @@ export default function PaymentPage() {
   function getInvoiceDetails(invoiceId) {
     return allInvoices.find(inv => inv.id === invoiceId);
   }
-
-  function handleViewDetails(orderId) {
-    const newExpanded = new Set(expandedOrders);
-    if (newExpanded.has(orderId)) {
-      newExpanded.delete(orderId);
-    } else {
-      newExpanded.add(orderId);
-    }
-    setExpandedOrders(newExpanded);
-  }
-
-  // Tab filter
-  const draftOrders = orders.filter(o => o.status === '草稿');
-  const pendingOrders = orders.filter(o => o.status === '待出納');
-  const executedOrders = orders.filter(o => o.status === '已執行');
-  const rejectedOrders = orders.filter(o => o.status === '已拒絕');
-  const advancedOrders = orders.filter(o => o.status === '已代墊');
-  const returnedOrders = orders.filter(o => o.status === '已退貨');
-
-  const TABS = [
-    { key: 'draft', label: '草稿', count: draftOrders.length, color: 'bg-gray-100 text-gray-800' },
-    { key: 'pending', label: '待出納', count: pendingOrders.length, color: 'bg-yellow-100 text-yellow-800' },
-    { key: 'executed', label: '已執行', count: executedOrders.length, color: 'bg-green-100 text-green-800' },
-    { key: 'rejected', label: '已拒絕', count: rejectedOrders.length, color: 'bg-red-100 text-red-800' },
-    ...(advancedOrders.length > 0 ? [{ key: 'advanced', label: '已代墊', count: advancedOrders.length, color: 'bg-purple-100 text-purple-800' }] : []),
-    ...(returnedOrders.length > 0 ? [{ key: 'returned', label: '已退貨', count: returnedOrders.length, color: 'bg-orange-100 text-orange-800' }] : []),
-  ];
-
-  function getDisplayOrders() {
-    switch (activeTab) {
-      case 'draft': return draftOrders;
-      case 'pending': return pendingOrders;
-      case 'executed': return executedOrders;
-      case 'rejected': return rejectedOrders;
-      case 'advanced': return advancedOrders;
-      case 'returned': return returnedOrders;
-      default: return orders;
-    }
-  }
-
-  const rawDisplayOrders = getDisplayOrders();
-  // 搜尋篩選
-  const displayOrders = useMemo(() => {
-    return rawDisplayOrders.filter(o => {
-      if (finSearchDateFrom) {
-        const d = (o.createdAt || '').slice(0, 10);
-        if (d < finSearchDateFrom) return false;
-      }
-      if (finSearchDateTo) {
-        const d = (o.createdAt || '').slice(0, 10);
-        if (d > finSearchDateTo) return false;
-      }
-      if (finSearchWarehouse && (o.warehouse || '') !== finSearchWarehouse) return false;
-      if (finSearchSupplierId && String(o.supplierId || '') !== finSearchSupplierId) return false;
-      if (finSearchPaymentMethod && (o.paymentMethod || '') !== finSearchPaymentMethod) return false;
-      return true;
-    });
-  }, [rawDisplayOrders, finSearchDateFrom, finSearchDateTo, finSearchWarehouse, finSearchSupplierId, finSearchPaymentMethod]);
-
-  const { sortKey: finSortKey, sortDir: finSortDir, toggleSort: toggleFinSort } = useColumnSort('createdAt', 'desc');
-  const sortedDisplayOrders = useMemo(
-    () =>
-      sortRows(displayOrders, finSortKey, finSortDir, {
-        orderNo: (o) => o.orderNo || '',
-        supplierName: (o) => o.supplierName || '',
-        warehouse: (o) => o.warehouse || '',
-        paymentMethod: (o) => o.paymentMethod || '',
-        invoiceCount: (o) => o.invoices?.length || 0,
-        discount: (o) => Number(o.discount || 0),
-        netAmount: (o) => Number(o.netAmount || 0),
-        status: (o) => o.status || '',
-        createdAt: (o) => o.createdAt || '',
-      }),
-    [displayOrders, finSortKey, finSortDir]
-  );
 
   // 按館別列印報表：依報表月份篩選草稿，再依館別分組
   const draftOrdersInReportMonth = draftOrders.filter(o => {
@@ -844,20 +355,6 @@ export default function PaymentPage() {
     a.download = `付款單_${todayStr()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  function getStatusBadge(status) {
-    const map = {
-      '草稿': 'bg-gray-100 text-gray-800',
-      '待出納': 'bg-yellow-100 text-yellow-800',
-      '已執行': 'bg-green-100 text-green-800',
-      '已拒絕': 'bg-red-100 text-red-800',
-      '已作廢': 'bg-gray-200 text-gray-500',
-      '已代墊': 'bg-purple-100 text-purple-800',
-      '已退貨': 'bg-orange-100 text-orange-800',
-      '部分退貨': 'bg-amber-100 text-amber-800',
-    };
-    return map[status] || 'bg-gray-100 text-gray-800';
   }
 
   // Build traceability chain for an executed order

@@ -23,6 +23,7 @@ export async function PUT(req, { params }) {
         invoiceNo:    body.invoiceNo    || null,
         vendorTaxId:  body.vendorTaxId  || null,
         vendorName:   body.vendorName   || null,
+        supplierId:   body.supplierId   ? Number(body.supplierId) : null,
         materialType: body.materialType || null,
         itemName:     body.itemName     || null,
         amount:       Number(body.amount      || 0),
@@ -33,7 +34,10 @@ export async function PUT(req, { params }) {
         period:       body.period       || null,
         note:         body.note         || null,
       },
-      include: { project: { select: { id: true, code: true, name: true } } },
+      include: {
+        project:  { select: { id: true, code: true, name: true } },
+        supplier: { select: { id: true, name: true, taxId: true } },
+      },
     });
     return NextResponse.json(row);
   } catch (e) {
@@ -54,6 +58,7 @@ export async function PATCH(req, { params }) {
   try {
     const data = {};
     if ('projectId'    in body) data.projectId    = body.projectId    ? Number(body.projectId) : null;
+    if ('supplierId'   in body) data.supplierId   = body.supplierId   ? Number(body.supplierId) : null;
     if ('invoiceDate'  in body) data.invoiceDate  = body.invoiceDate;
     if ('invoiceNo'    in body) data.invoiceNo    = body.invoiceNo    || null;
     if ('vendorTaxId'  in body) data.vendorTaxId  = body.vendorTaxId  || null;
@@ -74,7 +79,10 @@ export async function PATCH(req, { params }) {
     const row = await prisma.companyInputInvoice.update({
       where: { id },
       data,
-      include: { project: { select: { id: true, code: true, name: true } } },
+      include: {
+        project:  { select: { id: true, code: true, name: true } },
+        supplier: { select: { id: true, name: true, taxId: true } },
+      },
     });
     return NextResponse.json(row);
   } catch (e) {

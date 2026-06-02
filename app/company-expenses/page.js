@@ -38,12 +38,12 @@ function sum(arr, key) {
 
 const EMPTY_EXPENSE = {
   expenseDate: '', invoiceNo: '', invoiceType: '', vendorTaxId: '',
-  vendorName: '', itemName: '', amount: '', taxAmount: '', otherAmount: '', totalAmount: '', period: '', note: '',
+  vendorName: '', supplierId: '', itemName: '', amount: '', taxAmount: '', otherAmount: '', totalAmount: '', period: '', note: '',
 };
 
 const EMPTY_INVOICE = {
   invoiceDate: '', invoiceNo: '', vendorTaxId: '', vendorName: '',
-  materialType: '', itemName: '', amount: '', taxAmount: '', totalAmount: '',
+  supplierId: '', materialType: '', itemName: '', amount: '', taxAmount: '', totalAmount: '',
   projectId: '', location: '', period: '', note: '',
 };
 
@@ -57,6 +57,7 @@ function CompanyExpensesPageInner() {
   const [expenses,   setExpenses]   = useState([]);
   const [invoices,   setInvoices]   = useState([]);
   const [projects,   setProjects]   = useState([]);
+  const [suppliers,  setSuppliers]  = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [periodFilter, setPeriodFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
@@ -87,14 +88,17 @@ function CompanyExpensesPageInner() {
   async function load() {
     setLoading(true);
     try {
-      const [eRes, iRes, pRes] = await Promise.all([
+      const [eRes, iRes, pRes, sRes] = await Promise.all([
         fetch('/api/company-expenses?type=expense'),
         fetch('/api/company-expenses?type=invoice'),
         fetch('/api/engineering/projects'),
+        fetch('/api/suppliers?limit=500'),
       ]);
       setExpenses(await eRes.json());
       setInvoices(await iRes.json());
       setProjects(await pRes.json());
+      const sData = await sRes.json();
+      setSuppliers(Array.isArray(sData) ? sData : (sData.data || []));
     } catch (e) {
       addToast('載入失敗：' + e.message, 'error');
     } finally {
@@ -135,8 +139,8 @@ function CompanyExpensesPageInner() {
       setExpenseForm({
         expenseDate: row.expenseDate || '', invoiceNo: row.invoiceNo || '',
         invoiceType: row.invoiceType || '', vendorTaxId: row.vendorTaxId || '',
-        vendorName: row.vendorName || '', itemName: row.itemName || '',
-        amount: row.amount || '', taxAmount: row.taxAmount || '',
+        vendorName: row.vendorName || '', supplierId: row.supplierId ? String(row.supplierId) : '',
+        itemName: row.itemName || '', amount: row.amount || '', taxAmount: row.taxAmount || '',
         otherAmount: row.otherAmount || '', totalAmount: row.totalAmount || '',
         period: row.period || '', note: row.note || '',
       });
@@ -144,6 +148,7 @@ function CompanyExpensesPageInner() {
       setInvoiceForm({
         invoiceDate: row.invoiceDate || '', invoiceNo: row.invoiceNo || '',
         vendorTaxId: row.vendorTaxId || '', vendorName: row.vendorName || '',
+        supplierId: row.supplierId ? String(row.supplierId) : '',
         materialType: row.materialType || '', itemName: row.itemName || '',
         amount: row.amount || '', taxAmount: row.taxAmount || '',
         totalAmount: row.totalAmount || '', projectId: row.projectId ? String(row.projectId) : '',
@@ -578,6 +583,22 @@ function CompanyExpensesPageInner() {
                       </select>
                     </div>
                   </div>
+                  <div>
+                    <label htmlFor="f-exp-sup" className="text-xs text-gray-600">連結廠商主檔（選填）</label>
+                    <select id="f-exp-sup" value={expenseForm.supplierId}
+                      onChange={e => {
+                        const sup = suppliers.find(s => String(s.id) === e.target.value);
+                        setExpenseForm(f => ({
+                          ...f,
+                          supplierId: e.target.value,
+                          ...(sup ? { vendorName: sup.name, vendorTaxId: sup.taxId || f.vendorTaxId } : {}),
+                        }));
+                      }}
+                      className="w-full border rounded px-2 py-1.5 text-sm">
+                      <option value="">（不連結）</option>
+                      {suppliers.map(s => <option key={s.id} value={String(s.id)}>{s.name}{s.taxId ? ` (${s.taxId})` : ''}</option>)}
+                    </select>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label htmlFor="f-18" className="text-xs text-gray-600">發票號碼</label>
@@ -655,6 +676,22 @@ function CompanyExpensesPageInner() {
                         {PERIODS.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
+                  </div>
+                  <div>
+                    <label htmlFor="f-inv-sup" className="text-xs text-gray-600">連結廠商主檔（選填）</label>
+                    <select id="f-inv-sup" value={invoiceForm.supplierId}
+                      onChange={e => {
+                        const sup = suppliers.find(s => String(s.id) === e.target.value);
+                        setInvoiceForm(f => ({
+                          ...f,
+                          supplierId: e.target.value,
+                          ...(sup ? { vendorName: sup.name, vendorTaxId: sup.taxId || f.vendorTaxId } : {}),
+                        }));
+                      }}
+                      className="w-full border rounded px-2 py-1.5 text-sm">
+                      <option value="">（不連結）</option>
+                      {suppliers.map(s => <option key={s.id} value={String(s.id)}>{s.name}{s.taxId ? ` (${s.taxId})` : ''}</option>)}
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
