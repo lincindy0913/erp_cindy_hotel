@@ -311,7 +311,7 @@ export default function InventoryPage() {
     try {
       const url = warehouse ? `/api/inventory/requisitions?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory/requisitions';
       const res = await fetch(url);
-      const data = await res.ok ? await res.json() : [];
+      const data = res.ok ? await res.json() : [];
       setRequisitions(Array.isArray(data) ? data : []);
     } catch { setRequisitions([]); }
     setRequisitionLoading(false);
@@ -322,7 +322,7 @@ export default function InventoryPage() {
     try {
       const url = warehouse ? `/api/inventory/transfers?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory/transfers';
       const res = await fetch(url);
-      const data = await res.ok ? await res.json() : [];
+      const data = res.ok ? await res.json() : [];
       setTransfers(Array.isArray(data) ? data : []);
     } catch { setTransfers([]); }
     setTransferLoading(false);
@@ -333,7 +333,7 @@ export default function InventoryPage() {
     try {
       const url = warehouse ? `/api/inventory/stock-counts?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory/stock-counts';
       const res = await fetch(url);
-      const data = await res.ok ? await res.json() : [];
+      const data = res.ok ? await res.json() : [];
       setStockCounts(Array.isArray(data) ? data : []);
     } catch { setStockCounts([]); }
     setCountLoading(false);
