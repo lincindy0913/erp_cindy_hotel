@@ -24,42 +24,14 @@ export async function GET(request) {
       ];
     }
 
-    // Try to filter by isActive, handle gracefully if field doesn't exist
-    try {
-      const products = await prisma.product.findMany({
-        where: { ...where, isActive: true },
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          unit: true,
-          costPrice: true
-        },
-        orderBy: { name: 'asc' },
-        take: 20
-      });
+    const products = await prisma.product.findMany({
+      where: { ...where, isActive: true },
+      select: { id: true, name: true, code: true, unit: true, costPrice: true },
+      orderBy: { name: 'asc' },
+      take: 20,
+    });
 
-      return NextResponse.json(products);
-    } catch (innerError) {
-      // If isActive field doesn't exist, query without it
-      if (innerError.code === 'P2009' || innerError.message?.includes('isActive') || innerError.message?.includes('is_active')) {
-        const products = await prisma.product.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            unit: true,
-            costPrice: true
-          },
-          orderBy: { name: 'asc' },
-          take: 20
-        });
-
-        return NextResponse.json(products);
-      }
-      throw innerError;
-    }
+    return NextResponse.json(products);
   } catch (error) {
     return handleApiError(error);
   }
