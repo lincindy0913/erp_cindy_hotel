@@ -7,6 +7,7 @@ import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getSystemQty } from '@/lib/inventory-helpers';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +68,7 @@ export async function POST(request) {
     const date = countDate || todayStr();
 
     const created = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, date, warehouse);
       // 後端即時計算每個品項的 systemQty，前端值完全忽略
       const itemData = await Promise.all(
         validItems.map(async (i) => {

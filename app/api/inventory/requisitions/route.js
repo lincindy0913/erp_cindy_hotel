@@ -8,6 +8,7 @@ import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getSystemQty } from '@/lib/inventory-helpers';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,7 @@ export async function POST(request) {
     const date = requisitionDate || todayStr();
 
     const created = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, date, warehouse);
       // 在 transaction 內即時查現存量，防止超領
       const available = await getSystemQty(tx, Number(productId), warehouse);
       if (available < Number(quantity)) {

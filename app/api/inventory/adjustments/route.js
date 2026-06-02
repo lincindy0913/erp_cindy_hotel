@@ -7,6 +7,7 @@ import { todayStr } from '@/lib/localDate';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextSequence } from '@/lib/sequence-generator';
 import { getSystemQty } from '@/lib/inventory-helpers';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,7 @@ export async function POST(request) {
 
     // 整個讀-計算-寫流程都在同一個 transaction 內，消除競爭條件
     const created = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, date, warehouse);
       // getSystemQty 在 tx 內執行，讀寫原子化
       const systemQty = await getSystemQty(tx, Number(productId), warehouse);
       const actualQty = Number(targetQty);

@@ -7,6 +7,7 @@ import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-acces
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +70,7 @@ export async function POST(request) {
     const date = transferDate || todayStr();
 
     const created = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, date, fromWarehouse);
       const transferNo = await nextSequence(tx, 'inventoryTransfer', 'transferNo', `TRF-${date.replace(/-/g, '')}-`);
       return tx.inventoryTransfer.create({
       data: {
