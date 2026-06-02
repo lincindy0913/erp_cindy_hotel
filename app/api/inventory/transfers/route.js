@@ -52,7 +52,7 @@ export async function GET(request) {
 
 // POST: 新增調撥單（簡化：單品項一筆）
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.INVENTORY_VIEW);
+  const auth = await requirePermission(PERMISSIONS.INVENTORY_EDIT);
   if (!auth.ok) return auth.response;
 
   try {
