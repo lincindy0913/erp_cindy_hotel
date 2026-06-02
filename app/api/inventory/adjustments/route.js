@@ -6,50 +6,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { todayStr } from '@/lib/localDate';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextSequence } from '@/lib/sequence-generator';
+import { getSystemQty } from '@/lib/inventory-helpers';
 
 export const dynamic = 'force-dynamic';
-
-/**
- * Calculate current system qty for a product+warehouse.
- * Must be called with a transaction client (tx) so the read is inside the
- * same transaction as the subsequent write, preventing diff race conditions.
- */
-async function getSystemQty(tx, productId, warehouse) {
-  const whereWarehouse = warehouse
-    ? { OR: [{ inventoryWarehouse: warehouse }, { purchaseMaster: { warehouse } }] }
-    : {};
-
-  const [purchaseAgg, countItems, transfersOut, transfersIn] = await Promise.all([
-    tx.purchaseDetail.aggregate({
-      where: { productId, status: '已入庫', ...whereWarehouse },
-      _sum: { quantity: true },
-    }),
-    tx.stockCountItem.findMany({
-      where: { productId, ...(warehouse ? { stockCount: { warehouse } } : {}) },
-    }).catch(() => []),
-    tx.inventoryTransfer.findMany({
-      where: { ...(warehouse ? { fromWarehouse: warehouse } : {}) },
-      include: { items: { where: { productId } } },
-    }).catch(() => []),
-    tx.inventoryTransfer.findMany({
-      where: { ...(warehouse ? { toWarehouse: warehouse } : {}) },
-      include: { items: { where: { productId } } },
-    }).catch(() => []),
-  ]);
-
-  const reqAgg = await tx.inventoryRequisition.aggregate({
-    where: { productId, ...(warehouse ? { warehouse } : {}) },
-    _sum: { quantity: true },
-  }).catch(() => ({ _sum: { quantity: null } }));
-
-  const purchaseQty = purchaseAgg._sum.quantity || 0;
-  const reqQty      = reqAgg._sum.quantity || 0;
-  const outQty      = transfersOut.reduce((s, t) => s + t.items.reduce((ss, i) => ss + (i.quantity || 0), 0), 0);
-  const inQty       = transfersIn.reduce((s,  t) => s + t.items.reduce((ss, i) => ss + (i.quantity || 0), 0), 0);
-  const adjQty      = countItems.reduce((s, ci) => s + (ci.diff || 0), 0);
-
-  return purchaseQty - reqQty - outQty + inQty + adjQty;
-}
 
 // POST: Create a manual inventory adjustment (stock count) for a product
 export async function POST(request) {

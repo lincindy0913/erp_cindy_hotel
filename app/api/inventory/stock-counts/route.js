@@ -6,12 +6,12 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { localDateStr } from '@/lib/localDate';
 import { nextSequence } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getSystemQty } from '@/lib/inventory-helpers';
 
 export const dynamic = 'force-dynamic';
 
 function todayStr() {
-  const d = new Date();
-  return localDateStr(d);
+  return localDateStr(new Date());
 }
 
 // GET: 盤點記錄列表
@@ -42,9 +42,10 @@ export async function GET(request) {
   }
 }
 
-// POST: 新增盤點（簡化：一次性送出，items: [{ productId, systemQty, actualQty }]）
+// POST: 新增盤點（items: [{ productId, actualQty, note }]）
+// systemQty 由後端即時計算，前端傳入的 systemQty 一律忽略
 export async function POST(request) {
-  const auth = await requirePermission(PERMISSIONS.INVENTORY_VIEW);
+  const auth = await requirePermission(PERMISSIONS.INVENTORY_EDIT);
   if (!auth.ok) return auth.response;
 
   try {
@@ -58,50 +59,59 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請至少新增一筆盤點明細', 400);
     }
 
-    const date = countDate || todayStr();
-
-    const itemData = items.map((i) => {
-      const sys = Number(i.systemQty) || 0;
-      const act = Number(i.actualQty) ?? sys;
-      const diff = act - sys;
-      return {
-        productId: Number(i.productId),
-        systemQty: sys,
-        actualQty: act,
-        diff,
-        note: i.note || null,
-      };
-    }).filter((i) => i.productId > 0);
-
-    if (itemData.length === 0) {
+    const validItems = items.filter(i => Number(i.productId) > 0);
+    if (validItems.length === 0) {
       return createErrorResponse('VALIDATION_FAILED', '無有效盤點明細', 400);
     }
 
+    const date = countDate || todayStr();
+
     const created = await prisma.$transaction(async (tx) => {
+      // 後端即時計算每個品項的 systemQty，前端值完全忽略
+      const itemData = await Promise.all(
+        validItems.map(async (i) => {
+          const productId = Number(i.productId);
+          const sys = await getSystemQty(tx, productId, warehouse);
+          const act = Number(i.actualQty) ?? sys;
+          return {
+            productId,
+            systemQty: sys,
+            actualQty: act,
+            diff: act - sys,
+            note: i.note || null,
+          };
+        })
+      );
+
       const countNo = await nextSequence(tx, 'stockCount', 'countNo', `CNT-${date.replace(/-/g, '')}-`);
+
       return tx.stockCount.create({
-      data: {
-        countNo,
-        warehouse,
-        countDate: date,
-        status: '已確認',
-        note: note || null,
-        items: { create: itemData },
-      },
-      include: {
-        items: {
-          include: { product: { select: { id: true, code: true, name: true, unit: true } } },
+        data: {
+          countNo,
+          warehouse,
+          countDate: date,
+          status: '已確認',
+          note: note || null,
+          items: { create: itemData },
         },
-      },
+        include: {
+          items: {
+            include: { product: { select: { id: true, code: true, name: true, unit: true } } },
+          },
+        },
+      });
     });
-    }); // end $transaction
 
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.INVENTORY_STOCK_COUNT_CREATE,
       targetModule: 'inventory_stock_counts',
       targetRecordId: created.id,
       targetRecordNo: created.countNo,
-      afterState: { warehouse, itemCount: itemData.length, totalDiff: itemData.reduce((s, i) => s + i.diff, 0) },
+      afterState: {
+        warehouse,
+        itemCount: created.items.length,
+        totalDiff: created.items.reduce((s, i) => s + i.diff, 0),
+      },
       note: note || null,
     });
 
