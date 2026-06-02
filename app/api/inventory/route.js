@@ -21,17 +21,21 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const warehouse = searchParams.get('warehouse');
-    const status = searchParams.get('status');
+    const status    = searchParams.get('status');
+    const CAP       = 1000;
+    const limit     = Math.min(parseInt(searchParams.get('limit') || CAP), CAP);
 
     // Expand building → [building, ...children] so filtering works at both levels
     const whNames = await expandWarehouseNames(prisma, warehouse);
     const whValue = warehouseWhereValue(whNames);
 
-    // 只取得「列入庫存」的產品（上限 2000 筆防止 OOM）
-    const products = await prisma.product.findMany({
+    // 多取一筆用來判斷是否截斷，避免靜默丟失產品
+    const rawProducts = await prisma.product.findMany({
       where: { isInStock: true },
-      take: 2000,
+      take: limit + 1,
     });
+    const hasMore = rawProducts.length > limit;
+    const products = rawProducts.slice(0, limit);
 
     // v3: Try snapshot-based calculation first
     let snapshots = [];
@@ -283,6 +287,8 @@ export async function GET(request) {
 
     return NextResponse.json({
       data: inventory,
+      hasMore,
+      limit,
       calculationMode: snapshotMode ? 'snapshot' : 'full',
       snapshotInfo: snapshotMode ? { year: snapshotYear, month: snapshotMonth } : null,
     });
