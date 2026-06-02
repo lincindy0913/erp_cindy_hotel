@@ -95,14 +95,60 @@ export async function GET(request) {
         purchaseIncrMap.set(key, (purchaseIncrMap.get(key) || 0) + (d.quantity || 0));
       });
 
-      // 不扣銷貨：流程為進貨入庫 → 領用/調撥扣數量
+      // 快照後領用（減庫存）
+      const postReqWhere = { requisitionDate: { gt: snapshotEndDate } };
+      if (whValue) postReqWhere.warehouse = whValue;
+      const postRequisitions = await prisma.inventoryRequisition.findMany({ where: postReqWhere }).catch(() => []);
+      const reqIncrMap = new Map();
+      postRequisitions.forEach(r => {
+        const key = `${r.productId}_${r.warehouse || 'default'}`;
+        reqIncrMap.set(key, (reqIncrMap.get(key) || 0) + r.quantity);
+      });
+
+      // 快照後調撥（轉出減、轉入加）
+      const postOutWhere = { transferDate: { gt: snapshotEndDate }, ...(whValue ? { fromWarehouse: whValue } : {}) };
+      const postInWhere  = { transferDate: { gt: snapshotEndDate }, ...(whValue ? { toWarehouse:   whValue } : {}) };
+      const [postTransfersOut, postTransfersIn] = await Promise.all([
+        prisma.inventoryTransfer.findMany({ where: postOutWhere, include: { items: true } }).catch(() => []),
+        prisma.inventoryTransfer.findMany({ where: postInWhere,  include: { items: true } }).catch(() => []),
+      ]);
+      const outIncrMap = new Map();
+      const inIncrMap  = new Map();
+      postTransfersOut.forEach(t => t.items.forEach(i => {
+        const key = `${i.productId}_${t.fromWarehouse || 'default'}`;
+        outIncrMap.set(key, (outIncrMap.get(key) || 0) + i.quantity);
+      }));
+      postTransfersIn.forEach(t => t.items.forEach(i => {
+        const key = `${i.productId}_${t.toWarehouse || 'default'}`;
+        inIncrMap.set(key, (inIncrMap.get(key) || 0) + i.quantity);
+      }));
+
+      // 快照後盤點差異
+      const postCountItems = await prisma.stockCountItem.findMany({
+        where: {
+          stockCount: {
+            countDate: { gt: snapshotEndDate },
+            ...(whValue ? { warehouse: whValue } : {}),
+          },
+        },
+        include: { stockCount: { select: { warehouse: true } } },
+      }).catch(() => []);
+      const adjIncrMap = new Map();
+      postCountItems.forEach(ci => {
+        const key = `${ci.productId}_${ci.stockCount?.warehouse || 'default'}`;
+        adjIncrMap.set(key, (adjIncrMap.get(key) || 0) + (ci.diff || 0));
+      });
 
       inventory = products.map((product, index) => {
         const key = `${product.id}_${warehouse || 'default'}`;
         const snapshot = snapshotMap.get(key);
-        const closingQty = snapshot ? Number(snapshot.closingQty) : 0;
+        const closingQty   = snapshot ? Number(snapshot.closingQty) : 0;
         const purchaseIncr = purchaseIncrMap.get(key) || 0;
-        const currentQty = closingQty + purchaseIncr;
+        const reqIncr      = reqIncrMap.get(key)      || 0;
+        const outIncr      = outIncrMap.get(key)      || 0;
+        const inIncr       = inIncrMap.get(key)       || 0;
+        const adjIncr      = adjIncrMap.get(key)      || 0;
+        const currentQty   = closingQty + purchaseIncr - reqIncr - outIncr + inIncr + adjIncr;
         const threshold = product.lowStockThreshold || 10;
 
         return {
@@ -110,6 +156,10 @@ export async function GET(request) {
           productId: product.id,
           snapshotQty: closingQty,
           purchaseIncr,
+          requisitionIncr: reqIncr,
+          transferOutIncr: outIncr,
+          transferInIncr: inIncr,
+          countAdjIncr: adjIncr,
           salesIncr: 0,
           currentQty,
           product: {
