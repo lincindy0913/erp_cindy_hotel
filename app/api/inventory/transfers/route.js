@@ -35,17 +35,29 @@ export async function GET(request) {
       ];
     }
 
-    const list = await prisma.inventoryTransfer.findMany({
-      where,
-      include: {
-        items: {
-          include: { product: { select: { id: true, code: true, name: true, unit: true } } },
-        },
-      },
-      orderBy: { transferDate: 'desc' },
-    });
+    const page  = Math.max(parseInt(searchParams.get('page')  || '1'), 1);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
+    const skip  = (page - 1) * limit;
 
-    return NextResponse.json(list);
+    const [list, totalCount] = await Promise.all([
+      prisma.inventoryTransfer.findMany({
+        where,
+        include: {
+          items: {
+            include: { product: { select: { id: true, code: true, name: true, unit: true } } },
+          },
+        },
+        orderBy: { transferDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.inventoryTransfer.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: list,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+    });
   } catch (error) {
     return handleApiError(error);
   }

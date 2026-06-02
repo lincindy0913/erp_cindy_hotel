@@ -27,17 +27,29 @@ export async function GET(request) {
     const where = {};
     if (warehouse) where.warehouse = warehouse;
 
-    const list = await prisma.stockCount.findMany({
-      where,
-      include: {
-        items: {
-          include: { product: { select: { id: true, code: true, name: true, unit: true } } },
-        },
-      },
-      orderBy: { countDate: 'desc' },
-    });
+    const page  = Math.max(parseInt(searchParams.get('page')  || '1'), 1);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
+    const skip  = (page - 1) * limit;
 
-    return NextResponse.json(list);
+    const [list, totalCount] = await Promise.all([
+      prisma.stockCount.findMany({
+        where,
+        include: {
+          items: {
+            include: { product: { select: { id: true, code: true, name: true, unit: true } } },
+          },
+        },
+        orderBy: { countDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.stockCount.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: list,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+    });
   } catch (error) {
     return handleApiError(error);
   }

@@ -32,13 +32,25 @@ export async function GET(request) {
       where.warehouse = warehouseWhereValue(whNames);
     }
 
-    const list = await prisma.inventoryRequisition.findMany({
-      where,
-      include: { product: { select: { id: true, code: true, name: true, unit: true } } },
-      orderBy: { requisitionDate: 'desc' },
-    });
+    const page  = Math.max(parseInt(searchParams.get('page')  || '1'), 1);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
+    const skip  = (page - 1) * limit;
 
-    return NextResponse.json(list);
+    const [list, totalCount] = await Promise.all([
+      prisma.inventoryRequisition.findMany({
+        where,
+        include: { product: { select: { id: true, code: true, name: true, unit: true } } },
+        orderBy: { requisitionDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.inventoryRequisition.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      data: list,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+    });
   } catch (error) {
     return handleApiError(error);
   }
