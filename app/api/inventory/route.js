@@ -209,6 +209,9 @@ export async function GET(request) {
       });
 
       // 調撥：轉出減、轉入加
+      // 有倉篩選時分別以 fromWarehouse / toWarehouse 過濾，只算該倉的進出。
+      // 無倉篩選時兩個 where 都是 {}，同一張調撥單會同時進 transfersOut 和 transfersIn，
+      // 使 out 與 in 對同一 productId 完全抵消（內部調撥不改變全系統總量）→ 正確行為。
       const transferOutWhere = whValue ? { fromWarehouse: whValue } : {};
       const transferInWhere = whValue ? { toWarehouse: whValue } : {};
       const [transfersOut, transfersIn] = await Promise.all([
