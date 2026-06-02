@@ -82,14 +82,25 @@ export async function GET(request) {
         ? Math.round((consumedQty / avgQty) * (365 / days) * 10) / 10
         : 0;
 
-      // 分類
-      let classification;
+      // 分類 + 中文標籤 + 建議行動
+      let classification, label, suggestion;
       if (consumedQty === 0) {
         classification = 'dead';
+        label      = '呆料';
+        suggestion = lastReqDate
+          ? `自 ${lastReqDate} 起無任何領用，建議盤點確認或清倉`
+          : `從未被領用，建議確認是否仍有需要`;
       } else if (daysOfInventory !== null && daysOfInventory > 90) {
         classification = 'slow';
+        label      = '滯料';
+        suggestion = `以目前消耗速度（日均 ${Math.round(dailyAvg * 100) / 100} ${p.unit || '件'}）`
+          + `，現存量可撐約 ${daysOfInventory} 天，建議暫停採購`;
       } else {
         classification = 'active';
+        label      = '正常流動';
+        suggestion = daysOfInventory !== null && daysOfInventory < 14
+          ? `庫存僅剩約 ${daysOfInventory} 天用量，注意補貨`
+          : null;
       }
 
       return {
@@ -105,15 +116,18 @@ export async function GET(request) {
         inventoryValue:  Math.round(currentQty * costPrice * 100) / 100,
         lastReqDate,
         classification,
+        label,
+        suggestion,
         threshold:       p.lowStockThreshold || DEFAULT_LOW_STOCK_THRESHOLD,
       };
-    }).filter(r => r.currentQty > 0 || r.consumedQty > 0); // 空品項不顯示
+    }).filter(r => r.currentQty > 0 || r.consumedQty > 0);
 
     // 6. 分類彙總
     const byClass = { active: [], slow: [], dead: [] };
     for (const r of result) byClass[r.classification].push(r);
 
-    const summarize = (arr) => ({
+    const summarize = (arr, labelText) => ({
+      label:          labelText,
       count:          arr.length,
       totalValue:     Math.round(arr.reduce((s, r) => s + r.inventoryValue, 0) * 100) / 100,
       avgTurnoverRate: arr.length
@@ -130,9 +144,9 @@ export async function GET(request) {
         return order[a.classification] - order[b.classification];
       }),
       summary: {
-        active: summarize(byClass.active),
-        slow:   summarize(byClass.slow),
-        dead:   summarize(byClass.dead),
+        active: summarize(byClass.active, '正常流動'),
+        slow:   summarize(byClass.slow,   '滯料（庫存 > 90 天用量）'),
+        dead:   summarize(byClass.dead,   '呆料（區間內零消耗）'),
         totalInventoryValue: Math.round(result.reduce((s, r) => s + r.inventoryValue, 0) * 100) / 100,
       },
     });
