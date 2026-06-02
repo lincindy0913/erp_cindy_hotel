@@ -82,10 +82,28 @@ export async function PATCH(request, { params }) {
     const existing = await prisma.bankStatement.findUnique({ where: { id } });
     if (!existing) return createErrorResponse('NOT_FOUND', '找不到調節表', 404);
 
-    // 自動判斷狀態
-    let status = data.status ?? existing.status;
-    if (data.closingBankBalance != null && existing.closingBankBalance != null) {
-      // 計算系統期末並比較
+    // 計算系統期末（與 GET 邏輯一致）
+    const [y, m]    = existing.yearMonth.split('-').map(Number);
+    const startDate = `${existing.yearMonth}-01`;
+    const endDate   = `${existing.yearMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+    const sysTxs = await prisma.cashTransaction.findMany({
+      where: { accountId: existing.accountId, transactionDate: { gte: startDate, lte: endDate } },
+      select: { type: true, amount: true, fee: true, hasFee: true },
+    });
+    const closingSystem = Number(existing.openingBalance) + calcBalanceDelta(sysTxs);
+
+    // 自動判斷狀態（明確傳入 status 時優先採用；否則根據銀行期末與系統期末比較）
+    const effectiveClosingBank = data.closingBankBalance != null
+      ? Number(data.closingBankBalance)
+      : (existing.closingBankBalance != null ? Number(existing.closingBankBalance) : null);
+
+    let status;
+    if (data.status != null) {
+      status = data.status;
+    } else if (effectiveClosingBank != null) {
+      status = Math.abs(effectiveClosingBank - closingSystem) < 0.005 ? '已平衡' : '有差異';
+    } else {
+      status = existing.status;
     }
 
     const updated = await prisma.bankStatement.update({
