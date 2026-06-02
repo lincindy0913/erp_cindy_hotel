@@ -64,6 +64,7 @@ export async function POST(request) {
           warehouse,
           countDate: date,
           status: '已確認',
+          type: 'adjustment',
           note: reason || `手動調整：${product.name}`,
           items: {
             create: [{

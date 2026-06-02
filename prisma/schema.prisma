@@ -1327,6 +1327,7 @@ model StockCount {
   warehouse  String   @db.VarChar(100)
   countDate  String   @map("count_date") @db.VarChar(20)
   status     String   @default("已確認") @db.VarChar(20)
+  type       String   @default("count") @db.VarChar(20)  // count | adjustment
   note       String?  @db.Text
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -1334,6 +1335,7 @@ model StockCount {
 
   @@index([warehouse])
   @@index([countDate])
+  @@index([type])
   @@map("stock_counts")
 }
 

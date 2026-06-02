@@ -95,6 +95,7 @@ export async function POST(request) {
           warehouse,
           countDate: date,
           status: '已確認',
+          type: 'count',
           note: note || null,
           items: { create: itemData },
         },
