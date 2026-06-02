@@ -80,8 +80,8 @@ export async function PUT(request, { params }) {
       action: AUDIT_ACTIONS.PRODUCT_UPDATE,
       targetModule: 'products',
       targetRecordId: id,
-      beforeState: { name: existing.name, code: existing.code, category: existing.category },
-      afterState: { name: updated.name, code: updated.code, category: updated.category },
+      beforeState: { name: existing.name, code: existing.code, category: existing.category, costPrice: Number(existing.costPrice), salesPrice: Number(existing.salesPrice) },
+      afterState:  { name: updated.name,  code: updated.code,  category: updated.category,  costPrice: Number(updated.costPrice),  salesPrice: Number(updated.salesPrice)  },
     });
 
     return NextResponse.json(updated);
