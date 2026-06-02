@@ -72,6 +72,11 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請至少新增一筆盤點明細', 400);
     }
 
+    const productIds = items.map(i => Number(i.productId)).filter(id => id > 0);
+    if (new Set(productIds).size !== productIds.length) {
+      return createErrorResponse('VALIDATION_FAILED', '同一盤點單內不可重複同一產品', 400);
+    }
+
     const validItems = items.filter(i => Number(i.productId) > 0);
     if (validItems.length === 0) {
       return createErrorResponse('VALIDATION_FAILED', '無有效盤點明細', 400);
