@@ -89,14 +89,17 @@ export async function GET(request) {
             purchaseDate: { gt: snapshotEndDate },
           },
         },
-        include: {
+        select: {
+          productId: true, quantity: true, inventoryWarehouse: true,
           purchaseMaster: { select: { purchaseDate: true, warehouse: true } },
         },
       });
 
       const purchaseIncrMap = new Map();
       postPurchases.forEach(d => {
-        const key = `${d.productId}_${d.purchaseMaster?.warehouse || 'default'}`;
+        // 優先用 inventoryWarehouse（實際入庫倉），與 v2 邏輯一致
+        const w = d.inventoryWarehouse || d.purchaseMaster?.warehouse || 'default';
+        const key = `${d.productId}_${w}`;
         purchaseIncrMap.set(key, (purchaseIncrMap.get(key) || 0) + (d.quantity || 0));
       });
 
