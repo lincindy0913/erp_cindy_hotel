@@ -4,6 +4,7 @@ import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { getSystemQty } from '@/lib/inventory-helpers';
 
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
@@ -39,6 +40,18 @@ export async function PUT(request, { params }) {
 
     if (isInStock && !data.warehouseLocation) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '列入庫存時必須填寫倉庫位置', 400);
+    }
+
+    // 從「列入庫存」切換為「不列入」時，必須確認現存量已歸零
+    if (existing.isInStock && !isInStock) {
+      const currentQty = await getSystemQty(prisma, id, null);
+      if (currentQty !== 0) {
+        return createErrorResponse(
+          'PRODUCT_HAS_STOCK',
+          `此產品目前庫存尚有 ${currentQty} 件，請先清空庫存再停用`,
+          400
+        );
+      }
     }
 
     if (data.code !== undefined && data.code !== existing.code) {
