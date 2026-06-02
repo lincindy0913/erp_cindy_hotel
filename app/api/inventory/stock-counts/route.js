@@ -72,7 +72,9 @@ export async function POST(request) {
         validItems.map(async (i) => {
           const productId = Number(i.productId);
           const sys = await getSystemQty(tx, productId, warehouse);
-          const act = Number(i.actualQty) ?? sys;
+          const act = (i.actualQty !== undefined && i.actualQty !== null && i.actualQty !== '' && !Number.isNaN(Number(i.actualQty)))
+            ? Number(i.actualQty)
+            : sys;
           return {
             productId,
             systemQty: sys,
