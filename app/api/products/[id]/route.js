@@ -89,6 +89,18 @@ export async function DELETE(request, { params }) {
       return createErrorResponse('NOT_FOUND', '產品不存在', 404);
     }
 
+    const [purchaseCnt, requisitionCnt, transferCnt, stockCountCnt, engMaterialCnt] = await Promise.all([
+      prisma.purchaseDetail.count({ where: { productId: id } }),
+      prisma.inventoryRequisition.count({ where: { productId: id } }),
+      prisma.inventoryTransferItem.count({ where: { productId: id } }),
+      prisma.stockCountItem.count({ where: { productId: id } }),
+      prisma.engineeringMaterial.count({ where: { productId: id } }).catch(() => 0),
+    ]);
+    const total = purchaseCnt + requisitionCnt + transferCnt + stockCountCnt + engMaterialCnt;
+    if (total > 0) {
+      return createErrorResponse('PRODUCT_HAS_DEPENDENCIES', `產品已被使用（${total} 筆紀錄），請改用停用功能`, 400);
+    }
+
     await prisma.product.delete({ where: { id } });
     return NextResponse.json({ message: '產品已刪除' });
   } catch (error) {
