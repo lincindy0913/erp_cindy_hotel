@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { calcBalanceDelta } from '@/lib/calc-balance-delta';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,16 +32,14 @@ export async function GET(request, { params }) {
       },
       select: {
         id: true, transactionNo: true, transactionDate: true,
-        type: true, amount: true, description: true, sourceType: true,
+        type: true, amount: true, fee: true, hasFee: true,
+        description: true, sourceType: true,
       },
       orderBy: [{ transactionDate: 'asc' }, { id: 'asc' }],
     });
 
-    // 計算系統期末餘額
-    const sysPeriodSum = sysTxs.reduce((s, t) => {
-      return s + (t.type === '收入' ? Number(t.amount) : -Number(t.amount));
-    }, 0);
-    const closingSystemBalance = Number(stmt.openingBalance) + sysPeriodSum;
+    // 計算系統期末餘額（收入/移轉入加、支出/移轉減、含手續費）
+    const closingSystemBalance = Number(stmt.openingBalance) + calcBalanceDelta(sysTxs);
 
     // 每筆存摺明細對應的 sys tx
     const matchedTxIds = new Set(stmt.lines.filter(l => l.matchedTxId).map(l => l.matchedTxId));

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { calcBalanceDelta } from '@/lib/calc-balance-delta';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,12 +77,12 @@ export async function POST(request) {
     const [y, m]  = yearMonth.split('-').map(Number);
     const startDate = `${yearMonth}-01`;
 
-    // 取期初餘額：startDate 前所有交易的累計
-    const beforeTxs = await prisma.cashTransaction.aggregate({
+    // 取期初餘額：startDate 前所有交易，依 type 決定正負（amount 永遠正數）
+    const beforeTxs = await prisma.cashTransaction.findMany({
       where: { accountId: parseInt(accountId), transactionDate: { lt: startDate } },
-      _sum: { amount: true },
+      select: { type: true, amount: true, fee: true, hasFee: true },
     });
-    const openingBalance = Number(account.openingBalance) + Number(beforeTxs._sum.amount || 0);
+    const openingBalance = Number(account.openingBalance) + calcBalanceDelta(beforeTxs);
 
     const existing = await prisma.bankStatement.findUnique({
       where: { accountId_yearMonth: { accountId: parseInt(accountId), yearMonth } },
