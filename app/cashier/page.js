@@ -154,10 +154,9 @@ export default function CashierPage() {
     } catch { setAccounts([]); }
   }
 
-  // 待執行：待出納且未被退回；已退回：待出納但曾被出納退回（會計修改後可重新送出）
-  const pendingOrders = orders.filter(o => o.status === '待出納' && !o.rejectedAt);
+  const pendingOrders  = orders.filter(o => o.status === '待出納');
   const executedOrders = orders.filter(o => o.status === '已執行');
-  const rejectedOrders = orders.filter(o => o.status === '待出納' && o.rejectedAt);
+  const rejectedOrders = orders.filter(o => o.status === '已拒絕');
 
   function toggleExpand(order) {
     if (expandedOrderId === order.id) {

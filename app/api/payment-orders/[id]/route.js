@@ -104,13 +104,13 @@ export async function PUT(request, { params }) {
         await tx.paymentOrder.update({
           where: { id },
           data: {
-            status: '待出納',
+            status: '已拒絕',
             rejectedBy: session?.user?.email || null,
             rejectedAt: new Date(),
             rejectedReason: data.reason || null,
           },
         });
-        return { action: 'reject', order, afterStatus: '待出納', message: '付款單已退回至待出納，請於付款頁修改後重新送出' };
+        return { action: 'reject', order, afterStatus: '已拒絕', message: '付款單已拒絕，請修改後重新送出' };
       }
 
       // ── Void action ──

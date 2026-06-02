@@ -1265,8 +1265,8 @@ export default function PaymentPage() {
                                 作廢
                               </button>
                             )}
-                            {order.status === '待出納' && order.rejectedAt && isLoggedIn && (
-                              <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">曾被退回，請修改後重新送出</span>
+                            {order.status === '已拒絕' && isLoggedIn && (
+                              <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">已拒絕，請修改後重新送出</span>
                             )}
                             {order.status === '已拒絕' && isLoggedIn && (
                               <>
@@ -1305,15 +1305,11 @@ export default function PaymentPage() {
                         >
                           <td colSpan={(activeTab === 'draft' || activeTab === 'rejected') ? 11 : 10} className="px-4 py-4">
                             <div className="space-y-4">
-                              {/* 曾被出納退回（待出納但 rejectedAt 有值）：請修改後重新送出 */}
-                              {order.status === '待出納' && order.rejectedAt && (
+                              {/* 已拒絕：顯示退回提示（退回原因由下方紅色區塊顯示） */}
+                              {order.status === '已拒絕' && (
                                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                  <div className="text-sm font-semibold text-amber-800 mb-1">曾被出納退回</div>
-                                  <div className="text-sm text-amber-700">{order.rejectedReason || '（未填原因）'}</div>
-                                  {order.rejectedBy && (
-                                    <div className="text-xs text-amber-600 mt-1">退回人：{order.rejectedBy} | {order.rejectedAt ? new Date(order.rejectedAt).toLocaleString('zh-TW') : ''}</div>
-                                  )}
-                                  <p className="text-xs text-amber-600 mt-2">請修改資料正確後，存檔即會回到出納待執行列表。</p>
+                                  <div className="text-sm font-semibold text-amber-800 mb-1">付款單已被拒絕</div>
+                                  <p className="text-xs text-amber-600">請修改資料後，點擊「重新送出」即會回到出納待執行列表。</p>
                                 </div>
                               )}
                               {/* 拒絕原因（已拒絕狀態，若有） */}
