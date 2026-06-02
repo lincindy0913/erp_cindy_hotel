@@ -4,6 +4,7 @@ import { handleApiError } from '@/lib/error-handler';
 import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { expandWarehouseNames, warehouseWhereValue } from '@/lib/warehouse-access';
+import { DEFAULT_LOW_STOCK_THRESHOLD } from '@/lib/inventory-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,7 +158,7 @@ export async function GET(request) {
         const inIncr       = inIncrMap.get(key)       || 0;
         const adjIncr      = adjIncrMap.get(key)      || 0;
         const currentQty   = closingQty + purchaseIncr - reqIncr - outIncr + inIncr + adjIncr;
-        const threshold = product.lowStockThreshold || 10;
+        const threshold = product.lowStockThreshold || DEFAULT_LOW_STOCK_THRESHOLD;
 
         return {
           id: index + 1,
@@ -252,7 +253,7 @@ export async function GET(request) {
         const inQty = transferInMap.get(product.id) || 0;
         const adjQty = countDiffMap.get(product.id) || 0;
         const currentQty = purchaseQty - reqQty - outQty + inQty + adjQty;
-        const threshold = product.lowStockThreshold || 10;
+        const threshold = product.lowStockThreshold || DEFAULT_LOW_STOCK_THRESHOLD;
 
         const locSet = inventoryWarehouseMap.get(product.id);
         return {
