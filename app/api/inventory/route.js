@@ -174,64 +174,69 @@ export async function GET(request) {
       });
     } else {
       // Fallback: v2 full calculation (含領用、調撥、盤點)
-      // v2 fallback: 只計入已入庫的明細，待入庫尚未到庫不計入庫存
+      // v2 fallback: SQL groupBy 彙總，避免全表載入記憶體
       const purchaseWhere = { status: '已入庫' };
       if (whValue) {
         purchaseWhere.OR = [{ inventoryWarehouse: whValue }, { purchaseMaster: { warehouse: whValue } }];
       }
-      const purchaseDetails = await prisma.purchaseDetail.findMany({
-        where: purchaseWhere,
-        include: { purchaseMaster: { select: { warehouse: true } } },
-      });
-      const purchaseQtyMap = new Map();
-      const inventoryWarehouseMap = new Map(); // productId → [unique warehouse list]
-      purchaseDetails.forEach(d => {
-        const w = d.inventoryWarehouse || d.purchaseMaster?.warehouse || 'default';
-        const matchesFilter = !whNames || whNames.includes(w);
-        if (matchesFilter) {
-          purchaseQtyMap.set(d.productId, (purchaseQtyMap.get(d.productId) || 0) + (d.quantity || 0));
-          if (d.inventoryWarehouse) {
-            const locs = inventoryWarehouseMap.get(d.productId) || new Set();
-            locs.add(d.inventoryWarehouse);
-            inventoryWarehouseMap.set(d.productId, locs);
-          }
+
+      // 進貨量：DB 彙總，只回傳 (productId, SUM(quantity))
+      const [purchaseGroups, warehouseGroups] = await Promise.all([
+        prisma.purchaseDetail.groupBy({
+          by: ['productId'],
+          where: purchaseWhere,
+          _sum: { quantity: true },
+        }),
+        // inventoryWarehouses 欄位：需要 productId × inventoryWarehouse 維度
+        prisma.purchaseDetail.groupBy({
+          by: ['productId', 'inventoryWarehouse'],
+          where: { ...purchaseWhere, inventoryWarehouse: { not: null } },
+        }),
+      ]);
+      const purchaseQtyMap = new Map(purchaseGroups.map(g => [g.productId, g._sum.quantity || 0]));
+      const inventoryWarehouseMap = new Map();
+      warehouseGroups.forEach(g => {
+        if (g.inventoryWarehouse) {
+          const locs = inventoryWarehouseMap.get(g.productId) || new Set();
+          locs.add(g.inventoryWarehouse);
+          inventoryWarehouseMap.set(g.productId, locs);
         }
       });
 
       // 不扣銷貨：進貨入庫後僅以領用、調撥扣數量
 
-      // 領用：減庫存
-      const reqWhere = whValue ? { warehouse: whValue } : {};
-      const requisitions = await prisma.inventoryRequisition.findMany({ where: reqWhere }).catch(() => []);
-      const reqQtyMap = new Map();
-      requisitions.forEach(r => {
-        reqQtyMap.set(r.productId, (reqQtyMap.get(r.productId) || 0) + r.quantity);
-      });
-
-      // 調撥：轉出減、轉入加
-      // 有倉篩選時分別以 fromWarehouse / toWarehouse 過濾，只算該倉的進出。
-      // 無倉篩選時兩個 where 都是 {}，同一張調撥單會同時進 transfersOut 和 transfersIn，
-      // 使 out 與 in 對同一 productId 完全抵消（內部調撥不改變全系統總量）→ 正確行為。
-      const transferOutWhere = whValue ? { fromWarehouse: whValue } : {};
-      const transferInWhere = whValue ? { toWarehouse: whValue } : {};
-      const [transfersOut, transfersIn] = await Promise.all([
-        prisma.inventoryTransfer.findMany({ where: transferOutWhere, include: { items: true } }).catch(() => []),
-        prisma.inventoryTransfer.findMany({ where: transferInWhere, include: { items: true } }).catch(() => []),
-      ]);
-      const transferOutMap = new Map();
-      transfersOut.forEach(t => t.items.forEach(i => transferOutMap.set(i.productId, (transferOutMap.get(i.productId) || 0) + i.quantity)));
-      const transferInMap = new Map();
-      transfersIn.forEach(t => t.items.forEach(i => transferInMap.set(i.productId, (transferInMap.get(i.productId) || 0) + i.quantity)));
-
-      // 盤點差異
-      const countItems = await prisma.stockCountItem.findMany({
-        where: whValue ? { stockCount: { warehouse: whValue } } : {},
-        include: { stockCount: true },
+      // 領用：DB 彙總
+      const reqGroups = await prisma.inventoryRequisition.groupBy({
+        by: ['productId'],
+        where: whValue ? { warehouse: whValue } : {},
+        _sum: { quantity: true },
       }).catch(() => []);
-      const countDiffMap = new Map();
-      countItems.forEach(ci => {
-        countDiffMap.set(ci.productId, (countDiffMap.get(ci.productId) || 0) + (ci.diff || 0));
-      });
+      const reqQtyMap = new Map(reqGroups.map(g => [g.productId, g._sum.quantity || 0]));
+
+      // 調撥：在 item 層 groupBy，透過 relation 過濾 fromWarehouse / toWarehouse
+      // 有倉篩選時只算該倉進出；無倉篩選時 out 與 in 對同一 productId 完全抵消（正確行為）
+      const [outGroups, inGroups] = await Promise.all([
+        prisma.inventoryTransferItem.groupBy({
+          by: ['productId'],
+          where: whValue ? { transfer: { fromWarehouse: whValue } } : {},
+          _sum: { quantity: true },
+        }).catch(() => []),
+        prisma.inventoryTransferItem.groupBy({
+          by: ['productId'],
+          where: whValue ? { transfer: { toWarehouse: whValue } } : {},
+          _sum: { quantity: true },
+        }).catch(() => []),
+      ]);
+      const transferOutMap = new Map(outGroups.map(g => [g.productId, g._sum.quantity || 0]));
+      const transferInMap  = new Map(inGroups.map(g =>  [g.productId, g._sum.quantity || 0]));
+
+      // 盤點差異：DB 彙總
+      const countGroups = await prisma.stockCountItem.groupBy({
+        by: ['productId'],
+        where: whValue ? { stockCount: { warehouse: whValue } } : {},
+        _sum: { diff: true },
+      }).catch(() => []);
+      const countDiffMap = new Map(countGroups.map(g => [g.productId, g._sum.diff || 0]));
 
       inventory = products.map((product, index) => {
         const purchaseQty = purchaseQtyMap.get(product.id) || 0;
