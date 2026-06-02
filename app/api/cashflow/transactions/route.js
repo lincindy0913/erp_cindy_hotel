@@ -202,14 +202,14 @@ export async function POST(request) {
           }
         });
 
-        // Generate a separate number for the IN transaction
-        const inNo = outNo.replace(/(\d{4})$/, (m) => String(parseInt(m) + 1).padStart(4, '0'));
-        // Make sure inNo is unique
-        const inNoFinal = `${inNo.substring(0, inNo.length - 4)}${String(parseInt(inNo.substring(inNo.length - 4)) || 2).padStart(4, '0')}`;
+        // Generate a unique number for the IN leg via the same sequence generator.
+        // Calling nextCashTransactionNo again inside the same $transaction is safe:
+        // FOR UPDATE sees outTx already created, so it returns the next available number.
+        const inNo = await nextCashTransactionNo(tx, data.transactionDate);
 
         const inTx = await tx.cashTransaction.create({
           data: {
-            transactionNo: inNoFinal !== outNo ? inNoFinal : `${outNo}-IN`,
+            transactionNo: inNo,
             transactionDate: data.transactionDate,
             type: '移轉入',
             warehouse: data.warehouse || null,

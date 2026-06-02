@@ -170,10 +170,16 @@ export async function PUT(request, { params }) {
 
       // ── 非移轉交易 ──
 
-      // 系統產生的交易不可修改金額或帳戶
+      // 系統產生的交易：金額、帳戶、日期、廠商、科目分類由原始模組控制，不可在此修改
       if (existing.sourceType && existing.sourceType !== 'manual') {
-        if (data.amount !== undefined || data.accountId !== undefined) {
-          throw new Error('VALIDATION:系統產生的交易不可修改金額或帳戶');
+        if (
+          data.amount          !== undefined ||
+          data.accountId       !== undefined ||
+          data.transactionDate !== undefined ||
+          data.categoryId      !== undefined ||
+          data.supplierId      !== undefined
+        ) {
+          throw new Error('VALIDATION:系統產生的交易不可修改金額、帳戶、日期或廠商，請至原始模組修改');
         }
       }
 
