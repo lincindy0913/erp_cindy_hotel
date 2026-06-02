@@ -302,7 +302,7 @@ export default function InventoryPage() {
       const res = await fetch('/api/products?all=true');
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data?.products || data?.data || []);
-      setProducts(arr.filter(p => p.isInStock !== false));
+      setProducts(arr.filter(p => p.isInStock === true));
     } catch { setProducts([]); }
   }
 
