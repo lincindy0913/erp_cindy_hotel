@@ -46,6 +46,7 @@ export async function POST(request) {
       // getSystemQty 在 tx 內執行，讀寫原子化
       const systemQty = await getSystemQty(tx, Number(productId), warehouse);
       const actualQty = Number(targetQty);
+      if (Number.isNaN(actualQty)) throw new Error('VALIDATION:目標數量格式錯誤');
       const diff      = actualQty - systemQty;
 
       if (diff === 0) {
