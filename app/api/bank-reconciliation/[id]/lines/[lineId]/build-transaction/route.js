@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,7 @@ export async function POST(request, { params }) {
     const description = descOverride?.trim() || line.description || `存摺補建 (${line.txDate})`;
 
     const newTx = await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, line.txDate, account.warehouse);
       const txNo = await nextCashTransactionNo(tx, line.txDate);
 
       const cashTx = await tx.cashTransaction.create({
