@@ -336,7 +336,7 @@ model Expense {
 
 model PriceHistory {
   id               Int      @id @default(autoincrement())
-  supplierId       Int      @map("supplier_id")
+  supplierId       Int?     @map("supplier_id")   // null = 手動成本調整
   productId        Int      @map("product_id")
   warehouse        String?  @db.VarChar(100) // spec0 v3: 館別
   purchaseMasterId Int?     @map("purchase_master_id") // spec0 v3: 溯源
@@ -345,11 +345,12 @@ model PriceHistory {
   unitPrice        Decimal  @map("unit_price") @db.Decimal(12, 2)
   quantity         Int?     // spec0 v3: 採購數量
   taxType          String?  @map("tax_type") @db.VarChar(20) // spec0 v3: 稅別
+  source           String?  @db.VarChar(20)   // 'purchase' | 'manual_cost_edit'
   isSuperseded     Boolean  @default(false) @map("is_superseded") // spec0 v3: 是否已被取代
   createdAt        DateTime @default(now()) @map("created_at")
 
-  supplier Supplier @relation(fields: [supplierId], references: [id])
-  product  Product  @relation(fields: [productId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  product  Product   @relation(fields: [productId], references: [id])
 
   @@index([productId])
   @@index([purchaseDate])

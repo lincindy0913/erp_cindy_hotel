@@ -5,6 +5,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { getSystemQty } from '@/lib/inventory-helpers';
+import { localDateStr } from '@/lib/localDate';
 
 export async function GET(request, { params }) {
   const auth = await requirePermission(PERMISSIONS.PURCHASING_VIEW);
@@ -76,12 +77,27 @@ export async function PUT(request, { params }) {
       }
     });
 
+    // 成本價有變動時寫入 PriceHistory，保留完整變動時間序列
+    const oldCost = Number(existing.costPrice);
+    const newCost = Number(updated.costPrice);
+    if (Math.abs(newCost - oldCost) > 0.001) {
+      await prisma.priceHistory.create({
+        data: {
+          productId:    id,
+          supplierId:   null,
+          purchaseDate: localDateStr(new Date()),
+          unitPrice:    newCost,
+          source:       'manual_cost_edit',
+        },
+      });
+    }
+
     await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.PRODUCT_UPDATE,
       targetModule: 'products',
       targetRecordId: id,
-      beforeState: { name: existing.name, code: existing.code, category: existing.category, costPrice: Number(existing.costPrice), salesPrice: Number(existing.salesPrice) },
-      afterState:  { name: updated.name,  code: updated.code,  category: updated.category,  costPrice: Number(updated.costPrice),  salesPrice: Number(updated.salesPrice)  },
+      beforeState: { name: existing.name, code: existing.code, category: existing.category, costPrice: oldCost, salesPrice: Number(existing.salesPrice) },
+      afterState:  { name: updated.name,  code: updated.code,  category: updated.category,  costPrice: newCost, salesPrice: Number(updated.salesPrice)  },
     });
 
     return NextResponse.json(updated);
