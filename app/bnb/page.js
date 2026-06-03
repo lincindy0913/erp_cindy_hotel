@@ -449,7 +449,7 @@ function BnbPage() {
     reconLogs, reconLogsLoading, fetchReconLogs,
     commAmt, setCommAmt, commMethod, setCommMethod, commNote, setCommNote,
     commSubmitting, commExisting, commSource, setCommSource,
-    commHistRows, commHistLoading, commEditId, commEditData, setCommEditData, commEditSaving,
+    commHistRows, commHistLoading, commEditId, setCommEditId, commEditData, setCommEditData, commEditSaving,
     submitCommission, fetchCommHistory, confirmCommission, cancelCommission,
     startEditComm, saveEditComm,
   } = useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WAREHOUSE });

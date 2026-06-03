@@ -19,7 +19,7 @@ function calcTotalFromJson(summaryJson, billType) {
       const v = billType === '電費'
         ? (item.應繳總金額 || item.電費金額 || '0')
         : (item.總金額 || '0');
-      return sum + (parseInt(String(v).replace(/,/g, '')) || 0);
+      return sum + (Math.round(parseFloat(String(v).replace(/,/g, '')) * 100) / 100 || 0);
     }, 0);
   } catch { return 0; }
 }
