@@ -6,6 +6,8 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter, getAllowedWarehouse } from '@/lib/warehouse-access';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { localDateStr } from '@/lib/localDate';
+import { calcBalanceDelta } from '@/lib/calc-balance-delta';
+import { generateMonthEndReports } from '@/lib/generate-month-end-reports';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,7 +133,8 @@ export async function GET(request) {
     for (let m = 1; m <= 12; m++) {
       const monthStr = String(m).padStart(2, '0');
       const monthStart = `${year}-${monthStr}-01`;
-      const monthEnd = `${year}-${monthStr}-31`;
+      const lastDay = new Date(year, m, 0).getDate();
+      const monthEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
       const monthPurchases = purchases.filter(p => {
         return p.purchaseDate >= monthStart && p.purchaseDate <= monthEnd;
@@ -193,7 +196,8 @@ export async function POST(request) {
 
     const monthStr = String(month).padStart(2, '0');
     const periodStart = `${year}-${monthStr}-01`;
-    const periodEnd = `${year}-${monthStr}-31`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const periodEnd = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
     const now = new Date();
 
     // ==========================================
@@ -307,32 +311,12 @@ export async function POST(request) {
       });
 
       for (const account of cashAccounts) {
-        // 批次送入同一 transaction，確保讀取一致性
-        const [incomeTxs, expenseTxs, transferOutTxs, transferInTxs] = await prisma.$transaction([
-          prisma.cashTransaction.aggregate({
-            where: { accountId: account.id, status: '已確認', type: '收入' },
-            _sum: { amount: true },
-          }),
-          prisma.cashTransaction.aggregate({
-            where: { accountId: account.id, status: '已確認', type: '支出' },
-            _sum: { amount: true },
-          }),
-          prisma.cashTransaction.aggregate({
-            where: { accountId: account.id, status: '已確認', type: '移轉' },
-            _sum: { amount: true },
-          }),
-          prisma.cashTransaction.aggregate({
-            where: { transferAccountId: account.id, status: '已確認', type: '移轉' },
-            _sum: { amount: true },
-          }),
-        ]);
+        const txs = await prisma.cashTransaction.findMany({
+          where: { accountId: account.id, status: '已確認' },
+          select: { type: true, amount: true, fee: true, hasFee: true },
+        });
 
-        const income = Number(incomeTxs._sum.amount || 0);
-        const expense = Number(expenseTxs._sum.amount || 0);
-        const transferOut = Number(transferOutTxs._sum.amount || 0);
-        const transferIn = Number(transferInTxs._sum.amount || 0);
-
-        const expectedBalance = Number(account.openingBalance) + income - expense - transferOut + transferIn;
+        const expectedBalance = Number(account.openingBalance) + calcBalanceDelta(txs);
         const currentBalance = Number(account.currentBalance);
 
         if (Math.abs(expectedBalance - currentBalance) > 0.01) {
@@ -445,248 +429,20 @@ export async function POST(request) {
     }
 
     // ==========================================
+    // 1c. Block on missing cash count (unless force: true)
+    // ==========================================
+    const cashCountCheck = preChecks.find(c => c.name === '現金盤點未完成');
+    if (cashCountCheck && !cashCountCheck.passed && body.force !== true) {
+      return NextResponse.json(
+        { blocked: true, blockedBy: '現金盤點未完成', detail: cashCountCheck.detail, preChecks },
+        { status: 422 }
+      );
+    }
+
+    // ==========================================
     // 2. Generate report snapshots
     // ==========================================
-    const reports = [];
-
-    // --- Purchase summary: by supplier, warehouse ---
-    const purchaseWhere = {
-      purchaseDate: { gte: periodStart, lte: periodEnd }
-    };
-    if (warehouse) purchaseWhere.warehouse = warehouse;
-
-    const purchaseData = await prisma.purchaseMaster.findMany({
-      where: purchaseWhere,
-      include: { supplier: { select: { name: true } } }
-    });
-
-    const purchaseBySup = {};
-    const purchaseByWh = {};
-    purchaseData.forEach(p => {
-      const supName = p.supplier?.name || '未指定';
-      if (!purchaseBySup[supName]) purchaseBySup[supName] = { count: 0, amount: 0, tax: 0, total: 0 };
-      purchaseBySup[supName].count++;
-      purchaseBySup[supName].amount += Number(p.amount);
-      purchaseBySup[supName].tax += Number(p.tax);
-      purchaseBySup[supName].total += Number(p.totalAmount);
-
-      const wh = p.warehouse || '未指定';
-      if (!purchaseByWh[wh]) purchaseByWh[wh] = { count: 0, amount: 0, tax: 0, total: 0 };
-      purchaseByWh[wh].count++;
-      purchaseByWh[wh].amount += Number(p.amount);
-      purchaseByWh[wh].tax += Number(p.tax);
-      purchaseByWh[wh].total += Number(p.totalAmount);
-    });
-
-    reports.push({
-      reportType: '進貨彙總',
-      data: {
-        period: `${year}/${monthStr}`,
-        totalCount: purchaseData.length,
-        totalAmount: purchaseData.reduce((s, p) => s + Number(p.totalAmount), 0),
-        bySupplier: Object.entries(purchaseBySup).map(([name, d]) => ({ name, ...d })),
-        byWarehouse: Object.entries(purchaseByWh).map(([name, d]) => ({ name, ...d }))
-      }
-    });
-
-    // --- Sales summary: by invoice, warehouse ---
-    const salesData = await prisma.salesMaster.findMany({
-      where: {
-        invoiceDate: { gte: periodStart, lte: periodEnd }
-      },
-      include: {
-        details: {
-          select: { warehouse: true, subtotal: true }
-        }
-      }
-    });
-
-    const salesByStatus = {};
-    const salesByWh = {};
-    salesData.forEach(s => {
-      const st = s.status || '未指定';
-      if (!salesByStatus[st]) salesByStatus[st] = { count: 0, total: 0 };
-      salesByStatus[st].count++;
-      salesByStatus[st].total += Number(s.totalAmount);
-
-      // Aggregate by warehouse from details
-      s.details.forEach(d => {
-        const wh = d.warehouse || '未指定';
-        if (!salesByWh[wh]) salesByWh[wh] = { count: 0, total: 0 };
-        salesByWh[wh].count++;
-        salesByWh[wh].total += Number(d.subtotal || 0);
-      });
-    });
-
-    reports.push({
-      reportType: '銷貨彙總',
-      data: {
-        period: `${year}/${monthStr}`,
-        totalCount: salesData.length,
-        totalAmount: salesData.reduce((s, r) => s + Number(r.totalAmount), 0),
-        byStatus: Object.entries(salesByStatus).map(([name, d]) => ({ name, ...d })),
-        byWarehouse: Object.entries(salesByWh).map(([name, d]) => ({ name, ...d }))
-      }
-    });
-
-    // --- Expense summary: by category (sourceType), warehouse ---
-    const expenseWhere = {
-      invoiceDate: { gte: periodStart, lte: periodEnd }
-    };
-    if (warehouse) expenseWhere.warehouse = warehouse;
-
-    const expenseData = await prisma.expense.findMany({
-      where: expenseWhere
-    });
-
-    // Also include CommonExpenseRecord (confirmed)
-    const commonExpWhere = {
-      expenseMonth: `${year}-${monthStr}`,
-      status: '已確認'
-    };
-    if (warehouse) commonExpWhere.warehouse = warehouse;
-
-    const commonExpData = await prisma.commonExpenseRecord.findMany({
-      where: commonExpWhere,
-      include: {
-        template: { select: { name: true, category: { select: { name: true } } } }
-      }
-    });
-
-    const expByCat = {};
-    const expByWh = {};
-    expenseData.forEach(e => {
-      const cat = e.sourceType || '未分類';
-      if (!expByCat[cat]) expByCat[cat] = { count: 0, total: 0 };
-      expByCat[cat].count++;
-      expByCat[cat].total += Number(e.amount);
-
-      const wh = e.warehouse || '未指定';
-      if (!expByWh[wh]) expByWh[wh] = { count: 0, total: 0 };
-      expByWh[wh].count++;
-      expByWh[wh].total += Number(e.amount);
-    });
-
-    // Merge CommonExpenseRecord into expense summary
-    commonExpData.forEach(e => {
-      const cat = e.template?.category?.name || e.template?.name || '常見費用';
-      if (!expByCat[cat]) expByCat[cat] = { count: 0, total: 0 };
-      expByCat[cat].count++;
-      expByCat[cat].total += Number(e.totalDebit);
-
-      const wh = e.warehouse || '未指定';
-      if (!expByWh[wh]) expByWh[wh] = { count: 0, total: 0 };
-      expByWh[wh].count++;
-      expByWh[wh].total += Number(e.totalDebit);
-    });
-
-    const allExpenseTotal = expenseData.reduce((s, e) => s + Number(e.amount), 0)
-      + commonExpData.reduce((s, e) => s + Number(e.totalDebit), 0);
-
-    reports.push({
-      reportType: '支出彙總',
-      data: {
-        period: `${year}/${monthStr}`,
-        totalCount: expenseData.length + commonExpData.length,
-        totalAmount: allExpenseTotal,
-        byCategory: Object.entries(expByCat).map(([name, d]) => ({ name, ...d })),
-        byWarehouse: Object.entries(expByWh).map(([name, d]) => ({ name, ...d }))
-      }
-    });
-
-    // --- Cash flow summary: by account type ---
-    const cashTxWhere = {
-      transactionDate: { gte: periodStart, lte: periodEnd }
-    };
-    if (warehouse) cashTxWhere.warehouse = warehouse;
-
-    const cashTxData = await prisma.cashTransaction.findMany({
-      where: cashTxWhere,
-      include: {
-        account: { select: { name: true, type: true } }
-      }
-    });
-
-    const cashByType = {};
-    cashTxData.forEach(tx => {
-      const aType = tx.account?.type || '未分類';
-      if (!cashByType[aType]) cashByType[aType] = { income: 0, expense: 0, transfer: 0, net: 0 };
-      const amt = Number(tx.amount);
-      if (tx.type === '收入') {
-        cashByType[aType].income += amt;
-        cashByType[aType].net += amt;
-      } else if (tx.type === '支出') {
-        cashByType[aType].expense += amt;
-        cashByType[aType].net -= amt;
-      } else if (tx.type === '移轉') {
-        cashByType[aType].transfer += amt;
-      }
-    });
-
-    reports.push({
-      reportType: '現金流彙總',
-      data: {
-        period: `${year}/${monthStr}`,
-        totalTransactions: cashTxData.length,
-        byAccountType: Object.entries(cashByType).map(([name, d]) => ({ name, ...d }))
-      }
-    });
-
-    // --- P&L snapshot (cash-category based) ---
-    try {
-      const plTxs = await prisma.cashTransaction.findMany({
-        where: {
-          transactionDate: { gte: periodStart, lte: periodEnd },
-          isReversal: false,
-          reversedById: null,
-          ...(warehouse ? { warehouse } : {}),
-        },
-        select: {
-          type: true, amount: true,
-          category: { select: { id: true, name: true, level1: true, plGroup: true, plOrder: true } }
-        }
-      });
-      const plMap = {};
-      for (const tx of plTxs) {
-        const cat     = tx.category;
-        const level1  = cat?.level1  || (tx.type === '收入' ? '收入' : '費用');
-        const plGroup = cat?.plGroup || (tx.type === '收入' ? '未分類收入' : '未分類費用');
-        const key     = `${level1}|${plGroup}`;
-        if (!plMap[key]) plMap[key] = { level1, plGroup, plOrder: cat?.plOrder || 999, income: 0, expense: 0 };
-        const amt = Number(tx.amount);
-        if (tx.type === '收入') plMap[key].income += amt;
-        else                    plMap[key].expense += amt;
-      }
-      const PL_ORD   = { '收入': 1, '費用': 2, '業外': 3 };
-      const plGroups = Object.values(plMap).sort((a, b) =>
-        ((PL_ORD[a.level1] || 9) - (PL_ORD[b.level1] || 9)) || a.plOrder - b.plOrder
-      );
-      const totalIncomePL   = plGroups.filter(g => g.level1 === '收入').reduce((s, g) => s + g.income - g.expense, 0);
-      const ccFee           = plGroups.find(g => g.plGroup === '收款成本')?.expense || 0;
-      const grossProfitPL   = totalIncomePL - ccFee;
-      const totalOpExpPL    = plGroups.filter(g => g.level1 === '費用' && g.plGroup !== '收款成本').reduce((s, g) => s + g.expense, 0);
-      const operatingPL     = grossProfitPL - totalOpExpPL;
-      const bizOutsidePL    = plGroups.filter(g => g.level1 === '業外').reduce((s, g) => s + g.income - g.expense, 0);
-      const netIncomePL     = operatingPL + bizOutsidePL;
-      reports.push({
-        reportType: '損益快照',
-        data: {
-          period: `${year}/${monthStr}`,
-          groups: plGroups.map(g => ({ ...g, income: Math.round(g.income), expense: Math.round(g.expense) })),
-          summary: {
-            totalIncome:     Math.round(totalIncomePL),
-            ccFee:           Math.round(ccFee),
-            grossProfit:     Math.round(grossProfitPL),
-            totalOpExp:      Math.round(totalOpExpPL),
-            operatingIncome: Math.round(operatingPL),
-            bizOutsideNet:   Math.round(bizOutsidePL),
-            netIncome:       Math.round(netIncomePL),
-          }
-        }
-      });
-    } catch (plErr) {
-      console.error('損益快照生成失敗（非阻斷）:', plErr.message);
-    }
+    const reports = await generateMonthEndReports(prisma, { year, month, monthStr, periodStart, periodEnd, warehouse });
 
     // ==========================================
     // 3. Create MonthEndStatus and Reports in DB
@@ -758,7 +514,8 @@ export async function POST(request) {
     // ==========================================
     let reportGenerationFailed = false;
     let reportGenerationError = null;
-    const reportNo = `RPT-${year}${String(month).padStart(2, '0')}-001`;
+    const warehouseTag = warehouse ? warehouse.replace(/\s+/g, '_') : 'ALL';
+    const reportNo = `RPT-${year}${String(month).padStart(2, '0')}-${warehouseTag}-001`;
     try {
       const purchaseTotal = reports[0]?.data?.totalAmount || 0;
       const salesTotal = reports[1]?.data?.totalAmount || 0;

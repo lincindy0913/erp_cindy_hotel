@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { validateWarehouse } from '@/lib/master-data-validator';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { localDateStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,6 @@ export async function GET(request) {
 
     return NextResponse.json(records);
   } catch (error) {
-    console.error('GET /api/employee-advances error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -53,41 +53,30 @@ export async function POST(request) {
     const whErr = await validateWarehouse(warehouse);
     if (whErr) return createErrorResponse('VALIDATION_FAILED', whErr, 400);
 
-    // Generate advanceNo: ADV-YYYYMMDD-XXXX
-    const now = new Date();
-    const dateStr = localDateStr(now).replace(/-/g, '');
-    const prefix = `ADV-${dateStr}-`;
-    const existing = await prisma.employeeAdvance.findMany({
-      where: { advanceNo: { startsWith: prefix } },
-      select: { advanceNo: true },
-    });
-    let maxSeq = 0;
-    for (const item of existing) {
-      const seq = parseInt(item.advanceNo.substring(prefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-    const advanceNo = `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+    const dateStr = localDateStr(new Date()).replace(/-/g, '');
 
-    const record = await prisma.employeeAdvance.create({
-      data: {
-        advanceNo,
-        employeeName,
-        paymentMethod: paymentMethod || '現金',
-        sourceType: 'other',
-        sourceDescription: sourceDescription || null,
-        expenseName: expenseName || null,
-        summary: summary || null,
-        amount: parseFloat(amount),
-        status: '待結算',
-        warehouse: warehouse || null,
-        note: note || null,
-        createdBy: session?.user?.email || null,
-      },
+    const record = await prisma.$transaction(async (tx) => {
+      const advanceNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${dateStr}-`);
+      return tx.employeeAdvance.create({
+        data: {
+          advanceNo,
+          employeeName,
+          paymentMethod: paymentMethod || '現金',
+          sourceType: 'other',
+          sourceDescription: sourceDescription || null,
+          expenseName: expenseName || null,
+          summary: summary || null,
+          amount: parseFloat(amount),
+          status: '待結算',
+          warehouse: warehouse || null,
+          note: note || null,
+          createdBy: session?.user?.email || null,
+        },
+      });
     });
 
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
-    console.error('POST /api/employee-advances error:', error.message || error);
     return handleApiError(error);
   }
 }

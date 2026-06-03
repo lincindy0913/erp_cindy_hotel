@@ -784,8 +784,8 @@ function RentalsPage() {
             )}
             {activeTab === 'help' && <HelpTab />}
           </>
-        )}
-      </div>
+                )}
+              </div>
 
       {/* ==================== MODAL: 退租確認 ==================== */}
       {terminateModal && (
@@ -834,7 +834,7 @@ function RentalsPage() {
           saveTenant={saveTenant}
           onClose={() => setShowTenantModal(false)}
           onInitiateTerminate={(tenant, contract) => {
-            setShowTenantModal(false);
+                                  setShowTenantModal(false);
             setTerminateModal({ tenant, contracts: [contract], endDate: todayStr() });
           }}
           contractPropertyChanges={contractPropertyChanges} setContractPropertyChanges={setContractPropertyChanges}
@@ -1046,15 +1046,15 @@ function RentalsPage() {
           saving={propertySaving}
           onSave={saveProperty}
           onDelete={editingProperty ? async () => {
-            const id = editingProperty.id;
+                        const id = editingProperty.id;
             if (!(await confirm('確定要刪除此物業？此操作無法復原。', { title: '刪除物業', danger: true }))) return;
-            try {
-              const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
-              const data = await res.json();
-              if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
-              setShowPropertyModal(false);
-              fetchProperties();
-            } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
+                          try {
+                            const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
+                            const data = await res.json();
+                            if (!res.ok) return showToast(data.error || '刪除失敗', 'error');
+                            setShowPropertyModal(false);
+                            fetchProperties();
+                          } catch (err) { showToast('刪除失敗: ' + err.message, 'error'); }
           } : undefined}
           onOpenRentFiling={() => { setShowPropertyModal(false); switchTab('rentFiling'); }}
         />

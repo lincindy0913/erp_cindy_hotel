@@ -7,27 +7,10 @@ import { applyWarehouseFilter, assertWarehouseAccess } from '@/lib/warehouse-acc
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { requireMoney } from '@/lib/safe-parse';
 import { todayStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
-
-// Generate check number: CHK-YYYYMMDD-XXXX
-async function generateCheckNo() {
-  const dateStr = todayStr().replace(/-/g, '');
-  const prefix = `CHK-${dateStr}-`;
-
-  const existing = await prisma.check.findMany({
-    where: { checkNo: { startsWith: prefix } },
-    select: { checkNo: true }
-  });
-
-  let maxSeq = 0;
-  for (const c of existing) {
-    const seq = parseInt(c.checkNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.CHECK_VIEW);
@@ -41,16 +24,6 @@ export async function GET(request) {
     const supplierId = searchParams.get('supplierId');
     const dueDateFrom = searchParams.get('dueDateFrom');
     const dueDateTo = searchParams.get('dueDateTo');
-
-    // Auto-update: any check with status='pending' and dueDate <= today => 'due'
-    const today = todayStr();
-    await prisma.check.updateMany({
-      where: {
-        status: 'pending',
-        dueDate: { lte: today }
-      },
-      data: { status: 'due' }
-    });
 
     // Build filter
     const where = {};
@@ -71,22 +44,29 @@ export async function GET(request) {
       where.dueDate = { lte: dueDateTo };
     }
 
-    const TAKE = 1000;
-    const checks = await prisma.check.findMany({
-      where,
-      include: {
-        sourceAccount: { select: { id: true, name: true, accountCode: true } },
-        destinationAccount: { select: { id: true, name: true, accountCode: true } },
-        reissueOfCheck: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
-        reissuedByChecks: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
-      },
-      orderBy: { dueDate: 'asc' },
-      take: TAKE + 1,
-    });
+    const page     = Math.max(1, parseInt(searchParams.get('page')     || '1'));
+    const pageSize = Math.min(200, Math.max(1, parseInt(searchParams.get('pageSize') || '50')));
 
-    const hasMore = checks.length > TAKE;
-    const data = hasMore ? checks.slice(0, TAKE) : checks;
-    return NextResponse.json(data, hasMore ? { headers: { 'X-Has-More': 'true' } } : {});
+    const [total, checks] = await Promise.all([
+      prisma.check.count({ where }),
+      prisma.check.findMany({
+        where,
+        include: {
+          sourceAccount:    { select: { id: true, name: true, accountCode: true } },
+          destinationAccount: { select: { id: true, name: true, accountCode: true } },
+          reissueOfCheck:   { select: { id: true, checkNo: true, checkNumber: true, status: true } },
+          reissuedByChecks: { select: { id: true, checkNo: true, checkNumber: true, status: true } },
+        },
+        orderBy: { dueDate: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return NextResponse.json({
+      data: checks,
+      pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -126,15 +106,16 @@ export async function POST(request) {
       return createErrorResponse('CHECK_NUMBER_DUPLICATE', '同一館別中已存在相同支票號碼', 409);
     }
 
-    // Auto-generate checkNo
-    const checkNo = await generateCheckNo();
-
     // Determine initial status based on dueDate
     const today = todayStr();
     const initialStatus = data.dueDate <= today ? 'due' : 'pending';
 
     const newCheck = await prisma.$transaction(async (tx) => {
       await assertPeriodOpen(tx, data.dueDate, data.warehouse || null);
+
+      // Generate checkNo inside transaction with FOR UPDATE row locking
+      const dateStr = today.replace(/-/g, '');
+      const checkNo = await nextSequence(tx, 'check', 'checkNo', `CHK-${dateStr}-`);
 
       return tx.check.create({
         data: {
@@ -165,6 +146,25 @@ export async function POST(request) {
         }
       });
     });
+
+    await auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CHECK_CREATE,
+      targetModule: 'checks',
+      targetRecordId: newCheck.id,
+      targetRecordNo: newCheck.checkNo,
+      afterState: {
+        checkNo: newCheck.checkNo,
+        checkType: newCheck.checkType,
+        checkNumber: newCheck.checkNumber,
+        amount: Number(newCheck.amount),
+        dueDate: newCheck.dueDate,
+        status: newCheck.status,
+        payeeName: newCheck.payeeName,
+        drawerName: newCheck.drawerName,
+        warehouse: newCheck.warehouse,
+      },
+      note: `建立支票 ${newCheck.checkNo}（${newCheck.checkType === 'payable' ? '應付' : '應收'}，金額 ${Number(newCheck.amount).toLocaleString()}）`,
+    }).catch(e => console.error('[AUDIT_FAIL] check create:', e.message));
 
     return NextResponse.json(newCheck, { status: 201 });
   } catch (error) {

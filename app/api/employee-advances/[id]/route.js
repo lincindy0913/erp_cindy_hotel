@@ -165,7 +165,14 @@ export async function DELETE(request, { params }) {
             await tx.commonExpenseRecord.delete({ where: { id: linkedRecord.id } });
           }
 
-          // 刪除付款單
+          // 刪除付款單前確認狀態，防止 race condition 導致孤兒 cashTransaction
+          const po = await tx.paymentOrder.findUnique({
+            where: { id: existing.paymentOrderId },
+            select: { status: true, orderNo: true },
+          });
+          if (po && !['草稿', '待出納'].includes(po.status)) {
+            throw new Error(`VALIDATION:付款單 ${po.orderNo} 狀態為「${po.status}」，無法連動刪除，請先取消付款單`);
+          }
           await tx.paymentOrder.delete({ where: { id: existing.paymentOrderId } });
         } else {
           // 還有其他代墊款，更新 PaymentOrder 金額

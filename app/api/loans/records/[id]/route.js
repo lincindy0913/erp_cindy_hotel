@@ -6,6 +6,7 @@ import { requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertWarehouseAccess } from '@/lib/warehouse-access';
 import { recalcBalance } from '@/lib/recalc-balance';
+import { recalcLoanBalance } from '@/lib/recalc-loan-balance';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { todayStr } from '@/lib/localDate';
@@ -114,15 +115,8 @@ export async function PUT(request, { params }) {
         // Recalculate account balance
         await recalcBalance(tx, accountId);
 
-        // Update LoanMaster.currentBalance -= actualPrincipal
-        await tx.loanMaster.update({
-          where: { id: existing.loanId },
-          data: {
-            currentBalance: {
-              decrement: actualPrincipal
-            }
-          }
-        });
+        // Recalculate loan balance from first principles
+        await recalcLoanBalance(tx, existing.loanId);
 
         return updated;
       });
@@ -237,15 +231,8 @@ export async function DELETE(request, { params }) {
         // Recalculate account balance
         await recalcBalance(tx, accountId);
 
-        // Rollback LoanMaster.currentBalance += actualPrincipal
-        await tx.loanMaster.update({
-          where: { id: existing.loanId },
-          data: {
-            currentBalance: {
-              increment: actualPrincipal
-            }
-          }
-        });
+        // Recalculate loan balance from first principles
+        await recalcLoanBalance(tx, existing.loanId);
       });
 
       await auditFromSession(prisma, auth.session, {

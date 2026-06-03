@@ -89,38 +89,29 @@ export default function MonthEndPage() {
   // Reconciliation continuity check state
   const [reconCheckResult, setReconCheckResult] = useState(null);
 
-  // Start the month-end closing flow: first run pre-checks
-  async function handleStartClose(month) {
-    setPreCheckMonth(month);
-    setPreCheckResults(null);
-    setReconCheckResult(null);
-    setShowPreCheck(true);
+  // Internal helper — sends the month-end POST, handles blocked/success/error
+  async function submitMonthEnd(month, force = false) {
     setPreCheckLoading(true);
-
     try {
-      // Run reconciliation continuity check in parallel with month-end
       const [monthEndRes, reconRes] = await Promise.all([
         fetch('/api/month-end', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            year: selectedYear,
-            month,
-            closedBy: userName
-          })
+          body: JSON.stringify({ year: selectedYear, month, closedBy: userName, ...(force ? { force: true } : {}) })
         }),
         fetch(`/api/reconciliation/continuity-check?year=${selectedYear}&month=${month}`).catch(() => null),
       ]);
 
       const data = await monthEndRes.json();
 
-      // Process reconciliation check
       if (reconRes && reconRes.ok) {
         const reconData = await reconRes.json();
         setReconCheckResult(reconData);
       }
 
-      if (data.error) {
+      if (data.blocked) {
+        setPreCheckResults({ blocked: true, blockedBy: data.blockedBy, detail: data.detail, preChecks: data.preChecks });
+      } else if (data.error) {
         setPreCheckResults({ error: data.error });
       } else {
         setPreCheckResults(data);
@@ -130,6 +121,24 @@ export default function MonthEndPage() {
       setPreCheckResults({ error: '月結作業執行失敗: ' + error.message });
     }
     setPreCheckLoading(false);
+  }
+
+  // Start the month-end closing flow
+  async function handleStartClose(month) {
+    setPreCheckMonth(month);
+    setPreCheckResults(null);
+    setReconCheckResult(null);
+    setShowPreCheck(true);
+    await submitMonthEnd(month, false);
+  }
+
+  // Force-close override (admin confirmed)
+  async function handleForceClose() {
+    if (!(await confirm(
+      `現金盤點尚未完成，確定要強制月結？\n\n${preCheckResults?.detail || ''}\n\n此操作將跳過現金盤點要求，請確認帳實相符後再繼續。`,
+      { title: '強制月結確認', danger: true }
+    ))) return;
+    await submitMonthEnd(preCheckMonth, true);
   }
 
   // Lock a month-end
@@ -182,6 +191,13 @@ export default function MonthEndPage() {
       if (data.success) {
         setShowUnlock(false);
         fetchMonthData();
+        const cascaded = data.cascadeUnlocked || [];
+        if (cascaded.length > 0) {
+          const months = cascaded.map(m => `${m.month} 月`).join('、');
+          showToast(`已解鎖 ${unlockTarget.month} 月，並連帶解鎖 ${months}`, 'warning');
+        } else {
+          showToast(`${unlockTarget.month} 月結已解鎖`, 'success');
+        }
       } else {
         showToast(data.error || '解鎖失敗', 'error');
       }
@@ -733,6 +749,27 @@ export default function MonthEndPage() {
                 </div>
               )}
 
+              {preCheckResults && preCheckResults.blocked && (
+                <div className="space-y-4">
+                  <div className="bg-orange-50 border border-orange-300 rounded-lg p-4">
+                    <p className="text-orange-800 font-medium">月結前置條件未完成</p>
+                    <p className="text-orange-700 text-sm mt-1">{preCheckResults.detail || preCheckResults.blockedBy}</p>
+                  </div>
+                  {isAdmin && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <p className="text-gray-600 text-sm mb-3">管理員可跳過現金盤點要求強制執行月結，請確認帳實狀況後再操作。</p>
+                      <button
+                        onClick={handleForceClose}
+                        disabled={preCheckLoading}
+                        className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium disabled:opacity-50"
+                      >
+                        強制月結（跳過現金盤點）
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {preCheckResults && preCheckResults.success && (
                 <div className="space-y-6">
                   {/* Success banner */}
@@ -1034,6 +1071,23 @@ export default function MonthEndPage() {
                   解鎖後將允許修改該月份的資料，此操作僅限管理員執行。
                 </p>
               </div>
+              {(() => {
+                const later = monthsData.filter(
+                  m => m.month > (unlockTarget?.month ?? 0) && ['已結帳', '已鎖定'].includes(m.status)
+                );
+                if (later.length === 0) return null;
+                return (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                    <p className="text-orange-800 text-sm font-medium">⚠ 連帶解鎖警告</p>
+                    <p className="text-orange-700 text-xs mt-1">
+                      以下月份報表依賴 {unlockTarget?.month} 月數據，將同步解鎖：
+                    </p>
+                    <p className="text-orange-800 text-xs font-medium mt-1">
+                      {later.map(m => `${m.month} 月（${m.status}）`).join('、')}
+                    </p>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label htmlFor="span-classname-text-red-5" className="block text-sm font-medium text-gray-700 mb-1">

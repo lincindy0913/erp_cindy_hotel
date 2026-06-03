@@ -88,12 +88,10 @@ export async function PUT(request, { params }) {
 
       // 規則：有 paymentId 的支票 = 來自付款單，現金流已在「出納執行」時建立，此處不重複建立 CashTransaction（避免重複扣款）
       const fromPaymentOrder = !!check.paymentId;
-      let cashTransactionId = null;
 
+      // 非付款單：先在 transaction 外確認帳戶
+      let accountId = null, txType, sourceType;
       if (!fromPaymentOrder) {
-        // 非付款單支票：建立 CashTransaction 並連動現金流
-        const transactionNo = await nextCashTransactionNo(prisma, clearDate);
-        let accountId, txType, sourceType;
         if (check.checkType === 'payable') {
           accountId = check.sourceAccountId;
           txType = '支出';
@@ -103,45 +101,52 @@ export async function PUT(request, { params }) {
           txType = '收入';
           sourceType = 'check_receipt';
         }
-
         if (!accountId) {
           return createErrorResponse('VALIDATION_FAILED', '支票未關聯帳戶，無法兌現', 400);
         }
-
-        const categoryId = await getCategoryId(prisma, sourceType);
-        const transaction = await prisma.cashTransaction.create({
-          data: {
-            transactionNo,
-            transactionDate: clearDate,
-            type: txType,
-            warehouse: check.warehouse,
-            accountId,
-            supplierId: check.supplierId || null,
-            categoryId,
-            amount: actualAmount,
-            description: `支票兌現 - ${check.checkNo} (${check.checkNumber})`,
-            sourceType,
-            sourceRecordId: check.id,
-            status: '已確認'
-          }
-        });
-        cashTransactionId = transaction.id;
-        await recalcBalance(prisma, accountId);
       }
 
-      const updatedCheck = await prisma.check.update({
-        where: { id },
-        data: {
-          status: 'cleared',
-          clearDate,
-          actualAmount,
-          clearedBy,
-          ...(cashTransactionId ? { cashTransactionId } : {})
-        },
-        include: {
-          sourceAccount: { select: { id: true, name: true, accountCode: true } },
-          destinationAccount: { select: { id: true, name: true, accountCode: true } }
+      const { updatedCheck, cashTransactionId } = await prisma.$transaction(async (tx) => {
+        let cashTxId = null;
+        if (!fromPaymentOrder) {
+          const transactionNo = await nextCashTransactionNo(tx, clearDate);
+          const categoryId = await getCategoryId(tx, sourceType);
+          const transaction = await tx.cashTransaction.create({
+            data: {
+              transactionNo,
+              transactionDate: clearDate,
+              type: txType,
+              warehouse: check.warehouse,
+              accountId,
+              supplierId: check.supplierId || null,
+              categoryId,
+              amount: actualAmount,
+              description: `支票兌現 - ${check.checkNo} (${check.checkNumber})`,
+              sourceType,
+              sourceRecordId: check.id,
+              status: '已確認'
+            }
+          });
+          cashTxId = transaction.id;
+          await recalcBalance(tx, accountId);
         }
+
+        const updated = await tx.check.update({
+          where: { id },
+          data: {
+            status: 'cleared',
+            clearDate,
+            actualAmount,
+            clearedBy,
+            ...(cashTxId ? { cashTransactionId: cashTxId } : {})
+          },
+          include: {
+            sourceAccount: { select: { id: true, name: true, accountCode: true } },
+            destinationAccount: { select: { id: true, name: true, accountCode: true } }
+          }
+        });
+
+        return { updatedCheck: updated, cashTransactionId: cashTxId };
       });
 
       await auditFromSession(prisma, auth.session, {
@@ -164,58 +169,65 @@ export async function PUT(request, { params }) {
       }
 
       await assertPeriodOpen(prisma, check.dueDate, check.warehouse);
-      const updateData = {
-        status: 'bounced',
-        bouncedReason: data.bouncedReason || null
-      };
 
-      // If was cleared, create reverse transaction
-      if (check.status === 'cleared' && check.cashTransactionId) {
-        const reverseDate = todayStr();
-        const reverseTransactionNo = await nextCashTransactionNo(prisma, reverseDate);
+      const updatedCheck = await prisma.$transaction(async (tx) => {
+        // If was cleared, create reverse transaction
+        if (check.status === 'cleared') {
+          const reverseDate = todayStr();
 
-        let accountId, txType;
-        if (check.checkType === 'payable') {
-          // Reverse: money comes back (income to source account)
-          accountId = check.sourceAccountId;
-          txType = '收入';
-        } else {
-          // Reverse: money goes out (expense from destination account)
-          accountId = check.destinationAccountId;
-          txType = '支出';
-        }
+          // 找反向交易的帳戶與金額
+          // 路徑 A：直接兌現的支票 → cashTransactionId 已存在，從 check type 推算帳戶
+          // 路徑 B：付款單兌現的支票 → cashTransactionId 為 null，從 cashier_payment 交易找帳戶
+          let reverseAccountId = null;
+          let reverseAmount = Number(check.actualAmount || check.amount);
+          let txType;
 
-        if (accountId) {
-          const bounceCatId = await getCategoryId(prisma, 'check_bounce');
-          await prisma.cashTransaction.create({
-            data: {
-              transactionNo: reverseTransactionNo,
-              transactionDate: reverseDate,
-              type: txType,
-              warehouse: check.warehouse,
-              accountId,
-              supplierId: check.supplierId || null,
-              categoryId: bounceCatId,
-              amount: Number(check.actualAmount || check.amount),
-              description: `支票退票沖回 - ${check.checkNo} (${check.checkNumber})`,
-              sourceType: 'check_bounce',
-              sourceRecordId: check.id,
-              status: '已確認'
+          if (check.cashTransactionId) {
+            reverseAccountId = check.checkType === 'payable' ? check.sourceAccountId : check.destinationAccountId;
+            txType = check.checkType === 'payable' ? '收入' : '支出';
+          } else if (check.paymentId) {
+            const originalTx = await tx.cashTransaction.findFirst({
+              where: { sourceType: 'cashier_payment', sourceRecordId: check.paymentId, status: '已確認' },
+              select: { accountId: true, amount: true }
+            });
+            if (originalTx) {
+              reverseAccountId = originalTx.accountId;
+              reverseAmount = Number(originalTx.amount);
+              txType = '收入'; // cashier_payment 為支出，沖回為收入
             }
-          });
+          }
 
-          // Recalculate balance
-          await recalcBalance(prisma, accountId);
+          if (reverseAccountId) {
+            const reverseTransactionNo = await nextCashTransactionNo(tx, reverseDate);
+            const bounceCatId = await getCategoryId(tx, 'check_bounce');
+            await tx.cashTransaction.create({
+              data: {
+                transactionNo: reverseTransactionNo,
+                transactionDate: reverseDate,
+                type: txType,
+                warehouse: check.warehouse,
+                accountId: reverseAccountId,
+                supplierId: check.supplierId || null,
+                categoryId: bounceCatId,
+                amount: reverseAmount,
+                description: `支票退票沖回 - ${check.checkNo} (${check.checkNumber})`,
+                sourceType: 'check_bounce',
+                sourceRecordId: check.id,
+                status: '已確認'
+              }
+            });
+            await recalcBalance(tx, reverseAccountId);
+          }
         }
-      }
 
-      const updatedCheck = await prisma.check.update({
-        where: { id },
-        data: updateData,
-        include: {
-          sourceAccount: { select: { id: true, name: true, accountCode: true } },
-          destinationAccount: { select: { id: true, name: true, accountCode: true } }
-        }
+        return tx.check.update({
+          where: { id },
+          data: { status: 'bounced', bouncedReason: data.bouncedReason || null },
+          include: {
+            sourceAccount: { select: { id: true, name: true, accountCode: true } },
+            destinationAccount: { select: { id: true, name: true, accountCode: true } }
+          }
+        });
       });
 
       await auditFromSession(prisma, auth.session, {
@@ -283,6 +295,10 @@ export async function PUT(request, { params }) {
     if (data.bankBranch !== undefined) updateData.bankBranch = data.bankBranch;
     if (data.note !== undefined) updateData.note = data.note;
 
+    const beforeState = Object.fromEntries(
+      Object.keys(updateData).map(k => [k, check[k] ?? null])
+    );
+
     const updatedCheck = await prisma.check.update({
       where: { id },
       data: updateData,
@@ -291,6 +307,16 @@ export async function PUT(request, { params }) {
         destinationAccount: { select: { id: true, name: true, accountCode: true } }
       }
     });
+
+    auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.CHECK_UPDATE,
+      targetModule: 'checks',
+      targetRecordId: id,
+      targetRecordNo: check.checkNo,
+      beforeState,
+      afterState: updateData,
+      note: `修改支票 ${check.checkNo}`,
+    }).catch(e => console.error('[AUDIT_FAIL] check update:', e.message));
 
     return NextResponse.json(updatedCheck);
   } catch (error) {

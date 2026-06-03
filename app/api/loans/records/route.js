@@ -28,31 +28,38 @@ export async function GET(request) {
       where.loan = { warehouse };
     }
 
-    const records = await prisma.loanMonthlyRecord.findMany({
-      where,
-      take: 5000,
-      include: {
-        loan: {
-          select: {
-            id: true,
-            loanCode: true,
-            loanName: true,
-            bankName: true,
-            warehouse: true,
-            originalAmount: true,
-            currentBalance: true,
-            annualRate: true,
-            repaymentDay: true,
-            deductAccountId: true,
-            remark: true,
-            deductAccount: {
-              select: { id: true, name: true }
+    const page     = Math.max(1, parseInt(searchParams.get('page')     || '1'));
+    const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get('pageSize') || '100')));
+
+    const [total, records] = await Promise.all([
+      prisma.loanMonthlyRecord.count({ where }),
+      prisma.loanMonthlyRecord.findMany({
+        where,
+        include: {
+          loan: {
+            select: {
+              id: true,
+              loanCode: true,
+              loanName: true,
+              bankName: true,
+              warehouse: true,
+              originalAmount: true,
+              currentBalance: true,
+              annualRate: true,
+              repaymentDay: true,
+              deductAccountId: true,
+              remark: true,
+              deductAccount: {
+                select: { id: true, name: true }
+              }
             }
           }
-        }
-      },
-      orderBy: [{ recordYear: 'desc' }, { recordMonth: 'desc' }, { loanId: 'asc' }]
-    });
+        },
+        orderBy: [{ recordYear: 'desc' }, { recordMonth: 'desc' }, { loanId: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
 
     // Fetch pre-deposit and payment transactions linked to these records
     const recordIds = records.map(r => r.id);
@@ -130,7 +137,10 @@ export async function GET(request) {
       estimatedAt: r.estimatedAt ? r.estimatedAt.toISOString() : null
     }));
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      data: result,
+      pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -166,6 +176,9 @@ export async function POST(request) {
     const loan = await prisma.loanMaster.findUnique({ where: { id: loanId } });
     if (!loan) {
       return createErrorResponse('LOAN_ACCOUNT_NOT_FOUND', '貸款不存在', 404);
+    }
+    if (loan.status !== '使用中') {
+      return createErrorResponse('VALIDATION_FAILED', `貸款「${loan.loanName}」狀態為「${loan.status}」，無法新增還款記錄`, 422);
     }
 
     const estimatedPrincipal = parseFloat(data.estimatedPrincipal) || 0;

@@ -100,7 +100,7 @@ export default function ChecksPage() {
   const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState('pending');
   const [checks, setChecks] = useState([]);
-  const [checksHasMore, setChecksHasMore] = useState(false);
+  const [checksPagination, setChecksPagination] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 1 });
   const [summary, setSummary] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -172,10 +172,12 @@ export default function ChecksPage() {
       if (params.dueDateFrom) query.set('dueDateFrom', params.dueDateFrom);
       if (params.dueDateTo) query.set('dueDateTo', params.dueDateTo);
       if (params.supplierId) query.set('supplierId', params.supplierId);
+      query.set('page', params.page || '1');
+      query.set('pageSize', params.pageSize || '50');
       const res = await fetch(`/api/checks?${query}`);
-      const data = await res.json();
-      setChecks(Array.isArray(data) ? data : []);
-      setChecksHasMore(res.headers.get('X-Has-More') === 'true');
+      const json = await res.json();
+      setChecks(Array.isArray(json.data) ? json.data : []);
+      if (json.pagination) setChecksPagination(json.pagination);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
@@ -240,6 +242,18 @@ export default function ChecksPage() {
       fetchSummary();
     }
   }, [activeTab, filterStatus, filterDateFrom, filterDateTo, filterSupplierId, fetchChecks, fetchSummary]);
+
+  // ---- Pagination ----
+  const goToPage = (newPage) => {
+    const params = {};
+    if (activeTab === 'payable' || activeTab === 'receivable') params.checkType = activeTab === 'payable' ? 'payable' : 'receivable';
+    if (filterStatus) params.status = filterStatus;
+    if (filterDateFrom) params.dueDateFrom = filterDateFrom;
+    if (filterDateTo) params.dueDateTo = filterDateTo;
+    if (filterSupplierId) params.supplierId = filterSupplierId;
+    params.page = newPage;
+    fetchChecks(params);
+  };
 
   // ---- Handlers ----
   const resetAddForm = () => {
@@ -840,10 +854,45 @@ export default function ChecksPage() {
         </div>
       )}
 
-      {checksHasMore && (
-        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          目前顯示最近 1,000 筆，請使用日期或狀態篩選縮小範圍
-        </p>
+      {checksPagination.totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm">
+          <span className="text-gray-500">
+            共 {checksPagination.total.toLocaleString()} 筆，第 {checksPagination.page} / {checksPagination.totalPages} 頁
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => goToPage(1)}
+              disabled={checksPagination.page === 1}
+              className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+            >«</button>
+            <button
+              onClick={() => goToPage(checksPagination.page - 1)}
+              disabled={checksPagination.page === 1}
+              className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+            >‹</button>
+            {Array.from({ length: Math.min(5, checksPagination.totalPages) }, (_, i) => {
+              const start = Math.max(1, Math.min(checksPagination.page - 2, checksPagination.totalPages - 4));
+              const p = start + i;
+              return (
+                <button
+                  key={p}
+                  onClick={() => goToPage(p)}
+                  className={`px-2 py-1 rounded border text-sm ${p === checksPagination.page ? 'bg-violet-600 text-white border-violet-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                >{p}</button>
+              );
+            })}
+            <button
+              onClick={() => goToPage(checksPagination.page + 1)}
+              disabled={checksPagination.page === checksPagination.totalPages}
+              className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+            >›</button>
+            <button
+              onClick={() => goToPage(checksPagination.totalPages)}
+              disabled={checksPagination.page === checksPagination.totalPages}
+              className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+            >»</button>
+          </div>
+        </div>
       )}
 
       {/* Payable section */}

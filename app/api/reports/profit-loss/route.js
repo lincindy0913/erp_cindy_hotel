@@ -3,6 +3,10 @@ import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import {
+  PL_LEVEL1_ORDER, PL_UNCLASSIFIED_INCOME, PL_UNCLASSIFIED_EXPENSE,
+  PL_LEVEL1_INCOME, PL_LEVEL1_EXPENSE, PL_COST_GROUP
+} from '@/lib/pl-constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +30,8 @@ async function calcPL(startDate, endDate, warehouse) {
   const groupMap = {};
   for (const tx of txs) {
     const cat     = tx.category;
-    const level1  = cat?.level1  || (tx.type === '收入' ? '收入' : '費用');
-    const plGroup = cat?.plGroup || (tx.type === '收入' ? '未分類收入' : '未分類費用');
+    const level1  = cat?.level1  || (tx.type === '收入' ? PL_LEVEL1_INCOME : PL_LEVEL1_EXPENSE);
+    const plGroup = cat?.plGroup || (tx.type === '收入' ? PL_UNCLASSIFIED_INCOME : PL_UNCLASSIFIED_EXPENSE);
     const catId   = cat?.id || 0;
     const catName = cat?.name || '(無科目)';
     const plOrder = cat?.plOrder || 999;
@@ -42,9 +46,8 @@ async function calcPL(startDate, endDate, warehouse) {
     else                     groupMap[gKey].categories[catId].expense += amt;
   }
 
-  const P_L_ORDER = { '收入': 1, '費用': 2, '業外': 3 };
   const groups = Object.values(groupMap).sort((a, b) => {
-    const lo = (P_L_ORDER[a.level1] || 9) - (P_L_ORDER[b.level1] || 9);
+    const lo = (PL_LEVEL1_ORDER[a.level1] || 9) - (PL_LEVEL1_ORDER[b.level1] || 9);
     return lo !== 0 ? lo : a.plOrder - b.plOrder;
   }).map(g => {
     const cats        = Object.values(g.categories).sort((a, b) => a.plOrder - b.plOrder);
@@ -53,10 +56,10 @@ async function calcPL(startDate, endDate, warehouse) {
     return { ...g, categories: cats, groupIncome, groupExpense, groupNet: groupIncome - groupExpense };
   });
 
-  const totalIncome      = groups.filter(g => g.level1 === '收入').reduce((s, g) => s + g.groupNet, 0);
-  const ccFee            = groups.find(g => g.plGroup === '收款成本')?.groupExpense ?? 0;
+  const totalIncome      = groups.filter(g => g.level1 === PL_LEVEL1_INCOME).reduce((s, g) => s + g.groupNet, 0);
+  const ccFee            = groups.find(g => g.plGroup === PL_COST_GROUP)?.groupExpense ?? 0;
   const grossProfit      = totalIncome - ccFee;
-  const totalOpExp       = groups.filter(g => g.level1 === '費用' && g.plGroup !== '收款成本').reduce((s, g) => s + g.groupExpense, 0);
+  const totalOpExp       = groups.filter(g => g.level1 === PL_LEVEL1_EXPENSE && g.plGroup !== PL_COST_GROUP).reduce((s, g) => s + g.groupExpense, 0);
   const operatingIncome  = grossProfit - totalOpExp;
   const bizOutsideNet    = groups.filter(g => g.level1 === '業外').reduce((s, g) => s + g.groupNet, 0);
   const netIncome        = operatingIncome + bizOutsideNet;

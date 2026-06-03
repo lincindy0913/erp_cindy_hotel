@@ -10,6 +10,8 @@ import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
+import { assertPeriodOpen } from '@/lib/period-lock';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,8 +133,6 @@ export async function POST(request) {
   const auth = await requireAnyPermission([
     PERMISSIONS.OWNER_EXPENSE_CREATE,
     PERMISSIONS.OWNER_EXPENSE_EDIT,
-    PERMISSIONS.SALES_CREATE,
-    PERMISSIONS.SALES_EDIT,
     PERMISSIONS.FINANCE_CREATE,
     PERMISSIONS.FINANCE_EDIT,
   ]);
@@ -147,6 +147,9 @@ export async function POST(request) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '缺少 expenseMonth 或 companyId', 400);
     }
 
+    // Period lock: expenseMonth is YYYY-MM, use first day of month
+    await assertPeriodOpen(prisma, `${expenseMonth}-01`, null);
+
     const invoiceTitleId = parseInt(companyId);
     const data = {
       totalAmount:  totalAmount  != null ? parseFloat(totalAmount)  : 0,
@@ -155,11 +158,25 @@ export async function POST(request) {
       note:         note   || null,
     };
 
+    // Check if record exists to distinguish create vs update for audit
+    const existing = await prisma.ownerMonthlyExpense.findUnique({
+      where: { expenseMonth_invoiceTitleId: { expenseMonth, invoiceTitleId } },
+    });
+
     const expense = await prisma.ownerMonthlyExpense.upsert({
       where: { expenseMonth_invoiceTitleId: { expenseMonth, invoiceTitleId } },
       create: { expenseMonth, invoiceTitleId, ...data },
       update: data,
     });
+
+    auditFromSession(prisma, auth.session, {
+      action: AUDIT_ACTIONS.EXPENSE_CREATE,
+      targetModule: 'owner-expense',
+      targetRecordId: expense.id,
+      beforeState: existing ? { totalAmount: Number(existing.totalAmount), invoiceCount: existing.invoiceCount, status: existing.status, note: existing.note } : null,
+      afterState: { expenseMonth, invoiceTitleId, ...data },
+      note: `${existing ? '更新' : '新增'}老闆私用進項發票 ${expenseMonth}（抬頭 ID ${invoiceTitleId}）`,
+    }).catch(e => console.error('[AUDIT_FAIL] owner-expense:', e.message));
 
     return NextResponse.json({ ...expense, totalAmount: Number(expense.totalAmount) });
   } catch (error) {

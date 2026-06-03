@@ -186,8 +186,8 @@ export default function LoansPage() {
   async function fetchMonthlyRecords() {
     try {
       const res = await fetch(`/api/loans/records?year=${monthlyYear}&month=${monthlyMonth}`);
-      const data = await res.json();
-      setMonthlyRecords(Array.isArray(data) ? data : []);
+      const json = await res.json();
+      setMonthlyRecords(Array.isArray(json.data) ? json.data : []);
     } catch (e) {
       console.error('載入月還款錯誤:', e);
     }
@@ -200,8 +200,8 @@ export default function LoansPage() {
       if (recFilterMonth) url += `&month=${recFilterMonth}`;
       if (recFilterStatus) url += `&status=${recFilterStatus}`;
       const res = await fetch(url);
-      const data = await res.json();
-      setRecords(Array.isArray(data) ? data : []);
+      const json = await res.json();
+      setRecords(Array.isArray(json.data) ? json.data : []);
     } catch (e) {
       console.error('載入還款記錄錯誤:', e);
     }
@@ -210,8 +210,8 @@ export default function LoansPage() {
   async function fetchReportData() {
     try {
       const res = await fetch(`/api/loans/records?year=${reportYear}&month=${reportMonth}`);
-      const data = await res.json();
-      setReportData(Array.isArray(data) ? data : []);
+      const json = await res.json();
+      setReportData(Array.isArray(json.data) ? json.data : []);
     } catch (e) {
       console.error('載入報表錯誤:', e);
     }
@@ -221,8 +221,8 @@ export default function LoansPage() {
     setAnnualLoading(true);
     try {
       const res = await fetch(`/api/loans/records?year=${annualYear}`);
-      const data = await res.json();
-      setAnnualData(Array.isArray(data) ? data : []);
+      const json = await res.json();
+      setAnnualData(Array.isArray(json.data) ? json.data : []);
     } catch (e) {
       console.error('載入年度報表錯誤:', e);
     }

@@ -150,27 +150,49 @@ export async function PUT(request, { params }) {
 
         // 冪等：已是未結帳 → 直接回傳
         if (monthEnd.status === '未結帳') {
-          return { idempotent: true, monthEnd };
+          return { idempotent: true, monthEnd, cascadeMonths: [] };
         }
         if (!['已結帳', '已鎖定'].includes(monthEnd.status)) {
           throw new Error('VALIDATION:此月份無法解鎖');
         }
 
-        return {
-          idempotent: false,
-          monthEnd: await tx.monthEndStatus.update({
-            where: { id },
+        // 找出同年同館、比目標月更晚且仍已結帳/已鎖定的月份
+        const laterMonths = await tx.monthEndStatus.findMany({
+          where: {
+            year: monthEnd.year,
+            month: { gt: monthEnd.month },
+            warehouse: monthEnd.warehouse,
+            status: { in: ['已結帳', '已鎖定'] }
+          },
+          orderBy: { month: 'asc' }
+        });
+
+        const now = new Date();
+
+        // 解鎖目標月
+        const unlockedMonthEnd = await tx.monthEndStatus.update({
+          where: { id },
+          data: { status: '未結帳', unlockedBy: operatorName, unlockedAt: now, unlockReason }
+        });
+
+        // 連帶解鎖後續月份
+        if (laterMonths.length > 0) {
+          await tx.monthEndStatus.updateMany({
+            where: { id: { in: laterMonths.map(m => m.id) } },
             data: {
               status: '未結帳',
               unlockedBy: operatorName,
-              unlockedAt: new Date(),
-              unlockReason
+              unlockedAt: now,
+              unlockReason: `連帶解鎖（${monthEnd.year}/${monthEnd.month} 月解鎖）：${unlockReason}`
             }
-          })
-        };
+          });
+        }
+
+        return { idempotent: false, monthEnd: unlockedMonthEnd, cascadeMonths: laterMonths };
       });
 
       if (!updated.idempotent) {
+        // Audit 目標月
         await auditFromSession(prisma, session, {
           action: AUDIT_ACTIONS.MONTH_END_UNLOCK,
           targetModule: 'month-end',
@@ -179,6 +201,18 @@ export async function PUT(request, { params }) {
           afterState: { status: '未結帳', unlockedBy: operatorName, unlockReason },
           note: `月結解鎖 ${monthEndCheck.year}/${monthEndCheck.month}：${unlockReason}`,
         });
+
+        // Audit 連帶解鎖的後續月份
+        for (const m of updated.cascadeMonths) {
+          auditFromSession(prisma, session, {
+            action: AUDIT_ACTIONS.MONTH_END_UNLOCK,
+            targetModule: 'month-end',
+            targetRecordId: m.id,
+            beforeState: { status: m.status, year: m.year, month: m.month },
+            afterState: { status: '未結帳', unlockedBy: operatorName },
+            note: `連帶解鎖 ${m.year}/${m.month}（因 ${monthEndCheck.month} 月解鎖）`,
+          }).catch(e => console.error('[AUDIT_FAIL] month-end unlock:', e.message));
+        }
       }
 
       return NextResponse.json({
@@ -187,7 +221,8 @@ export async function PUT(request, { params }) {
         status: updated.monthEnd.status,
         unlockedAt: updated.monthEnd.unlockedAt ? updated.monthEnd.unlockedAt.toISOString() : null,
         unlockedBy: updated.monthEnd.unlockedBy,
-        unlockReason: updated.monthEnd.unlockReason
+        unlockReason: updated.monthEnd.unlockReason,
+        cascadeUnlocked: updated.cascadeMonths.map(m => ({ id: m.id, month: m.month, previousStatus: m.status }))
       });
 
     } else {

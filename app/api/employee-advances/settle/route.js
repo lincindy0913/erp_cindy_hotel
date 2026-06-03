@@ -6,13 +6,18 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertPeriodOpen } from '@/lib/period-lock';
+import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
+import { checkIdempotency, saveIdempotency } from '@/lib/idempotency';
 
 export const dynamic = 'force-dynamic';
 
 // POST: 結算員工代墊款 (資金移轉：公司帳戶 → 員工)
 export async function POST(request) {
   try {
+    const cached = checkIdempotency(request);
+    if (cached) return cached;
+
     const auth = await requirePermission(PERMISSIONS.CASHIER_EXECUTE);
     if (!auth.ok) return auth.response;
     const session = auth.session;
@@ -30,9 +35,6 @@ export async function POST(request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Enforce period lock
-      await assertPeriodOpen(tx, settleDate);
-
       // Fetch all advance records
       const advances = await tx.employeeAdvance.findMany({
         where: { id: { in: advanceIds.map(id => parseInt(id)) } },
@@ -48,21 +50,20 @@ export async function POST(request) {
         throw new Error(`以下代墊款已結算：${nonPending.map(a => a.advanceNo).join(', ')}`);
       }
 
+      // Reject cross-warehouse batch — cashTransaction can only belong to one warehouse
+      const warehouses = [...new Set(advances.map(a => a.warehouse ?? ''))];
+      if (warehouses.length > 1) {
+        const warehouseList = warehouses.filter(w => w !== '').join('、') || '（未指定館別）';
+        throw new Error(`VALIDATION:批次結算不可跨館別，請分開結算。涉及館別：${warehouseList}`);
+      }
+
+      // Enforce period lock with the resolved warehouse
+      await assertPeriodOpen(tx, settleDate, advances[0].warehouse ?? null);
+
       const totalAmount = advances.reduce((sum, a) => sum + Number(a.amount), 0);
 
       // Generate transaction number
-      const dateStr = settleDate.replace(/-/g, '');
-      const txPrefix = `CF-${dateStr}-`;
-      const existingTx = await tx.cashTransaction.findMany({
-        where: { transactionNo: { startsWith: txPrefix } },
-        select: { transactionNo: true },
-      });
-      let maxTxSeq = 0;
-      for (const item of existingTx) {
-        const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
-        if (seq > maxTxSeq) maxTxSeq = seq;
-      }
-      const txNo = `${txPrefix}${String(maxTxSeq + 1).padStart(4, '0')}`;
+      const txNo = await nextCashTransactionNo(tx, settleDate);
 
       // Group by employee for description
       const employeeNames = [...new Set(advances.map(a => a.employeeName))];
@@ -107,8 +108,7 @@ export async function POST(request) {
       // Handle boss's private amount (股東往來)
       let privateTxNo = null;
       if (privateAmount && privateAmount > 0) {
-        const privateTxSeq = maxTxSeq + 2; // next sequence after the main tx
-        privateTxNo = `${txPrefix}${String(privateTxSeq).padStart(4, '0')}`;
+        privateTxNo = await nextCashTransactionNo(tx, settleDate);
 
         const privateCategoryId = await getCategoryId(tx, 'shareholder_loan');
 
@@ -159,12 +159,13 @@ export async function POST(request) {
     const privateMsg = result.privateAmount > 0
       ? `\n老闆私帳 NT$ ${result.privateAmount.toLocaleString()} 已記入股東往來 (${result.privateTxNo})`
       : '';
-    return NextResponse.json({
+    const resBody = {
       message: `成功結算 ${result.settledCount} 筆代墊款，公費 NT$ ${result.totalAmount.toLocaleString()}${privateMsg}`,
       ...result,
-    }, { status: 200 });
+    };
+    saveIdempotency(request, resBody, 200);
+    return NextResponse.json(resBody, { status: 200 });
   } catch (error) {
-    console.error('POST /api/employee-advances/settle error:', error.message || error);
     return handleApiError(error);
   }
 }

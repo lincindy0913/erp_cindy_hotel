@@ -4,7 +4,10 @@ import { createErrorResponse, handleApiError, ErrorCodes } from '@/lib/error-han
 import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
-import { calcAllQtysForWarehouse } from '@/lib/inventory-helpers';
+import { runInventoryRollover } from '@/lib/year-end/inventoryRollover';
+import { prepareBalanceRecords } from '@/lib/year-end/balanceRollover';
+import { calcProfitLoss } from '@/lib/year-end/plCalc';
+import { buildFinancialStatements } from '@/lib/year-end/statements';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,15 +75,37 @@ export async function POST(request) {
           ErrorCodes.YEAR_END_ALREADY_EXISTS.status
         );
       }
-      // Delete previous failed/in-progress attempt, log the deletion
-      await prisma.yearEndRollover.delete({ where: { id: existing.id } });
-      auditFromSession(prisma, auth.session, {
+      // Explicitly clean up child records before deleting parent
+      // (cascade delete also handles this, but being explicit guards against future schema changes)
+      await prisma.$transaction([
+        prisma.yearEndInventory.deleteMany({ where: { yearEndId: existing.id } }),
+        prisma.yearEndBalanceRecord.deleteMany({ where: { yearEndId: existing.id } }),
+        prisma.yearEndFinancialStatement.deleteMany({ where: { yearEndId: existing.id } }),
+        prisma.yearEndRollover.delete({ where: { id: existing.id } }),
+      ]);
+      await auditFromSession(prisma, auth.session, {
         action: AUDIT_ACTIONS.YEAR_END_CLOSE,
         targetModule: 'year-end',
         targetRecordId: existing.id,
         beforeState: { year, status: existing.status, completedSections: existing.completedSections },
         note: `刪除上次未完成的年結記錄（${existing.status}），準備重新執行`,
-      }).catch(() => {});
+      }).catch(e => console.error('[AUDIT_FAIL] year-end:', e.message));
+    }
+
+    // 1b. Verify all 12 months have been closed or locked
+    const closedMonthRows = await prisma.monthEndStatus.findMany({
+      where: { year, status: { in: ['已結帳', '已鎖定'] } },
+      select: { month: true },
+      distinct: ['month'],
+    });
+    if (closedMonthRows.length < 12) {
+      const closedSet = new Set(closedMonthRows.map(r => r.month));
+      const unclosed = Array.from({ length: 12 }, (_, i) => i + 1).filter(m => !closedSet.has(m));
+      return createErrorResponse(
+        'MONTH_END_INCOMPLETE',
+        `必須先完成全年 12 個月的月結才能執行年結。尚未結帳的月份：${unclosed.join('、')} 月（共 ${unclosed.length} 個月）`,
+        422
+      );
     }
 
     // 2. Create YearEndRollover record with status='進行中'
@@ -107,13 +132,13 @@ export async function POST(request) {
     });
 
     // Audit: year-end started
-    auditFromSession(prisma, auth.session, {
+    await auditFromSession(prisma, auth.session, {
       action: AUDIT_ACTIONS.YEAR_END_CLOSE,
       targetModule: 'year-end',
       targetRecordId: yearEnd.id,
       afterState: { year, status: '進行中' },
       note: `年結開始執行 ${year} 年度`,
-    }).catch(() => {});
+    }).catch(e => console.error('[AUDIT_FAIL] year-end:', e.message));
 
     const yearStart = `${year}-01-01`;
     const yearEndDate = `${year}-12-31`;
@@ -126,225 +151,30 @@ export async function POST(request) {
 
     try {
       // ======================================================
-      // 3. Inventory rollover (snapshot only — no live data modified)
+      // 3. Inventory rollover
       // ======================================================
-      const inStockProducts = await prisma.product.findMany({
-        where: { isInStock: true, isActive: true },
-        select: { id: true, code: true, name: true, costPrice: true },
-      });
-
-      // 用 calcAllQtysForWarehouse 取得完整現存量
-      // （purchase - requisition - transferOut + transferIn + stockCountAdj）
-      // warehouse=null → 全倉合計，與 inventory GET v2 邏輯一致
-      const qtyMap = await calcAllQtysForWarehouse(prisma, null);
-
-      const inventorySnapshots = [];
-      for (const product of inStockProducts) {
-        const currentQty = qtyMap.get(product.id) || 0;
-        const costPrice  = Number(product.costPrice);
-        const isNegative = currentQty < 0;
-        const closingQty = isNegative ? 0 : currentQty;
-        inventorySnapshots.push({
-          yearEndId: yearEnd.id,
-          productId: product.id,
-          productCode: product.code,
-          productName: product.name,
-          costPrice: product.costPrice,
-          closingQuantity: closingQty,
-          closingValue: closingQty * costPrice,
-          isNegative,
-          adjustedToZero: isNegative
-        });
-      }
-
-      if (inventorySnapshots.length > 0) {
-        await prisma.yearEndInventory.createMany({ data: inventorySnapshots });
-      }
+      const { inventorySnapshots, closingInventoryValue } = await runInventoryRollover(prisma, yearEnd.id);
       completedSections.inventory = true;
-      await prisma.yearEndRollover.update({
-        where: { id: yearEnd.id },
-        data: { completedSections }
-      });
+      await prisma.yearEndRollover.update({ where: { id: yearEnd.id }, data: { completedSections } });
 
       // ======================================================
-      // 4. Prepare cash balance data (read only — writes happen in final transaction)
+      // 4. Cash balance preparation (writes happen in step 7)
       // ======================================================
-      const cashAccounts = await prisma.cashAccount.findMany({ where: { isActive: true } });
-
-      const balanceRecords = cashAccounts.map(account => ({
-        yearEndId: yearEnd.id,
-        accountId: account.id,
-        accountName: account.name,
-        accountType: account.type,
-        closingBalance: Number(account.currentBalance),
-        nextYearOpeningBalance: Number(account.currentBalance)
-      }));
+      const { balanceRecords, cashAccounts, totalCashBalance } = await prepareBalanceRecords(prisma, yearEnd.id);
 
       // ======================================================
-      // 5. P&L calculation (read only)
+      // 5. P&L calculation
       // ======================================================
-      const salesRevenue = await prisma.salesMaster.aggregate({
-        where: { invoiceDate: { gte: yearStart, lte: yearEndDate } },
-        _sum: { totalAmount: true },
-        _count: true
-      });
-      const totalRevenue = Number(salesRevenue._sum.totalAmount || 0);
-
-      const pmsIncome = await prisma.pmsIncomeRecord.aggregate({
-        where: { businessDate: { gte: yearStart, lte: yearEndDate }, entryType: '貸方' },
-        _sum: { amount: true }
-      });
-      const totalPmsIncome = Number(pmsIncome._sum.amount || 0);
-
-      const purchaseCost = await prisma.purchaseMaster.aggregate({
-        where: { purchaseDate: { gte: yearStart, lte: yearEndDate } },
-        _sum: { totalAmount: true },
-        _count: true
-      });
-      const totalCOGS = Number(purchaseCost._sum.totalAmount || 0);
-
-      const expenseTotal = await prisma.expense.aggregate({
-        where: { invoiceDate: { gte: yearStart, lte: yearEndDate } },
-        _sum: { amount: true },
-        _count: true
-      });
-      const totalExpenses = Number(expenseTotal._sum.amount || 0);
-
-      const deptExpenseTotal = await prisma.departmentExpense.aggregate({
-        where: { year },
-        _sum: { totalAmount: true }
-      });
-      const totalDeptExpenses = Number(deptExpenseTotal._sum.totalAmount || 0);
-
-      const grossRevenue = totalRevenue + totalPmsIncome;
-      const grossProfit = grossRevenue - totalCOGS;
-      const netIncome = grossProfit - totalExpenses - totalDeptExpenses;
+      const pl = await calcProfitLoss(prisma, { year, yearStart, yearEndDate, closingInventory: closingInventoryValue });
+      const { netIncome, grossRevenue, totalCOGS, grossProfit, totalExpenses, totalDeptExpenses } = pl;
       completedSections.profitLoss = true;
 
       // ======================================================
-      // 6. Financial statements (snapshot only — no live data modified)
+      // 6. Financial statements
       // ======================================================
-      const [salesRows, pmsRows, purchaseRows, expenseRows, deptRows] = await Promise.all([
-        prisma.salesMaster.findMany({
-          where: { invoiceDate: { gte: yearStart, lte: yearEndDate } },
-          select: { invoiceDate: true, totalAmount: true }
-        }),
-        prisma.pmsIncomeRecord.findMany({
-          where: { businessDate: { gte: yearStart, lte: yearEndDate }, entryType: '貸方' },
-          select: { businessDate: true, amount: true }
-        }),
-        prisma.purchaseMaster.findMany({
-          where: { purchaseDate: { gte: yearStart, lte: yearEndDate } },
-          select: { purchaseDate: true, totalAmount: true }
-        }),
-        prisma.expense.findMany({
-          where: { invoiceDate: { gte: yearStart, lte: yearEndDate } },
-          select: { invoiceDate: true, amount: true }
-        }),
-        prisma.departmentExpense.findMany({
-          where: { year },
-          select: { month: true, totalAmount: true }
-        }),
-      ]);
-
-      const getMonth = (dateStr) => dateStr ? parseInt(dateStr.substring(5, 7)) : 0;
-      const monthlySales = Array(13).fill(0);
-      const monthlyPms = Array(13).fill(0);
-      const monthlyPurchase = Array(13).fill(0);
-      const monthlyExpense = Array(13).fill(0);
-      const monthlyDept = Array(13).fill(0);
-
-      for (const r of salesRows) monthlySales[getMonth(r.invoiceDate)] += Number(r.totalAmount || 0);
-      for (const r of pmsRows) monthlyPms[getMonth(r.businessDate)] += Number(r.amount || 0);
-      for (const r of purchaseRows) monthlyPurchase[getMonth(r.purchaseDate)] += Number(r.totalAmount || 0);
-      for (const r of expenseRows) monthlyExpense[getMonth(r.invoiceDate)] += Number(r.amount || 0);
-      for (const r of deptRows) monthlyDept[r.month || 0] += Number(r.totalAmount || 0);
-
-      const salesByMonth = [];
-      for (let m = 1; m <= 12; m++) {
-        const mRev = monthlySales[m] + monthlyPms[m];
-        const mCogs = monthlyPurchase[m];
-        const mExp = monthlyExpense[m] + monthlyDept[m];
-        salesByMonth.push({ month: m, revenue: mRev, cogs: mCogs, grossProfit: mRev - mCogs, expenses: mExp, netIncome: mRev - mCogs - mExp });
-      }
-
-      const incomeStatement = {
-        year,
-        revenue: { salesRevenue: totalRevenue, pmsIncome: totalPmsIncome, totalRevenue: grossRevenue },
-        costOfGoodsSold: totalCOGS,
-        grossProfit,
-        operatingExpenses: { expenses: totalExpenses, departmentExpenses: totalDeptExpenses, totalExpenses: totalExpenses + totalDeptExpenses },
-        netIncome,
-        monthlyBreakdown: salesByMonth
-      };
-
-      const totalCashBalance = cashAccounts.reduce((sum, a) => sum + Number(a.currentBalance), 0);
-      const inventoryValue = inventorySnapshots.reduce((sum, s) => sum + Number(s.closingValue), 0);
-
-      const loans = await prisma.loanMaster.findMany({
-        where: { status: '使用中' },
-        select: { loanName: true, currentBalance: true, bankName: true }
+      const { incomeStatement, balanceSheet, cashFlowStatement } = await buildFinancialStatements(prisma, {
+        year, yearStart, yearEndDate, pl, cashAccounts, inventorySnapshots, totalCashBalance
       });
-      const totalLoanBalance = loans.reduce((sum, l) => sum + Number(l.currentBalance), 0);
-
-      const accountsPayable = await prisma.expense.aggregate({
-        where: { status: { not: '已完成' } },
-        _sum: { amount: true }
-      });
-      const totalAP = Number(accountsPayable._sum.amount || 0);
-
-      const balanceSheet = {
-        year,
-        assets: { currentAssets: { cashAndEquivalents: totalCashBalance, inventory: inventoryValue, totalCurrentAssets: totalCashBalance + inventoryValue }, totalAssets: totalCashBalance + inventoryValue },
-        liabilities: {
-          currentLiabilities: { accountsPayable: totalAP, totalCurrentLiabilities: totalAP },
-          longTermLiabilities: { loans: totalLoanBalance, loanDetails: loans.map(l => ({ name: l.loanName, bank: l.bankName, balance: Number(l.currentBalance) })), totalLongTermLiabilities: totalLoanBalance },
-          totalLiabilities: totalAP + totalLoanBalance
-        },
-        equity: { retainedEarnings: netIncome, totalEquity: netIncome },
-        balanceCheck: {
-          totalAssets: totalCashBalance + inventoryValue,
-          totalLiabilitiesAndEquity: totalAP + totalLoanBalance + netIncome,
-          isBalanced: Math.abs((totalCashBalance + inventoryValue) - (totalAP + totalLoanBalance + netIncome)) < 0.01
-        }
-      };
-
-      const cashTransactions = await prisma.cashTransaction.findMany({
-        where: { transactionDate: { gte: yearStart, lte: yearEndDate }, status: '已確認' },
-        include: { account: { select: { name: true, type: true } }, category: { select: { name: true, type: true } } }
-      });
-
-      let operatingIncome = 0, operatingExpense = 0, investingInflow = 0, investingOutflow = 0, financingInflow = 0, financingOutflow = 0;
-      const monthlyFlows = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, operating: 0, investing: 0, financing: 0, net: 0 }));
-
-      for (const tx of cashTransactions) {
-        const amount = Number(tx.amount);
-        const catName = tx.category?.name || '';
-        const txMonth = parseInt(tx.transactionDate.substring(5, 7));
-        const isInvesting = catName.includes('投資') || catName.includes('設備') || catName.includes('資產');
-        const isFinancing = catName.includes('貸款') || catName.includes('利息') || catName.includes('借款');
-        if (tx.type === '收入') {
-          if (isInvesting) { investingInflow += amount; monthlyFlows[txMonth - 1].investing += amount; }
-          else if (isFinancing) { financingInflow += amount; monthlyFlows[txMonth - 1].financing += amount; }
-          else { operatingIncome += amount; monthlyFlows[txMonth - 1].operating += amount; }
-        } else if (tx.type === '支出') {
-          if (isInvesting) { investingOutflow += amount; monthlyFlows[txMonth - 1].investing -= amount; }
-          else if (isFinancing) { financingOutflow += amount; monthlyFlows[txMonth - 1].financing -= amount; }
-          else { operatingExpense += amount; monthlyFlows[txMonth - 1].operating -= amount; }
-        }
-      }
-      for (const mf of monthlyFlows) mf.net = mf.operating + mf.investing + mf.financing;
-
-      const cashFlowStatement = {
-        year,
-        operatingActivities: { income: operatingIncome, expenses: operatingExpense, netOperating: operatingIncome - operatingExpense },
-        investingActivities: { inflow: investingInflow, outflow: investingOutflow, netInvesting: investingInflow - investingOutflow },
-        financingActivities: { inflow: financingInflow, outflow: financingOutflow, netFinancing: financingInflow - financingOutflow },
-        netCashChange: (operatingIncome - operatingExpense) + (investingInflow - investingOutflow) + (financingInflow - financingOutflow),
-        totalTransactions: cashTransactions.length,
-        monthlyBreakdown: monthlyFlows
-      };
-
       completedSections.statements = true;
 
       // ======================================================
@@ -415,7 +245,7 @@ export async function POST(request) {
           data: { status: 'completed', completedAt: new Date(), note: `年度結轉 ${year} 自動觸發 Tier 3 年度備份` }
         });
       } catch (backupErr) {
-        console.error('年度備份記錄建立失敗（非阻斷）:', backupErr.message);
+        console.error('[YEAR_END_BACKUP_FAIL] 年度備份記錄建立失敗（非阻斷）:', backupErr.message);
       }
 
       // Audit: year-end completed successfully
@@ -433,7 +263,7 @@ export async function POST(request) {
           cashAccounts: balanceRecords.length
         },
         note: `年結關帳完成 ${year} 年度｜淨利 ${netIncome.toLocaleString()} 元`,
-      }).catch(() => {});
+      }).catch(e => console.error('[AUDIT_FAIL] year-end:', e.message));
 
       // Fetch statement IDs for response
       const statements = await prisma.yearEndFinancialStatement.findMany({
@@ -479,17 +309,17 @@ export async function POST(request) {
             completedSections
           }
         }
-      }).catch(() => {});
+      }).catch(e => console.error('[YEAR_END_FAIL_UPDATE] 無法寫入失敗狀態:', e.message));
 
       // Audit: year-end failed
-      auditFromSession(prisma, auth.session, {
+      await auditFromSession(prisma, auth.session, {
         action: AUDIT_ACTIONS.YEAR_END_CLOSE,
         targetModule: 'year-end',
         targetRecordId: yearEnd.id,
         beforeState: { year, status: '進行中', completedSections },
         afterState: { year, status: '失敗', failedAt: new Date().toISOString(), error: innerError.message },
         note: `年結執行失敗 ${year} 年度：${innerError.message}`,
-      }).catch(() => {});
+      }).catch(e => console.error('[AUDIT_FAIL] year-end:', e.message));
 
       throw innerError;
     }

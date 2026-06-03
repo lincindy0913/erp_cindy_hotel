@@ -477,6 +477,8 @@ model CashCategory {
   level1               String?  @map("level1") @db.VarChar(20)   // 收入 | 費用 | 業外
   plGroup              String?  @map("pl_group") @db.VarChar(50) // 住宿收入 | 收款成本 | 人事費用 | 行政費用 | 業外
   plOrder              Int?     @map("pl_order")                  // 損益表顯示排序
+  // 現金流量表分類
+  cashFlowType         String   @default("operating") @map("cash_flow_type") @db.VarChar(20) // operating | investing | financing
   createdAt            DateTime @default(now()) @map("created_at")
 
   accountingSubject AccountingSubject? @relation(fields: [accountingSubjectId], references: [id])
@@ -3412,6 +3414,36 @@ model OwnerCompany {
 
   @@index([isActive])
   @@map("owner_companies")
+}
+
+// ============================================
+// 營業稅申報期 (VAT bimonthly filing)
+// ============================================
+
+model VatFilingPeriod {
+  id              Int       @id @default(autoincrement())
+  year            Int
+  period          Int       // 1–6（每兩個月一期：1=Jan-Feb … 6=Nov-Dec）
+  warehouse       String?   @db.VarChar(100)
+  periodStart     String    @map("period_start") @db.VarChar(20)   // YYYY-MM-DD
+  periodEnd       String    @map("period_end")   @db.VarChar(20)   // YYYY-MM-DD
+  // 計算欄位
+  outputTax       Decimal   @default(0) @map("output_tax")       @db.Decimal(14, 2) // 銷項稅額
+  inputTax        Decimal   @default(0) @map("input_tax")        @db.Decimal(14, 2) // 進項稅額
+  carryForwardIn  Decimal   @default(0) @map("carry_forward_in") @db.Decimal(14, 2) // 上期留抵帶入
+  taxPayable      Decimal   @default(0) @map("tax_payable")      @db.Decimal(14, 2) // 應納稅額（≥0）
+  carryForwardOut Decimal   @default(0) @map("carry_forward_out")@db.Decimal(14, 2) // 本期留抵帶出
+  // 申報狀態
+  status          String    @default("草稿") @db.VarChar(20)  // 草稿 | 已申報 | 已繳納
+  filedBy         String?   @map("filed_by")  @db.VarChar(255)
+  filedAt         DateTime? @map("filed_at")
+  note            String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt       @map("updated_at")
+
+  @@unique([year, period, warehouse])
+  @@index([year, period])
+  @@map("vat_filing_periods")
 }
 
 /// 每月每個發票抬頭的業主私用進項發票彙整
