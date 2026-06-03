@@ -53,18 +53,16 @@ export async function GET(request) {
       }),
       prisma.check.count({ where: { status: 'due', dueDate: { lt: todayStr } } }),
       prisma.loanMaster.count({
-        where: { status: 'active', endDate: { lte: localDateStr(sixMonthsLater) } },
+        where: { status: '使用中', endDate: { lte: localDateStr(sixMonthsLater) } },
       }),
-      prisma.paymentOrder.count({ where: { status: { in: ['pending', 'pending_cashier'] } } }),
-      prisma.inventoryLowStockCache.count().catch(() =>
-        prisma.product.count({ where: { isInStock: true } })
-      ),
+      prisma.paymentOrder.count({ where: { status: '待出納' } }),
+      prisma.inventoryLowStockCache.count().catch(() => 0),
       prisma.commonExpenseRecord.aggregate({
         where: { expenseMonth: monthPrefix, status: '已確認' },
         _sum: { totalDebit: true },
       }),
       prisma.pmsIncomeRecord.aggregate({
-        where: { businessDate: { startsWith: monthPrefix } },
+        where: { businessDate: { startsWith: monthPrefix }, entryType: '貸方' },
         _sum: { amount: true }, _count: true,
       }),
       prisma.utilityBillRecord.count(),

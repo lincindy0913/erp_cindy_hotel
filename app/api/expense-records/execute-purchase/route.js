@@ -6,46 +6,9 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { todayStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
-
-// Helper: generate sequence number with prefix
-async function generateNo(tx, model, prefix) {
-  const today = todayStr().replace(/-/g, '');
-  const fullPrefix = `${prefix}-${today}-`;
-
-  let maxSeq = 0;
-  if (model === 'purchaseMaster') {
-    const existing = await tx.purchaseMaster.findMany({
-      where: { purchaseNo: { startsWith: fullPrefix } },
-      select: { purchaseNo: true }
-    });
-    for (const item of existing) {
-      const seq = parseInt(item.purchaseNo.substring(fullPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-  } else if (model === 'salesMaster') {
-    const existing = await tx.salesMaster.findMany({
-      where: { salesNo: { startsWith: fullPrefix } },
-      select: { salesNo: true }
-    });
-    for (const item of existing) {
-      const seq = parseInt(item.salesNo.substring(fullPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-  } else if (model === 'commonExpenseRecord') {
-    const existing = await tx.commonExpenseRecord.findMany({
-      where: { recordNo: { startsWith: fullPrefix } },
-      select: { recordNo: true }
-    });
-    for (const item of existing) {
-      const seq = parseInt(item.recordNo.substring(fullPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-  }
-
-  return `${fullPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 // POST: Execute purchase-type template
 // Creates: PurchaseMaster + optional SalesMaster + CommonExpenseRecord
@@ -136,7 +99,7 @@ export async function POST(request) {
       const supplierId = parseInt(data.supplierId);
 
       // 1. Create PurchaseMaster + PurchaseDetail（需入庫品項連動庫存分頁，status=待入庫 + inventoryWarehouse）
-      const purchaseNo = await generateNo(tx, 'purchaseMaster', 'PUR');
+      const purchaseNo = await nextSequence(tx, 'purchaseMaster', 'purchaseNo', `PUR-${todayStr().replace(/-/g, '')}-`);
       const purchaseMaster = await tx.purchaseMaster.create({
         data: {
           purchaseNo,
@@ -184,7 +147,7 @@ export async function POST(request) {
       // 3. Create SalesMaster (invoice) if invoice info provided
       let salesMaster = null;
       if (hasInvoice) {
-        const salesNo = await generateNo(tx, 'salesMaster', 'INV');
+        const salesNo = await nextSequence(tx, 'salesMaster', 'salesNo', `INV-${todayStr().replace(/-/g, '')}-`);
         salesMaster = await tx.salesMaster.create({
           data: {
             salesNo,
@@ -219,7 +182,7 @@ export async function POST(request) {
 
       // 4. Create CommonExpenseRecord
       const totalDebit = hasInvoice ? invoiceAmount : purchaseAmount;
-      const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
+      const recordNo = await nextSequence(tx, 'commonExpenseRecord', 'recordNo', `EXP-${todayStr().replace(/-/g, '')}-`);
       const record = await tx.commonExpenseRecord.create({
         data: {
           recordNo,

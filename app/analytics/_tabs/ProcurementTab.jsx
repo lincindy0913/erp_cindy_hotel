@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import TruncationBanner from './TruncationBanner';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const pct = (v) => `${Number(v || 0).toFixed(1)}%`;
@@ -103,6 +104,7 @@ function ProcurementStructureView({ data }) {
   const maxCat = data.categoryBreakdown?.[0]?.amount || 1;
   return (
     <div className="space-y-5">
+      {data.truncated && <TruncationBanner />}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard label="進貨總額（期間）" value={NT(data.totalAmount)} color="text-gray-800" icon="🛒" />
         <KpiCard label="進貨單筆數" value={`${data.totalOrders ?? 0} 筆`} color="text-blue-600" icon="📦" />

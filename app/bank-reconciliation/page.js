@@ -219,6 +219,17 @@ export default function BankReconciliationPage() {
           <h1 className="text-2xl font-bold text-gray-800">存簿核對（銀行調節表）</h1>
         </div>
 
+        {/* Legacy system warning */}
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <svg className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <div>
+            <p className="font-semibold">此為舊版月調節表（傳統手動格式）</p>
+            <p className="mt-0.5 text-amber-700">新帳戶請改用 <a href="/reconciliation" className="underline font-medium hover:text-amber-900">銀行對帳（逐筆匯入）</a>，支援 CSV 自動匯入與逐筆配對。同一帳戶同月份請勿在兩個系統重複建立，以避免餘額不一致。</p>
+          </div>
+        </div>
+
         {/* 篩選 */}
         <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap gap-3 items-end">
           <div>

@@ -65,7 +65,7 @@ export async function GET(request) {
     const status     = searchParams.get('status');
     const guestName  = searchParams.get('guestName');
     const page       = Math.max(1, parseInt(searchParams.get('page')     || '1'));
-    const pageSize   = Math.min(2000, Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
+    const pageSize   = Math.min(500,  Math.max(1, parseInt(searchParams.get('pageSize') || '200')));
 
     const where = { deletedAt: null };
     if (month)     where.importMonth = month;

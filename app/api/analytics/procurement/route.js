@@ -29,10 +29,10 @@ export async function GET(request) {
     const wf = applyWarehouseFilter(auth.session, where);
     if (!wf.ok) return wf.response;
 
-    // Fetch all qualifying purchases with supplier info
+    const TAKE_LIMIT = 10000;
     const purchases = await prisma.purchaseMaster.findMany({
       where,
-      take: 10000,
+      take: TAKE_LIMIT,
       include: {
         supplier: { select: { id: true, name: true } },
         details: {
@@ -113,7 +113,8 @@ export async function GET(request) {
       monthlyTrend,
       categoryBreakdown,
       totalAmount: Math.round(grandTotal),
-      totalOrders: purchases.length
+      totalOrders: purchases.length,
+      truncated: purchases.length >= TAKE_LIMIT,
     });
   } catch (error) {
     return handleApiError(error);

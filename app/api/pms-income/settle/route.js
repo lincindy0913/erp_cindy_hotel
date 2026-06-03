@@ -266,15 +266,29 @@ export async function GET(request) {
       orderBy: [{ settlementMonth: 'desc' }, { warehouse: 'asc' }],
     });
 
-    return NextResponse.json(settlements.map(s => ({
-      ...s,
-      creditTotal: Number(s.creditTotal),
-      debitTotal: Number(s.debitTotal),
-      createdAt: s.createdAt.toISOString(),
-      updatedAt: s.updatedAt.toISOString(),
-      verifiedAt: s.verifiedAt ? s.verifiedAt.toISOString() : null,
-      settledAt: s.settledAt ? s.settledAt.toISOString() : null,
-    })));
+    // PMS2：若指定特定館別+月份，一併回傳已推送記錄數，讓前端顯示衝突警示
+    let pushedCount = 0;
+    if (warehouse && yearMonth) {
+      const [y, m] = yearMonth.split('-').map(Number);
+      const startDate = `${yearMonth}-01`;
+      const endDate   = `${yearMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+      pushedCount = await prisma.pmsIncomeRecord.count({
+        where: { warehouse, businessDate: { gte: startDate, lte: endDate }, cashTransactionId: { not: null } },
+      });
+    }
+
+    return NextResponse.json({
+      settlements: settlements.map(s => ({
+        ...s,
+        creditTotal: Number(s.creditTotal),
+        debitTotal:  Number(s.debitTotal),
+        createdAt:   s.createdAt.toISOString(),
+        updatedAt:   s.updatedAt.toISOString(),
+        verifiedAt:  s.verifiedAt ? s.verifiedAt.toISOString() : null,
+        settledAt:   s.settledAt ? s.settledAt.toISOString() : null,
+      })),
+      pushedCount,
+    });
   } catch (error) {
     return handleApiError(error);
   }

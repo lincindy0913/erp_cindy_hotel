@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { assertRentalYearOpen } from '@/lib/rental-year-lock';
+import { assertPeriodOpen } from '@/lib/period-lock';
 import { getCategoryId } from '@/lib/cash-category-helper';
 import { todayStr } from '@/lib/localDate';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
@@ -45,7 +46,7 @@ export async function PATCH(request, { params }) {
     const incomeId = parseInt((await params).id);
     const record = await prisma.rentalUtilityIncome.findUnique({
       where: { id: incomeId },
-      include: { property: { select: { id: true, name: true } } },
+      include: { property: { select: { id: true, name: true, warehouse: true } } },
     });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到水電收入紀錄', 404);
 
@@ -81,66 +82,79 @@ export async function PATCH(request, { params }) {
       if (accountId !== undefined) updateData.accountId = accountId ? parseInt(accountId) : null;
     }
 
-    const updated = await prisma.rentalUtilityIncome.update({
-      where: { id: incomeId },
-      data: updateData,
-      include: { property: { select: { id: true, name: true } } },
+    // RT3: 月結期間鎖定（以 actualDate 優先，否則用月份第一天）
+    const lockDate = (updateData.actualDate ?? record.actualDate)
+      || `${record.incomeYear}-${String(record.incomeMonth).padStart(2, '0')}-01`;
+    const warehouse = record.property?.warehouse || null;
+
+    let finalRecord;
+    await prisma.$transaction(async (tx) => {
+      await assertPeriodOpen(tx, lockDate, warehouse);
+
+      const updated = await tx.rentalUtilityIncome.update({
+        where: { id: incomeId },
+        data: updateData,
+        include: { property: { select: { id: true, name: true, warehouse: true } } },
+      });
+
+      // 同步 CashTransaction（RT2: 帶入 warehouse）
+      if (!bankMatched) {
+        const hasAmount  = updated.actualAmount && Number(updated.actualAmount) > 0;
+        const hasAccount = updated.accountId;
+        const description = `水電收入 - ${updated.property?.name || '物業'} - ${updated.incomeYear}/${updated.incomeMonth}`;
+
+        if (updated.cashTransactionId) {
+          if (!hasAmount || !hasAccount) {
+            await tx.rentalUtilityIncome.update({ where: { id: incomeId }, data: { cashTransactionId: null } });
+            await tx.cashTransaction.delete({ where: { id: updated.cashTransactionId } });
+            await recalcBalance(tx, updated.accountId ?? record.accountId);
+          } else {
+            await tx.cashTransaction.update({
+              where: { id: updated.cashTransactionId },
+              data: {
+                amount: Number(updated.actualAmount),
+                transactionDate: updated.actualDate || todayStr(),
+                accountId: updated.accountId,
+                warehouse: updated.property?.warehouse || null,  // RT2
+                description,
+              },
+            });
+            await recalcBalance(tx, updated.accountId);
+            if (record.accountId && record.accountId !== updated.accountId) {
+              await recalcBalance(tx, record.accountId);
+            }
+          }
+        } else if (hasAmount && hasAccount) {
+          const categoryId = await getCategoryId(tx, 'rental_income');
+          const txNo = await nextCashTransactionNo(tx, updated.actualDate);
+          const cashTx = await tx.cashTransaction.create({
+            data: {
+              transactionNo:   txNo,
+              transactionDate: updated.actualDate || todayStr(),
+              type:            '收入',
+              warehouse:       updated.property?.warehouse || null,  // RT2
+              accountId:       updated.accountId,
+              categoryId,
+              amount:          Number(updated.actualAmount),
+              description,
+              sourceType:      'rental_income',
+              sourceRecordId:  incomeId,
+              status:          '已確認',
+            },
+            select: { id: true },
+          });
+          await tx.rentalUtilityIncome.update({ where: { id: incomeId }, data: { cashTransactionId: cashTx.id } });
+          await recalcBalance(tx, updated.accountId);
+        }
+      }
+
+      finalRecord = updated;
     });
 
-    // 同步 CashTransaction
-    if (!bankMatched) {
-      const hasAmount  = updated.actualAmount && Number(updated.actualAmount) > 0;
-      const hasAccount = updated.accountId;
-
-      if (updated.cashTransactionId) {
-        if (!hasAmount || !hasAccount) {
-          // 清除金額或帳戶 → 刪除 cashTx
-          await prisma.rentalUtilityIncome.update({ where: { id: incomeId }, data: { cashTransactionId: null } });
-          await prisma.cashTransaction.delete({ where: { id: updated.cashTransactionId } });
-          await recalcBalance(prisma, updated.accountId ?? record.accountId);
-        } else {
-          // 更新 cashTx
-          const description = `水電收入 - ${updated.property?.name || '物業'} - ${updated.incomeYear}/${updated.incomeMonth}`;
-          await prisma.cashTransaction.update({
-            where: { id: updated.cashTransactionId },
-            data: {
-              amount: Number(updated.actualAmount),
-              transactionDate: updated.actualDate || todayStr(),
-              accountId: updated.accountId,
-              description,
-            },
-          });
-          await recalcBalance(prisma, updated.accountId);
-          if (record.accountId && record.accountId !== updated.accountId) {
-            await recalcBalance(prisma, record.accountId);
-          }
-        }
-      } else if (hasAmount && hasAccount) {
-        // 新建 cashTx
-        const categoryId = await getCategoryId(prisma, 'rental_income');
-        const txNo = await nextCashTransactionNo(prisma, updated.actualDate);
-        const description = `水電收入 - ${updated.property?.name || '物業'} - ${updated.incomeYear}/${updated.incomeMonth}`;
-        const tx = await prisma.cashTransaction.create({
-          data: {
-            transactionNo: txNo,
-            transactionDate: updated.actualDate || todayStr(),
-            type: '收入',
-            accountId: updated.accountId,
-            categoryId,
-            amount: Number(updated.actualAmount),
-            description,
-            sourceType: 'rental_income',
-            sourceRecordId: incomeId,
-            status: '已確認',
-          },
-          select: { id: true },
-        });
-        await prisma.rentalUtilityIncome.update({ where: { id: incomeId }, data: { cashTransactionId: tx.id } });
-        await recalcBalance(prisma, updated.accountId);
-      }
-    }
-
-    return NextResponse.json({ ...updated, actualAmount: updated.actualAmount ? Number(updated.actualAmount) : null });
+    return NextResponse.json({
+      ...finalRecord,
+      actualAmount: finalRecord.actualAmount ? Number(finalRecord.actualAmount) : null,
+    });
   } catch (error) {
     console.error('PATCH /api/rentals/utility-income/[id] error:', error.message || error);
     return handleApiError(error);
@@ -154,30 +168,42 @@ export async function DELETE(request, { params }) {
 
   try {
     const incomeId = parseInt((await params).id);
-    const record = await prisma.rentalUtilityIncome.findUnique({ where: { id: incomeId } });
+    const record = await prisma.rentalUtilityIncome.findUnique({
+      where: { id: incomeId },
+      include: { property: { select: { warehouse: true } } },
+    });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到水電收入紀錄', 404);
 
     await assertRentalYearOpen(record.incomeYear);
 
-    if (record.cashTransactionId) {
-      if (await isBankMatched(record.cashTransactionId)) {
-        return createErrorResponse(
-          'CONFLICT',
-          '此筆水電收入的出納記錄已與銀行對帳，無法刪除，請先解除對帳。',
-          409
-        );
-      }
-
-      const cashTx = await prisma.cashTransaction.findUnique({
-        where: { id: record.cashTransactionId },
-        select: { accountId: true },
-      });
-      await prisma.rentalUtilityIncome.update({ where: { id: incomeId }, data: { cashTransactionId: null } });
-      await prisma.cashTransaction.delete({ where: { id: record.cashTransactionId } });
-      if (cashTx) await recalcBalance(prisma, cashTx.accountId);
+    if (record.cashTransactionId && await isBankMatched(record.cashTransactionId)) {
+      return createErrorResponse(
+        'CONFLICT',
+        '此筆水電收入的出納記錄已與銀行對帳，無法刪除，請先解除對帳。',
+        409
+      );
     }
 
-    await prisma.rentalUtilityIncome.delete({ where: { id: incomeId } });
+    const lockDate = record.actualDate
+      || `${record.incomeYear}-${String(record.incomeMonth).padStart(2, '0')}-01`;
+
+    await prisma.$transaction(async (tx) => {
+      // RT3: 月結鎖定
+      await assertPeriodOpen(tx, lockDate, record.property?.warehouse);
+
+      if (record.cashTransactionId) {
+        const cashTx = await tx.cashTransaction.findUnique({
+          where: { id: record.cashTransactionId },
+          select: { accountId: true },
+        });
+        await tx.rentalUtilityIncome.update({ where: { id: incomeId }, data: { cashTransactionId: null } });
+        await tx.cashTransaction.delete({ where: { id: record.cashTransactionId } });
+        if (cashTx) await recalcBalance(tx, cashTx.accountId);
+      }
+
+      await tx.rentalUtilityIncome.delete({ where: { id: incomeId } });
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /api/rentals/utility-income/[id] error:', error.message || error);

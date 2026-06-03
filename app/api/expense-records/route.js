@@ -37,40 +37,50 @@ export async function GET(request) {
     const wf = applyWarehouseFilter(auth.session, where);
     if (!wf.ok) return wf.response;
 
-    // If filtering by payment status, we need to join with PaymentOrder
+    // Push paymentStatus filter to SQL via two-step:
+    // Map display status → PO status, fetch matching PO IDs, add paymentOrderId condition.
+    // CommonExpenseRecord has no Prisma relation to PaymentOrder, so we can't use nested where.
     const paymentStatusFilter = searchParams.get('paymentStatus');
+    if (paymentStatusFilter) {
+      if (paymentStatusFilter === '未連結') {
+        where.paymentOrderId = null;
+      } else {
+        const PO_STATUS_MAP = { '待出納': '待出納', '已付款': '已執行', '已代墊': '已代墊' };
+        const poStatus = PO_STATUS_MAP[paymentStatusFilter] ?? paymentStatusFilter;
+        const matchingIds = (await prisma.paymentOrder.findMany({
+          where: { status: poStatus },
+          select: { id: true },
+        })).map(po => po.id);
+        where.paymentOrderId = { in: matchingIds }; // empty array → Prisma returns nothing
+      }
+    }
 
     const [records, total] = await Promise.all([
       prisma.commonExpenseRecord.findMany({
         where,
         include: {
-          template: {
-            select: { id: true, name: true, categoryId: true, category: true }
-          },
-          entryLines: {
-            orderBy: { sortOrder: 'asc' }
-          }
+          template: { select: { id: true, name: true, categoryId: true, category: true } },
+          entryLines: { orderBy: { sortOrder: 'asc' } },
         },
         orderBy: [{ createdAt: 'desc' }],
         skip: (page - 1) * limit,
-        take: limit
+        take: limit,
       }),
-      prisma.commonExpenseRecord.count({ where })
+      prisma.commonExpenseRecord.count({ where }),
     ]);
 
-    // Fetch linked payment order statuses
-    const paymentOrderIds = records.map(r => r.paymentOrderId).filter(Boolean);
-    const paymentOrders = paymentOrderIds.length > 0
+    // Fetch payment order statuses for this page only
+    const poIds = records.map(r => r.paymentOrderId).filter(Boolean);
+    const paymentOrders = poIds.length > 0
       ? await prisma.paymentOrder.findMany({
-          where: { id: { in: paymentOrderIds } },
-          select: { id: true, status: true }
+          where: { id: { in: poIds } },
+          select: { id: true, status: true },
         })
       : [];
     const poStatusMap = new Map(paymentOrders.map(po => [po.id, po.status]));
 
-    const allResults = records.map(r => {
+    const result = records.map(r => {
       const poStatus = r.paymentOrderId ? poStatusMap.get(r.paymentOrderId) : null;
-      // Map payment order status to display status
       let paymentStatus = null;
       if (poStatus === '待出納') paymentStatus = '待出納';
       else if (poStatus === '已執行') paymentStatus = '已付款';
@@ -82,28 +92,20 @@ export async function GET(request) {
         totalDebit: Number(r.totalDebit),
         totalCredit: Number(r.totalCredit),
         paymentStatus,
-        entryLines: r.entryLines.map(line => ({
-          ...line,
-          amount: Number(line.amount)
-        })),
+        entryLines: r.entryLines.map(line => ({ ...line, amount: Number(line.amount) })),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
-        voidedAt: r.voidedAt ? r.voidedAt.toISOString() : null
+        voidedAt: r.voidedAt ? r.voidedAt.toISOString() : null,
       };
     });
-
-    // Filter by payment status if requested
-    const result = paymentStatusFilter
-      ? allResults.filter(r => r.paymentStatus === paymentStatusFilter)
-      : allResults;
 
     return NextResponse.json({
       records: result,
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
     return handleApiError(error);

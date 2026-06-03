@@ -16,6 +16,8 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
   const [settlementBatches, setSettlementBatches] = useState([]);
   const [settlementStatus, setSettlementStatus] = useState(null);
   const [settling, setSettling] = useState(false);
+  const [pushedCount, setPushedCount] = useState(0);    // PMS2: 已逐筆推送的記錄數
+  const [settleResult, setSettleResult] = useState(null); // PMS1: 結算結果（含 skipped）
 
   const fetchSettlementData = useCallback(async () => {
     setLoading(true);
@@ -36,9 +38,18 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
       }
       if (statusRes.ok) {
         const data = await statusRes.json();
-        setSettlementStatus(Array.isArray(data) && data.length > 0 ? data[0] : null);
+        // 新格式：{ settlements: [...], pushedCount: N }
+        if (data && typeof data === 'object' && 'settlements' in data) {
+          setSettlementStatus(data.settlements.length > 0 ? data.settlements[0] : null);
+          setPushedCount(data.pushedCount || 0);
+        } else {
+          // 相容舊格式（純陣列）
+          setSettlementStatus(Array.isArray(data) && data.length > 0 ? data[0] : null);
+          setPushedCount(0);
+        }
       } else {
         setSettlementStatus(null);
+        setPushedCount(0);
       }
     } catch {
       /* ignore */
@@ -97,6 +108,7 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
       const data = await res.json();
       if (res.ok) {
         setSuccess(data.message || '結算完成');
+        setSettleResult(data); // PMS1: 儲存 skipped 清單供 UI 顯示
         fetchSettlementData();
       } else {
         setError(data.error?.message || data.error || '結算失敗');
@@ -163,6 +175,8 @@ export function usePmsIncomeSettlement({ activeTab, setLoading, setError, setSuc
     settlementBatches,
     settlementStatus,
     settling,
+    pushedCount,
+    settleResult,
     fetchSettlementData,
     handleVerifyMonth,
     handleSettleMonth,

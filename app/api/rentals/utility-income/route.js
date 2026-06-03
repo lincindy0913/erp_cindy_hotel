@@ -7,47 +7,9 @@ import { getCategoryId } from '@/lib/cash-category-helper';
 import { todayStr } from '@/lib/localDate';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { assertRentalYearOpen } from '@/lib/rental-year-lock';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
-
-async function ensureUtilityIncomeCashTx(prismaClient, record) {
-  if (!record.actualAmount || !record.accountId || record.cashTransactionId) return record;
-  const amt = Number(record.actualAmount);
-  const acctId = record.accountId;
-  const categoryId = await getCategoryId(prismaClient, 'rental_income');
-  const category = categoryId
-    ? await prismaClient.cashCategory.findUnique({
-        where: { id: categoryId },
-        include: { accountingSubject: { select: { code: true, name: true } } }
-      })
-    : null;
-  const accountingSubjectLabel = category?.accountingSubject
-    ? `${category.accountingSubject.code || ''} ${category.accountingSubject.name || ''}`.trim()
-    : null;
-  const txNo = await nextCashTransactionNo(prismaClient, record.actualDate);
-  const description = `水電收入 - ${record.property?.name || '物業'} - ${record.incomeYear}/${record.incomeMonth}`;
-  const tx = await prismaClient.cashTransaction.create({
-    data: {
-      transactionNo: txNo,
-      transactionDate: record.actualDate || todayStr(),
-      type: '收入',
-      accountId: acctId,
-      categoryId,
-      accountingSubject: accountingSubjectLabel,
-      amount: amt,
-      description,
-      sourceType: 'rental_income',
-      sourceRecordId: record.id,
-      status: '已確認'
-    },
-    select: { id: true },
-  });
-  await prismaClient.rentalUtilityIncome.update({
-    where: { id: record.id },
-    data: { cashTransactionId: tx.id }
-  });
-  return { ...record, cashTransactionId: tx.id };
-}
 
 export async function GET(request) {
   const auth = await requirePermission(PERMISSIONS.RENTAL_VIEW);
@@ -55,31 +17,25 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const year = searchParams.get('year');
-    const month = searchParams.get('month');
+    const year       = searchParams.get('year');
+    const month      = searchParams.get('month');
     const propertyId = searchParams.get('propertyId');
 
     const where = {};
-    if (year) where.incomeYear = parseInt(year);
-    if (month) where.incomeMonth = parseInt(month);
-    if (propertyId) where.propertyId = parseInt(propertyId);
+    if (year)       where.incomeYear  = parseInt(year);
+    if (month)      where.incomeMonth = parseInt(month);
+    if (propertyId) where.propertyId  = parseInt(propertyId);
 
     const list = await prisma.rentalUtilityIncome.findMany({
       where,
       include: {
-        property: { select: { id: true, name: true, buildingName: true } }
+        property: { select: { id: true, name: true, buildingName: true, warehouse: true } },
       },
-      orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { propertyId: 'asc' }]
+      orderBy: [{ incomeYear: 'desc' }, { incomeMonth: 'desc' }, { propertyId: 'asc' }],
     });
 
-    const result = list.map(u => ({
-      ...u,
-      propertyName: u.property.name
-    }));
-
-    return NextResponse.json(result);
+    return NextResponse.json(list.map(u => ({ ...u, propertyName: u.property.name })));
   } catch (error) {
-    console.error('GET /api/rentals/utility-income error:', error.message || error);
     return handleApiError(error);
   }
 }
@@ -101,47 +57,96 @@ export async function POST(request) {
 
     await assertRentalYearOpen(y);
 
-    const expected = expectedAmount != null && expectedAmount !== '' ? parseFloat(expectedAmount) : 0;
+    // RT2: 取得物業 warehouse
+    const property = await prisma.rentalProperty.findUnique({
+      where: { id: parseInt(propertyId) },
+      select: { id: true, name: true, warehouse: true },
+    });
+    if (!property) return createErrorResponse('NOT_FOUND', '找不到物業', 404);
 
-    const created = await prisma.rentalUtilityIncome.upsert({
-      where: {
-        propertyId_incomeYear_incomeMonth: {
+    const expected = expectedAmount != null && expectedAmount !== '' ? parseFloat(expectedAmount) : 0;
+    const actual   = actualAmount   != null && actualAmount   !== '' ? parseFloat(actualAmount)   : null;
+    const acctId   = accountId ? parseInt(accountId) : null;
+    // RT3: 月結期間鎖定日期（以 actualDate 優先，否則用月份第一天）
+    const lockDate = actualDate || `${y}-${String(m).padStart(2, '0')}-01`;
+
+    let resultId;
+
+    // RT1: upsert + cashTransaction 包在同一 $transaction
+    await prisma.$transaction(async (tx) => {
+      // RT3: 月結鎖定
+      await assertPeriodOpen(tx, lockDate, property.warehouse);
+
+      const created = await tx.rentalUtilityIncome.upsert({
+        where: {
+          propertyId_incomeYear_incomeMonth: { propertyId: parseInt(propertyId), incomeYear: y, incomeMonth: m },
+        },
+        create: {
           propertyId: parseInt(propertyId),
           incomeYear: y,
-          incomeMonth: m
-        }
-      },
-      create: {
-        propertyId: parseInt(propertyId),
-        incomeYear: y,
-        incomeMonth: m,
-        expectedAmount: expected,
-        actualAmount: actualAmount != null && actualAmount !== '' ? parseFloat(actualAmount) : null,
-        actualDate: actualDate || null,
-        status: actualAmount != null && actualAmount !== '' ? 'completed' : 'pending',
-        accountId: accountId ? parseInt(accountId) : null,
-        note: note || null
-      },
-      update: {
-        expectedAmount: expected,
-        actualAmount: actualAmount != null && actualAmount !== '' ? parseFloat(actualAmount) : null,
-        actualDate: actualDate || null,
-        status: actualAmount != null && actualAmount !== '' ? 'completed' : 'pending',
-        accountId: accountId ? parseInt(accountId) : null,
-        note: note || null
-      },
-      include: {
-        property: { select: { id: true, name: true } }
+          incomeMonth: m,
+          expectedAmount: expected,
+          actualAmount: actual,
+          actualDate: actualDate || null,
+          status: actual != null ? 'completed' : 'pending',
+          accountId: acctId,
+          note: note || null,
+        },
+        update: {
+          expectedAmount: expected,
+          actualAmount: actual,
+          actualDate: actualDate || null,
+          status: actual != null ? 'completed' : 'pending',
+          accountId: acctId,
+          note: note || null,
+        },
+      });
+      resultId = created.id;
+
+      // 建立 cashTransaction（RT2: 帶入 warehouse）
+      if (actual && acctId && !created.cashTransactionId) {
+        const categoryId = await getCategoryId(tx, 'rental_income');
+        const category   = categoryId
+          ? await tx.cashCategory.findUnique({
+              where: { id: categoryId },
+              include: { accountingSubject: { select: { code: true, name: true } } },
+            })
+          : null;
+        const accountingSubjectLabel = category?.accountingSubject
+          ? `${category.accountingSubject.code || ''} ${category.accountingSubject.name || ''}`.trim()
+          : null;
+        const txNo       = await nextCashTransactionNo(tx, actualDate);
+        const description = `水電收入 - ${property.name} - ${y}/${m}`;
+        const cashTx = await tx.cashTransaction.create({
+          data: {
+            transactionNo:   txNo,
+            transactionDate: actualDate || todayStr(),
+            type:            '收入',
+            warehouse:       property.warehouse || null,  // RT2
+            accountId:       acctId,
+            categoryId,
+            accountingSubject: accountingSubjectLabel,
+            amount:          actual,
+            description,
+            sourceType:      'rental_income',
+            sourceRecordId:  created.id,
+            status:          '已確認',
+          },
+          select: { id: true },
+        });
+        await tx.rentalUtilityIncome.update({
+          where: { id: created.id },
+          data:  { cashTransactionId: cashTx.id },
+        });
       }
     });
 
-    if (created.actualAmount && created.accountId && !created.cashTransactionId) {
-      await ensureUtilityIncomeCashTx(prisma, created);
-    }
-
-    return NextResponse.json(created, { status: 201 });
+    const result = await prisma.rentalUtilityIncome.findUnique({
+      where: { id: resultId },
+      include: { property: { select: { id: true, name: true, warehouse: true } } },
+    });
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    console.error('POST /api/rentals/utility-income error:', error.message || error);
     return handleApiError(error);
   }
 }

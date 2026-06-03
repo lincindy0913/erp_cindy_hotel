@@ -13,6 +13,8 @@ export default function PmsIncomeSettlementTab({
   settlementStatus,
   settlementBatches,
   settling,
+  pushedCount,
+  settleResult,
   handleSettleMonth,
   handleVerifyMonth,
   handleVerifyBatches,
@@ -130,14 +132,22 @@ export default function PmsIncomeSettlementTab({
               {settlementStatus.status}
             </span>
             {settlementStatus.status === '已核對' && (
-              <button
-                type="button"
-                onClick={handleSettleMonth}
-                disabled={settling}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
-              >
-                {settling ? '結算中...' : '結算入帳'}
-              </button>
+              <>
+                {pushedCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-50 border border-amber-300 text-amber-800 px-3 py-1.5 rounded-lg">
+                    ⚠ 本月有 {pushedCount} 筆已逐筆推送，月結前請先至現金流沖銷
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSettleMonth}
+                  disabled={settling || pushedCount > 0}
+                  title={pushedCount > 0 ? `有 ${pushedCount} 筆已推送記錄，請先沖銷後再月結` : undefined}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {settling ? '結算中...' : '結算入帳'}
+                </button>
+              </>
             )}
             {settlementStatus.status === '已結算' && (
               <>
@@ -267,6 +277,34 @@ export default function PmsIncomeSettlementTab({
               尚有 {resvStats.ccRows - resvStats.ccReconRows} 筆信用卡未核對，建議在結算前至「訂房明細」頁面完成核對。
             </p>
           )}
+        </div>
+      )}
+
+      {/* PMS1: 結算後顯示跳過的欄位（無帳戶設定） */}
+      {settleResult?.skipped?.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p className="text-sm font-semibold text-amber-800 mb-2">
+            ⚠ 以下 {settleResult.skipped.length} 筆欄位未進現金流（原因：未設定收入帳戶）
+          </p>
+          <p className="text-xs text-amber-700 mb-3">請至「收入帳戶設定」補上對應帳戶，再使用「解除月結→重新結算」。</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-amber-700 border-b border-amber-200">
+                <th className="text-left py-1 pr-3">欄位名稱</th>
+                <th className="text-left py-1 pr-3">批次日期</th>
+                <th className="text-right py-1">金額</th>
+              </tr></thead>
+              <tbody>
+                {settleResult.skipped.map((s, i) => (
+                  <tr key={i} className="border-b border-amber-100">
+                    <td className="py-1 pr-3 text-amber-900 font-medium">{s.columnName}</td>
+                    <td className="py-1 pr-3 text-amber-800">{s.batchDate}</td>
+                    <td className="py-1 text-right tabular-nums text-amber-800">{Number(s.total).toLocaleString('zh-TW')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

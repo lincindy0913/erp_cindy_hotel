@@ -7,6 +7,8 @@ import { requirePermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyWarehouseFilter } from '@/lib/warehouse-access';
 import { todayStr } from '@/lib/localDate';
+import { nextSequence } from '@/lib/sequence-generator';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,21 +26,6 @@ function calcTotalFromJson(summaryJson, billType) {
   } catch { return 0; }
 }
 
-// ── 產生 PAY-YYYYMMDD-NNN 單號 ────────────────────────────────
-async function generatePaymentOrderNo() {
-  const today = todayStr().replace(/-/g, '');
-  const prefix = `PAY-${today}-`;
-  const existing = await prisma.paymentOrder.findMany({
-    where: { orderNo: { startsWith: prefix } },
-    select: { orderNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = parseInt(item.orderNo.substring(prefix.length)) || 0;
-    if (seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
-}
 
 // GET: 列表，可篩選 館別、年、月、類型
 export async function GET(request) {
@@ -126,111 +113,124 @@ export async function POST(request) {
 
     const jsonStr = typeof summaryJson === 'string' ? summaryJson : JSON.stringify(summaryJson);
     const totalAmount = calcTotalFromJson(jsonStr, billType);
+    const userName = session?.user?.name || session?.user?.email || 'system';
 
+    const billTypeNorm = billType === '水費' ? '水費' : '電費';
     const data = {
       warehouse: String(warehouse).trim(),
       billYear: year,
       billMonth: month,
-      billType: billType === '水費' ? '水費' : '電費',
+      billType: billTypeNorm,
       summaryJson: jsonStr,
       fileName: fileName ? String(fileName).trim() : null,
       totalAmount: totalAmount > 0 ? totalAmount : null,
     };
 
-    // Upsert UtilityBillRecord
-    const record = await prisma.utilityBillRecord.upsert({
-      where: {
-        warehouse_billYear_billMonth_billType: {
-          warehouse: data.warehouse,
-          billYear: data.billYear,
-          billMonth: data.billMonth,
-          billType: data.billType,
-        },
-      },
-      create: data,
-      update: {
-        summaryJson: data.summaryJson,
-        fileName: data.fileName,
-        totalAmount: data.totalAmount,
-      },
+    // 廠商查詢在 transaction 外（read-only，允許略早一步）
+    const supplierKeyword  = billTypeNorm === '電費' ? '台電' : '台水';
+    const supplierFullName = billTypeNorm === '電費' ? '台灣電力公司' : '台灣自來水股份有限公司';
+    let supplier = await prisma.supplier.findFirst({
+      where: { OR: [{ name: { contains: supplierKeyword } }, { name: supplierFullName }], isActive: true },
+      select: { id: true, name: true },
     });
 
-    // ── 自動建立或更新付款單 ──────────────────────────────────
-    let paymentOrderId = record.paymentOrderId;
-    let paymentOrderNo = null;
-    let paymentOrderStatus = null;
+    const { record, paymentOrderId, paymentOrderNo, paymentOrderStatus } =
+      await prisma.$transaction(async (tx) => {
+        // ── Period lock: use first day of billing month ───────────────────
+        const periodDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        await assertPeriodOpen(tx, periodDate, data.warehouse);
 
-    if (totalAmount > 0) {
-      const userName = session?.user?.name || session?.user?.email || 'system';
-
-      // 找或建立廠商（台電 / 台水）
-      const supplierKeyword = data.billType === '電費' ? '台電' : '台水';
-      const supplierFullName = data.billType === '電費' ? '台灣電力公司' : '台灣自來水股份有限公司';
-      let supplier = await prisma.supplier.findFirst({
-        where: { OR: [{ name: { contains: supplierKeyword } }, { name: supplierFullName }], isActive: true },
-        select: { id: true, name: true },
-      });
-      if (!supplier) {
-        supplier = await prisma.supplier.create({
-          data: { name: supplierFullName, isActive: true },
-          select: { id: true, name: true },
-        });
-      }
-
-      if (paymentOrderId) {
-        // 若已有付款單且還是待出納 → 更新金額
-        const existingPO = await prisma.paymentOrder.findUnique({
-          where: { id: paymentOrderId },
-          select: { status: true, orderNo: true },
-        });
-        if (existingPO) {
-          paymentOrderNo = existingPO.orderNo;
-          paymentOrderStatus = existingPO.status;
-          if (existingPO.status === '待出納') {
-            await prisma.paymentOrder.update({
-              where: { id: paymentOrderId },
-              data: { amount: totalAmount, netAmount: totalAmount },
-            });
-          }
-          // 若已付款或已取消，保留原單號不重建
-        } else {
-          paymentOrderId = null; // 原單號不存在，重建
-        }
-      }
-
-      if (!paymentOrderId) {
-        // 建立新付款單
-        const orderNo = await generatePaymentOrderNo();
-        const summary = `${data.warehouse} ${year}年${month}月 ${data.billType}`;
-        const po = await prisma.paymentOrder.create({
-          data: {
-            orderNo,
-            invoiceIds: [],
-            supplierId:   supplier?.id   || null,
-            supplierName: supplier?.name || supplierFullName,
-            warehouse:    data.warehouse,
-            paymentMethod: '轉帳',
-            amount:       totalAmount,
-            discount:     0,
-            netAmount:    totalAmount,
-            summary,
-            status:       '待出納',
-            createdBy:    userName,
-            sourceType:   'utility_bill',
-            sourceRecordId: record.id,
+        // ── Step 1: upsert UtilityBillRecord ─────────────────────────────
+        const rec = await tx.utilityBillRecord.upsert({
+          where: {
+            warehouse_billYear_billMonth_billType: {
+              warehouse: data.warehouse,
+              billYear:  data.billYear,
+              billMonth: data.billMonth,
+              billType:  data.billType,
+            },
+          },
+          create: data,
+          update: {
+            summaryJson:  data.summaryJson,
+            fileName:     data.fileName,
+            totalAmount:  data.totalAmount,
           },
         });
-        paymentOrderId = po.id;
-        paymentOrderNo = po.orderNo;
-        paymentOrderStatus = '待出納';
 
-        // 回填 paymentOrderId 到 UtilityBillRecord
-        await prisma.utilityBillRecord.update({
-          where: { id: record.id },
-          data: { paymentOrderId },
-        });
-      }
-    }
+        if (totalAmount <= 0) {
+          return { record: rec, paymentOrderId: null, paymentOrderNo: null, paymentOrderStatus: null };
+        }
+
+        // ── Step 2: 找或建立廠商（transaction 內確保一致）────────────────
+        if (!supplier) {
+          supplier = await tx.supplier.create({
+            data: { name: supplierFullName, isActive: true },
+            select: { id: true, name: true },
+          });
+        }
+
+        // ── Step 3: 建立或更新付款單 ──────────────────────────────────────
+        let poId = rec.paymentOrderId;
+        let poNo = null;
+        let poStatus = null;
+
+        if (poId) {
+          const existingPO = await tx.paymentOrder.findUnique({
+            where: { id: poId },
+            select: { status: true, orderNo: true },
+          });
+          if (existingPO) {
+            poNo     = existingPO.orderNo;
+            poStatus = existingPO.status;
+            if (existingPO.status === '待出納') {
+              await tx.paymentOrder.update({
+                where: { id: poId },
+                data: { amount: totalAmount, netAmount: totalAmount },
+              });
+            }
+          } else {
+            poId = null; // 原單號不存在，重建
+          }
+        }
+
+        if (!poId) {
+          const dateStr = todayStr().replace(/-/g, '');
+          const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', `PAY-${dateStr}-`, 3);
+          const summary = `${data.warehouse} ${year}年${month}月 ${data.billType}`;
+          const po = await tx.paymentOrder.create({
+            data: {
+              orderNo,
+              invoiceIds:    [],
+              supplierId:    supplier?.id   || null,
+              supplierName:  supplier?.name || supplierFullName,
+              warehouse:     data.warehouse,
+              paymentMethod: '轉帳',
+              amount:        totalAmount,
+              discount:      0,
+              netAmount:     totalAmount,
+              summary,
+              status:        '待出納',
+              createdBy:     userName,
+              sourceType:    'utility_bill',
+              sourceRecordId: rec.id,
+            },
+          });
+          poId     = po.id;
+          poNo     = po.orderNo;
+          poStatus = '待出納';
+        }
+
+        // ── Step 4: 回填 paymentOrderId ───────────────────────────────────
+        if (rec.paymentOrderId !== poId) {
+          await tx.utilityBillRecord.update({
+            where: { id: rec.id },
+            data: { paymentOrderId: poId },
+          });
+        }
+
+        return { record: rec, paymentOrderId: poId, paymentOrderNo: poNo, paymentOrderStatus: poStatus };
+      });
 
     return NextResponse.json({
       id: record.id,

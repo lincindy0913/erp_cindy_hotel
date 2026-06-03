@@ -1,3 +1,4 @@
+// @deprecated — 舊版月調節表系統。新功能請在 /api/reconciliation/import/ 開發。
 import { createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';

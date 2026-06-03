@@ -1,5 +1,7 @@
 'use client';
 
+import TruncationBanner from './TruncationBanner';
+
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 
 const KpiCard = ({ label, value, sub, color = 'text-gray-900', icon }) => (
@@ -28,10 +30,11 @@ function PnlSummaryDataView({ data }) {
   const monthly = data.monthly || [];
   return (
     <div className="space-y-5">
+      {data.truncated && <TruncationBanner />}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KpiCard label="PMS 收入（貸方）" value={NT(s.revenue)} color="text-blue-700" icon="📈" />
-        <KpiCard label="進貨成本（已扣折讓）" value={NT(s.cogs)} color="text-amber-700" icon="📦" />
-        <KpiCard label="進貨折讓合計" value={NT(s.allowances)} color="text-gray-600" icon="↩️" />
+        <KpiCard label="全科目收入" value={NT(s.revenue)} color="text-blue-700" icon="📈" sub="PMS+租屋+工程+雜項" />
+        <KpiCard label="收款成本（CC手續費）" value={NT(s.cogs)} color="text-amber-700" icon="💳" />
+        <KpiCard label="業外損益" value={NT(s.bizOutside ?? 0)} color="text-gray-600" icon="↕️" />
         <KpiCard label="費用" value={NT(s.expenses)} color="text-orange-700" icon="🧾" />
         <KpiCard label="毛利" value={NT(s.grossProfit)} color={s.grossProfit >= 0 ? 'text-emerald-700' : 'text-red-600'} icon="◆" />
         <KpiCard label="淨利" value={NT(s.netProfit)} color={s.netProfit >= 0 ? 'text-cyan-700' : 'text-red-600'} icon="✓" />
@@ -46,9 +49,9 @@ function PnlSummaryDataView({ data }) {
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs text-gray-500">月份</th>
-                  <th className="px-4 py-2 text-right text-xs text-gray-500">收入</th>
-                  <th className="px-4 py-2 text-right text-xs text-gray-500">進貨成本</th>
-                  <th className="px-4 py-2 text-right text-xs text-gray-500">折讓</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">全科目收入</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">收款成本</th>
+                  <th className="px-4 py-2 text-right text-xs text-gray-500">業外</th>
                   <th className="px-4 py-2 text-right text-xs text-gray-500">費用</th>
                   <th className="px-4 py-2 text-right text-xs text-gray-500">毛利</th>
                   <th className="px-4 py-2 text-right text-xs text-gray-500">淨利</th>
@@ -59,7 +62,7 @@ function PnlSummaryDataView({ data }) {
                   <tr key={m.month} className="hover:bg-gray-50">
                     <td className="px-4 py-2 font-medium text-gray-800">{m.month}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{NT(m.revenue)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{NT(m.cogs)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-amber-700">{NT(m.cogs)}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-gray-500">{NT(m.allowances)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{NT(m.expenses)}</td>
                     <td className={`px-4 py-2 text-right tabular-nums font-medium ${m.grossProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{NT(m.grossProfit)}</td>
@@ -110,7 +113,7 @@ export default function PnlSummaryTab({
           </button>
         </div>
         <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-          將 PMS 收入、進貨（扣折讓）、費用分項加總為<strong>不分館別矩陣</strong>的整體損益；與「館別損益」分頁（依館別展開與鑽取）算法不同。
+          以現金交易（CashTransaction）為來源，涵蓋 PMS、租屋、工程、雜項等<strong>全科目收入</strong>，與月結損益快照邏輯一致；「館別損益」分頁算法相同。
         </p>
       </div>
       {pnlSummaryLoading ? <Loading text="計算損益彙總中..." /> :

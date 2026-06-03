@@ -158,14 +158,15 @@ export async function GET(request) {
 
     const bankLines = await prisma.bankStatementLine.findMany({
       where:   bankLineWhere,
-      select:  { id: true, txDate: true, description: true, creditAmount: true, referenceNo: true, runningBalance: true },
+      select:  { id: true, txDate: true, description: true, creditAmount: true, referenceNo: true, runningBalance: true, matchStatus: true },
       orderBy: { txDate: 'asc' },
     });
 
-    // ── 3. 已用 bankLineId Set ───────────────────────────────────
-    const usedLineIds = new Set(
+    // ── 3. 已用 bankLineId Set + BNB2: 索引 bankLine matchStatus 供警示用 ──
+    const usedLineIds   = new Set(
       bnbRecords.filter(r => r[cfg.bankLineField]).map(r => r[cfg.bankLineField])
     );
+    const bankLineById  = new Map(bankLines.map(l => [l.id, l]));
 
     // ── 4. 自動配對建議 ──────────────────────────────────────────
     // 已跳過（skip 標記）不納入自動配對建議
@@ -216,11 +217,17 @@ export async function GET(request) {
       payAmount:     Number(r[cfg.amountField]),
       payDate:       r[cfg.dateField] || null,
       last5:         cfg.last5Field ? (r[cfg.last5Field] || null) : null,
-      bankLineId:    r[cfg.bankLineField] || null,
-      matchedAt:     r[cfg.matchedAtField] || null,
-      matchedBy:     r[cfg.matchedByField] || null,
-      matchSkip:     r[cfg.skipField] || null,
-      matchSkipNote: r[cfg.skipNoteField] || null,
+      bankLineId:        r[cfg.bankLineField] || null,
+      matchedAt:         r[cfg.matchedAtField] || null,
+      matchedBy:         r[cfg.matchedByField] || null,
+      matchSkip:         r[cfg.skipField] || null,
+      matchSkipNote:     r[cfg.skipNoteField] || null,
+      // BNB2: 若配對的 bankLine 不在本月範圍內（跨月匯入）或 matchStatus 已清空，標記警示
+      bankLineVoided:    r[cfg.bankLineField]
+        ? (bankLineById.has(r[cfg.bankLineField])
+            ? bankLineById.get(r[cfg.bankLineField]).matchStatus === 'unprocessed'
+            : true)  // line 不在本次查詢範圍（跨月）→ 視為需注意
+        : false,
     }));
 
     return NextResponse.json({
@@ -242,6 +249,7 @@ export async function GET(request) {
         creditAmount:   Number(l.creditAmount),
         runningBalance: l.runningBalance ? Number(l.runningBalance) : null,
         isUsed:         usedLineIds.has(l.id),
+        matchStatus:    l.matchStatus,
       })),
       suggestions,
     });

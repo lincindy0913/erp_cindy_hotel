@@ -667,6 +667,8 @@ function PmsIncomePage() {
             settlementStatus={settlementTab.settlementStatus}
             settlementBatches={settlementTab.settlementBatches}
             settling={settlementTab.settling}
+            pushedCount={settlementTab.pushedCount}
+            settleResult={settlementTab.settleResult}
             handleSettleMonth={settlementTab.handleSettleMonth}
             handleVerifyMonth={settlementTab.handleVerifyMonth}
             handleVerifyBatches={settlementTab.handleVerifyBatches}

@@ -8,46 +8,9 @@ import { assertPeriodOpen } from '@/lib/period-lock';
 import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { todayStr } from '@/lib/localDate';
+import { nextSequence, nextCashTransactionNo } from '@/lib/sequence-generator';
 
 export const dynamic = 'force-dynamic';
-
-// Helper: generate sequence number
-async function generateNo(tx, model, prefix) {
-  const today = todayStr().replace(/-/g, '');
-  const fullPrefix = `${prefix}-${today}-`;
-
-  let maxSeq = 0;
-  if (model === 'paymentOrder') {
-    const existing = await tx.paymentOrder.findMany({
-      where: { orderNo: { startsWith: fullPrefix } },
-      select: { orderNo: true }
-    });
-    for (const item of existing) {
-      const seq = parseInt(item.orderNo.substring(fullPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-  } else if (model === 'commonExpenseRecord') {
-    const existing = await tx.commonExpenseRecord.findMany({
-      where: { recordNo: { startsWith: fullPrefix } },
-      select: { recordNo: true }
-    });
-    for (const item of existing) {
-      const seq = parseInt(item.recordNo.substring(fullPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-  } else if (model === 'employeeAdvance') {
-    const existing = await tx.employeeAdvance.findMany({
-      where: { advanceNo: { startsWith: fullPrefix } },
-      select: { advanceNo: true }
-    });
-    for (const item of existing) {
-      const seq = parseInt(item.advanceNo.substring(fullPrefix.length)) || 0;
-      if (seq > maxSeq) maxSeq = seq;
-    }
-  }
-
-  return `${fullPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 // Build entry lines for one warehouse (from template defaults or from data.entryLines)
 function buildEntryLinesForAmount(template, amount) {
@@ -160,13 +123,13 @@ export async function POST(request) {
           // Enforce period lock
           await assertPeriodOpen(tx, `${data.expenseMonth}-01`, wh);
 
-          const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
+          const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', `PAY-${todayStr().replace(/-/g, '')}-`);
           const isCreditCardAdvance = data.creditCardAdvanceMode || ((pm === '信用卡' || pm === '員工代付') && whLines[0].advancedBy);
           const whLabel = wh || '未指定館別';
           const po = await tx.paymentOrder.create({
             data: { orderNo, invoiceIds: [], supplierId: lineSupplierId, supplierName: lineSupplierName, warehouse: wh || null, paymentMethod: pm, amount: debitTotal, discount: 0, netAmount: debitTotal, accountId: accId, dueDate: null, summary: `${template.name} — ${whLabel} ${data.expenseMonth}`, note: data.note || null, status: isCreditCardAdvance ? '已代墊' : '待出納', createdBy: data.createdBy.trim(), sourceType: 'fixed_expense' }
           });
-          const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
+          const recordNo = await nextSequence(tx, 'commonExpenseRecord', 'recordNo', `EXP-${todayStr().replace(/-/g, '')}-`);
           const rec = await tx.commonExpenseRecord.create({
             data: {
               recordNo, templateId: parseInt(data.templateId), executionType: 'fixed', warehouse: wh || null, expenseMonth: data.expenseMonth.trim(),
@@ -181,16 +144,7 @@ export async function POST(request) {
           if (pm === '支票' && data.checkNo?.trim() && data.checkIssueDate && data.checkDate && data.checkAccountId) {
             const chkDateStr = (data.checkIssueDate || '').replace(/-/g, '');
             const chkPrefix = `CHK-${chkDateStr}-`;
-            const existingChks = await tx.check.findMany({
-              where: { checkNo: { startsWith: chkPrefix } },
-              select: { checkNo: true }
-            });
-            let maxSeq = 0;
-            for (const c of existingChks) {
-              const seq = parseInt(c.checkNo.substring(chkPrefix.length)) || 0;
-              if (seq > maxSeq) maxSeq = seq;
-            }
-            const internalCheckNo = `${chkPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+            const internalCheckNo = await nextSequence(tx, 'check', 'checkNo', chkPrefix);
             const checkNumber = data.checkNo.trim();
             await tx.check.create({
               data: {
@@ -230,22 +184,8 @@ export async function POST(request) {
           if (accId && (pm === '轉帳' || pm === '匯款')) {
             const executionDate = data.expenseMonth + '-01';
             const dateStr = executionDate.replace(/-/g, '');
-            const execPrefix = `CSH-${dateStr}-`;
-            const existingExec = await tx.cashierExecution.findMany({ where: { executionNo: { startsWith: execPrefix } }, select: { executionNo: true } });
-            let maxSeq = 0;
-            for (const item of existingExec) {
-              const seq = parseInt(item.executionNo.substring(execPrefix.length)) || 0;
-              if (seq > maxSeq) maxSeq = seq;
-            }
-            const executionNo = `${execPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
-            const txPrefix = `CF-${dateStr}-`;
-            const existingTx = await tx.cashTransaction.findMany({ where: { transactionNo: { startsWith: txPrefix } }, select: { transactionNo: true } });
-            maxSeq = 0;
-            for (const item of existingTx) {
-              const seq = parseInt(item.transactionNo.substring(txPrefix.length)) || 0;
-              if (seq > maxSeq) maxSeq = seq;
-            }
-            const transactionNo = `${txPrefix}${String(maxSeq + 1).padStart(4, '0')}`;
+            const executionNo  = await nextSequence(tx, 'cashierExecution', 'executionNo', `CSH-${dateStr}-`);
+            const transactionNo = await nextCashTransactionNo(tx, executionDate);
 
             const fixedCatId = await getCategoryId(tx, 'fixed_expense');
             const firstDebitLine = whLines.find(l => l.entryType === 'debit' && l.amount > 0);
@@ -298,7 +238,7 @@ export async function POST(request) {
             const lineAdvancedBy = line.advancedBy || whLines[0].advancedBy;
             const linePm = line.paymentMethod || pm;
             if ((linePm === '信用卡' || linePm === '員工代付') && lineAdvancedBy) {
-              const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+              const advanceNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${todayStr().replace(/-/g, '')}-`);
               await tx.employeeAdvance.create({
                 data: {
                   advanceNo,
@@ -364,7 +304,7 @@ export async function POST(request) {
 
           const batchPm = data.paymentMethod || '月結';
           const isCreditCardAdvanceBatch = data.creditCardAdvanceMode || ((batchPm === '信用卡' || batchPm === '員工代付') && data.advancedBy);
-          const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
+          const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', `PAY-${todayStr().replace(/-/g, '')}-`);
           const paymentOrder = await tx.paymentOrder.create({
             data: {
               orderNo,
@@ -385,7 +325,7 @@ export async function POST(request) {
             }
           });
 
-          const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
+          const recordNo = await nextSequence(tx, 'commonExpenseRecord', 'recordNo', `EXP-${todayStr().replace(/-/g, '')}-`);
           const record = await tx.commonExpenseRecord.create({
             data: {
               recordNo,
@@ -453,7 +393,7 @@ export async function POST(request) {
 
           // 員工代墊款
           if ((batchPm === '信用卡' || batchPm === '員工代付') && data.advancedBy) {
-            const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+            const advanceNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${todayStr().replace(/-/g, '')}-`);
             await tx.employeeAdvance.create({
               data: {
                 advanceNo,
@@ -555,7 +495,7 @@ export async function POST(request) {
       // 1. Create PaymentOrder
       const singlePm = data.paymentMethod || '月結';
       const isCreditCardAdvanceSingle = data.creditCardAdvanceMode || ((singlePm === '信用卡' || singlePm === '員工代付') && data.advancedBy);
-      const orderNo = await generateNo(tx, 'paymentOrder', 'PAY');
+      const orderNo = await nextSequence(tx, 'paymentOrder', 'orderNo', `PAY-${todayStr().replace(/-/g, '')}-`);
       const paymentOrder = await tx.paymentOrder.create({
         data: {
           orderNo,
@@ -580,13 +520,7 @@ export async function POST(request) {
       if (singlePm === '支票' && data.checkNo?.trim() && data.checkIssueDate && data.checkDate && data.checkAccountId) {
         const chkDateStr = (data.checkIssueDate || '').replace(/-/g, '');
         const chkPrefix = `CHK-${chkDateStr}-`;
-        const existingChks = await tx.check.findMany({ where: { checkNo: { startsWith: chkPrefix } }, select: { checkNo: true } });
-        let maxSeqChk = 0;
-        for (const c of existingChks) {
-          const seq = parseInt(c.checkNo.substring(chkPrefix.length)) || 0;
-          if (seq > maxSeqChk) maxSeqChk = seq;
-        }
-        const internalCheckNo = `${chkPrefix}${String(maxSeqChk + 1).padStart(4, '0')}`;
+        const internalCheckNo = await nextSequence(tx, 'check', 'checkNo', chkPrefix);
         await tx.check.create({
           data: {
             checkNo: internalCheckNo,
@@ -609,7 +543,7 @@ export async function POST(request) {
       }
 
       // 2. Create CommonExpenseRecord
-      const recordNo = await generateNo(tx, 'commonExpenseRecord', 'EXP');
+      const recordNo = await nextSequence(tx, 'commonExpenseRecord', 'recordNo', `EXP-${todayStr().replace(/-/g, '')}-`);
       const record = await tx.commonExpenseRecord.create({
         data: {
           recordNo,
@@ -699,7 +633,7 @@ export async function POST(request) {
 
       // 員工代墊款：付款方式為信用卡或員工代付
       if ((singlePm === '信用卡' || singlePm === '員工代付') && data.advancedBy) {
-        const advanceNo = await generateNo(tx, 'employeeAdvance', 'ADV');
+        const advanceNo = await nextSequence(tx, 'employeeAdvance', 'advanceNo', `ADV-${todayStr().replace(/-/g, '')}-`);
         await tx.employeeAdvance.create({
           data: {
             advanceNo,

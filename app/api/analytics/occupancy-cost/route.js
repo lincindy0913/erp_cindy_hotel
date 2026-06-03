@@ -70,6 +70,7 @@ export async function GET(request) {
     const wfP = applyWarehouseFilter(auth.session, purchaseWhere);
     if (!wfP.ok) return wfP.response;
 
+    const TAKE_LIMIT = 50000;
     const purchases = await prisma.purchaseMaster.findMany({
       where: purchaseWhere,
       select: {
@@ -83,8 +84,9 @@ export async function GET(request) {
           },
         },
       },
-      take: 50000,
+      take: TAKE_LIMIT,
     });
+    const truncated = purchases.length >= TAKE_LIMIT;
 
     // ── 3. 彙整採購金額 by 館別 + 日期（依分類篩選） ──────────────
     const purchaseMap   = new Map(); // "wh|date" → amount
@@ -161,6 +163,7 @@ export async function GET(request) {
       rows,
       categories: Array.from(allCategories).sort(),
       count: rows.length,
+      truncated,
     });
   } catch (error) {
     return handleApiError(error);

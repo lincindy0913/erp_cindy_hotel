@@ -34,9 +34,10 @@ export async function GET(request) {
     const wf = applyWarehouseFilter(auth.session, where);
     if (!wf.ok) return wf.response;
 
+    const TAKE_LIMIT = 10000;
     const batches = await prisma.pmsImportBatch.findMany({
       where,
-      take: 10000,
+      take: TAKE_LIMIT,
       select: {
         warehouse: true,
         businessDate: true,
@@ -48,6 +49,8 @@ export async function GET(request) {
       },
       orderBy: { businessDate: 'asc' },
     });
+
+    const truncated = batches.length >= TAKE_LIMIT;
 
     if (groupBy === 'month') {
       const byMonth = {};
@@ -73,7 +76,7 @@ export async function GET(request) {
         byMonth[key].dayCount += 1;
       }
       const list = Object.values(byMonth).sort((a, b) => (a.yearMonth + (a.warehouse || '')).localeCompare(b.yearMonth + (b.warehouse || '')));
-      return NextResponse.json({ groupBy: 'month', data: list });
+      return NextResponse.json({ groupBy: 'month', truncated, data: list });
     }
 
     const data = batches.map(b => ({
@@ -86,7 +89,7 @@ export async function GET(request) {
       occupancyRate: b.occupancyRate != null ? Number(b.occupancyRate) : null,
     }));
 
-    return NextResponse.json({ groupBy: 'day', data });
+    return NextResponse.json({ groupBy: 'day', truncated, data });
   } catch (e) {
     return handleApiError(e);
   }

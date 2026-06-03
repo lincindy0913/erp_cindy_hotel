@@ -40,7 +40,7 @@ export async function GET(request) {
     const wf2 = applyWarehouseFilter(auth.session, allowanceWhere);
     if (!wf2.ok) return wf2.response;
 
-    // ── Expense where ─────────────────────────────────────────────
+    // ── Expense (invoice-linked AP) where ────────────────────────
     const expenseWhere = { supplierId: { not: null } };
     if (startDate || endDate) {
       expenseWhere.invoiceDate = {};
@@ -51,11 +51,24 @@ export async function GET(request) {
     const wf3 = applyWarehouseFilter(auth.session, expenseWhere);
     if (!wf3.ok) return wf3.response;
 
+    // ── CommonExpenseRecord (template-based) where ────────────────
+    // Uses expenseMonth (YYYY-MM); convert date range to month range.
+    const ceWhere = { supplierId: { not: null }, status: '已確認' };
+    if (startDate || endDate) {
+      ceWhere.expenseMonth = {};
+      if (startDate) ceWhere.expenseMonth.gte = startDate.substring(0, 7);
+      if (endDate)   ceWhere.expenseMonth.lte = endDate.substring(0, 7);
+    }
+    if (warehouse) ceWhere.warehouse = warehouse;
+    const wf4 = applyWarehouseFilter(auth.session, ceWhere);
+    if (!wf4.ok) return wf4.response;
+
     // ── Parallel queries ──────────────────────────────────────────
-    const [purchases, allowances, expenses, suppliers] = await Promise.all([
+    const LIMIT_PURCHASE = 50000, LIMIT_OTHER = 20000;
+    const [purchases, allowances, expenses, commonExpenses, suppliers] = await Promise.all([
       prisma.purchaseMaster.findMany({
         where: purchaseWhere,
-        take: 50000,
+        take: LIMIT_PURCHASE,
         select: {
           supplierId: true,
           totalAmount: true,
@@ -66,19 +79,29 @@ export async function GET(request) {
       }),
       prisma.purchaseAllowance.findMany({
         where: allowanceWhere,
-        take: 20000,
+        take: LIMIT_OTHER,
         select: { supplierId: true, supplierName: true, totalAmount: true, warehouse: true },
       }),
       prisma.expense.findMany({
         where: expenseWhere,
-        take: 20000,
+        take: LIMIT_OTHER,
         select: { supplierId: true, supplierName: true, amount: true, warehouse: true },
+      }),
+      prisma.commonExpenseRecord.findMany({
+        where: ceWhere,
+        take: LIMIT_OTHER,
+        select: { supplierId: true, supplierName: true, totalDebit: true, warehouse: true },
       }),
       prisma.supplier.findMany({
         select: { id: true, name: true },
         orderBy: { name: 'asc' },
       }),
     ]);
+
+    const truncated = purchases.length >= LIMIT_PURCHASE
+      || allowances.length >= LIMIT_OTHER
+      || expenses.length >= LIMIT_OTHER
+      || commonExpenses.length >= LIMIT_OTHER;
 
     // ── supplier map id → name ────────────────────────────────────
     const supplierNameMap = {};
@@ -104,6 +127,10 @@ export async function GET(request) {
     for (const e of expenses) {
       if (!e.supplierId) continue;
       getOrCreate(e.supplierId, e.supplierName).expenses += Number(e.amount);
+    }
+    for (const ce of commonExpenses) {
+      if (!ce.supplierId) continue;
+      getOrCreate(ce.supplierId, ce.supplierName).expenses += Number(ce.totalDebit);
     }
 
     // ── Build result rows ─────────────────────────────────────────
@@ -132,7 +159,7 @@ export async function GET(request) {
       supplierCount:    rows.length,
     };
 
-    return NextResponse.json({ rows, summary });
+    return NextResponse.json({ rows, summary, truncated });
   } catch (error) {
     return handleApiError(error);
   }

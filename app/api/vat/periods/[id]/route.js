@@ -26,7 +26,7 @@ export async function PUT(request, { params }) {
   try {
     const id   = parseInt((await params).id);
     const body = await request.json();
-    const { status, note, filedBy } = body;
+    const { status, note, filedBy, manualOutputAdjustment } = body;
 
     const record = await prisma.vatFilingPeriod.findUnique({ where: { id } });
     if (!record) return createErrorResponse('NOT_FOUND', '找不到申報期記錄', 404);
@@ -45,6 +45,17 @@ export async function PUT(request, { params }) {
     const updateData = {};
     if (status)  updateData.status  = status;
     if (note !== undefined) updateData.note = note;
+
+    // VAT1: 允許更新手動調整（PMS/租屋等無發票收入稅額），並重算 taxPayable
+    if (manualOutputAdjustment !== undefined && record.status === '草稿') {
+      const manual       = Number(manualOutputAdjustment) || 0;
+      const totalOutput  = Number(record.outputTax) + manual;
+      const netPosition  = totalOutput - Number(record.inputTax) - Number(record.carryForwardIn);
+      updateData.manualOutputAdjustment = manual;
+      updateData.taxPayable             = Math.max(0,  netPosition);
+      updateData.carryForwardOut        = Math.max(0, -netPosition);
+    }
+
     if (status === '已申報') {
       updateData.filedBy = filedBy || auth.session?.user?.name || null;
       updateData.filedAt = new Date();
@@ -67,11 +78,12 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({
       ...updated,
-      outputTax:       Number(updated.outputTax),
-      inputTax:        Number(updated.inputTax),
-      carryForwardIn:  Number(updated.carryForwardIn),
-      taxPayable:      Number(updated.taxPayable),
-      carryForwardOut: Number(updated.carryForwardOut),
+      outputTax:              Number(updated.outputTax),
+      manualOutputAdjustment: Number(updated.manualOutputAdjustment),
+      inputTax:               Number(updated.inputTax),
+      carryForwardIn:         Number(updated.carryForwardIn),
+      taxPayable:             Number(updated.taxPayable),
+      carryForwardOut:        Number(updated.carryForwardOut),
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
       filedAt:   updated.filedAt ? updated.filedAt.toISOString() : null,

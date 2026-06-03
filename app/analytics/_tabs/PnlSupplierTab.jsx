@@ -1,5 +1,7 @@
 'use client';
 
+import TruncationBanner from './TruncationBanner';
+
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 
 const KpiCard = ({ label, value, sub, color = 'text-gray-900', icon }) => (
@@ -33,6 +35,7 @@ function SupplierPnlDataView({ data, search }) {
 
   return (
     <div className="space-y-5">
+      {data.truncated && <TruncationBanner />}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard label="廠商數量"   value={summary.supplierCount ?? 0} icon="🏢" color="text-blue-600" />
         <KpiCard label="採購總額"   value={NT(summary.totalPurchases)}  icon="🛒" color="text-gray-700" />

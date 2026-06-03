@@ -68,7 +68,7 @@ export async function POST(request) {
         certifiedDate: data.certifiedDate || null,
         claimAmount: parseFloat(data.claimAmount),
         certifiedAmount: data.certifiedAmount ? parseFloat(data.certifiedAmount) : null,
-        status: data.status || 'draft',
+        status: data.status || '草稿',
         note: data.note?.trim() || null,
       },
       include: CLAIM_INCLUDE,

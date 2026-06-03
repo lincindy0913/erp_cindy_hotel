@@ -95,6 +95,7 @@ export async function GET(request) {
         take: 20000,
       }),
     ]);
+    const truncated = pmsBatches.length >= 20000;
 
     const elecByMonth = Object.fromEntries(elecBills.map((r) => [r.billMonth, r]));
     const waterByMonth = Object.fromEntries(waterBills.map((r) => [r.billMonth, r]));
@@ -172,6 +173,7 @@ export async function GET(request) {
       warehouse,
       rocYear,
       adYear,
+      truncated,
       months,
       yearTotals: {
         elecAmount: yElecAmt,

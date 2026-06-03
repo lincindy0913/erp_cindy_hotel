@@ -32,9 +32,10 @@ export async function GET(request) {
     const wf = applyWarehouseFilter(auth.session, where);
     if (!wf.ok) return wf.response;
 
+    const TAKE_LIMIT = 20000;
     const transactions = await prisma.cashTransaction.findMany({
       where,
-      take: 20000,
+      take: TAKE_LIMIT,
       select: {
         warehouse: true,
         type: true,
@@ -61,6 +62,7 @@ export async function GET(request) {
       orderBy: [{ transactionDate: 'asc' }],
     });
 
+    const truncated = transactions.length >= TAKE_LIMIT;
     const byWarehouse = {};
 
     for (const tx of transactions) {
@@ -129,6 +131,7 @@ export async function GET(request) {
     return NextResponse.json({
       period: { startDate, endDate },
       filterWarehouse: warehouse || null,
+      truncated,
       byWarehouse: list,
     });
   } catch (error) {

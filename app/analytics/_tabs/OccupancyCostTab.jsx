@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import ExportButtons from '@/components/ExportButtons';
+import TruncationBanner from './TruncationBanner';
 
 const NT = (v) => `NT$ ${Number(v || 0).toLocaleString()}`;
 const MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
@@ -156,6 +157,7 @@ ${anomalyCount>0?`<p class="leg">▲ 橘色 = 每人採購超過本期館別平�
 
   return (
     <div className="space-y-4">
+      {data.truncated && <TruncationBanner />}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <KpiCard label="住宿間數"   value={totals.occupiedRooms.toLocaleString()}   icon="🛏️" color="text-indigo-600" />
         <KpiCard label="住宿人數"   value={totals.guestCount.toLocaleString()}       icon="👤" color="text-blue-600" />

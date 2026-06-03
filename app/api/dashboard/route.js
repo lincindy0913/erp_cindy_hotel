@@ -122,7 +122,7 @@ export async function GET(request) {
         }),
         prisma.check.count({ where: { status: 'due', dueDate: { lt: todayStr } } }),
         prisma.loanMaster.count({
-          where: { status: 'active', endDate: { lte: localDateStr(sixMonthsLater) } },
+          where: { status: '使用中', endDate: { lte: localDateStr(sixMonthsLater) } },
         }),
       ]);
 

@@ -11,21 +11,41 @@ import {
 export const dynamic = 'force-dynamic';
 
 // 依日期範圍計算 P&L groups + summary
+// 來源：cashTransaction（已確認）+ commonExpenseRecord（已確認但尚未出納執行）
+// 與 /api/analytics/pnl 邏輯一致，確保三套數字一致。
 async function calcPL(startDate, endDate, warehouse) {
   const txWhere = {
     transactionDate: { gte: startDate, lte: endDate },
-    isReversal: false,
-    reversedById: null,
+    isReversal:    false,
+    reversedById:  null,
+    status:        '已確認',
   };
   if (warehouse) txWhere.warehouse = warehouse;
 
-  const txs = await prisma.cashTransaction.findMany({
-    where: txWhere,
-    select: {
-      id: true, type: true, amount: true,
-      category: { select: { id: true, name: true, level1: true, plGroup: true, plOrder: true } },
-    },
-  });
+  // commonExpenseRecord：已確認但尚未出納執行（避免與 cashTransaction 雙計）
+  const startYM = startDate.substring(0, 7);
+  const endYM   = endDate.substring(0, 7);
+  const executedPoIds = (await prisma.paymentOrder.findMany({
+    where: { status: '已執行' },
+    select: { id: true },
+  })).map(po => po.id);
+  const ceWhere = { status: '已確認', expenseMonth: { gte: startYM, lte: endYM } };
+  if (executedPoIds.length > 0) ceWhere.NOT = { paymentOrderId: { in: executedPoIds } };
+  if (warehouse) ceWhere.warehouse = warehouse;
+
+  const [txs, commonExpenses] = await Promise.all([
+    prisma.cashTransaction.findMany({
+      where: txWhere,
+      select: {
+        id: true, type: true, amount: true,
+        category: { select: { id: true, name: true, level1: true, plGroup: true, plOrder: true } },
+      },
+    }),
+    prisma.commonExpenseRecord.findMany({
+      where: ceWhere,
+      select: { totalDebit: true },
+    }),
+  ]);
 
   const groupMap = {};
   for (const tx of txs) {
@@ -56,17 +76,19 @@ async function calcPL(startDate, endDate, warehouse) {
     return { ...g, categories: cats, groupIncome, groupExpense, groupNet: groupIncome - groupExpense };
   });
 
+  const ceExpenseTotal   = commonExpenses.reduce((s, ce) => s + Number(ce.totalDebit), 0);
+
   const totalIncome      = groups.filter(g => g.level1 === PL_LEVEL1_INCOME).reduce((s, g) => s + g.groupNet, 0);
   const ccFee            = groups.find(g => g.plGroup === PL_COST_GROUP)?.groupExpense ?? 0;
   const grossProfit      = totalIncome - ccFee;
-  const totalOpExp       = groups.filter(g => g.level1 === PL_LEVEL1_EXPENSE && g.plGroup !== PL_COST_GROUP).reduce((s, g) => s + g.groupExpense, 0);
+  const totalOpExp       = groups.filter(g => g.level1 === PL_LEVEL1_EXPENSE && g.plGroup !== PL_COST_GROUP).reduce((s, g) => s + g.groupExpense, 0) + ceExpenseTotal;
   const operatingIncome  = grossProfit - totalOpExp;
   const bizOutsideNet    = groups.filter(g => g.level1 === '業外').reduce((s, g) => s + g.groupNet, 0);
   const netIncome        = operatingIncome + bizOutsideNet;
 
   return {
     groups,
-    summary: { totalIncome, ccFee, grossProfit, totalOpExp, operatingIncome, bizOutsideNet, netIncome },
+    summary: { totalIncome, ccFee, grossProfit, totalOpExp, ceExpenseTotal, operatingIncome, bizOutsideNet, netIncome },
   };
 }
 

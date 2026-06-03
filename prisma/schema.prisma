@@ -3073,7 +3073,7 @@ model EngineeringProgressClaim {
   certifiedDate   String?  @map("certified_date") @db.VarChar(20)
   claimAmount     Decimal  @map("claim_amount") @db.Decimal(14, 2)
   certifiedAmount Decimal? @map("certified_amount") @db.Decimal(14, 2)
-  status          String   @default("draft") @db.VarChar(20)
+  status          String   @default("草稿") @db.VarChar(20) // 草稿 | 已審核
   note            String?  @db.Text
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
@@ -3428,7 +3428,8 @@ model VatFilingPeriod {
   periodStart     String    @map("period_start") @db.VarChar(20)   // YYYY-MM-DD
   periodEnd       String    @map("period_end")   @db.VarChar(20)   // YYYY-MM-DD
   // 計算欄位
-  outputTax       Decimal   @default(0) @map("output_tax")       @db.Decimal(14, 2) // 銷項稅額
+  outputTax              Decimal   @default(0) @map("output_tax")                @db.Decimal(14, 2) // 銷項稅額（自動：salesMaster + 工程銷項發票）
+  manualOutputAdjustment Decimal   @default(0) @map("manual_output_adjustment") @db.Decimal(14, 2) // 手動補充（PMS/租屋等無發票收入稅額）
   inputTax        Decimal   @default(0) @map("input_tax")        @db.Decimal(14, 2) // 進項稅額
   carryForwardIn  Decimal   @default(0) @map("carry_forward_in") @db.Decimal(14, 2) // 上期留抵帶入
   taxPayable      Decimal   @default(0) @map("tax_payable")      @db.Decimal(14, 2) // 應納稅額（≥0）

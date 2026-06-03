@@ -5,6 +5,10 @@
  * POST body: { year, period, warehouse?, carryForwardInOverride? }
  *   - 若不帶 carryForwardInOverride，自動從上一期 carryForwardOut 帶入
  *   - 若有帶，以手動輸入值優先（適用首年或跨系統移轉）
+ *
+ * outputTax = salesMaster.tax + EngineeringOutputInvoice.taxAmount（自動計算）
+ * manualOutputAdjustment = 手動補充（PMS/租屋等無正式發票收入稅額，重算後保留不清除）
+ * 應納稅額 = max(0, outputTax + manualOutputAdjustment - inputTax - carryForwardIn)
  */
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
@@ -14,6 +18,21 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { vatPeriodDates, getPreviousCarryForward } from '@/lib/vat-periods';
 
 export const dynamic = 'force-dynamic';
+
+function serializePeriod(rec) {
+  return {
+    ...rec,
+    outputTax:              Number(rec.outputTax),
+    manualOutputAdjustment: Number(rec.manualOutputAdjustment),
+    inputTax:               Number(rec.inputTax),
+    carryForwardIn:         Number(rec.carryForwardIn),
+    taxPayable:             Number(rec.taxPayable),
+    carryForwardOut:        Number(rec.carryForwardOut),
+    createdAt: rec.createdAt.toISOString(),
+    updatedAt: rec.updatedAt.toISOString(),
+    filedAt:   rec.filedAt ? rec.filedAt.toISOString() : null,
+  };
+}
 
 // ── GET: list all 6 periods for a year ───────────────────────────────────────
 export async function GET(request) {
@@ -32,36 +51,23 @@ export async function GET(request) {
       orderBy: { period: 'asc' },
     });
 
-    // Fill in any missing periods with zeroes for display
     const result = Array.from({ length: 6 }, (_, i) => {
       const p   = i + 1;
       const rec = records.find(r => r.period === p);
       const { periodStart, periodEnd } = vatPeriodDates(year, p);
-      if (rec) {
-        return {
-          ...rec,
-          outputTax:       Number(rec.outputTax),
-          inputTax:        Number(rec.inputTax),
-          carryForwardIn:  Number(rec.carryForwardIn),
-          taxPayable:      Number(rec.taxPayable),
-          carryForwardOut: Number(rec.carryForwardOut),
-          createdAt: rec.createdAt.toISOString(),
-          updatedAt: rec.updatedAt.toISOString(),
-          filedAt:   rec.filedAt ? rec.filedAt.toISOString() : null,
-        };
-      }
+      if (rec) return serializePeriod(rec);
       return {
         id: null, year, period: p, warehouse,
         periodStart, periodEnd,
-        outputTax: 0, inputTax: 0, carryForwardIn: 0,
+        outputTax: 0, manualOutputAdjustment: 0,
+        inputTax: 0, carryForwardIn: 0,
         taxPayable: 0, carryForwardOut: 0,
         status: '未計算', filedBy: null, filedAt: null, note: null,
       };
     });
 
-    // Summary
     const totalPayable      = result.reduce((s, r) => s + r.taxPayable, 0);
-    const finalCarryForward = result[5].carryForwardOut; // period 6 carry-forward = next year opening
+    const finalCarryForward = result[5].carryForwardOut;
 
     return NextResponse.json({ year, warehouse, periods: result, totalPayable, finalCarryForward });
   } catch (error) {
@@ -88,30 +94,55 @@ export async function POST(request) {
     const { periodStart, periodEnd } = vatPeriodDates(year, period);
     const wh = warehouse ?? null;
 
-    // Block re-calculation if already filed
+    // VAT3: 依狀態給出明確的錯誤訊息
     const existing = await prisma.vatFilingPeriod.findUnique({
       where: { year_period_warehouse: { year, period, warehouse: wh } },
     });
-    if (existing && existing.status !== '草稿') {
-      return createErrorResponse(
-        'VALIDATION_FAILED',
-        `第 ${period} 期已${existing.status}，無法重新計算。如需修改請先重設狀態。`,
-        422
-      );
+    if (existing) {
+      if (existing.status === '已繳納') {
+        return createErrorResponse(
+          'VALIDATION_FAILED',
+          `第 ${period} 期已繳納完成，不可重算。如有誤請聯繫財務主管。`,
+          422
+        );
+      }
+      if (existing.status === '已申報') {
+        return createErrorResponse(
+          'VALIDATION_FAILED',
+          `第 ${period} 期已提交申報，請先透過「退回草稿」解鎖後再重算。`,
+          422
+        );
+      }
     }
 
-    // ── Calculate output tax (銷項) from SalesMaster ─────────────────────
+    // VAT1-A: 銷項（SalesMaster）—— 注意：SalesMaster 無 warehouse 欄位，此為全館合計
     const salesAgg = await prisma.salesMaster.aggregate({
       where: {
         invoiceDate: { gte: periodStart, lte: periodEnd },
         status:      { not: '已作廢' },
-        ...(wh ? {} : {}), // sales don't have warehouse in this model
       },
       _sum: { tax: true },
     });
-    const outputTax = Number(salesAgg._sum.tax || 0);
+    const salesOutputTax = Number(salesAgg._sum.tax || 0);
 
-    // ── Calculate input tax (進項) from PurchaseMaster ───────────────────
+    // VAT1-B: 工程銷項發票（EngineeringOutputInvoice）—— 支援 warehouse 篩選（透過 project）
+    const engOutputAgg = await prisma.engineeringOutputInvoice.aggregate({
+      where: {
+        invoiceDate: { gte: periodStart, lte: periodEnd },
+        status:      { not: '已作廢' },
+        ...(wh ? { project: { warehouse: wh } } : {}),
+      },
+      _sum: { taxAmount: true },
+    });
+    const engOutputTax = Number(engOutputAgg._sum.taxAmount || 0);
+
+    // 自動計算的銷項合計（不含手動調整，重算時手動調整保留不清除）
+    const outputTax = salesOutputTax + engOutputTax;
+
+    // VAT1-C: 手動調整（PMS/租屋等無發票收入，重算時從既有記錄保留）
+    const manualOutputAdjustment = Number(existing?.manualOutputAdjustment ?? 0);
+
+    // ── 進項（PurchaseMaster）────────────────────────────────────────────────
     const purchaseWhere = {
       purchaseDate: { gte: periodStart, lte: periodEnd },
       status:       { notIn: ['已作廢', '已退貨'] },
@@ -124,16 +155,15 @@ export async function POST(request) {
     });
     const inputTax = Number(purchaseAgg._sum.tax || 0);
 
-    // ── Carry-forward ─────────────────────────────────────────────────────
+    // ── 留抵帶入 ──────────────────────────────────────────────────────────────
     const carryForwardIn = carryForwardInOverride !== undefined
       ? Number(carryForwardInOverride)
       : await getPreviousCarryForward(prisma, year, period, wh);
 
-    // ── VAT position ─────────────────────────────────────────────────────
-    // taxPayable = MAX(0, outputTax - inputTax - carryForwardIn)
-    // carryForwardOut = MAX(0, inputTax + carryForwardIn - outputTax)
-    const netPosition    = outputTax - inputTax - carryForwardIn;
-    const taxPayable     = Math.max(0, netPosition);
+    // ── VAT position（含手動調整）────────────────────────────────────────────
+    const totalOutput    = outputTax + manualOutputAdjustment;
+    const netPosition    = totalOutput - inputTax - carryForwardIn;
+    const taxPayable     = Math.max(0,  netPosition);
     const carryForwardOut = Math.max(0, -netPosition);
 
     const record = await prisma.vatFilingPeriod.upsert({
@@ -141,27 +171,21 @@ export async function POST(request) {
       create: {
         year, period, warehouse: wh,
         periodStart, periodEnd,
-        outputTax, inputTax, carryForwardIn,
+        outputTax, manualOutputAdjustment,
+        inputTax, carryForwardIn,
         taxPayable, carryForwardOut,
         status: '草稿',
       },
       update: {
         periodStart, periodEnd,
-        outputTax, inputTax, carryForwardIn,
+        outputTax,   // 重算時更新自動部分
+        // manualOutputAdjustment 不在此更新（保留使用者手動輸入的值）
+        inputTax, carryForwardIn,
         taxPayable, carryForwardOut,
       },
     });
 
-    return NextResponse.json({
-      ...record,
-      outputTax:       Number(record.outputTax),
-      inputTax:        Number(record.inputTax),
-      carryForwardIn:  Number(record.carryForwardIn),
-      taxPayable:      Number(record.taxPayable),
-      carryForwardOut: Number(record.carryForwardOut),
-      createdAt: record.createdAt.toISOString(),
-      updatedAt: record.updatedAt.toISOString(),
-    }, { status: existing ? 200 : 201 });
+    return NextResponse.json(serializePeriod(record), { status: existing ? 200 : 201 });
   } catch (error) {
     return handleApiError(error);
   }

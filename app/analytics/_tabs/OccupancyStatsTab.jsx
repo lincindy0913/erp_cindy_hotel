@@ -1,5 +1,7 @@
 'use client';
 
+import TruncationBanner from './TruncationBanner';
+
 const Loading = ({ text = '載入中...' }) => (
   <div className="flex items-center justify-center py-20 text-gray-400">
     <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
@@ -18,7 +20,9 @@ function OccupancyStatsDataView({ payload }) {
 
   if (groupBy === 'month') {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <>
+        {payload.truncated && <TruncationBanner />}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b bg-gray-50">
           <p className="font-semibold text-sm text-gray-700">依月彙總</p>
         </div>
@@ -51,11 +55,14 @@ function OccupancyStatsDataView({ payload }) {
           </table>
         </div>
       </div>
+      </>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <>
+      {payload.truncated && <TruncationBanner />}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="px-5 py-3 border-b bg-gray-50 flex items-center justify-between flex-wrap gap-2">
         <p className="font-semibold text-sm text-gray-700">依日明細</p>
         <p className="text-xs text-gray-400">共 {data.length} 筆批次</p>
@@ -91,6 +98,7 @@ function OccupancyStatsDataView({ payload }) {
         </table>
       </div>
     </div>
+    </>
   );
 }
 

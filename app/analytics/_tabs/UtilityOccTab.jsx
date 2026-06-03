@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import TruncationBanner from './TruncationBanner';
 
 const Loading = ({ text = '載入中...' }) => (
   <div className="flex items-center justify-center py-20 text-gray-400">
@@ -48,6 +49,7 @@ function UtilityOccupancyPivot({ data }) {
 
   return (
     <div className="space-y-4">
+      {data.truncated && <TruncationBanner />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-gray-800">
           {data.warehouse}　民國 {data.rocYear} 年（西元 {data.adYear}）— 水電與住宿對照

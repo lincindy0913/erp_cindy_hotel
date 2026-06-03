@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { recalcBalance } from '@/lib/recalc-balance';
 import { nextCashTransactionNo } from '@/lib/sequence-generator';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
+import { assertPeriodOpen } from '@/lib/period-lock';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,13 +57,46 @@ export async function POST(request) {
 
     const project = await prisma.engineeringProject.findUnique({
       where: { id: projectId },
-      select: { id: true, code: true, name: true, warehouse: true },
+      select: { id: true, code: true, name: true, warehouse: true, clientContractAmount: true },
     });
     if (!project) return createErrorResponse('NOT_FOUND', '找不到工程案', 404);
     await assertEngineeringProjectOpen(projectId);
 
+    // ENG3: 累計收款上限校驗
+    if (data.progressClaimId) {
+      const claim = await prisma.engineeringProgressClaim.findUnique({
+        where: { id: parseInt(data.progressClaimId) },
+        select: { termName: true, certifiedAmount: true },
+      });
+      if (claim?.certifiedAmount != null) {
+        const claimTotal = await prisma.engineeringIncome.aggregate({
+          where: { progressClaimId: parseInt(data.progressClaimId) },
+          _sum: { amount: true },
+        });
+        const claimAfter = (Number(claimTotal._sum.amount) || 0) + amount;
+        if (claimAfter > Number(claim.certifiedAmount)) {
+          return createErrorResponse('VALIDATION_FAILED',
+            `此期別（${claim.termName}）核定金額 ${Number(claim.certifiedAmount).toLocaleString()}，收款累計 ${claimAfter.toLocaleString()} 將超出`, 400);
+        }
+      }
+    }
+    if (project.clientContractAmount != null) {
+      const projTotal = await prisma.engineeringIncome.aggregate({
+        where: { projectId },
+        _sum: { amount: true },
+      });
+      const projAfter = (Number(projTotal._sum.amount) || 0) + amount;
+      if (projAfter > Number(project.clientContractAmount)) {
+        return createErrorResponse('VALIDATION_FAILED',
+          `收款累計（${projAfter.toLocaleString()}）將超過合約金額（${Number(project.clientContractAmount).toLocaleString()}）`, 400);
+      }
+    }
+
     let incomeId;
     await prisma.$transaction(async (tx) => {
+      // ENG1: 月結期間鎖定檢查
+      await assertPeriodOpen(tx, data.receivedDate, project.warehouse);
+
       const income = await tx.engineeringIncome.create({
         data: {
           projectId,

@@ -1,4 +1,5 @@
-﻿import { NextResponse } from 'next/server';
+﻿// @deprecated — 舊版月調節表系統。新功能請在 /api/reconciliation/[id]/ 開發。
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createErrorResponse, handleApiError } from '@/lib/error-handler';
 import { requirePermission } from '@/lib/api-auth';

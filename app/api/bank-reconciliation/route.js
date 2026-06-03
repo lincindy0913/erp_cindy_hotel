@@ -59,6 +59,7 @@ export async function GET(request) {
   }
 }
 
+// @deprecated — 舊版月調節表系統。新帳戶請使用 /api/reconciliation/（BankReconciliation）。
 // POST: 建立/取得調節表（冪等：同 accountId+yearMonth 若已存在則返回現有）
 export async function POST(request) {
   const auth = await requirePermission(PERMISSIONS.CASHFLOW_VIEW);
@@ -66,7 +67,7 @@ export async function POST(request) {
 
   try {
     const data = await request.json();
-    const { accountId, yearMonth } = data;
+    const { accountId, yearMonth, allowLegacy } = data;
     if (!accountId || !yearMonth) {
       return createErrorResponse('REQUIRED_FIELD_MISSING', '請提供帳戶 ID 和月份', 400);
     }
@@ -77,6 +78,22 @@ export async function POST(request) {
 
     const [y, m]  = yearMonth.split('-').map(Number);
     const startDate = `${yearMonth}-01`;
+
+    // 跨系統衝突檢查：若新版 BankReconciliation 已有同帳戶同月份記錄，阻擋建立以避免餘額不一致
+    if (!allowLegacy) {
+      const newSystemRecon = await prisma.bankReconciliation.findFirst({
+        where: { accountId: parseInt(accountId), statementYear: y, statementMonth: m },
+        select: { id: true, reconciliationNo: true },
+      });
+      if (newSystemRecon) {
+        return createErrorResponse(
+          'CONFLICT_DUPLICATE',
+          `此帳戶 ${yearMonth} 已在新版銀行對帳（${newSystemRecon.reconciliationNo}）中建立。請改用「銀行對帳（逐筆匯入）」頁面，或傳入 allowLegacy: true 強制在舊系統建立。`,
+          409,
+          { newReconId: newSystemRecon.id, newReconNo: newSystemRecon.reconciliationNo }
+        );
+      }
+    }
 
     // 取期初餘額：startDate 前所有交易，依 type 決定正負（amount 永遠正數）
     const beforeTxs = await prisma.cashTransaction.findMany({
