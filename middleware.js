@@ -102,22 +102,35 @@ if (typeof globalThis.__rlCleanup === 'undefined') {
 // 模組路由 → 所需權限對應表
 const ROUTE_PERMISSIONS = {
   '/purchasing': 'purchasing.view',
+  '/purchase-allowances': 'purchasing.view',
+  '/products': 'purchasing.view',
+  '/suppliers': 'purchasing.view',
   '/finance': 'finance.view',
+  '/payment-voucher': 'finance.view',
+  '/employee-advances': 'finance.view',
   '/cashier': 'cashier.view',
   '/inventory': 'inventory.view',
   '/analytics': 'analytics.view',
+  '/reports': 'analytics.view',
   '/cashflow': 'cashflow.view',
+  '/fund-management': 'cashflow.view',
   '/pms-income': 'pms.view',
   '/loans': 'loan.view',
   '/checks': 'check.view',
   '/reconciliation': 'reconciliation.view',
+  '/bank-reconciliation': 'reconciliation.view',
   '/rentals': 'rental.view',
   '/assets': 'rental.view',
   '/bnb': 'bnb.view',
   '/month-end': 'monthend.view',
+  '/year-end': 'yearend.view',
   '/expenses': 'expense.view',
+  '/utility-bills': 'expense.view',
+  '/company-expenses': 'expense.view',
   '/engineering': 'engineering.view',
   '/settings': 'settings.view',
+  '/accounting-subjects': 'settings.view',
+  '/warehouse-departments': 'settings.view',
 };
 
 // 公開路由 - 不需登入
@@ -297,27 +310,70 @@ export const config = {
   matcher: [
     '/api/:path*',
     '/admin/:path*',
+    // 進貨 / 採購
     '/purchasing/:path*',
+    '/purchase-allowances',
+    '/purchase-allowances/:path*',
+    '/products',
+    '/products/:path*',
+    '/suppliers',
+    '/suppliers/:path*',
+    // 財務 / 付款
+    '/finance/:path*',
+    '/payment-voucher',
+    '/payment-voucher/:path*',
+    '/employee-advances',
+    '/employee-advances/:path*',
+    '/cashier/:path*',
+    // 庫存
+    '/inventory/:path*',
+    // 分析 / 報表
+    '/analytics/:path*',
+    '/reports',
+    '/reports/:path*',
+    // 現金流
+    '/cashflow/:path*',
+    '/fund-management',
+    '/fund-management/:path*',
+    // PMS / 民宿
+    '/pms-income/:path*',
+    '/bnb',
+    '/bnb/:path*',
+    // 財務憑證
+    '/loans/:path*',
+    '/checks/:path*',
+    '/reconciliation/:path*',
+    '/bank-reconciliation',
+    '/bank-reconciliation/:path*',
+    // 租屋 / 資產
+    '/rentals/:path*',
+    '/assets/:path*',
+    // 結帳
+    '/month-end/:path*',
+    '/year-end',
+    '/year-end/:path*',
+    // 費用
+    '/expenses/:path*',
+    '/utility-bills',
+    '/utility-bills/:path*',
+    '/company-expenses',
+    '/company-expenses/:path*',
+    // 發票（銷售 + 業主私帳）
     '/sales',
     '/sales/:path*',
     '/owner-expenses',
     '/owner-expenses/:path*',
-    '/finance/:path*',
-    '/cashier/:path*',
-    '/inventory/:path*',
-    '/analytics/:path*',
-    '/cashflow/:path*',
-    '/pms-income/:path*',
-    '/loans/:path*',
-    '/checks/:path*',
-    '/reconciliation/:path*',
-    '/rentals/:path*',
-    '/assets/:path*',
-    '/month-end/:path*',
-    '/expenses/:path*',
+    // 工程
+    '/engineering',
+    '/engineering/:path*',
+    // 系統設定
     '/settings/:path*',
+    '/accounting-subjects',
+    '/accounting-subjects/:path*',
     '/warehouse-departments/:path*',
-    '/bnb/:path*',
-    '/bnb',
+    // 個人 / 通知（僅需登入）
+    '/profile/:path*',
+    '/notifications',
+    '/notifications/:path*',
   ]
 };
