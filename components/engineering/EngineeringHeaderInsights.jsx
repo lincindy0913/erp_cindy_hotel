@@ -2,11 +2,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { formatNum as _formatNum } from '@/lib/engineering/format-utils';
 
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
+function formatNum(n) { return _formatNum(n, 0); }
 
 /**
  * 工程會計頂部：流程說明、全模組 KPI、逾期期數提醒

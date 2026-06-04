@@ -4,11 +4,7 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+import { formatNum } from '@/lib/engineering/format-utils';
 
 const EMPTY_FORM = {
   projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '',

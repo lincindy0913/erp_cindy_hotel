@@ -2,11 +2,9 @@
 import { useState, useMemo, Fragment } from 'react';
 import Link from 'next/link';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
+import { formatNum as _fmt } from '@/lib/engineering/format-utils';
 
-function fmt(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
-}
+function fmt(n) { return _fmt(n, 0); }
 
 function fmtRaw(n) {
   return Number(n || 0).toFixed(0);

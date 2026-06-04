@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { todayStr } from '@/lib/localDate';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
+import { formatNum } from '@/lib/engineering/format-utils';
 
 const SUB_TABS = [
   { key: 'contracts', label: '合約與期數' },
@@ -15,11 +16,6 @@ const SUB_TABS = [
   { key: 'inputInvoices', label: '進項發票' },
   { key: 'outputInvoices', label: '銷項發票' },
 ];
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 function StatusBadge({ status }) {
   const style =

@@ -5,15 +5,10 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import { formatNum as _formatNum } from '@/lib/engineering/format-utils';
 
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
-}
-function fmtMoney(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+function formatNum(n) { return _formatNum(n, 4); }
+function fmtMoney(n) { return _formatNum(n); }
 
 export default function MaterialsTab({ projects, contracts }) {
   const [subTab, setSubTab] = useState('issues');

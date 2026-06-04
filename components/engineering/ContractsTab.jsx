@@ -6,11 +6,7 @@ import { useConfirmDialog, default as ConfirmModal } from '@/components/ConfirmM
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import AttachmentSection from '@/components/AttachmentSection';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+import { formatNum } from '@/lib/engineering/format-utils';
 
 export default function ContractsTab({
   projects, suppliers, contracts, paymentOrders,

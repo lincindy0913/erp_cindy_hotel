@@ -4,11 +4,7 @@ import Link from 'next/link';
 import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+import { formatNum } from '@/lib/engineering/format-utils';
 
 function warrantyStatus(endDate, today) {
   if (!endDate) return null;

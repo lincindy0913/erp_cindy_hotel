@@ -4,6 +4,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import { formatNum as fmtMoney } from '@/lib/engineering/format-utils';
 
 const OUTPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
 const OUTPUT_INVOICE_STATUSES = ['已開立', '已作廢'];
@@ -24,11 +25,6 @@ const BUCKET_COLORS = {
   days_90plus: 'bg-red-200 text-red-800 font-bold',
   no_due:      'bg-gray-100 text-gray-500',
 };
-
-function fmtMoney(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 function paymentStatus(inv, today) {
   if (inv.status === '已作廢') return { label: '已作廢', color: 'bg-red-100 text-red-400' };

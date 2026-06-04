@@ -6,13 +6,9 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
+import { formatNum } from '@/lib/engineering/format-utils';
 
 const PAY_PAGE_SIZE = 40;
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 export default function PaymentsTab({ paymentOrders, projects, suppliers, warehouseDepartments, onOpenPaymentModal, onRefresh }) {
   const [paySearchDateFrom, setPaySearchDateFrom] = useState('');

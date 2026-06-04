@@ -26,6 +26,7 @@ import PaymentOrderModal from '@/components/engineering/PaymentOrderModal';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useEngineeringData } from '@/app/engineering/_hooks/useEngineeringData';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
+import { formatNum } from '@/lib/engineering/format-utils';
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -44,11 +45,6 @@ const TABS = [
 const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
 
 const VALID_TAB_KEYS = new Set(TABS.map((t) => t.key));
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 function EngineeringPageInner() {
   const searchParams = useSearchParams();

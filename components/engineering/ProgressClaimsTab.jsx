@@ -4,6 +4,7 @@ import { useToast } from '@/context/ToastContext';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import { formatNum } from '@/lib/engineering/format-utils';
 
 const STATUS_LABELS = { draft: '草稿', submitted: '已提交', certified: '已核定', rejected: '退件' };
 const STATUS_COLORS = {
@@ -13,11 +14,6 @@ const STATUS_COLORS = {
   rejected: 'bg-red-100 text-red-600',
 };
 const STATUSES = ['draft', 'submitted', 'certified', 'rejected'];
-
-function formatNum(n) {
-  if (n == null || n === '') return '－';
-  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 export default function ProgressClaimsTab({ projects }) {
   const [claims, setClaims] = useState([]);
