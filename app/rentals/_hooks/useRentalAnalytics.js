@@ -103,10 +103,13 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
     setReportLoading(true);
     try {
       const res = await fetch(`/api/rentals/reports/income-by-month?${qs}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setIncomeReportData({ year: data.year, rows: data.rows || [] });
-    } catch {
+    } catch (e) {
+      console.error('[fetchIncomeReport]', e);
+      showToast('收入報表載入失敗，請重試。', 'error');
       setIncomeReportData({ year: reportYear, rows: [] });
     } finally {
       setReportLoading(false);
@@ -119,10 +122,13 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
     setReportLoading(true);
     try {
       const res = await fetch(`/api/rentals/reports/operating?${qs}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setOperatingReportData({ year: data.year, rows: data.rows || [] });
-    } catch {
+    } catch (e) {
+      console.error('[fetchOperatingReport]', e);
+      showToast('營運報表載入失敗，請重試。', 'error');
       setOperatingReportData({ year: reportYear, rows: [] });
     } finally {
       setReportLoading(false);
@@ -134,22 +140,30 @@ export function useRentalAnalytics({ accounts = [], properties = [] } = {}) {
     try {
       const today = todayStr();
       const res = await fetch(`/api/rentals/income?status=pending&dueBefore=${today}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const overdue = (Array.isArray(data) ? data : []).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
       setOverdueReportData(overdue);
-    } catch { setOverdueReportData([]); }
-    finally { setOverdueReportLoading(false); }
+    } catch (e) {
+      console.error('[fetchOverdueReport]', e);
+      showToast('逾期報表載入失敗，請重試。', 'error');
+      setOverdueReportData([]);
+    } finally { setOverdueReportLoading(false); }
   }
 
   async function fetchVacancyReport() {
     setVacancyLoading(true);
     try {
       const res = await fetch(`/api/rentals/reports/vacancy?year=${vacancyYear}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.message || data.error);
       setVacancyData({ rows: data.rows || [], avgVacancy: data.avgVacancy || 0, fullyRented: data.fullyRented || 0 });
-    } catch { setVacancyData({ rows: [], avgVacancy: 0, fullyRented: 0 }); }
-    finally { setVacancyLoading(false); }
+    } catch (e) {
+      console.error('[fetchVacancyReport]', e);
+      showToast('空置率報表載入失敗，請重試。', 'error');
+      setVacancyData({ rows: [], avgVacancy: 0, fullyRented: 0 });
+    } finally { setVacancyLoading(false); }
   }
 
   async function fetchRentFiling() {

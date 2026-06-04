@@ -466,7 +466,7 @@ function BnbPage() {
   useEffect(() => {
     if (!session) return;
     fetch('/api/warehouse-departments')
-      .then(r => r.ok ? r.json() : null)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(data => {
         if (data?.list) {
           const list = data.list.filter(w => w.type === 'building' && !w.parentId).map(w => w.name);
@@ -480,7 +480,10 @@ function BnbPage() {
           setOtaWarehouse(prev   => prev === DEFAULT_WAREHOUSE ? first : prev);
         }
       })
-      .catch(() => {});
+      .catch(e => {
+        console.error('[bnb] failed to load warehouse list', e);
+        showToast('館別清單載入失敗，館別選單可能無選項，請重新整理頁面。', 'error');
+      });
   }, [session]);
 
   // ── 銀行帳戶 fetch（mount once）──────────────────────────────
