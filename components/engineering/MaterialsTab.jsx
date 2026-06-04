@@ -86,7 +86,11 @@ export default function MaterialsTab({ projects, contracts }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setReturns(Array.isArray(data) ? data : []);
-    } catch (e) { console.error('[fetchReturns]', e); setReturns([]); }
+    } catch (e) {
+      console.error('[fetchReturns]', e);
+      setFetchError('退料資料載入失敗，請重試。');
+      setReturns([]);
+    }
   }
   async function fetchCounts(pid) {
     try {
@@ -95,7 +99,11 @@ export default function MaterialsTab({ projects, contracts }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCounts(Array.isArray(data) ? data : []);
-    } catch (e) { console.error('[fetchCounts]', e); setCounts([]); }
+    } catch (e) {
+      console.error('[fetchCounts]', e);
+      setFetchError('盤點資料載入失敗，請重試。');
+      setCounts([]);
+    }
   }
 
   // 已驗收退料量 map（materialId → 總退料量）

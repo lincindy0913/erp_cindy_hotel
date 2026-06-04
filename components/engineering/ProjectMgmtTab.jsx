@@ -45,11 +45,16 @@ export default function ProjectMgmtTab({
     setMilestonesLoading(p => ({ ...p, [projectId]: true }));
     try {
       const res = await fetch(`/api/engineering/projects/${projectId}/milestones`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setMilestonesMap(p => ({ ...p, [projectId]: Array.isArray(data) ? data : [] }));
-    } catch { setMilestonesMap(p => ({ ...p, [projectId]: [] })); }
+    } catch (e) {
+      console.error('[fetchMilestones]', e);
+      showToast('里程碑載入失敗', 'error');
+      setMilestonesMap(p => ({ ...p, [projectId]: [] }));
+    }
     finally { setMilestonesLoading(p => ({ ...p, [projectId]: false })); }
-  }, [milestonesMap]);
+  }, [milestonesMap, showToast]);
 
   function toggleCard(projectId) {
     setExpandedProjects(prev => {

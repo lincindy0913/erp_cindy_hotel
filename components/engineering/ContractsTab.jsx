@@ -124,9 +124,14 @@ export default function ContractsTab({
     setHistoryLoading(true);
     try {
       const res = await fetch(`/api/engineering/contracts/${c.id}/versions`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setHistoryVersions(Array.isArray(data) ? data : []);
-    } catch { setHistoryVersions([]); }
+    } catch (e) {
+      console.error('[openHistory]', e);
+      showToast('合約歷史版本載入失敗', 'error');
+      setHistoryVersions([]);
+    }
     finally { setHistoryLoading(false); }
   }
 
