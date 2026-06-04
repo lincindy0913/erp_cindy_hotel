@@ -28,7 +28,9 @@ export async function GET(request) {
     // Build filter
     const where = {};
     if (checkType) where.checkType = checkType;
-    if (status) where.status = status;
+    if (status) {
+      where.status = status.includes(',') ? { in: status.split(',') } : status;
+    }
     if (warehouse) where.warehouse = warehouse;
     if (supplierId) where.supplierId = parseInt(supplierId);
 

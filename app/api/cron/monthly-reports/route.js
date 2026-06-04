@@ -7,6 +7,7 @@
  *
  * 驗證：Authorization: Bearer <CRON_SECRET>
  */
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { handleApiError } from '@/lib/error-handler';
@@ -17,8 +18,14 @@ export const dynamic = 'force-dynamic';
 function checkAuth(request) {
   const header = request.headers.get('authorization') || '';
   const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return header === `Bearer ${secret}`;
+  if (!secret || secret.length < 32) return false;
+  const provided = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!provided || provided.length !== secret.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(request) {

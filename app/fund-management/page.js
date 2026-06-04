@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 
@@ -46,10 +47,13 @@ export default function FundManagementPage() {
   async function fetchAccounts() {
     try {
       const res = await fetch('/api/cashflow/accounts');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setAccounts(Array.isArray(data) ? data : []);
+      setError('');
     } catch (err) {
       console.error('Failed to fetch accounts:', err);
+      setError('資金帳戶載入失敗，請重新整理頁面。');
     } finally {
       setLoading(false);
     }
@@ -163,7 +167,11 @@ export default function FundManagementPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-emerald-500" />
-
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={error} onRetry={fetchAccounts} />
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-gray-800">資金帳戶管理</h2>

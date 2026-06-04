@@ -289,17 +289,30 @@ export async function POST(request) {
       level: pendingInvoices > 0 ? 'warning' : 'pass'
     });
 
-    // Check pending payments
-    const pendingPayments = await prisma.payment.count({
-      where: {
-        status: '未完成'
-      }
+    // Check paymentOrder: 待出納（已送出但出納尚未執行）
+    const pendingCashierOrders = await prisma.paymentOrder.count({
+      where: { status: '待出納' }
     });
     preChecks.push({
-      name: '未完成付款作業',
-      count: pendingPayments,
-      passed: pendingPayments === 0,
-      level: pendingPayments > 0 ? 'warning' : 'pass'
+      name: '待出納付款單',
+      count: pendingCashierOrders,
+      passed: pendingCashierOrders === 0,
+      level: pendingCashierOrders > 0 ? 'warning' : 'pass',
+      link: '/cashier',
+      linkText: '前往出納',
+    });
+
+    // Check paymentOrder: 草稿（尚未送出出納）
+    const draftOrders = await prisma.paymentOrder.count({
+      where: { status: '草稿' }
+    });
+    preChecks.push({
+      name: '未送出付款單（草稿）',
+      count: draftOrders,
+      passed: draftOrders === 0,
+      level: draftOrders > 0 ? 'warning' : 'pass',
+      link: '/finance',
+      linkText: '前往付款',
     });
 
     // Check cash account balances match transactions

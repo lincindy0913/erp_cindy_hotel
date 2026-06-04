@@ -8,6 +8,10 @@ import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
+import Link from 'next/link';
+import { formatNum0 as formatNumber } from '@/lib/format-utils';
 
 const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
@@ -20,11 +24,6 @@ const STATUS_BADGES = {
   '已結帳': { bg: 'bg-green-100', text: 'text-green-700', dot: 'bg-green-500' },
   '已鎖定': { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' }
 };
-
-function formatNumber(num) {
-  if (num == null || isNaN(num)) return '0';
-  return Number(num).toLocaleString('zh-TW');
-}
 
 export default function MonthEndPage() {
   const { data: session } = useSession();
@@ -562,13 +561,54 @@ export default function MonthEndPage() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        <ModuleGuideCard
+          title="月結流程說明"
+          color="slate"
+          steps={[
+            { label: '確認資料完整', desc: '確認當月所有進貨、費用、付款、PMS收入已登錄完成' },
+            { label: '執行月結', desc: '點擊各月份「執行月結」，系統將產生損益快照' },
+            { label: '鎖定期間', desc: '月結完成後鎖定，防止資料異動；如需修正請先解鎖' },
+            { label: '查看報表', desc: '月結後可至「損益表」查看當月財務結果', link: { href: '/reports/profit-loss', text: '前往損益表' } },
+          ]}
+        />
+
+        {/* 月結前確認清單 */}
+        <details className="mb-5 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none text-sm font-medium text-slate-700 hover:bg-slate-50 border-b border-slate-100 list-none">
+            <span>📋 月結前確認清單（點擊展開）</span>
+            <span className="text-slate-400 text-xs">執行月結前請逐項確認</span>
+          </summary>
+          <div className="px-4 py-3 space-y-2">
+            {[
+              { label: '所有進貨單已入庫確認', desc: '未入庫的進貨單不計入月結庫存', href: '/purchasing', linkText: '前往進貨' },
+              { label: '所有發票已登錄完成', desc: '未登錄的進項發票無法計入成本', href: '/sales', linkText: '前往發票登錄' },
+              { label: '付款單已送出並由出納執行', desc: '停留在草稿或待出納的付款單會被標記', href: '/cashier', linkText: '前往出納' },
+              { label: '現金帳戶餘額已確認', desc: '若帳戶餘額與實際不符，月結後損益會有誤差', href: '/cashflow', linkText: '前往現金流' },
+              { label: '現金盤點已完成', desc: '月底盤點未完成會阻擋月結（可強制跳過）', href: '/cashflow?tab=cash-count', linkText: '前往盤點' },
+            ].map((item, i) => (
+              <div key={i} className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                <input type="checkbox" className="mt-0.5 rounded text-slate-600 cursor-pointer" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
+                </div>
+                <a href={item.href} className="shrink-0 text-xs px-2 py-1 bg-white border border-slate-300 text-slate-600 rounded hover:bg-slate-100 whitespace-nowrap">
+                  {item.linkText} →
+                </a>
+              </div>
+            ))}
+            <p className="text-xs text-slate-400 pt-1">勾選狀態不會儲存，僅供當次操作確認用。</p>
+          </div>
+        </details>
+
         {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">月結作業</h2>
             <p className="text-sm text-gray-500 mt-1">管理每月結帳流程、報表快照與期間鎖定</p>
           </div>
           <div className="flex items-center gap-3">
+            <HelpButton anchor="二十一月結與年結" />
             <ExportButtons
               data={monthsData.map(m => ({
                 year: selectedYear,
@@ -864,11 +904,21 @@ export default function MonthEndPage() {
                               {check.name}
                             </span>
                           </div>
-                          <span className={`text-sm font-medium ${
-                            check.passed ? 'text-green-600' : 'text-yellow-600'
-                          }`}>
-                            {check.passed ? '通過' : `${check.count} 筆待處理`}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-medium ${
+                              check.passed ? 'text-green-600' : 'text-yellow-600'
+                            }`}>
+                              {check.passed ? '通過' : `${check.count} 筆待處理`}
+                            </span>
+                            {!check.passed && check.link && (
+                              <Link
+                                href={check.link}
+                                className="text-xs px-2 py-0.5 bg-yellow-600 text-white rounded hover:bg-yellow-700 whitespace-nowrap"
+                              >
+                                {check.linkText || '前往處理'} →
+                              </Link>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

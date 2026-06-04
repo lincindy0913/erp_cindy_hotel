@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useConfirm } from '@/context/ConfirmContext';
 import { RECON_STATUS, RECON_LINE_STATUS } from '@/lib/recon-statuses';
 
@@ -217,6 +218,11 @@ export default function BankReconciliationPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={error} onRetry={loadList} />
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800">存簿核對（銀行調節表）</h1>

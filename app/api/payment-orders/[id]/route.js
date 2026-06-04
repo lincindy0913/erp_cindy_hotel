@@ -64,9 +64,25 @@ export async function PUT(request, { params }) {
         if (!wa.ok) throw new Error('VALIDATION:無權限存取此館別');
       }
 
-      // Period lock: use dueDate or createdAt
-      const lockDate = order.dueDate || order.createdAt?.toISOString?.() || new Date().toISOString();
-      await assertPeriodOpen(tx, lockDate, order.warehouse);
+      // Period lock: check dueDate + source record date (engineering term)
+      const datesToCheck = new Set();
+      if (order.dueDate) datesToCheck.add(order.dueDate);
+
+      if (order.sourceType === 'engineering' && order.sourceRecordId) {
+        const term = await tx.engineeringContractTerm.findUnique({
+          where: { id: order.sourceRecordId },
+          select: { dueDate: true },
+        });
+        if (term?.dueDate) datesToCheck.add(term.dueDate);
+      }
+
+      if (datesToCheck.size === 0) {
+        datesToCheck.add(order.createdAt?.toISOString?.() || new Date().toISOString());
+      }
+
+      for (const lockDate of datesToCheck) {
+        await assertPeriodOpen(tx, lockDate, order.warehouse);
+      }
 
       // ── Submit action (draft -> pending) ──
       if (data.action === 'submit') {

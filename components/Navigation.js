@@ -13,22 +13,22 @@ const NAV_ITEMS = [
   { href: '/inventory', label: '庫存', linkClass: 'link-inventory', requiredPermission: 'inventory.view' },
   { href: '/purchasing', label: '進貨', linkClass: 'link-purchasing', requiredPermission: 'purchasing.view' },
   { href: '/sales', label: '發票登錄', linkClass: 'link-sales', requiredPermission: 'sales.view' },
-  { href: '/finance', label: '付款', linkClass: 'link-finance', requiredPermission: 'finance.view' },
+  { href: '/finance', label: '付款', subtitle: '付款單', linkClass: 'link-finance', requiredPermission: 'finance.view' },
   { href: '/purchase-allowances', label: '退貨', linkClass: 'link-finance', requiredPermission: 'finance.view' },
   { href: '/checks', label: '支票', linkClass: 'link-checks', requiredPermission: 'check.view' },
   { href: '/expenses', label: '費用', linkClass: 'link-finance', requiredPermission: 'expense.view' },
   { href: '/loans', label: '貸款', linkClass: 'link-loans', requiredPermission: 'loan.view' },
-  { href: '/cashier', label: '出納', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
+  { href: '/cashier', label: '出納', subtitle: '執行轉帳／匯款', linkClass: 'link-cashier', requiredPermission: 'cashier.view' },
   { href: '/employee-advances', label: '代墊款', linkClass: 'link-cashflow', requiredPermission: 'cashier.view' },
   { href: '/cashflow', label: '現金流', linkClass: 'link-cashflow', requiredPermission: 'cashflow.view' },
-  { href: '/reconciliation', label: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
-  { href: '/bank-reconciliation', label: '存簿核對', linkClass: 'link-reconciliation', requiredPermission: 'cashflow.view' },
+  { href: '/reconciliation', label: '存簿對帳', subtitle: '存簿對帳', linkClass: 'link-reconciliation', requiredPermission: 'reconciliation.view' },
+  { href: '/bank-reconciliation', label: '存簿核對', subtitle: '網銀存簿比對', linkClass: 'link-reconciliation', requiredPermission: 'cashflow.view' },
   { href: '/pms-income', label: 'PMS收入', linkClass: 'link-pms-income', requiredPermission: 'pms.view' },
   { href: '/bnb', label: '民宿帳', linkClass: 'link-pms-income', requiredPermission: 'bnb.view' },
   { href: '/rentals', label: '租屋管理', linkClass: 'link-rentals', requiredPermission: 'rental.view' },
   { href: '/assets', label: '資產管理', linkClass: 'link-rentals', requiredPermission: 'asset.view' },
-  { href: '/engineering', label: '工程',      linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
-  { href: '/company-expenses', label: '工程分業', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+  { href: '/engineering', label: '工程', subtitle: '合約／進度／請款', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
+  { href: '/company-expenses', label: '工程分業', subtitle: '未歸案發票歸屬', linkClass: 'link-engineering', requiredPermission: 'engineering.view' },
   { href: '/utility-bills', label: '水電費', linkClass: 'link-utility', requiredPermission: null },
   { href: '/analytics', label: '分析', linkClass: 'link-analytics', requiredPermission: 'analytics.view' },
 ];
@@ -55,7 +55,7 @@ const DATA_SETTINGS_ITEMS = [
   { href: '/settings', label: '系統設定', linkClass: 'link-settings', requiredPermission: 'settings.view' },
   { href: '/admin/users', label: '使用者管理', linkClass: 'link-dashboard', adminOnly: true },
   { href: '/admin/audit-log', label: '稽核日誌', linkClass: 'link-audit', adminOnly: true },
-
+  { href: '/manual', label: '📖 使用說明', linkClass: 'link-dashboard', requiredPermission: null, newTab: true },
 ];
 
 export default function Navigation({ borderColor = 'border-blue-500' }) {
@@ -64,6 +64,7 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const timeoutRef = useRef(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isAdmin = session?.user?.role === 'admin';
   const userPermissions = session?.user?.permissions || [];
@@ -159,19 +160,43 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
 
   return (
     <nav className={`bg-white shadow-lg border-b-4 ${borderColor} sticky top-0 z-[60]`}>
-      <div className="max-w-[100rem] mx-auto px-4 py-4">
+      <div className="max-w-[100rem] mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">進銷存系統</h1>
-          <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold text-gray-800">進銷存系統</h1>
+
+          {/* Hamburger — mobile only */}
+          <button
+            type="button"
+            className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+            onClick={() => setMobileOpen(o => !o)}
+            aria-label="選單"
+          >
+            {mobileOpen ? (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+
+          {/* Desktop nav */}
+          <div className="hidden lg:flex items-center gap-4">
             {/* Navigation links - filtered by permission */}
             <div className="flex gap-2 text-sm flex-wrap items-center">
               {visibleNavItems.map(item => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`${item.linkClass} ${pathname === item.href ? 'active font-medium' : ''}`}
+                  title={item.subtitle || undefined}
+                  className={`${item.linkClass} ${pathname === item.href ? 'active font-medium' : ''} ${item.subtitle ? 'flex flex-col items-start leading-tight' : ''}`}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.subtitle && (
+                    <span className="text-[10px] font-normal opacity-60 leading-none">{item.subtitle}</span>
+                  )}
                 </Link>
               ))}
 
@@ -254,11 +279,13 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
                     </svg>
                   </button>
                   {dropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px] z-50">
+                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] z-50">
                       {visibleSettingsItems.map(item => (
                         <Link
                           key={item.href}
                           href={item.href}
+                          target={item.newTab ? '_blank' : undefined}
+                          rel={item.newTab ? 'noopener noreferrer' : undefined}
                           className={`block px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
                             pathname === item.href ? 'font-medium bg-gray-50' : 'text-gray-700'
                           }`}
@@ -267,6 +294,22 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
                           {item.label}
                         </Link>
                       ))}
+                      <div className="border-t border-gray-100 mt-1 pt-1">
+                        <button
+                          type="button"
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 transition-colors"
+                          onClick={() => {
+                            const url = window.location.href;
+                            const time = new Date().toLocaleString('zh-TW');
+                            const text = `問題回報\n頁面：${url}\n時間：${time}\n\n問題描述：（請填寫）`;
+                            navigator.clipboard?.writeText(text).catch(() => {});
+                            setDropdownOpen(false);
+                            alert('📋 已複製問題回報範本，請貼到訊息或 Email 中，並附上截圖。');
+                          }}
+                        >
+                          🐛 回報問題
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -307,6 +350,52 @@ export default function Navigation({ borderColor = 'border-blue-500' }) {
             </div>
           </div>
         </div>
+
+        {/* Mobile panel */}
+        {mobileOpen && (
+          <div className="lg:hidden border-t border-gray-100 pt-3 pb-2 mt-2 space-y-1">
+            {visibleNavItems.map(item => (
+              <Link
+                key={item.href}
+                href={item.href}
+                target={item.newTab ? '_blank' : undefined}
+                className={`block px-3 py-2 rounded-lg text-sm transition-colors ${pathname === item.href ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+                onClick={() => setMobileOpen(false)}
+              >
+                {item.label}
+                {item.subtitle && <span className="ml-1 text-xs text-gray-400">— {item.subtitle}</span>}
+              </Link>
+            ))}
+            <div className="border-t border-gray-100 pt-2 mt-2 space-y-1">
+              {[...visibleCloseBookItems, ...visibleReportsItems, ...visibleSettingsItems].map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  target={item.newTab ? '_blank' : undefined}
+                  className={`block px-3 py-2 rounded-lg text-sm transition-colors ${pathname === item.href ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+            {session && (
+              <div className="border-t border-gray-100 pt-2 mt-2 px-3 flex items-center justify-between">
+                <span className="text-sm text-gray-600">{session.user?.name}</span>
+                <button
+                  onClick={async () => {
+                    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                    signOut({ callbackUrl: '/' });
+                    setMobileOpen(false);
+                  }}
+                  className="text-sm text-red-600 hover:underline"
+                >
+                  登出
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </nav>
   );

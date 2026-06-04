@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation';
 import { ROLE_CODES, ROLE_LABELS, ROLE_COLORS, PERMISSIONS, ROLE_DEFAULTS, hasRoleConflict } from '@/lib/permissions';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { getApiError } from '@/lib/get-api-error';
 
 // 權限分類（用於顯示）
 const PERMISSION_GROUPS = [
@@ -163,10 +164,10 @@ export default function UserManagementPage() {
         fetchUsers();
       } else {
         const error = await response.json();
-        showToast('操作失敗：' + (error.error?.message || error.error), 'error');
+        showToast(getApiError(error), 'error');
       }
     } catch (error) {
-      showToast('操作失敗：' + error.message, 'error');
+      showToast('操作失敗，請稍後再試', 'error');
     } finally {
       setUserSaving(false);
     }
@@ -182,10 +183,10 @@ export default function UserManagementPage() {
         fetchUsers();
       } else {
         const error = await response.json();
-        showToast('操作失敗：' + (error.error?.message || error.error), 'error');
+        showToast(getApiError(error), 'error');
       }
     } catch (error) {
-      showToast('操作失敗：' + error.message, 'error');
+      showToast('操作失敗，請稍後再試', 'error');
     }
   }
 

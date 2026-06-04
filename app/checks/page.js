@@ -9,7 +9,8 @@ import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
-import { todayStr, localDateStr } from '@/lib/localDate';
+import { todayStr, localDateStr, parseLocalDate } from '@/lib/localDate';
+import { formatNum } from '@/lib/format-utils';
 
 const CHECK_SORT_ACCESSORS = {
   status: (c) => c.status || '',
@@ -50,7 +51,7 @@ function getDueDateColor(dueDate) {
   if (!dueDate) return '';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate + 'T00:00:00');
+  const due = parseLocalDate(dueDate);
   const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) return 'text-red-600 font-bold';
@@ -65,18 +66,13 @@ function getDueDateLabel(dueDate) {
   if (!dueDate) return '';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate + 'T00:00:00');
+  const due = parseLocalDate(dueDate);
   const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) return `(逾期 ${Math.abs(diffDays)} 天)`;
   if (diffDays === 0) return '(今日到期)';
   if (diffDays <= 7) return `(${diffDays} 天後到期)`;
   return '';
-}
-
-function formatAmount(val) {
-  const n = Number(val) || 0;
-  return n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 // ============== Modal Component ==============
@@ -229,7 +225,7 @@ export default function ChecksPage() {
 
   useEffect(() => {
     if (activeTab === 'pending') {
-      fetchChecks({ status: '' }); // Fetch all, filter in UI
+      fetchChecks({ status: 'pending,due' });
     } else if (activeTab === 'payable') {
       const params = { checkType: 'payable' };
       if (filterStatus) params.status = filterStatus;
@@ -768,7 +764,7 @@ export default function ChecksPage() {
                 )}
               </td>
               <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
-              <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+              <td className="px-3 py-2 text-right font-medium">${formatNum(c.amount)}</td>
               <td className={`px-3 py-2 ${getDueDateColor(c.dueDate)}`}>
                 {c.dueDate}
                 <span className="text-sm ml-1">{(c.status === 'pending' || c.status === 'due') ? getDueDateLabel(c.dueDate) : ''}</span>
@@ -827,22 +823,22 @@ export default function ChecksPage() {
           <div className="bg-red-50 rounded-xl p-4 border border-red-200">
             <div className="text-sm text-red-600 font-medium">逾期應付</div>
             <div className="text-2xl font-bold text-red-700 mt-1">{summary.overduePayable?.count || 0}</div>
-            <div className="text-base text-red-500">${formatAmount(summary.overduePayable?.total)}</div>
+            <div className="text-base text-red-500">${formatNum(summary.overduePayable?.total)}</div>
           </div>
           <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
             <div className="text-sm text-orange-600 font-medium">逾期應收</div>
             <div className="text-2xl font-bold text-orange-700 mt-1">{summary.overdueReceivable?.count || 0}</div>
-            <div className="text-base text-orange-500">${formatAmount(summary.overdueReceivable?.total)}</div>
+            <div className="text-base text-orange-500">${formatNum(summary.overdueReceivable?.total)}</div>
           </div>
           <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
             <div className="text-sm text-yellow-700 font-medium">7日內到期</div>
             <div className="text-2xl font-bold text-yellow-800 mt-1">{summary.dueSoon7?.count || 0}</div>
-            <div className="text-base text-yellow-600">${formatAmount(summary.dueSoon7?.total)}</div>
+            <div className="text-base text-yellow-600">${formatNum(summary.dueSoon7?.total)}</div>
           </div>
           <div className="bg-violet-50 rounded-xl p-4 border border-violet-200">
             <div className="text-sm text-violet-600 font-medium">30日內到期</div>
             <div className="text-2xl font-bold text-violet-700 mt-1">{summary.dueSoon30?.count || 0}</div>
-            <div className="text-base text-violet-500">${formatAmount(summary.dueSoon30?.total)}</div>
+            <div className="text-base text-violet-500">${formatNum(summary.dueSoon30?.total)}</div>
           </div>
         </div>
       )}
@@ -982,11 +978,11 @@ export default function ChecksPage() {
         <div className="flex gap-4 text-base">
           <span className="text-gray-500">共 {filtered.length} 筆</span>
           <span className="text-gray-500">
-            總金額: <span className="font-bold text-gray-800">${formatAmount(filtered.reduce((s, c) => s + Number(c.amount), 0))}</span>
+            總金額: <span className="font-bold text-gray-800">${formatNum(filtered.reduce((s, c) => s + Number(c.amount), 0))}</span>
           </span>
           <span className="text-gray-500">
             未兌現: <span className="font-bold text-orange-600">
-              ${formatAmount(filtered.filter(c => c.status === 'pending' || c.status === 'due').reduce((s, c) => s + Number(c.amount), 0))}
+              ${formatNum(filtered.filter(c => c.status === 'pending' || c.status === 'due').reduce((s, c) => s + Number(c.amount), 0))}
             </span>
           </span>
         </div>
@@ -1087,18 +1083,18 @@ export default function ChecksPage() {
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-red-400"></span>
                             <span className="text-red-600">應付 {day.payable.length} 筆</span>
-                            <span className="font-medium text-red-700">-${formatAmount(day.payableTotal)}</span>
+                            <span className="font-medium text-red-700">-${formatNum(day.payableTotal)}</span>
                           </div>
                         )}
                         {day.receivable.length > 0 && (
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-green-400"></span>
                             <span className="text-green-600">應收 {day.receivable.length} 筆</span>
-                            <span className="font-medium text-green-700">+${formatAmount(day.receivableTotal)}</span>
+                            <span className="font-medium text-green-700">+${formatNum(day.receivableTotal)}</span>
                           </div>
                         )}
                         <div className={`ml-auto font-bold ${day.net >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                          淨額: {day.net >= 0 ? '+' : ''}${formatAmount(day.net)}
+                          淨額: {day.net >= 0 ? '+' : ''}${formatNum(day.net)}
                         </div>
                       </div>
                     ) : (
@@ -1115,7 +1111,7 @@ export default function ChecksPage() {
                             <span className={c.checkType === 'payable' ? 'text-red-600' : 'text-green-600'}>
                               {c.checkType === 'payable' ? '應付' : '應收'}
                             </span>
-                            <span className="font-medium">${formatAmount(c.amount)}</span>
+                            <span className="font-medium">${formatNum(c.amount)}</span>
                             <span className="text-gray-400">{c.drawerName || c.payeeName || ''}</span>
                             <span className="text-gray-300">{c.checkType === 'payable' ? c.sourceAccount?.name : c.destinationAccount?.name}</span>
                             {isOverdue && c.dueDate && (
@@ -1174,22 +1170,22 @@ export default function ChecksPage() {
               <div className="bg-violet-50 p-4 rounded-lg">
                 <div className="text-sm text-violet-500">總支票數</div>
                 <div className="text-xl font-bold text-violet-700">{monthlyStats.total}</div>
-                <div className="text-base text-violet-500">${formatAmount(monthlyStats.totalAmount)}</div>
+                <div className="text-base text-violet-500">${formatNum(monthlyStats.totalAmount)}</div>
               </div>
               <div className="bg-red-50 p-4 rounded-lg">
                 <div className="text-sm text-red-500">應付</div>
                 <div className="text-xl font-bold text-red-700">{monthlyStats.payable?.count || 0}</div>
-                <div className="text-base text-red-500">${formatAmount(monthlyStats.payable?.total)}</div>
+                <div className="text-base text-red-500">${formatNum(monthlyStats.payable?.total)}</div>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
                 <div className="text-sm text-green-500">應收</div>
                 <div className="text-xl font-bold text-green-700">{monthlyStats.receivable?.count || 0}</div>
-                <div className="text-base text-green-500">${formatAmount(monthlyStats.receivable?.total)}</div>
+                <div className="text-base text-green-500">${formatNum(monthlyStats.receivable?.total)}</div>
               </div>
               <div className="bg-blue-50 p-4 rounded-lg">
                 <div className="text-sm text-blue-500">已兌現</div>
                 <div className="text-xl font-bold text-blue-700">{monthlyStats.cleared?.count || 0}</div>
-                <div className="text-base text-blue-500">${formatAmount(monthlyStats.cleared?.total)}</div>
+                <div className="text-base text-blue-500">${formatNum(monthlyStats.cleared?.total)}</div>
               </div>
             </div>
           </div>
@@ -1223,7 +1219,7 @@ export default function ChecksPage() {
                       <tr key={c.id} className="border-t border-red-100">
                         <td className="px-3 py-2 font-mono text-sm">{c.checkNumber}</td>
                         <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
-                        <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                        <td className="px-3 py-2 text-right font-medium">${formatNum(c.amount)}</td>
                         <td className="px-3 py-2">{c.dueDate}</td>
                         <td className="px-3 py-2 text-sm text-gray-500">{c.bouncedReason || '-'}</td>
                         <td className="px-3 py-2 text-center">
@@ -1273,12 +1269,12 @@ export default function ChecksPage() {
                   </thead>
                   <tbody>
                     {overdueChecks.map(c => {
-                      const diffDays = Math.ceil((new Date() - new Date(c.dueDate + 'T00:00:00')) / (1000 * 60 * 60 * 24));
+                      const diffDays = Math.ceil((new Date() - parseLocalDate(c.dueDate)) / (1000 * 60 * 60 * 24));
                       return (
                         <tr key={c.id} className="border-t border-orange-100">
                           <td className="px-3 py-2 font-mono text-sm">{c.checkNumber}</td>
                           <td className="px-3 py-2">{c.checkType === 'payable' ? '應付' : '應收'}</td>
-                          <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                          <td className="px-3 py-2 text-right font-medium">${formatNum(c.amount)}</td>
                           <td className="px-3 py-2 text-red-600">{c.dueDate}</td>
                           <td className="px-3 py-2 text-red-600 font-bold">{diffDays} 天</td>
                           <td className="px-3 py-2 text-center">
@@ -1449,7 +1445,7 @@ export default function ChecksPage() {
               <div className="grid grid-cols-2 gap-2 text-base">
                 <div>支票號碼: <span className="font-mono font-medium">{selectedCheck.checkNumber}</span></div>
                 <div>類型: {selectedCheck.checkType === 'payable' ? '應付' : '應收'}</div>
-                <div>金額: <span className="font-bold">${formatAmount(selectedCheck.amount)}</span></div>
+                <div>金額: <span className="font-bold">${formatNum(selectedCheck.amount)}</span></div>
                 <div>到期日: {selectedCheck.dueDate}</div>
               </div>
             </div>
@@ -1596,7 +1592,7 @@ export default function ChecksPage() {
                     <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
                     <td className="px-3 py-2 font-mono">{c.checkNumber}</td>
                     <td className="px-3 py-2">{getPayeeName(c)}</td>
-                    <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                    <td className="px-3 py-2 text-right font-medium">${formatNum(c.amount)}</td>
                     <td className="px-3 py-2">{c.issueDate || '－'}</td>
                     <td className="px-3 py-2">{c.dueDate || '－'}</td>
                     {!printWarehouse && <td className="px-3 py-2">{c.warehouse || '－'}</td>}
@@ -1640,7 +1636,7 @@ export default function ChecksPage() {
                   <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
                   <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>
                   <td className="px-3 py-2 border border-gray-300">{getPayeeName(c)}</td>
-                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatAmount(c.amount)}</td>
+                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatNum(c.amount)}</td>
                   <td className="px-3 py-2 border border-gray-300">{c.issueDate || '－'}</td>
                   <td className="px-3 py-2 border border-gray-300">{c.dueDate || '－'}</td>
                   {!printWarehouse && <td className="px-3 py-2 border border-gray-300">{c.warehouse || '－'}</td>}
@@ -1703,7 +1699,7 @@ export default function ChecksPage() {
                         <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
                         <td className="px-3 py-2 font-mono">{c.checkNumber}</td>
                         <td className="px-3 py-2">{getPayeeName(c)}</td>
-                        <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                        <td className="px-3 py-2 text-right font-medium">${formatNum(c.amount)}</td>
                         <td className="px-3 py-2">{c.issueDate || '－'}</td>
                         <td className="px-3 py-2">{c.dueDate || '－'}</td>
                         <td className="px-3 py-2 align-top" style={{ minHeight: 32 }}>&nbsp;</td>
@@ -1750,7 +1746,7 @@ export default function ChecksPage() {
                   <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
                   <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>
                   <td className="px-3 py-2 border border-gray-300">{getPayeeName(c)}</td>
-                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatAmount(c.amount)}</td>
+                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatNum(c.amount)}</td>
                   <td className="px-3 py-2 border border-gray-300">{c.issueDate || '－'}</td>
                   <td className="px-3 py-2 border border-gray-300">{c.dueDate || '－'}</td>
                   <td className="px-3 py-2 border border-gray-300" style={{ minHeight: 36 }}>&nbsp;</td>
@@ -1812,7 +1808,7 @@ export default function ChecksPage() {
                         <td className="px-3 py-2 text-gray-600">{idx + 1}</td>
                         <td className="px-3 py-2 font-mono">{c.checkNumber}</td>
                         <td className="px-3 py-2">{getPayeeName(c)}</td>
-                        <td className="px-3 py-2 text-right font-medium">${formatAmount(c.amount)}</td>
+                        <td className="px-3 py-2 text-right font-medium">${formatNum(c.amount)}</td>
                         <td className="px-3 py-2">{c.issueDate || '－'}</td>
                         <td className="px-3 py-2">{c.dueDate || '－'}</td>
                         <td className="px-3 py-2 align-top" style={{ minHeight: 32 }}>&nbsp;</td>
@@ -1859,7 +1855,7 @@ export default function ChecksPage() {
                   <td className="px-3 py-2 border border-gray-300 text-gray-600">{idx + 1}</td>
                   <td className="px-3 py-2 border border-gray-300 font-mono">{c.checkNumber}</td>
                   <td className="px-3 py-2 border border-gray-300">{getPayeeName(c)}</td>
-                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatAmount(c.amount)}</td>
+                  <td className="px-3 py-2 border border-gray-300 text-right font-medium">${formatNum(c.amount)}</td>
                   <td className="px-3 py-2 border border-gray-300">{c.issueDate || '－'}</td>
                   <td className="px-3 py-2 border border-gray-300">{c.dueDate || '－'}</td>
                   <td className="px-3 py-2 border border-gray-300" style={{ minHeight: 36 }}>&nbsp;</td>

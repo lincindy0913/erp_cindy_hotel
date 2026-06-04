@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 import { useToast } from '@/context/ToastContext';
 
 // ── Hooks ──────────────────────────────────────────────────────
@@ -225,6 +226,18 @@ function AnalyticsPageContent() {
           <h2 className="text-2xl font-bold text-gray-900">決策分析</h2>
           <p className="text-sm text-gray-500 mt-1">整合現金流、損益、採購與帳齡的即時分析儀表板</p>
         </div>
+
+        <ModuleGuideCard
+          title="主管閱讀建議路徑"
+          color="blue"
+          steps={[
+            { label: '總覽 KPI', desc: '先看「總覽」分頁確認本月整體營運狀況：現金水位、應收應付、毛利率' },
+            { label: '損益趨勢', desc: '到「損益趨勢」確認各月收支走勢，找出異常月份' },
+            { label: '現金流量預測', desc: '查看未來 90 天現金流量預測，確認有無資金缺口' },
+            { label: '帳齡分析', desc: '查看應付帳款帳齡，逾期帳款需追蹤催收', link: { href: '/analytics?tab=aging', text: '前往帳齡分析' } },
+            { label: '完整報表', desc: '需要正式財務報表時前往損益表與現金流量表', link: { href: '/reports/profit-loss', text: '前往損益表' } },
+          ]}
+        />
 
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-xl shadow-sm border border-gray-100 p-1">

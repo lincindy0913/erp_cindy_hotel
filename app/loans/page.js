@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
-import { todayStr } from '@/lib/localDate';
+import { todayStr, parseLocalDate } from '@/lib/localDate';
 import ReportTab    from './_tabs/ReportTab';
 import AnnualTab    from './_tabs/AnnualTab';
 import OverviewTab  from './_tabs/OverviewTab';
@@ -64,6 +65,7 @@ export default function LoansPage() {
 
   // Data states
   const [loans, setLoans] = useState([]);
+  const [fetchError, setFetchError] = useState(null);
   const [records, setRecords] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [accountingSubjects, setAccountingSubjects] = useState([]);
@@ -159,6 +161,7 @@ export default function LoansPage() {
 
   async function fetchAll() {
     setLoading(true);
+    setFetchError(null);
     try {
       const [loansRes, accountsRes, whRes, subjectsRes] = await Promise.all([
         fetch('/api/loans'),
@@ -166,6 +169,7 @@ export default function LoansPage() {
         fetch('/api/warehouse-departments'),
         fetch('/api/accounting-subjects')
       ]);
+      if (!loansRes.ok) throw new Error(`HTTP ${loansRes.status}`);
       const loansData = await loansRes.json();
       const accountsData = await accountsRes.json();
       const whData = await whRes.json();
@@ -179,6 +183,7 @@ export default function LoansPage() {
       setWarehouses(buildingNames.length > 0 ? buildingNames : whList.filter(w => !w.parentId).map(w => w.name));
     } catch (e) {
       console.error('載入資料錯誤:', e);
+      setFetchError('貸款資料載入失敗，請重新整理頁面。');
     }
     setLoading(false);
   }
@@ -523,7 +528,7 @@ export default function LoansPage() {
 
   function getDaysUntilDue(dueDate) {
     if (!dueDate) return null;
-    const due = new Date(dueDate + 'T00:00:00');
+    const due = parseLocalDate(dueDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return Math.ceil((due - today) / (1000 * 60 * 60 * 24));
@@ -682,7 +687,7 @@ export default function LoansPage() {
         daysLeft: (row) => {
           const rec = row.rec;
           if (!rec?.dueDate) return 999999;
-          const due = new Date(rec.dueDate + 'T00:00:00');
+          const due = parseLocalDate(rec.dueDate);
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           return Math.ceil((due - today) / 86400000);
@@ -749,7 +754,18 @@ export default function LoansPage() {
       <div className="min-h-screen page-bg-loans">
         <Navigation borderColor="border-indigo-500" />
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="text-center py-20 text-gray-500">載入中...</div>
+          <div className="h-8 bg-gray-200 rounded w-48 mb-6 animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-xl p-5 shadow-sm h-28 animate-pulse">
+                <div className="h-3 bg-gray-200 rounded w-1/2 mb-3" />
+                <div className="h-7 bg-gray-200 rounded w-3/4" />
+              </div>
+            ))}
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-4 animate-pulse space-y-3">
+            {[...Array(5)].map((_, i) => <div key={i} className="h-4 bg-gray-100 rounded" />)}
+          </div>
         </div>
       </div>
     );
@@ -765,6 +781,11 @@ export default function LoansPage() {
         }
       `}} />
       <div className="no-print-loans"><Navigation borderColor="border-indigo-500" /><NotificationBanner moduleFilter="loans" /></div>
+      {fetchError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4 no-print-loans">
+          <FetchErrorBanner message={fetchError} onRetry={fetchAll} />
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 py-6 no-print-loans">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

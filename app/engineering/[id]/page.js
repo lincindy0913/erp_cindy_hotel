@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { todayStr } from '@/lib/localDate';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
 import { formatNum } from '@/lib/engineering/format-utils';
@@ -96,6 +97,60 @@ function ProjectDetailInner() {
     return { totalRetained, totalReleased, balance: totalRetained - totalReleased };
   }, [contracts]);
 
+  // ── 下一步建議（計算目前工程案需要處理的事項）────────────────
+  const nextSteps = useMemo(() => {
+    if (!project) return [];
+    const today = todayStr();
+    const steps = [];
+
+    // 逾期未付期數
+    const overdueTerms = contracts.flatMap(c =>
+      (c.terms || []).filter(t =>
+        t.dueDate && t.dueDate < today &&
+        !['已付款', 'paid', 'cancelled', 'void'].includes(t.status)
+      )
+    );
+    if (overdueTerms.length > 0) {
+      steps.push({
+        level: 'critical',
+        msg: `${overdueTerms.length} 筆期數已逾期尚未付款`,
+        action: { label: '前往合約與期數', tab: 'contracts' },
+      });
+    }
+
+    // 待出納付款單
+    const pendingCashier = paymentOrders.filter(po => po.status === '待出納');
+    if (pendingCashier.length > 0) {
+      steps.push({
+        level: 'urgent',
+        msg: `${pendingCashier.length} 筆付款單待出納執行`,
+        action: { label: '前往付款狀況', tab: 'payments' },
+        extra: { label: '前往出納', href: '/cashier' },
+      });
+    }
+
+    // 草稿付款單
+    const draftOrders = paymentOrders.filter(po => po.status === '草稿');
+    if (draftOrders.length > 0) {
+      steps.push({
+        level: 'warning',
+        msg: `${draftOrders.length} 筆付款單草稿尚未送出`,
+        action: { label: '前往付款狀況', tab: 'payments' },
+      });
+    }
+
+    // 合約已有但無進款登錄
+    if (contracts.length > 0 && incomes.length === 0 && project.clientContractAmount) {
+      steps.push({
+        level: 'warning',
+        msg: '尚無業主收款登錄',
+        action: { label: '前往收款狀況', tab: 'income' },
+      });
+    }
+
+    return steps;
+  }, [project, contracts, paymentOrders, incomes]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -111,9 +166,14 @@ function ProjectDetailInner() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navigation />
-        <div className="max-w-4xl mx-auto px-4 py-12 text-center">
-          <p className="text-red-600 mb-4">{error || '找不到工程案'}</p>
-          <Link href="/engineering" className="text-amber-600 hover:underline">← 返回工程會計</Link>
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <FetchErrorBanner
+            message={error || '找不到此工程案，可能已被刪除。'}
+            onRetry={error ? () => window.location.reload() : undefined}
+          />
+          <div className="mt-4 text-center">
+            <Link href="/engineering" className="text-amber-600 hover:underline text-sm">← 返回工程案列表</Link>
+          </div>
         </div>
       </div>
     );
@@ -239,6 +299,44 @@ function ProjectDetailInner() {
             </div>
           )}
         </div>
+
+        {/* 下一步建議 */}
+        {nextSteps.length > 0 && (
+          <div className="space-y-2 mb-5">
+            {nextSteps.map((s, i) => {
+              const colors = {
+                critical: 'bg-red-50 border-red-400 text-red-800',
+                urgent:   'bg-orange-50 border-orange-400 text-orange-800',
+                warning:  'bg-amber-50 border-amber-300 text-amber-800',
+              };
+              const btnColors = {
+                critical: 'bg-red-600 text-white hover:bg-red-700',
+                urgent:   'bg-orange-500 text-white hover:bg-orange-600',
+                warning:  'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200',
+              };
+              return (
+                <div key={i} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border-l-4 ${colors[s.level]}`}>
+                  <span className="text-sm flex-1">{s.msg}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(s.action.tab)}
+                    className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium ${btnColors[s.level]}`}
+                  >
+                    {s.action.label}
+                  </button>
+                  {s.extra && (
+                    <Link
+                      href={s.extra.href}
+                      className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50"
+                    >
+                      {s.extra.label}
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* 子分頁 Tab 列 */}
         <div className="flex flex-wrap gap-1 mb-5 bg-white rounded-lg shadow p-1">

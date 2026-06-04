@@ -17,6 +17,7 @@ export function usePaymentOrders() {
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [submittingOrderId, setSubmittingOrderId] = useState(null);
   const [highlightOrderNo, setHighlightOrderNo] = useState(null);
+  const [submittedToCashier, setSubmittedToCashier] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -132,6 +133,7 @@ export function usePaymentOrders() {
         setSelectedOrderIds(new Set());
         fetchOrders();
         showToast(`成功 ${actionLabel} ${ok} 筆${errors.length ? `，失敗 ${errors.length} 筆` : ''}`, errors.length ? 'warning' : 'success');
+        setSubmittedToCashier(true);
       }
       if (errors.length > 0) {
         showToast(`部分失敗：\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...等 ${errors.length} 筆` : ''}`, 'error');
@@ -154,6 +156,7 @@ export function usePaymentOrders() {
 
       if (response.ok) {
         showToast('付款單已提交出納！', 'success');
+        setSubmittedToCashier(true);
         fetchOrders();
       } else {
         const error = await response.json();
@@ -180,6 +183,7 @@ export function usePaymentOrders() {
 
       if (response.ok) {
         showToast('付款單已重新提交出納！', 'success');
+        setSubmittedToCashier(true);
         fetchOrders();
       } else {
         const error = await response.json();
@@ -249,6 +253,7 @@ export function usePaymentOrders() {
     batchSubmitting,
     submittingOrderId,
     highlightOrderNo,
+    submittedToCashier, setSubmittedToCashier,
     fetchOrders,
     handleDelete,
     handleOrderToggle,

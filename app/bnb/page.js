@@ -462,6 +462,35 @@ function BnbPage() {
   const [showBatchLock, setShowBatchLock]     = useState(false);
   const [lockLoading, setLockLoading] = useState(false);
 
+  // ── 匯入 state ────────────────────────────────────────────────
+  const [importMonth,     setImportMonth]     = useState(() => todayStr().slice(0, 7));
+  const [importWarehouse, setImportWarehouse] = useState(DEFAULT_WAREHOUSE);
+  const [importFile,      setImportFile]      = useState(null);
+  const [importReplace,   setImportReplace]   = useState(false);
+  const [importPreview,   setImportPreview]   = useState(null);
+  const [importResult,    setImportResult]    = useState(null);
+  const [importConfirm,   setImportConfirm]   = useState(null);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importing,       setImporting]       = useState(false);
+  const [importHistory,   setImportHistory]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem('bnb_import_history') || '[]'); } catch { return []; }
+  });
+
+  // ── 每日收入 state ────────────────────────────────────────────
+  const [drMonth,     setDrMonth]     = useState(() => todayStr().slice(0, 7));
+  const [drWarehouse, setDrWarehouse] = useState(DEFAULT_WAREHOUSE);
+  const [drLoading,   setDrLoading]   = useState(false);
+  const [drData,      setDrData]      = useState(null);
+  const [drExpandDay, setDrExpandDay] = useState(null);
+
+  // ── 訂房日曆 state ────────────────────────────────────────────
+  const [calYear,      setCalYear]      = useState(() => new Date().getFullYear());
+  const [calMonth,     setCalMonth]     = useState(() => new Date().getMonth() + 1);
+  const [calWarehouse, setCalWarehouse] = useState('');
+  const [calData,      setCalData]      = useState([]);
+  const [calLoading,   setCalLoading]   = useState(false);
+  const [calOverflow,  setCalOverflow]  = useState(false);
+
   // ── 館別清單（session 載入後才 fetch，否則會 401）────────────
   useEffect(() => {
     if (!session) return;

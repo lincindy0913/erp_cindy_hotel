@@ -7,6 +7,7 @@ import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import AttachmentSection from '@/components/AttachmentSection';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
 import { formatNum } from '@/lib/engineering/format-utils';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function ContractsTab({
   projects, suppliers, contracts, paymentOrders,
@@ -27,6 +28,7 @@ export default function ContractsTab({
   const [historyContract, setHistoryContract] = useState(null);
   const [historyVersions, setHistoryVersions] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
   const [historyExpanded, setHistoryExpanded] = useState(null);
 
   const [showContractUploadModal, setShowContractUploadModal] = useState(false);
@@ -117,6 +119,7 @@ export default function ContractsTab({
     setHistoryContract(c);
     setHistoryVersions([]);
     setHistoryExpanded(null);
+    setHistoryError(null);
     setHistoryLoading(true);
     try {
       const res = await fetch(`/api/engineering/contracts/${c.id}/versions`);
@@ -125,7 +128,7 @@ export default function ContractsTab({
       setHistoryVersions(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error('[openHistory]', e);
-      showToast('合約歷史版本載入失敗', 'error');
+      setHistoryError('歷史版本載入失敗，請重試。');
       setHistoryVersions([]);
     }
     finally { setHistoryLoading(false); }
@@ -778,6 +781,10 @@ export default function ContractsTab({
             {historyLoading ? (
               <div className="flex justify-center py-10">
                 <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+              </div>
+            ) : historyError ? (
+              <div className="py-4">
+                <FetchErrorBanner message={historyError} onRetry={() => openHistory(historyContract)} />
               </div>
             ) : historyVersions.length === 0 ? (
               <p className="text-center text-gray-400 py-8">尚無版本歷史記錄</p>

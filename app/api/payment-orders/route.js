@@ -184,8 +184,27 @@ export async function POST(request) {
 
     const result = await prisma.$transaction(async (tx) => {
       // ── 關帳鎖定檢查：禁止在已關帳月份建立付款單 ──
-      const lockDate = data.dueDate || localDateStr(now);
-      await assertPeriodOpen(tx, lockDate, data.warehouse || null);
+      // 收集所有需要檢查的日期：
+      //   1. 使用者填寫的 dueDate
+      //   2. 來源記錄的日期（工程期數可能有自己的 dueDate）
+      //   3. 若都沒有，用今天
+      const datesToCheck = new Set();
+      if (data.dueDate) datesToCheck.add(data.dueDate);
+
+      // 工程付款單：也檢查期數本身的 dueDate（避免以「今天」掩蓋已鎖定期數日期）
+      if (data.sourceType === 'engineering' && data.sourceRecordId) {
+        const term = await tx.engineeringContractTerm.findUnique({
+          where: { id: parseInt(data.sourceRecordId) },
+          select: { dueDate: true },
+        });
+        if (term?.dueDate) datesToCheck.add(term.dueDate);
+      }
+
+      if (datesToCheck.size === 0) datesToCheck.add(localDateStr(now));
+
+      for (const lockDate of datesToCheck) {
+        await assertPeriodOpen(tx, lockDate, data.warehouse || null);
+      }
 
       // ── 冪等檢查：同一 sourceType + sourceRecordId 不可重複建立 ──
       if (data.sourceType && data.sourceRecordId != null) {

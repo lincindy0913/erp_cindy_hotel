@@ -321,10 +321,16 @@ export async function POST(request) {
       });
     }
 
+    const executorEmail = session?.user?.email;
+    const creatorEmail  = result.order?.createdBy;
+    const selfExecution = !!(executorEmail && creatorEmail && executorEmail === creatorEmail);
+
     const resBody = {
       executionNo: result.executionNo,
       cashTransactionNo: result.cashTx.transactionNo,
       message: '出納確認執行成功',
+      selfExecution,
+      ...(selfExecution ? { selfExecutionWarning: '此付款單由您本人建立，建議由不同人員執行以符合職責分離原則。' } : {}),
     };
     saveIdempotency(request, resBody, 201);
     return NextResponse.json(resBody, { status: 201 });

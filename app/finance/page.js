@@ -13,6 +13,8 @@ import { usePaymentOrders } from './_hooks/usePaymentOrders';
 import { usePaymentForm } from './_hooks/usePaymentForm';
 import { useFinanceSearch } from './_hooks/useFinanceSearch';
 import { usePaymentOptions } from './_hooks/usePaymentOptions';
+import HelpButton from '@/components/HelpButton';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
 
 export default function PaymentPage() {
   const { data: session } = useSession();
@@ -30,6 +32,7 @@ export default function PaymentPage() {
     batchSubmitting,
     submittingOrderId,
     highlightOrderNo,
+    submittedToCashier, setSubmittedToCashier,
     fetchOrders,
     handleDelete,
     handleOrderToggle,
@@ -399,6 +402,25 @@ export default function PaymentPage() {
       `}} />
       <Navigation borderColor="border-indigo-500" />
       <NotificationBanner moduleFilter="finance" />
+
+      {submittedToCashier && (
+        <div className="max-w-7xl mx-auto px-4 pt-3">
+          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-800">
+            <span>✓ 付款單已送出，請至出納執行匯款。</span>
+            <Link href="/cashier" className="ml-1 px-3 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap">
+              前往出納 →
+            </Link>
+            <button
+              onClick={() => setSubmittedToCashier(false)}
+              className="ml-auto text-green-500 hover:text-green-700 text-lg leading-none"
+              aria-label="關閉提示"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {ordersError && (
         <div className="max-w-7xl mx-auto px-4 pt-4">
           <FetchErrorBanner message={ordersError} onRetry={fetchOrders} />
@@ -406,8 +428,22 @@ export default function PaymentPage() {
       )}
 
       <main className="max-w-7xl mx-auto px-4 py-8">
+        <ModuleGuideCard
+          title="財務付款日常流程"
+          color="blue"
+          steps={[
+            { label: '審核待付款單', desc: '查看「草稿」分頁，確認金額與廠商資訊無誤' },
+            { label: '送出出納', desc: '點擊「送出出納」→ 付款單狀態變為「待出納」；如需批次送出可多選後批次操作' },
+            { label: '確認出納執行狀態', desc: '切換到「待出納」分頁確認是否已執行，或直接前往出納', link: { href: '/cashier', text: '前往出納' } },
+            { label: '存簿核對', desc: '月底前到「存簿核對」將銀行月結單與系統對帳', link: { href: '/bank-reconciliation', text: '前往存簿核對' } },
+            { label: '月結', desc: '確認所有付款執行完畢後執行月結鎖定', link: { href: '/month-end', text: '前往月結' } },
+          ]}
+        />
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">付款管理</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold">付款管理</h2>
+            <HelpButton anchor="六財務付款" />
+          </div>
           <div className="flex items-center gap-3">
             <button
               type="button"

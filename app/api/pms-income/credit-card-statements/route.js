@@ -104,7 +104,7 @@ export async function POST(request) {
       if (pmsRecords.length > 0) {
         pmsBilledAmount = pmsRecords.reduce((s, r) => s + Number(r.amount), 0);
       }
-    } catch (_) {}
+    } catch (err) { console.error('[credit-card-statements] PMS lookup failed:', err.message); }
 
     const diffAmount = pmsBilledAmount != null ? billedAmount - pmsBilledAmount : null;
     const status = pmsBilledAmount == null

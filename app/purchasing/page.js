@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
@@ -32,6 +34,7 @@ function PurchasingPageInner() {
   const [purchases, setPurchases] = useState([]);
   const [allPurchases, setAllPurchases] = useState([]); // 所有進貨單（未篩選）
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [expandedPurchaseId, setExpandedPurchaseId] = useState(null); // 展開的進貨單 ID
   const [filterData, setFilterData] = useState({
     supplierId: '',
@@ -113,6 +116,7 @@ function PurchasingPageInner() {
   const [editingItemIndex, setEditingItemIndex] = useState(null);
   const [invoicedIds, setInvoicedIds] = useState(new Set()); // 已核銷 purchaseItemId 集合
   const [invoiceTitles, setInvoiceTitles] = useState([]); // 發票抬頭選項（來自設定）
+  const [purchasingPaymentOrderIds, setPurchasingPaymentOrderIds] = useState(new Set()); // 已建付款單的進貨 ID
 
   // 進銷存每月費用（整包傳給 MonthlyExpenseTab）
   const expense = usePurchaseExpense({ showToast, confirm, session, products, suppliers });
@@ -190,6 +194,19 @@ function PurchasingPageInner() {
     return invoicedIds.has(`${purchaseId}-${itemIndex}`);
   }
 
+  // 「已入庫」待辦：未建發票 / 未建付款單
+  const deliveredPendingItems = useMemo(() => {
+    const delivered = purchases.filter(p => p.status === '已入庫');
+    const uninvoiced = delivered.filter(p => {
+      const items = p.items || [];
+      return items.length === 0
+        ? !invoicedIds.has(`${p.id}-0`) // no items detail: assume uninvoiced
+        : items.some((_, idx) => !invoicedIds.has(`${p.id}-${idx}`));
+    });
+    const unpaid = delivered.filter(p => !purchasingPaymentOrderIds.has(p.id));
+    return { uninvoiced, unpaid };
+  }, [purchases, invoicedIds, purchasingPaymentOrderIds]);
+
   /** 進貨折讓確認後 PurchaseMaster.status；用於發票狀態欄與進項發票「類型」連動 */
   function getPurchaseReturnInvoiceTag(purchase) {
     if (!purchase?.status) return null;
@@ -252,9 +269,11 @@ function PurchasingPageInner() {
       const response = await fetch(`/api/purchasing?${params}`);
       if (!response.ok) {
         showToast('載入進貨單失敗，請稍後再試', 'error');
+        setFetchError('進貨單載入失敗，請重新整理頁面。');
         setAllPurchases([]); setPurchases([]); setTotalCount(0); setLoading(false);
         return;
       }
+      setFetchError(null);
       const result = await response.json();
       let purchaseList = [];
       if (result.data && result.pagination) {
@@ -278,8 +297,25 @@ function PurchasingPageInner() {
         } catch (_) {
           setInvoicedIds(new Set());
         }
+        // Fetch payment orders for these purchases to detect unpaid ones
+        try {
+          const poRes = await fetch('/api/payment-orders?sourceType=purchasing&all=true');
+          if (poRes.ok) {
+            const poData = await poRes.json();
+            const orders = Array.isArray(poData) ? poData : (poData.data || []);
+            setPurchasingPaymentOrderIds(new Set(
+              orders
+                .filter(po => po.status !== '已作廢')
+                .map(po => po.sourceRecordId)
+                .filter(Boolean)
+            ));
+          }
+        } catch (_) {
+          setPurchasingPaymentOrderIds(new Set());
+        }
       } else {
         setInvoicedIds(new Set());
+        setPurchasingPaymentOrderIds(new Set());
       }
       setLoading(false);
     } catch (error) {
@@ -595,7 +631,22 @@ function PurchasingPageInner() {
     <div className="min-h-screen page-bg-purchasing">
       <Navigation borderColor="border-orange-500" />
 
+      {fetchError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={fetchError} onRetry={() => fetchPurchases()} />
+        </div>
+      )}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        <ModuleGuideCard
+          title="採購日常流程"
+          color="amber"
+          steps={[
+            { label: '確認低庫存', desc: '首頁儀錶板查看低庫存警示，或到庫存頁確認補貨需求', link: { href: '/inventory', text: '前往庫存' } },
+            { label: '建立進貨單', desc: '選擇廠商、品項、數量，送出後等待入庫確認' },
+            { label: '入庫確認', desc: '貨物到達後在進貨單「確認入庫」，庫存自動增加' },
+            { label: '發票登錄', desc: '廠商發票到達後到「發票登錄」建立進項發票，再至「付款」建立付款單', link: { href: '/sales', text: '前往發票登錄' } },
+          ]}
+        />
         {/* 主分頁：進貨單 | 進銷存每月費用 */}
         <div className="flex gap-2 mb-4 border-b border-gray-200">
           <button
@@ -691,6 +742,40 @@ function PurchasingPageInner() {
             onReorder={handleReorderItem}
             isLoggedIn={isLoggedIn}
           />
+        )}
+
+        {/* 待辦條：已入庫但未建發票 / 未建付款單 */}
+        {!loading && (deliveredPendingItems.uninvoiced.length > 0 || deliveredPendingItems.unpaid.length > 0) && (
+          <div className="mb-4 space-y-2">
+            {deliveredPendingItems.uninvoiced.length > 0 && (
+              <div className="flex items-center gap-3 bg-orange-50 border border-orange-300 rounded-xl px-4 py-3 text-sm text-orange-800">
+                <span className="text-orange-500 text-base shrink-0">🧾</span>
+                <span className="flex-1">
+                  <strong>{deliveredPendingItems.uninvoiced.length} 筆</strong>已入庫進貨單尚未完整建立進項發票
+                </span>
+                <Link
+                  href="/sales?tab=invoices"
+                  className="shrink-0 px-3 py-1.5 bg-orange-500 text-white text-xs rounded-lg hover:bg-orange-600 font-medium whitespace-nowrap"
+                >
+                  前往發票登錄 →
+                </Link>
+              </div>
+            )}
+            {deliveredPendingItems.unpaid.length > 0 && (
+              <div className="flex items-center gap-3 bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 text-sm text-blue-800">
+                <span className="text-blue-500 text-base shrink-0">💳</span>
+                <span className="flex-1">
+                  <strong>{deliveredPendingItems.unpaid.length} 筆</strong>已入庫進貨單尚未建立付款單
+                </span>
+                <Link
+                  href="/finance"
+                  className="shrink-0 px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 font-medium whitespace-nowrap"
+                >
+                  前往建立付款單 →
+                </Link>
+              </div>
+            )}
+          </div>
         )}
 
         {/* 新增進貨單表單 */}

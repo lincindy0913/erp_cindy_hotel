@@ -210,7 +210,7 @@ export default withAuth(
             { status: 403 }
           );
         }
-        return NextResponse.redirect(new URL('/unauthorized', req.url));
+        return NextResponse.redirect(new URL('/unauthorized?need=admin_role', req.url));
       }
       return NextResponse.next();
     }
@@ -230,7 +230,7 @@ export default withAuth(
             { status: 403 }
           );
         }
-        return NextResponse.redirect(new URL('/unauthorized', req.url));
+        return NextResponse.redirect(new URL('/unauthorized?need=sales.view', req.url));
       }
       const res = NextResponse.next();
       if (isApiRoute) {
@@ -255,7 +255,7 @@ export default withAuth(
             { status: 403 }
           );
         }
-        return NextResponse.redirect(new URL('/unauthorized', req.url));
+        return NextResponse.redirect(new URL('/unauthorized?need=owner_expense.view', req.url));
       }
       return NextResponse.next();
     }
@@ -275,7 +275,7 @@ export default withAuth(
             { status: 403 }
           );
         }
-        return NextResponse.redirect(new URL('/unauthorized', req.url));
+        return NextResponse.redirect(new URL(`/unauthorized?need=${encodeURIComponent(requiredPermission)}`, req.url));
       }
     }
 

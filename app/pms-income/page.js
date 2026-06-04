@@ -22,6 +22,7 @@ import PmsIncomePresetRecordsTab from '@/components/pms-income/PmsIncomePresetRe
 import PmsIncomeBookingCenterTab from '@/components/pms-income/PmsIncomeBookingCenterTab';
 import PmsIncomeOtaReconTab from '@/components/pms-income/PmsIncomeOtaReconTab';
 import PmsIncomeOtaCommissionTab from '@/components/pms-income/PmsIncomeOtaCommissionTab';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import PmsIncomeVendorBillingTab from '@/components/pms-income/PmsIncomeVendorBillingTab';
 import PmsIncomeReservationTab from '@/components/pms-income/PmsIncomeReservationTab';
 import PmsIncomeDepositReconTab from '@/components/pms-income/PmsIncomeDepositReconTab';
@@ -488,9 +489,8 @@ function PmsIncomePage() {
           </div>
         )}
         {error && !showUploadModal && !showAddModal && (
-          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError('')} className="text-red-500 hover:text-red-700">&times;</button>
+          <div className="mb-4">
+            <FetchErrorBanner message={error} onRetry={activeTab === 'statistics' ? fetchStats : undefined} />
           </div>
         )}
 

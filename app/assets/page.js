@@ -10,6 +10,7 @@ import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import PropertyModal from '@/components/PropertyModal';
 import { todayStr } from '@/lib/localDate';
+import { getApiError } from '@/lib/get-api-error';
 import { PROPERTY_STATUSES, PROPERTY_STATUS_LABEL } from '@/lib/propertyStatus';
 
 const ASSET_TYPE_OPTIONS = [
@@ -235,7 +236,7 @@ function AssetsPageInner() {
         if (!cancelled) {
           setLoading(false);
           setLoadError(true);
-          showToast(err.message || '頁面載入失敗，請重新整理', 'error');
+          showToast('頁面載入失敗，請重新整理', 'error');
         }
       }
     })();
@@ -332,7 +333,7 @@ function AssetsPageInner() {
       const method = editingDisposal ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
-      if (!res.ok) { showToast(data?.error?.message || data?.error || '儲存失敗', 'error'); return; }
+      if (!res.ok) { showToast(getApiError(data) || '儲存失敗', 'error'); return; }
       showToast(editingDisposal ? '已更新' : '已建立', 'success');
       setShowDisposalModal(false);
       const refreshed = await fetch(`/api/assets/${assetId}/disposals`).then(r => r.ok ? r.json() : []);
@@ -560,7 +561,7 @@ function AssetsPageInner() {
       const method = editing ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
-      if (!res.ok) { showToast(data?.error?.message || data?.error || '儲存失敗', 'error'); return; }
+      if (!res.ok) { showToast(getApiError(data) || '儲存失敗', 'error'); return; }
       showToast(editing ? '已更新' : '已建立', 'success');
       setShowModal(false);
       const freshProps = await loadProperties();
@@ -691,7 +692,7 @@ function AssetsPageInner() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data?.error?.message || data?.error || '儲存失敗', 'error'); return; }
+      if (!res.ok) { showToast(getApiError(data) || '儲存失敗', 'error'); return; }
       showToast('已儲存', 'success');
       setShowPropModal(false);
       await loadProperties();
@@ -741,7 +742,7 @@ function AssetsPageInner() {
     showConfirm(`確定刪除資產「${a.name}」？`, async () => {
       const res = await fetch(`/api/assets/${a.id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast(data?.error?.message || data?.error || '刪除失敗', 'error'); return; }
+      if (!res.ok) { showToast(getApiError(data) || '刪除失敗', 'error'); return; }
       showToast('已刪除', 'success');
       if (selected?.asset?.id === a.id) setSelected(prev => prev ? { ...prev, asset: null } : null);
       await loadProperties();
@@ -812,7 +813,7 @@ function AssetsPageInner() {
                   try {
                     await loadYearData(year, dateStart, dateEnd);
                   } catch (err) {
-                    showToast(err.message || '區間資料載入失敗', 'error');
+                    showToast('區間資料載入失敗，請稍後再試', 'error');
                   } finally {
                     setLoading(false);
                   }

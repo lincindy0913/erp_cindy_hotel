@@ -4,6 +4,8 @@ import { useState, useEffect, Fragment, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
@@ -42,6 +44,7 @@ export default function CashierPage() {
   const [orders, setOrders] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [rejectingOrderId, setRejectingOrderId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -88,8 +91,14 @@ export default function CashierPage() {
 
   async function fetchAll() {
     setLoading(true);
-    await Promise.all([fetchOrders(), fetchAccounts(), fetchSuppliers(), fetchWarehouses()]);
-    setLoading(false);
+    setFetchError(null);
+    try {
+      await Promise.all([fetchOrders(), fetchAccounts(), fetchSuppliers(), fetchWarehouses()]);
+    } catch (e) {
+      setFetchError('出納資料載入失敗，請重新整理頁面。');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function fetchSuppliers() {
@@ -120,7 +129,7 @@ export default function CashierPage() {
       const res = await fetch(url);
       const data = await res.json();
       setOrders(Array.isArray(data) ? data : []);
-    } catch { setOrders([]); }
+    } catch (e) { setOrders([]); setFetchError('付款單載入失敗，請重試。'); }
   }
 
   function handleSearch() {
@@ -366,6 +375,9 @@ export default function CashierPage() {
           }
         }));
         showToast(`出納確認成功！\n執行單號：${result.executionNo}\n現金交易：${result.cashTransactionNo}`, 'success');
+        if (result.selfExecution) {
+          showToast('提醒：建立人與出納執行人相同，請確認符合公司內控規範。', 'warning');
+        }
         setExpandedOrderId(null);
         fetchOrders();
       } else {
@@ -630,8 +642,24 @@ export default function CashierPage() {
     <div className="min-h-screen page-bg-cashier">
       <Navigation borderColor="border-amber-600" />
       <NotificationBanner moduleFilter="cashier" />
+      {fetchError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={fetchError} onRetry={fetchAll} />
+        </div>
+      )}
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold text-amber-800 mb-6">出納作業</h2>
+        <h2 className="text-2xl font-bold text-amber-800 mb-4">出納作業</h2>
+
+        <ModuleGuideCard
+          title="出納日常流程"
+          color="amber"
+          steps={[
+            { label: '查看待執行付款單', desc: '狀態為「待出納」的付款單列表，確認金額與帳戶後執行匯款' },
+            { label: '執行匯款／結清', desc: '點擊「執行」→ 填入實際匯款金額與日期，系統同步現金流帳戶' },
+            { label: '確認現金流帳戶', desc: '執行後到「現金流」確認帳戶餘額變動正確', link: { href: '/cashflow', text: '前往現金流' } },
+            { label: '到期支票', desc: '每日留意「支票」頁的到期提醒，避免逾期未兌現', link: { href: '/checks', text: '前往支票' } },
+          ]}
+        />
 
         {/* 搜尋條件 */}
         <div className="bg-white rounded-lg shadow-sm border border-amber-100 p-4 mb-6">
@@ -987,6 +1015,17 @@ export default function CashierPage() {
                                   {executeData.paymentMethod && executeData.paymentMethod !== order.paymentMethod && (
                                     <div className="bg-orange-50 border border-orange-300 rounded p-2 mb-3 text-sm text-orange-700">
                                       注意：執行付款方式（{executeData.paymentMethod}）與付款單指定方式（{order.paymentMethod}）不同
+                                    </div>
+                                  )}
+
+                                  {/* 職責分離軟性警示：建立人與出納相同 */}
+                                  {order.createdBy && session?.user?.email &&
+                                   order.createdBy === session.user.email && (
+                                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-300 rounded p-2 mb-3">
+                                      <span className="text-amber-500 text-base shrink-0">⚠</span>
+                                      <p className="text-xs text-amber-800">
+                                        <strong>職責分離提醒：</strong>此付款單由您本人建立，建議由其他人員執行出納，以符合內部控制原則。
+                                      </p>
                                     </div>
                                   )}
 

@@ -10,6 +10,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableThInline } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
+import { getApiError } from '@/lib/get-api-error';
 
 // 進銷存每月費用已移至 /purchasing 小分頁
 const MAIN_TABS = [
@@ -202,11 +203,11 @@ function ExpensesPageInner() {
       ]);
       const suppliersData = await suppliersRes.json();
       let productsData = [];
-      try { productsData = await productsRes.json(); } catch(e) {}
+      try { productsData = await productsRes.json(); } catch(e) { console.warn('[loadInitialData] products json parse failed:', e); }
       let accountingData = [];
-      try { accountingData = await accountingRes.json(); } catch(e) {}
+      try { accountingData = await accountingRes.json(); } catch(e) { console.warn('[loadInitialData] accounting json parse failed:', e); }
       let cashflowData = [];
-      try { cashflowData = await cashflowRes.json(); } catch(e) {}
+      try { cashflowData = await cashflowRes.json(); } catch(e) { console.warn('[loadInitialData] cashflow json parse failed:', e); }
 
       setSuppliers(Array.isArray(suppliersData) ? suppliersData : (suppliersData?.suppliers || []));
       setProducts(Array.isArray(productsData) ? productsData : []);
@@ -524,7 +525,7 @@ function ExpensesPageInner() {
         showToast(err.error || '儲存失敗', 'error');
       }
     } catch (err) {
-      showToast('儲存範本失敗: ' + err.message, 'error');
+      showToast('儲存範本失敗，請稍後再試', 'error');
     } finally {
       setTemplateSaving(false);
     }
@@ -542,7 +543,7 @@ function ExpensesPageInner() {
         showToast(err.error || '刪除失敗', 'error');
       }
     } catch (err) {
-      showToast('刪除失敗: ' + err.message, 'error');
+      showToast('刪除失敗，請稍後再試', 'error');
     }
   }
 
@@ -1044,7 +1045,7 @@ function ExpensesPageInner() {
         }
       }
     } catch (err) {
-      showToast('執行失敗: ' + err.message, 'error');
+      showToast('執行失敗，請稍後再試', 'error');
     }
     setSubmitting(false);
   }

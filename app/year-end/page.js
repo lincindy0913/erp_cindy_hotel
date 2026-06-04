@@ -5,16 +5,14 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import ModuleGuideCard from '@/components/ModuleGuideCard';
+import HelpButton from '@/components/HelpButton';
+import { formatNum0 as formatNumber } from '@/lib/format-utils';
 
 const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
   '七月', '八月', '九月', '十月', '十一月', '十二月'
 ];
-
-function formatNumber(num) {
-  if (num == null || isNaN(num)) return '0';
-  return Number(num).toLocaleString('zh-TW');
-}
 
 function formatCurrency(num) {
   if (num == null || isNaN(num)) return '$0';
@@ -578,11 +576,23 @@ export default function YearEndPage() {
       <Navigation borderColor="border-violet-500" />
 
       <div className="max-w-6xl mx-auto px-4 py-6">
+        <ModuleGuideCard
+          title="年結流程說明"
+          color="violet"
+          steps={[
+            { label: '確認 12 月月結完成', desc: '年結前須確保 12 月（甚至全年各月）月結均已執行並鎖定', link: { href: '/month-end', text: '前往月結' } },
+            { label: '執行庫存結轉', desc: '將當年庫存期末餘額結轉至下一年度期初' },
+            { label: '執行現金結轉', desc: '將各現金帳戶期末餘額結轉，確保帳帳相符' },
+            { label: '產生年度報表', desc: '年結完成後可至「損益表」及「現金流量表」查看全年數字', link: { href: '/reports/profit-loss', text: '前往報表' } },
+          ]}
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-violet-800">年度結轉</h2>
             <p className="text-sm text-gray-500 mt-1">年末結帳、庫存結轉、現金餘額結轉及財務報表產生</p>
+            <div className="mt-2"><HelpButton anchor="二十一月結與年結" /></div>
           </div>
           <div className="flex items-center gap-3">
             <label htmlFor="f" className="text-sm text-gray-600 font-medium">年度:</label>
@@ -908,21 +918,47 @@ export default function YearEndPage() {
                           {/* Blockers — 硬停原因 */}
                           {!validationResult.alreadyCompleted && validationResult.blockers?.length > 0 && (
                             <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-3">
-                                <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                </svg>
-                                <h4 className="text-sm font-bold text-red-800">
-                                  驗證未通過 — 請先解決以下 {validationResult.blockers.length} 個問題
-                                </h4>
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-2">
+                                  <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                  </svg>
+                                  <h4 className="text-sm font-bold text-red-800">
+                                    驗證未通過 — 請先解決以下 {validationResult.blockers.length} 個問題
+                                  </h4>
+                                </div>
+                                <button
+                                  onClick={() => window.print()}
+                                  className="text-xs px-2.5 py-1 border border-red-300 text-red-600 rounded-lg hover:bg-red-100 shrink-0 no-print"
+                                >
+                                  列印清單
+                                </button>
                               </div>
-                              <ul className="space-y-2">
-                                {validationResult.blockers.map((b, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-sm text-red-700">
-                                    <span className="mt-0.5 shrink-0 font-bold text-red-500">{i + 1}.</span>
-                                    <span>{b}</span>
-                                  </li>
-                                ))}
+                              <ul className="space-y-3">
+                                {validationResult.blockers.map((b, i) => {
+                                  const blockerLink = (() => {
+                                    if (b.includes('尚未月結') || b.includes('月份')) return { href: '/month-end', label: '前往月結' };
+                                    if (b.includes('VAT') || b.includes('申報')) return { href: '/sales', label: '前往發票申報' };
+                                    if (b.includes('對帳') || b.includes('銀行帳戶')) return { href: '/bank-reconciliation', label: '前往存簿核對' };
+                                    return null;
+                                  })();
+                                  return (
+                                    <li key={i} className="flex items-start gap-2 text-sm text-red-700">
+                                      <span className="mt-0.5 shrink-0 font-bold text-red-500">{i + 1}.</span>
+                                      <div className="flex-1">
+                                        <span>{b}</span>
+                                        {blockerLink && (
+                                          <Link
+                                            href={blockerLink.href}
+                                            className="ml-2 text-xs px-2 py-0.5 bg-red-600 text-white rounded hover:bg-red-700 font-medium whitespace-nowrap"
+                                          >
+                                            {blockerLink.label} →
+                                          </Link>
+                                        )}
+                                      </div>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             </div>
                           )}
@@ -1061,9 +1097,12 @@ export default function YearEndPage() {
                               <span className="text-gray-500">在庫商品數</span>
                               <span className="font-medium">{previewData?.inventory.productCount ?? validationResult.summary?.warehouseCount ?? '—'}</span>
                             </div>
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-start">
                               <span className="text-gray-500">期末存貨總值</span>
-                              <span className="font-medium text-violet-700">{previewData ? formatCurrency(previewData.inventory.closingValue) : '—'}</span>
+                              <div className="text-right">
+                                <span className="font-medium text-violet-700">{previewData ? formatCurrency(previewData.inventory.closingValue) : '—'}</span>
+                                {previewData && <p className="text-xs text-violet-400 mt-0.5">→ {selectedYear + 1} 年期初庫存值</p>}
+                              </div>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-500">負庫存商品</span>
@@ -1086,14 +1125,17 @@ export default function YearEndPage() {
                             <h4 className="font-medium text-emerald-700">現金帳戶結轉</h4>
                           </div>
                           <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-start">
                               <span className="text-gray-500">期末現金合計</span>
-                              <span className="font-medium text-emerald-700">{previewData ? formatCurrency(previewData.totalCashBalance) : '—'}</span>
+                              <div className="text-right">
+                                <span className="font-medium text-emerald-700">{previewData ? formatCurrency(previewData.totalCashBalance) : '—'}</span>
+                                {previewData && <p className="text-xs text-emerald-400 mt-0.5">→ {selectedYear + 1} 年期初餘額</p>}
+                              </div>
                             </div>
                             {previewData?.cashAccounts.slice(0, 4).map(a => (
                               <div key={a.id} className="flex justify-between text-xs text-gray-500">
                                 <span className="truncate max-w-[120px]">{a.name}</span>
-                                <span>{formatCurrency(a.newOpeningBalance)}</span>
+                                <span title={`次年期初：${formatCurrency(a.newOpeningBalance)}`}>{formatCurrency(a.newOpeningBalance)}</span>
                               </div>
                             ))}
                             {(previewData?.cashAccounts.length ?? 0) > 4 && (

@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useMemo, Suspense } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
 import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
+import HelpButton from '@/components/HelpButton';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
-import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr, localDateStr } from '@/lib/localDate';
 import IncomeTab from '@/components/engineering/IncomeTab';
@@ -23,6 +23,8 @@ import PaymentsTab from '@/components/engineering/PaymentsTab';
 import ProgressClaimsTab from '@/components/engineering/ProgressClaimsTab';
 import BudgetReportTab from '@/components/engineering/BudgetReportTab';
 import PaymentOrderModal from '@/components/engineering/PaymentOrderModal';
+import ProjectsTab from '@/components/engineering/ProjectsTab';
+import ProjectFormModal from '@/components/engineering/ProjectFormModal';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useEngineeringData } from '@/app/engineering/_hooks/useEngineeringData';
 import { getActualPaid } from '@/lib/engineering/payment-utils';
@@ -41,8 +43,6 @@ const TABS = [
   { key: 'companyInvoices', label: '分業進項' },
   { key: 'budgetReport', label: '預算報表' },
 ];
-
-const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
 
 const VALID_TAB_KEYS = new Set(TABS.map((t) => t.key));
 
@@ -90,17 +90,8 @@ function EngineeringPageInner() {
   const [editingPaymentOrder, setEditingPaymentOrder] = useState(null);
   const [initialPaymentForm, setInitialPaymentForm] = useState({});
 
-  // ── search filters ───────────────────────────────────────────────────────
-  const [searchDateFrom, setSearchDateFrom] = useState('');
-  const [searchDateTo, setSearchDateTo] = useState('');
-  const [searchSupplierId, setSearchSupplierId] = useState('');
-  const [searchWarehouse, setSearchWarehouse] = useState('');
-
-  const { sortKey: engProjKey, sortDir: engProjDir, toggleSort: engProjToggle } = useColumnSort('code', 'asc');
-
   const { data: session } = useSession();
   const { showToast } = useToast();
-  const confirm = useConfirm();
   const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
 
   // ── tab URL sync ─────────────────────────────────────────────────────────
@@ -110,43 +101,6 @@ function EngineeringPageInner() {
   }
 
   // ── derived data ─────────────────────────────────────────────────────────
-  const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
-      if (searchDateFrom) {
-        const pEnd = p.endDate || '9999-12-31';
-        if (pEnd < searchDateFrom) return false;
-      }
-      if (searchDateTo) {
-        const pStart = p.startDate || '0000-01-01';
-        if (pStart > searchDateTo) return false;
-      }
-      if (searchWarehouse) {
-        const whName = p.warehouseRef?.name || p.warehouse || '';
-        if (whName !== searchWarehouse) return false;
-      }
-      if (searchSupplierId) {
-        const hasSupplier = contracts.some(c => c.projectId === p.id && String(c.supplierId) === searchSupplierId);
-        if (!hasSupplier) return false;
-      }
-      return true;
-    });
-  }, [projects, contracts, searchDateFrom, searchDateTo, searchWarehouse, searchSupplierId]);
-
-  const sortedProjects = useMemo(
-    () => sortRows(filteredProjects, engProjKey, engProjDir, {
-      code: (p) => p.code || '',
-      name: (p) => p.name || '',
-      clientName: (p) => p.clientName || '',
-      whDept: (p) => `${p.warehouseRef?.name || p.warehouse || ''} ${p.departmentRef?.name || ''}`,
-      location: (p) => [p.location, p.buildingNo, p.permitNo].filter(Boolean).join(' '),
-      startDate: (p) => p.startDate || '',
-      endDate: (p) => p.endDate || '',
-      budget: (p) => Number(p.budget || 0),
-      status: (p) => p.status || '',
-    }),
-    [filteredProjects, engProjKey, engProjDir]
-  );
-
   const dashboardStats = useMemo(() => {
     const activeProjects = projects.filter((p) => p.status === '進行中').length;
     const sumBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
@@ -329,105 +283,18 @@ function EngineeringPageInner() {
   }
 
   // ── print / export ───────────────────────────────────────────────────────
-  function handlePrintProjects() {
-    if (sortedProjects.length === 0) { showToast('沒有可列印的資料', 'info'); return; }
-    const filterDesc = [
-      searchDateFrom || searchDateTo ? `日期：${searchDateFrom || '?'} ~ ${searchDateTo || '?'}` : '',
-      searchSupplierId ? `廠商：${suppliers.find(s => String(s.id) === searchSupplierId)?.name || ''}` : '',
-      searchWarehouse ? `館別：${searchWarehouse}` : '',
-    ].filter(Boolean).join('　');
-
-    const projectRows = sortedProjects.map(p => {
-      const projContracts = contracts.filter(c => c.projectId === p.id && (!searchSupplierId || String(c.supplierId) === searchSupplierId));
-      const totalContractAmt = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
-      const supplierNames = [...new Set(projContracts.map(c => c.supplier?.name).filter(Boolean))].join('、');
-      return { ...p, projContracts, totalContractAmt, supplierNames };
-    });
-
-    const grandTotal = projectRows.reduce((s, p) => s + Number(p.budget || 0), 0);
-    const grandContractTotal = projectRows.reduce((s, p) => s + p.totalContractAmt, 0);
-
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>工程案列表</title>
-<style>
-  body { font-family: "Microsoft JhengHei","PingFang TC",sans-serif; margin: 20px; font-size: 12px; }
-  h2 { text-align: center; margin-bottom: 4px; }
-  .filter-desc { text-align: center; color: #666; margin-bottom: 12px; font-size: 11px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
-  th { background: #f5f5f5; font-weight: 600; }
-  .right { text-align: right; }
-  .center { text-align: center; }
-  .total-row { font-weight: bold; background: #fef3c7; }
-  @media print { body { margin: 0; } }
-</style></head><body>
-<h2>工程案列表</h2>
-${filterDesc ? `<div class="filter-desc">${filterDesc}</div>` : ''}
-<div style="text-align:right;margin-bottom:4px;font-size:10px;color:#999">列印時間：${new Date().toLocaleString('zh-TW')}</div>
-<table>
-<thead><tr>
-  <th>代碼</th><th>名稱</th><th>業主</th><th>館別</th><th>廠商</th>
-  <th>起日</th><th>迄日</th><th class="right">預算</th><th class="right">合約總額</th><th class="center">狀態</th>
-</tr></thead>
-<tbody>
-${projectRows.map(p => `<tr>
-  <td>${p.code || ''}</td>
-  <td>${p.name || ''}</td>
-  <td>${p.clientName || ''}</td>
-  <td>${p.warehouseRef?.name || p.warehouse || ''}</td>
-  <td>${p.supplierNames || ''}</td>
-  <td>${p.startDate || ''}</td>
-  <td>${p.endDate || ''}</td>
-  <td class="right">${formatNum(p.budget)}</td>
-  <td class="right">${formatNum(p.totalContractAmt)}</td>
-  <td class="center">${p.status || ''}</td>
-</tr>`).join('')}
-<tr class="total-row">
-  <td colspan="7">合計（${projectRows.length} 筆）</td>
-  <td class="right">${formatNum(grandTotal)}</td>
-  <td class="right">${formatNum(grandContractTotal)}</td>
-  <td></td>
-</tr>
-</tbody></table>
-<script>window.onload=function(){window.print();}</script>
-</body></html>`;
-
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); }
-  }
-
-  function handleExportProjectsCsv() {
-    if (sortedProjects.length === 0) return;
-    const header = ['代碼', '名稱', '業主', '館別', '廠商', '起日', '迄日', '預算', '合約總額', '狀態'];
-    const rows = sortedProjects.map((p) => {
-      const projContracts = contracts.filter((c) => c.projectId === p.id && (!searchSupplierId || String(c.supplierId) === searchSupplierId));
-      const totalContractAmt = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
-      const supplierNames = [...new Set(projContracts.map((c) => c.supplier?.name).filter(Boolean))].join('、');
-      return [
-        p.code || '', p.name || '', p.clientName || '',
-        p.warehouseRef?.name || p.warehouse || '',
-        supplierNames, p.startDate || '', p.endDate || '',
-        Number(p.budget || 0), totalContractAmt, p.status || '',
-      ];
-    });
-    const csvRows = [header.join(',')];
-    rows.forEach((r) => { csvRows.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')); });
-    const blob = new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `工程案列表_${todayStr()}.csv`; a.click();
-    URL.revokeObjectURL(url);
-  }
-
   // ── render ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-amber-600" />
       <NotificationBanner moduleFilter="engineering" />
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">工程會計</h2>
-          <p className="text-sm text-gray-500 mt-1">營造工程案、廠商合約期數付款、材料使用追蹤（一般人事／廠商請款請至「付款」「費用」）</p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">工程會計</h2>
+            <p className="text-sm text-gray-500 mt-1">營造工程案、廠商合約期數付款、材料使用追蹤（一般人事／廠商請款請至「付款」「費用」）</p>
+          </div>
+          <HelpButton anchor="十八工程管理" className="mt-1" />
         </div>
 
         {dashStatsError && (
@@ -471,90 +338,15 @@ ${projectRows.map(p => `<tr>
           <FetchErrorBanner message={paymentOrdersError} onRetry={fetchPaymentOrders} />
         )}
         {activeTab === 'projects' && !loading && (
-          <>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
-            <div className="flex flex-wrap gap-3 items-end">
-              <div>
-                <label htmlFor="f" className="block text-xs text-gray-500 mb-1">起始日期</label>
-                <input id="f" type="date" value={searchDateFrom} onChange={e => setSearchDateFrom(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
-              </div>
-              <div>
-                <label htmlFor="f-2" className="block text-xs text-gray-500 mb-1">結束日期</label>
-                <input id="f-2" type="date" value={searchDateTo} onChange={e => setSearchDateTo(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
-              </div>
-              <div>
-                <label htmlFor="f-3" className="block text-xs text-gray-500 mb-1">廠商</label>
-                <select id="f-3" value={searchSupplierId} onChange={e => setSearchSupplierId(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[140px]">
-                  <option value="">全部</option>
-                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="f-22" className="block text-xs text-gray-500 mb-1">館別</label>
-                <select id="f-22" value={searchWarehouse} onChange={e => setSearchWarehouse(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm min-w-[120px]">
-                  <option value="">全部</option>
-                  {(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
-                </select>
-              </div>
-              <button onClick={() => { setSearchDateFrom(''); setSearchDateTo(''); setSearchSupplierId(''); setSearchWarehouse(''); }} className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-100">清除</button>
-              <button type="button" onClick={handlePrintProjects} className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">列印</button>
-              <button type="button" onClick={handleExportProjectsCsv} className="px-4 py-1.5 bg-white border border-green-600 text-green-700 rounded-lg hover:bg-green-50 text-sm">匯出 CSV</button>
-              {(searchDateFrom || searchDateTo || searchSupplierId || searchWarehouse) && (
-                <span className="text-xs text-amber-600">篩選中：{filteredProjects.length} / {projects.length} 筆</span>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b flex justify-between items-center">
-              <h3 className="font-semibold text-gray-800">工程案列表</h3>
-              <button onClick={openAddProject} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">＋ 新增工程案</button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr>
-                    <SortableTh label="代碼" colKey="code" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="名稱" colKey="name" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="業主" colKey="clientName" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="館別／部門" colKey="whDept" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="工程地點／建造(使)造號碼" colKey="location" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="起日" colKey="startDate" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="迄日" colKey="endDate" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <SortableTh label="預算" colKey="budget" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" align="right" />
-                    <SortableTh label="狀態" colKey="status" sortKey={engProjKey} sortDir={engProjDir} onSort={engProjToggle} className="px-4 py-2" />
-                    <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {sortedProjects.length === 0 ? (
-                    <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{(searchDateFrom || searchDateTo || searchSupplierId || searchWarehouse) ? '無符合條件的工程案' : '尚無工程案，請新增'}</td></tr>
-                  ) : sortedProjects.map(p => (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-mono">
-                        <Link href={`/engineering/${p.id}`} className="text-amber-700 hover:underline">{p.code}</Link>
-                      </td>
-                      <td className="px-4 py-2 font-medium">
-                        <Link href={`/engineering/${p.id}`} className="hover:text-amber-700 hover:underline">{p.name}</Link>
-                      </td>
-                      <td className="px-4 py-2">{p.clientName || '－'}</td>
-                      <td className="px-4 py-2">{p.warehouseRef?.name || p.warehouse || '－'} {p.departmentRef ? `／${p.departmentRef.name}` : ''}</td>
-                      <td className="px-4 py-2 text-xs">{p.location || '－'} {(p.buildingNo || p.permitNo) ? `（${[p.buildingNo, p.permitNo].filter(Boolean).join('、')}）` : ''}</td>
-                      <td className="px-4 py-2">{p.startDate || '－'}</td>
-                      <td className="px-4 py-2">{p.endDate || '－'}</td>
-                      <td className="px-4 py-2 text-right">{formatNum(p.budget)}</td>
-                      <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs ${p.status === '已結案' ? 'bg-gray-200' : 'bg-amber-100 text-amber-800'}`}>{p.status}</span></td>
-                      <td className="px-4 py-2 text-center">
-                        <button onClick={() => openEditProject(p)} className="text-amber-600 hover:underline mr-2">編輯</button>
-                        <button onClick={() => deleteProject(p)} className="text-red-600 hover:underline">刪除</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          </>
+          <ProjectsTab
+            projects={projects}
+            contracts={contracts}
+            suppliers={suppliers}
+            warehouseDepartments={warehouseDepartments}
+            onAdd={openAddProject}
+            onEdit={openEditProject}
+            onDelete={deleteProject}
+          />
         )}
 
         {/* ===== 合約與期數 TAB ===== */}
@@ -628,54 +420,16 @@ ${projectRows.map(p => `<tr>
       </div>
 
       {/* ===== 工程案 Modal ===== */}
-      {showProjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowProjectModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingProject ? '編輯工程案' : '新增工程案'}</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-40" className="block text-xs text-gray-500 mb-1">工程代碼 *</label><input id="f-40" value={projectForm.code} onChange={e => setProjectForm(f => ({ ...f, code: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：PRJ-001" disabled={!!editingProject} /></div>
-                <div><label htmlFor="f-41" className="block text-xs text-gray-500 mb-1">名稱 *</label><input id="f-41" value={projectForm.name} onChange={e => setProjectForm(f => ({ ...f, name: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-42" className="block text-xs text-gray-500 mb-1">業主／客戶</label><input id="f-42" value={projectForm.clientName} onChange={e => setProjectForm(f => ({ ...f, clientName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label htmlFor="f-43" className="block text-xs text-gray-500 mb-1">業主合約金額（收款總額）</label><input id="f-43" type="number" value={projectForm.clientContractAmount} onChange={e => setProjectForm(f => ({ ...f, clientContractAmount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-44" className="block text-xs text-gray-500 mb-1">開始日期</label><input id="f-44" type="date" value={projectForm.startDate} onChange={e => setProjectForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label htmlFor="f-45" className="block text-xs text-gray-500 mb-1">結束日期</label><input id="f-45" type="date" value={projectForm.endDate} onChange={e => setProjectForm(f => ({ ...f, endDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-46" className="block text-xs text-gray-500 mb-1">預算</label><input id="f-46" type="number" value={projectForm.budget} onChange={e => setProjectForm(f => ({ ...f, budget: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
-                <div><label htmlFor="f-47" className="block text-xs text-gray-500 mb-1">狀態</label><select id="f-47" value={projectForm.status} onChange={e => setProjectForm(f => ({ ...f, status: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">{PROJECT_STATUS.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-48" className="block text-xs text-gray-500 mb-1">館別</label><select id="f-48" value={projectForm.warehouseId} onChange={e => setProjectForm(f => ({ ...f, warehouseId: e.target.value, departmentId: '' }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{(warehouseDepartments.list || []).filter(w => w.type === 'building').map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-                <div><label className="block text-xs text-gray-500 mb-1">部門</label><select value={projectForm.departmentId} onChange={e => setProjectForm(f => ({ ...f, departmentId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{projectForm.warehouseId && (() => { const wh = (warehouseDepartments.list || []).find(w => w.id === parseInt(projectForm.warehouseId)); return (wh?.departments || []).map(d => typeof d === 'object' && d.id != null ? <option key={d.id} value={d.id}>{d.name}</option> : <option key={d} value={d}>{d}</option>); })()}</select></div>
-              </div>
-              <div><label htmlFor="f-49" className="block text-xs text-gray-500 mb-1">工程地點</label><input id="f-49" value={projectForm.location} onChange={e => setProjectForm(f => ({ ...f, location: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-50" className="block text-xs text-gray-500 mb-1">建造號碼</label><input id="f-50" value={projectForm.buildingNo} onChange={e => setProjectForm(f => ({ ...f, buildingNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label htmlFor="f-51" className="block text-xs text-gray-500 mb-1">使造號碼</label><input id="f-51" value={projectForm.permitNo} onChange={e => setProjectForm(f => ({ ...f, permitNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              </div>
-              <div><label htmlFor="f-52" className="block text-xs text-gray-500 mb-1">備註</label><textarea id="f-52" value={projectForm.note} onChange={e => setProjectForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} /></div>
-              <div className="border-t pt-3">
-                <p className="text-xs font-medium text-purple-700 mb-2">保固期設定</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div><label className="block text-xs text-gray-500 mb-1">保固開始日</label><input type="date" value={projectForm.warrantyStartDate} onChange={e => { const s = e.target.value; const months = parseInt(projectForm.warrantyMonths || 0); setProjectForm(f => ({ ...f, warrantyStartDate: s, warrantyEndDate: s && months ? new Date(new Date(s).setMonth(new Date(s).getMonth() + months)).toISOString().slice(0,10) : f.warrantyEndDate })); }} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                  <div><label className="block text-xs text-gray-500 mb-1">保固月數</label><input type="number" min="1" max="120" value={projectForm.warrantyMonths} onChange={e => { const m = e.target.value; const s = projectForm.warrantyStartDate; setProjectForm(f => ({ ...f, warrantyMonths: m, warrantyEndDate: s && m ? new Date(new Date(s).setMonth(new Date(s).getMonth() + parseInt(m))).toISOString().slice(0,10) : f.warrantyEndDate })); }} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：24" /></div>
-                  <div><label className="block text-xs text-gray-500 mb-1">保固結束日</label><input type="date" value={projectForm.warrantyEndDate} onChange={e => setProjectForm(f => ({ ...f, warrantyEndDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                </div>
-                <div className="mt-2"><label className="block text-xs text-gray-500 mb-1">保固備註</label><input value={projectForm.warrantyNote} onChange={e => setProjectForm(f => ({ ...f, warrantyNote: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：結構防水 2 年、其他 1 年" /></div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowProjectModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={projectSaving}>取消</button>
-              <button onClick={saveProject} disabled={projectSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{projectSaving ? '儲存中…' : '儲存'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProjectFormModal
+        isOpen={showProjectModal}
+        editingProject={editingProject}
+        projectForm={projectForm}
+        setProjectForm={setProjectForm}
+        projectSaving={projectSaving}
+        warehouseDepartments={warehouseDepartments}
+        onClose={() => setShowProjectModal(false)}
+        onSave={saveProject}
+      />
 
       {/* ===== 期數標記 / 取消付款 Modal ===== */}
       {showTermModal && editingTerm && (

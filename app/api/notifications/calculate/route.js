@@ -27,6 +27,8 @@ const NOTIFICATION_DEFS = {
   N13: { type: '現金盤點逾期', level: 'urgent', title: '現金盤點逾期', targetUrl: '/cashflow?tab=cash-count' },
   N14: { type: '備份失敗或驗證失敗', level: 'critical', title: '資料備份異常', targetUrl: '/admin/backup' },
   N15: { type: '逾期租金未收', level: 'urgent', title: '逾期租金未收', targetUrl: '/rentals?tab=analytics&sub=overdue' },
+  N16: { type: '工程逾期期數', level: 'urgent', title: '工程合約期數逾期', targetUrl: '/engineering?tab=contracts' },
+  N17: { type: '分業發票未分配', level: 'warning', title: '工程進項發票未分配專案', targetUrl: '/company-expenses?tab=invoices' },
 };
 
 export async function POST(request) {
@@ -615,6 +617,57 @@ export async function POST(request) {
       }
     } catch (err) {
       console.error('N15 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N16: 工程合約期數逾期 - EngineeringContractTerm with dueDate < today and not paid
+    // ==============================
+    try {
+      const overdueTermCount = await prisma.engineeringContractTerm.count({
+        where: {
+          status: { notIn: ['已付款', 'paid', 'cancelled', 'void'] },
+          dueDate: { lt: todayStr, not: null },
+        },
+      });
+      if (overdueTermCount > 0) {
+        const def = NOTIFICATION_DEFS.N16;
+        notifications.push({
+          code: 'N16',
+          type: def.type,
+          level: def.level,
+          title: def.title,
+          message: `${overdueTermCount} 筆工程合約期數已逾期尚未付款`,
+          count: overdueTermCount,
+          targetUrl: def.targetUrl,
+          metadata: null,
+        });
+      }
+    } catch (err) {
+      console.error('N16 calculation error:', err.message);
+    }
+
+    // ==============================
+    // N17: 分業進項發票未分配專案 - CompanyInputInvoice where projectId IS NULL
+    // ==============================
+    try {
+      const unassignedCount = await prisma.companyInputInvoice.count({
+        where: { projectId: null },
+      });
+      if (unassignedCount > 0) {
+        const def = NOTIFICATION_DEFS.N17;
+        notifications.push({
+          code: 'N17',
+          type: def.type,
+          level: def.level,
+          title: def.title,
+          message: `${unassignedCount} 筆工程進項發票尚未歸屬專案`,
+          count: unassignedCount,
+          targetUrl: def.targetUrl,
+          metadata: null,
+        });
+      }
+    } catch (err) {
+      console.error('N17 calculation error:', err.message);
     }
 
     // Sort by level priority: critical > urgent > warning
