@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
@@ -67,6 +68,7 @@ export default function MonthEndPage() {
 
   // Lock confirmation
   const [lockLoading, setLockLoading] = useState(false);
+  const [monthDataError, setMonthDataError] = useState(null);
 
   useEffect(() => {
     fetchMonthData();
@@ -76,12 +78,13 @@ export default function MonthEndPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/month-end?year=${selectedYear}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data.months) {
-        setMonthsData(data.months);
-      }
+      setMonthDataError(null);
+      if (data.months) setMonthsData(data.months);
     } catch (error) {
       console.error('載入月結資料失敗:', error);
+      setMonthDataError('月結資料載入失敗，請重試。');
     }
     setLoading(false);
   }
@@ -552,6 +555,11 @@ export default function MonthEndPage() {
   return (
     <div className="min-h-screen page-bg-monthend">
       <Navigation borderColor="border-slate-500" />
+      {monthDataError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={monthDataError} onRetry={fetchMonthData} />
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Page header */}

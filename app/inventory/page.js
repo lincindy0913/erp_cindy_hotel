@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
@@ -125,6 +126,7 @@ export default function InventoryPage() {
   // 庫存查詢
   const [inventory, setInventory] = useState([]);
   const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryError, setInventoryError] = useState(null);
   const [calcMode, setCalcMode] = useState(null);
 
   // 領用單
@@ -287,11 +289,15 @@ export default function InventoryPage() {
     try {
       const url = warehouse ? `/api/inventory?warehouse=${encodeURIComponent(warehouse)}` : '/api/inventory';
       const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data?.data || []);
+      setInventoryError(null);
       setInventory(arr);
       if (data?.calculationMode) setCalcMode(data.calculationMode);
-    } catch {
+    } catch (e) {
+      console.error('[fetchInventory]', e);
+      setInventoryError('庫存資料載入失敗，請重試。');
       setInventory([]);
     }
     setInventoryLoading(false);
@@ -616,6 +622,11 @@ export default function InventoryPage() {
   return (
     <div className="min-h-screen page-bg-inventory">
       <Navigation borderColor="border-amber-500" />
+      {inventoryError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={inventoryError} onRetry={fetchInventory} />
+        </div>
+      )}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-sm font-medium text-white ${toast.type === 'error' ? 'bg-red-500' : 'bg-gray-700'}`}>
           {toast.msg}

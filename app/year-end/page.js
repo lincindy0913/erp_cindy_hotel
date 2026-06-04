@@ -49,6 +49,7 @@ export default function YearEndPage() {
   // Preview (step 2)
   const [previewData, setPreviewData] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
 
   // Execution
   const [step, setStep] = useState(1); // 1=validate, 2=preview, 3=confirm
@@ -141,15 +142,18 @@ export default function YearEndPage() {
   async function fetchPreview() {
     setPreviewLoading(true);
     setPreviewData(null);
+    setPreviewError(null);
     try {
       const res = await fetch('/api/year-end/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year: selectedYear }),
       });
-      if (res.ok) setPreviewData(await res.json());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPreviewData(await res.json());
     } catch (e) {
       console.error('[fetchPreview]', e);
+      setPreviewError('預覽數字載入失敗，結轉仍可執行但金額將顯示「—」。');
     }
     setPreviewLoading(false);
   }
@@ -208,6 +212,7 @@ export default function YearEndPage() {
     setValidationResult(null);
     setExecutionResult(null);
     setPreviewData(null);
+    setPreviewError(null);
     setConfirmText('');
     setBackupReady(null);
   }
@@ -1028,6 +1033,10 @@ export default function YearEndPage() {
                         </div>
                       </div>
 
+                      {previewError && (
+                        <FetchErrorBanner message={previewError} onRetry={fetchPreview} />
+                      )}
+
                       {/* Preview cards */}
                       {previewLoading && (
                         <div className="flex items-center justify-center py-8 text-gray-500 text-sm gap-2">
@@ -1156,7 +1165,9 @@ export default function YearEndPage() {
                         </button>
                         <button
                           onClick={() => setStep(3)}
-                          className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium text-sm"
+                          disabled={previewData?.blockers?.length > 0}
+                          title={previewData?.blockers?.length > 0 ? `Preview API 仍有阻擋事項：${previewData.blockers[0]}` : undefined}
+                          className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           下一步：確認結轉
                         </button>

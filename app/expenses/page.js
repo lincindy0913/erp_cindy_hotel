@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -83,6 +84,8 @@ function ExpensesPageInner() {
   const [records, setRecords] = useState([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  const [expensesError, setExpensesError] = useState(null);
+  const [recordsError, setRecordsError] = useState(null);
   const [recordFilter, setRecordFilter] = useState({
     month: searchParams.get('month') || todayStr().slice(0, 7),
     warehouse: searchParams.get('warehouse') || '',
@@ -172,10 +175,12 @@ function ExpensesPageInner() {
         fetch('/api/settings/expense-categories'),
         fetch('/api/warehouse-departments'),
       ]);
+      if (!templatesRes.ok) throw new Error(`HTTP ${templatesRes.status}`);
       const templatesData = await templatesRes.json();
       const categoriesData = await categoriesRes.json();
       const warehousesData = await warehousesRes.json();
 
+      setExpensesError(null);
       setTemplates(Array.isArray(templatesData) ? templatesData : []);
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
       const whList = warehousesData && warehousesData.byName
@@ -209,6 +214,7 @@ function ExpensesPageInner() {
       setCashAccounts(Array.isArray(cashflowData) ? cashflowData.filter(a => a.isActive !== false) : []);
     } catch (err) {
       console.error('載入資料失敗:', err);
+      setExpensesError('費用範本資料載入失敗，請重試。');
       setLoading(false);
     }
   }
@@ -233,12 +239,15 @@ function ExpensesPageInner() {
       if (recordFilter.status) params.set('paymentStatus', recordFilter.status);
       params.set('type', mainTab);
       const res = await fetch(`/api/expense-records?${params.toString()}`);
-      if (!res.ok) { setRecords([]); setRecordsTotal(0); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setRecordsError(null);
       setRecords(data.records || []);
       setRecordsTotal(data.total || 0);
     } catch (err) {
       console.error('載入記錄失敗:', err);
+      setRecordsError('費用執行記錄載入失敗，請重試。');
+      setRecords([]);
     }
     setRecordsLoading(false);
   }
@@ -1055,6 +1064,8 @@ function ExpensesPageInner() {
       <Navigation />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 16px' }}>
         <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 16 }}>費用管理</h1>
+        {expensesError && <div className="mb-4"><FetchErrorBanner message={expensesError} onRetry={fetchAll} /></div>}
+        {recordsError && subTab === 'records' && <div className="mb-4"><FetchErrorBanner message={recordsError} onRetry={fetchRecords} /></div>}
 
         {/* Main Tabs: 進銷存每月費用 / 固定費用 */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 0, borderBottom: '2px solid #dee2e6' }}>

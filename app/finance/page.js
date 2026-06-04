@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 import { SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
@@ -22,6 +23,7 @@ export default function PaymentPage() {
   const {
     orders,
     loading,
+    ordersError,
     expandedOrders,
     selectedOrderIds,
     activeTab, setActiveTab,
@@ -397,6 +399,11 @@ export default function PaymentPage() {
       `}} />
       <Navigation borderColor="border-indigo-500" />
       <NotificationBanner moduleFilter="finance" />
+      {ordersError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={ordersError} onRetry={fetchOrders} />
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">

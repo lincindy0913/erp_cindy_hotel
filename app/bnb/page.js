@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import ExportButtons from '@/components/ExportButtons';
@@ -183,7 +184,7 @@ function BnbPage() {
   // ── 訂房明細 hook ─────────────────────────────────────────────
   const {
     records, setRecords,
-    recLoading, recPage, recTotal,
+    recLoading, recError, recPage, recTotal,
     filterMonth, setFilterMonth,
     filterSource, setFilterSource,
     filterStatus, setFilterStatus,
@@ -966,6 +967,7 @@ function BnbPage() {
         {/* ══ Tab: 訂房明細 ══ */}
         {activeTab === 'records' && (
           <div>
+            {recError && <div className="mb-4"><FetchErrorBanner message={recError} onRetry={() => fetchRecords(1)} /></div>}
             {/* 篩選列 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4 flex flex-wrap gap-3 items-end">
               <div>

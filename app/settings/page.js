@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import TotpSetupCard from '@/components/security/TotpSetupCard';
 import { useConfirm } from '@/context/ConfirmContext';
 import WarehousesSection from './_sections/WarehousesSection';
@@ -481,6 +482,7 @@ export default function SettingsPage() {
   const confirm = useConfirm();
   const [activeSection, setActiveSection] = useState('master-data');
   const [loading, setLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -623,23 +625,23 @@ export default function SettingsPage() {
   async function fetchSettings() {
     try {
       const res = await fetch('/api/settings');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && typeof data === 'object') {
-          if (data.taxRate !== undefined) setTaxRate(String(data.taxRate));
-          // Load notification settings
-          const notifKeys = NOTIFICATION_FIELDS.map(f => f.key);
-          const notif = {};
-          notifKeys.forEach(k => {
-            if (data[k] !== undefined) notif[k] = String(data[k]);
-          });
-          if (Object.keys(notif).length > 0) {
-            setNotificationSettings(prev => ({ ...prev, ...notif }));
-          }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSettingsError(null);
+      if (data && typeof data === 'object') {
+        if (data.taxRate !== undefined) setTaxRate(String(data.taxRate));
+        const notifKeys = NOTIFICATION_FIELDS.map(f => f.key);
+        const notif = {};
+        notifKeys.forEach(k => {
+          if (data[k] !== undefined) notif[k] = String(data[k]);
+        });
+        if (Object.keys(notif).length > 0) {
+          setNotificationSettings(prev => ({ ...prev, ...notif }));
         }
       }
     } catch (err) {
       console.error('取得系統設定失敗:', err);
+      setSettingsError('系統設定載入失敗，部分功能可能顯示預設值。');
     }
   }
 
@@ -1647,6 +1649,11 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-gray-500" />
+      {settingsError && (
+        <div className="max-w-5xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={settingsError} onRetry={fetchAllData} />
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (

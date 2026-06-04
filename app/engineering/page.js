@@ -434,6 +434,12 @@ ${projectRows.map(p => `<tr>
           <p className="text-sm text-gray-500 mt-1">營造工程案、廠商合約期數付款、材料使用追蹤（一般人事／廠商請款請至「付款」「費用」）</p>
         </div>
 
+        {dashStatsError && (
+          <FetchErrorBanner
+            message="收款／發票統計載入失敗，以下數字顯示為「－」。"
+            onRetry={refreshDashStats}
+          />
+        )}
         <EngineeringHeaderInsights stats={dashboardStats} onSwitchTab={switchEngineeringTab} />
 
         <div className="flex flex-wrap gap-1 mb-6 bg-white rounded-lg shadow p-1">

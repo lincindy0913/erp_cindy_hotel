@@ -19,6 +19,7 @@ export function useBnbRecords() {
   // ── 訂房明細 state ────────────────────────────────────────────
   const [records,        setRecords]        = useState([]);
   const [recLoading,     setRecLoading]     = useState(false);
+  const [recError,       setRecError]       = useState(null);
   const [recPage,        setRecPage]        = useState(1);
   const [recTotal,       setRecTotal]       = useState(0);
   const [filterMonth,    setFilterMonth]    = useState(() => todayStr().slice(0, 7));
@@ -64,13 +65,18 @@ export function useBnbRecords() {
         const errJson = await res.json().catch(() => ({}));
         const msg = errJson?.error || `載入訂房記錄失敗（${res.status}）`;
         showToast(msg, 'error');
+        setRecError(msg);
         return;
       }
       const json = await res.json();
+      setRecError(null);
       setRecords(json.data ?? json);
       setRecTotal(json.total ?? (json.data ?? json).length);
       setRecPage(page);
-    } catch (e) { showToast(`載入訂房記錄失敗：${e.message}`, 'error'); }
+    } catch (e) {
+      showToast(`載入訂房記錄失敗：${e.message}`, 'error');
+      setRecError(`載入訂房記錄失敗：${e.message}`);
+    }
     finally { setRecLoading(false); }
   }, [filterMonth, filterSource, filterStatus, filterWarehouse]);
 
@@ -327,7 +333,7 @@ export function useBnbRecords() {
   return {
     // state
     records, setRecords,
-    recLoading, recPage, recTotal,
+    recLoading, recError, recPage, recTotal,
     filterMonth, setFilterMonth,
     filterSource, setFilterSource,
     filterStatus, setFilterStatus,

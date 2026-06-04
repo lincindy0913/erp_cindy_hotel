@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { useToast } from '@/context/ToastContext';
@@ -105,6 +106,7 @@ export default function ChecksPage() {
   const [accounts, setAccounts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [checksError, setChecksError] = useState(null);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -175,10 +177,16 @@ export default function ChecksPage() {
       query.set('page', params.page || '1');
       query.set('pageSize', params.pageSize || '50');
       const res = await fetch(`/api/checks?${query}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      setChecksError(null);
       setChecks(Array.isArray(json.data) ? json.data : []);
       if (json.pagination) setChecksPagination(json.pagination);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error('[fetchChecks]', e);
+      setChecksError('支票資料載入失敗，請重試。');
+      setChecks([]);
+    }
     setLoading(false);
   }, []);
 
@@ -1340,6 +1348,11 @@ export default function ChecksPage() {
       <div className="no-print">
         <Navigation borderColor="border-violet-500" />
         <NotificationBanner moduleFilter="checks" />
+        {checksError && (
+          <div className="max-w-7xl mx-auto px-4 pt-4">
+            <FetchErrorBanner message={checksError} onRetry={() => fetchChecks({})} />
+          </div>
+        )}
       </div>
       <div className="max-w-7xl mx-auto px-4 py-6 no-print">
         {/* Header */}

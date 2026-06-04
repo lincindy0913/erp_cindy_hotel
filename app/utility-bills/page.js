@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useConfirm } from '@/context/ConfirmContext';
 
 const TABS_ADMIN = [
@@ -55,6 +56,7 @@ export default function UtilityBillsPage() {
   const [records, setRecords] = useState([]);
   const [listFilter, setListFilter] = useState({ warehouse: '', year: '', month: '', billType: '' });
   const [listLoading, setListLoading] = useState(false);
+  const [recordsError, setRecordsError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
   const [editSummary, setEditSummary] = useState(null);
@@ -163,9 +165,13 @@ export default function UtilityBillsPage() {
       if (listFilter.month) params.set('month', listFilter.month);
       if (listFilter.billType) params.set('billType', listFilter.billType);
       const res = await fetch(`/api/utility-bills?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setRecordsError(null);
       setRecords(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (e) {
+      console.error('[fetchRecords]', e);
+      setRecordsError('水電費記錄載入失敗，請重試。');
       setRecords([]);
     }
     setListLoading(false);
@@ -682,6 +688,11 @@ export default function UtilityBillsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-teal-600" />
       <NotificationBanner moduleFilter="utility" />
+      {recordsError && (
+        <div className="max-w-5xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={recordsError} onRetry={fetchRecords} />
+        </div>
+      )}
 
       {/* Page header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">

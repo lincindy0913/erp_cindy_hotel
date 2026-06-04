@@ -7,11 +7,12 @@ import { validateBody } from '@/lib/validate-body';
 
 export const dynamic = 'force-dynamic';
 
-// GET - 列出所有角色
+// GET - 列出所有角色（admin only）
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
+    if (session.user.role !== 'admin') return createErrorResponse('FORBIDDEN', '權限不足', 403);
 
     const roles = await prisma.role.findMany({
       include: {

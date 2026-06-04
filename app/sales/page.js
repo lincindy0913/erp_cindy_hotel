@@ -38,6 +38,7 @@ function InvoicePageInner() {
   const [selectedItems, setSelectedItems] = useState([]); // 勾選的品項
   const [availableItems, setAvailableItems] = useState([]); // 可選的未核銷品項
   const [invoices, setInvoices] = useState([]);
+  const [invoicesError, setInvoicesError] = useState(null);
   const [allowances, setAllowances] = useState([]); // 已確認的進貨折讓
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -336,8 +337,9 @@ function InvoicePageInner() {
       if (searchInvoiceTitle) params.set('invoiceTitle', searchInvoiceTitle);
 
       const response = await fetch(`/api/sales/with-info?${params}`);
-      if (!response.ok) { setInvoices([]); return; }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
+      setInvoicesError(null);
       if (result.data && result.pagination) {
         setInvoices(result.data);
         setInvoicePage(result.pagination.page);
@@ -349,6 +351,7 @@ function InvoicePageInner() {
       }
     } catch (error) {
       console.error('取得發票列表失敗:', error);
+      setInvoicesError('發票清單載入失敗，請重試。');
       setInvoices([]);
     }
     setLoading(false);
@@ -1007,6 +1010,11 @@ function InvoicePageInner() {
   return (
     <div className="min-h-screen page-bg-sales">
       <Navigation borderColor="border-green-500" />
+      {invoicesError && (
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <FetchErrorBanner message={invoicesError} onRetry={() => fetchInvoices(1)} />
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* 標題與操作 */}

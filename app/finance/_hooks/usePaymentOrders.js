@@ -10,6 +10,7 @@ export function usePaymentOrders() {
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(null);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [activeTab, setActiveTab] = useState('draft');
@@ -44,12 +45,14 @@ export function usePaymentOrders() {
   async function fetchOrders() {
     try {
       const response = await fetch('/api/payment-orders');
-      if (!response.ok) { setOrders([]); setLoading(false); return; }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
+      setOrdersError(null);
       setOrders(Array.isArray(data) ? data : []);
       setLoading(false);
     } catch (error) {
       console.error('取得付款單列表失敗:', error);
+      setOrdersError('付款單列表載入失敗，請重試。');
       setOrders([]);
       setLoading(false);
     }
@@ -239,6 +242,7 @@ export function usePaymentOrders() {
   return {
     orders,
     loading,
+    ordersError,
     expandedOrders, setExpandedOrders,
     selectedOrderIds, setSelectedOrderIds,
     activeTab, setActiveTab,

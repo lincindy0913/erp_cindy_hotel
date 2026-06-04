@@ -52,11 +52,12 @@ export function usePmsIncomeRecords({
       if (filterAccountingCode) params.set('accountingCode', filterAccountingCode);
 
       const res = await fetch(`/api/pms-income?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setRecords(data.records || []);
       setRecordsTotal(data.total || 0);
     } catch (err) {
-      setError('載入記錄失敗: ' + err.message);
+      setError('PMS 收入記錄載入失敗，請重試。（' + err.message + '）');
     } finally {
       setLoading(false);
     }
