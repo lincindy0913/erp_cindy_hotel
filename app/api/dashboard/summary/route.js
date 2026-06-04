@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 import { getCached, setCached } from '@/lib/server-cache';
+import { createErrorResponse } from '@/lib/error-handler';
 import { localDateStr } from '@/lib/localDate';
 
 export const dynamic = 'force-dynamic';
 
 const SUMMARY_TTL = 3 * 60_000; // 3 分鐘
 
-// Public summary — no auth required (internal network only)
 export async function GET(request) {
+  const session = await getServerSession(authOptions);
+  if (!session) return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
   const forceRefresh = new URL(request.url).searchParams.get('refresh') === 'true';
 
   const now = new Date();

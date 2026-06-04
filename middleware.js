@@ -136,7 +136,7 @@ const ROUTE_PERMISSIONS = {
 // 公開路由 - 不需登入
 const PUBLIC_ROUTES = ['/', '/login', '/unauthorized'];
 const PUBLIC_API_PREFIXES = ['/api/auth'];
-const PUBLIC_API_ROUTES = ['/api/health', '/api/dashboard/summary'];
+const PUBLIC_API_ROUTES = ['/api/health'];
 
 function isPublicRoute(pathname) {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
