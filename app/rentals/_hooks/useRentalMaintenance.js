@@ -10,6 +10,7 @@ export function useRentalMaintenance({ initialFilter } = {}) {
   const confirm = useConfirm();
 
   const [maintenances,        setMaintenances]        = useState([]);
+  const [maintenancesError,   setMaintenancesError]   = useState(null);
   const [maintenancesHasMore, setMaintenancesHasMore] = useState(false);
   const [maintenanceFilter,   setMaintenanceFilter]   = useState(initialFilter || {
     year: new Date().getFullYear(), category: '', status: '', propertyId: '',
@@ -48,10 +49,16 @@ export function useRentalMaintenance({ initialFilter } = {}) {
       if (maintenanceFilter.status)     params.set('status',     maintenanceFilter.status);
       if (maintenanceFilter.propertyId) params.set('propertyId', maintenanceFilter.propertyId);
       const res = await fetch(`/api/rentals/maintenance?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setMaintenancesError(null);
       setMaintenances(Array.isArray(data) ? data : []);
       setMaintenancesHasMore(res.headers.get('X-Has-More') === 'true');
-    } catch { setMaintenances([]); }
+    } catch (e) {
+      console.error('[fetchMaintenances]', e);
+      setMaintenancesError('維修記錄載入失敗，請重試。');
+      setMaintenances([]);
+    }
   }
 
   async function saveMaintenance() {
@@ -120,7 +127,7 @@ export function useRentalMaintenance({ initialFilter } = {}) {
   }
 
   return {
-    maintenances, setMaintenances,
+    maintenances, setMaintenances, maintenancesError,
     maintenancesHasMore,
     maintenanceFilter, setMaintenanceFilter,
     showMaintenanceModal, setShowMaintenanceModal,

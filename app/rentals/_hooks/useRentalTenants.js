@@ -11,6 +11,7 @@ export function useRentalTenants({ onAfterSave } = {}) {
   const confirm = useConfirm();
 
   const [tenants,                setTenants]                = useState([]);
+  const [tenantsError,           setTenantsError]           = useState(null);
   const [tenantSearch,           setTenantSearch]           = useState('');
   const { sortKey: tenantSortKey, sortDir: tenantSortDir, toggleSort: tenantToggleSort } = useColumnSort('tenantCode', 'asc');
   const [showTenantModal,        setShowTenantModal]        = useState(false);
@@ -36,9 +37,15 @@ export function useRentalTenants({ onAfterSave } = {}) {
       const params = new URLSearchParams();
       if (tenantSearch) params.set('search', tenantSearch);
       const res = await fetch(`/api/rentals/tenants?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setTenantsError(null);
       setTenants(Array.isArray(data) ? data : []);
-    } catch { setTenants([]); }
+    } catch (e) {
+      console.error('[fetchTenants]', e);
+      setTenantsError('承租人資料載入失敗，請重試。');
+      setTenants([]);
+    }
   }
 
   function openTenantModal(tenant = null) {
@@ -213,7 +220,7 @@ export function useRentalTenants({ onAfterSave } = {}) {
   }
 
   return {
-    tenants, setTenants,
+    tenants, setTenants, tenantsError,
     tenantSearch, setTenantSearch,
     tenantSortKey, tenantSortDir, tenantToggleSort,
     showTenantModal, setShowTenantModal,

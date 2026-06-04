@@ -118,7 +118,7 @@ function RentalsPage() {
   });
 
   const {
-    tenants, setTenants,
+    tenants, setTenants, tenantsError,
     tenantSearch, setTenantSearch,
     tenantSortKey, tenantSortDir, tenantToggleSort,
     showTenantModal, setShowTenantModal,
@@ -193,7 +193,7 @@ function RentalsPage() {
   });
 
   const {
-    taxes, setTaxes,
+    taxes, setTaxes, taxesError,
     taxFilter, setTaxFilter,
     yearLocks, yearLockSaving, taxView, setTaxView,
     showTaxModal, setShowTaxModal,
@@ -213,7 +213,7 @@ function RentalsPage() {
   });
 
   const {
-    maintenances, setMaintenances,
+    maintenances, setMaintenances, maintenancesError,
     maintenancesHasMore, maintenanceFilter, setMaintenanceFilter,
     showMaintenanceModal, setShowMaintenanceModal,
     maintenanceForm, setMaintenanceForm,
@@ -231,7 +231,7 @@ function RentalsPage() {
 
   const {
     utilityFilter, setUtilityFilter,
-    utilityList, setUtilityList,
+    utilityList, setUtilityList, utilityError,
     showUtilityModal, setShowUtilityModal,
     utilityForm, setUtilityForm,
     editingUtility, setEditingUtility,
@@ -474,9 +474,13 @@ function RentalsPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 no-print">租屋管理</h2>
-        {propertiesError && <div className="mb-4 no-print"><FetchErrorBanner message={propertiesError} onRetry={fetchProperties} /></div>}
-        {contractsError  && <div className="mb-4 no-print"><FetchErrorBanner message={contractsError}  onRetry={fetchContracts} /></div>}
-        {incomesError    && <div className="mb-4 no-print"><FetchErrorBanner message={incomesError}    onRetry={fetchIncomes} /></div>}
+        {propertiesError    && <div className="mb-4 no-print"><FetchErrorBanner message={propertiesError}    onRetry={fetchProperties} /></div>}
+        {contractsError     && <div className="mb-4 no-print"><FetchErrorBanner message={contractsError}     onRetry={fetchContracts} /></div>}
+        {incomesError       && <div className="mb-4 no-print"><FetchErrorBanner message={incomesError}       onRetry={fetchIncomes} /></div>}
+        {tenantsError       && <div className="mb-4 no-print"><FetchErrorBanner message={tenantsError}       onRetry={fetchTenants} /></div>}
+        {taxesError         && <div className="mb-4 no-print"><FetchErrorBanner message={taxesError}         onRetry={fetchTaxes} /></div>}
+        {maintenancesError  && <div className="mb-4 no-print"><FetchErrorBanner message={maintenancesError}  onRetry={fetchMaintenances} /></div>}
+        {utilityError       && <div className="mb-4 no-print"><FetchErrorBanner message={utilityError}       onRetry={fetchUtilityList} /></div>}
 
         {/* Tab Navigation */}
         <div className="no-print flex gap-1 mb-6 border-b overflow-x-auto">

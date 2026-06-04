@@ -10,6 +10,7 @@ export function useRentalUtility() {
 
   const [utilityFilter,  setUtilityFilter]  = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [utilityList,    setUtilityList]    = useState([]);
+  const [utilityError,   setUtilityError]   = useState(null);
   const [showUtilityModal, setShowUtilityModal] = useState(false);
   const [utilityForm,    setUtilityForm]    = useState({
     propertyId: '', incomeYear: new Date().getFullYear(), incomeMonth: new Date().getMonth() + 1,
@@ -30,9 +31,15 @@ export function useRentalUtility() {
       if (utilityFilter.year)  params.set('year',  utilityFilter.year);
       if (utilityFilter.month) params.set('month', utilityFilter.month);
       const res = await fetch(`/api/rentals/utility-income?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setUtilityError(null);
       setUtilityList(Array.isArray(data) ? data : []);
-    } catch { setUtilityList([]); }
+    } catch (e) {
+      console.error('[fetchUtilityList]', e);
+      setUtilityError('水電費資料載入失敗，請重試。');
+      setUtilityList([]);
+    }
   }
 
   async function saveUtility() {
@@ -112,7 +119,7 @@ export function useRentalUtility() {
 
   return {
     utilityFilter, setUtilityFilter,
-    utilityList, setUtilityList,
+    utilityList, setUtilityList, utilityError,
     showUtilityModal, setShowUtilityModal,
     utilityForm, setUtilityForm,
     editingUtility, setEditingUtility,

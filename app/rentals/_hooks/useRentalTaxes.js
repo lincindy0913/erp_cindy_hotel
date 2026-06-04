@@ -11,6 +11,7 @@ export function useRentalTaxes({ initialFilter } = {}) {
   const confirm = useConfirm();
 
   const [taxes,          setTaxes]          = useState([]);
+  const [taxesError,     setTaxesError]     = useState(null);
   const [taxFilter,      setTaxFilter]      = useState(initialFilter || {
     taxYear: new Date().getFullYear(), status: '', propertyId: '',
   });
@@ -40,9 +41,15 @@ export function useRentalTaxes({ initialFilter } = {}) {
       if (taxFilter.status)     params.set('status',     taxFilter.status);
       if (taxFilter.propertyId) params.set('propertyId', taxFilter.propertyId);
       const res = await fetch(`/api/rentals/taxes?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setTaxesError(null);
       setTaxes(Array.isArray(data) ? data : []);
-    } catch { setTaxes([]); }
+    } catch (e) {
+      console.error('[fetchTaxes]', e);
+      setTaxesError('稅務資料載入失敗，請重試。');
+      setTaxes([]);
+    }
   }
 
   async function fetchYearLocks() {
@@ -55,9 +62,13 @@ export function useRentalTaxes({ initialFilter } = {}) {
   async function fetchTaxTable() {
     try {
       const res = await fetch(`/api/rentals/taxes/by-year?year=${taxTableYear}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setTaxTableRows(data.rows || []);
-    } catch { setTaxTableRows([]); }
+    } catch (e) {
+      console.error('[fetchTaxTable]', e);
+      setTaxTableRows([]);
+    }
   }
 
   async function lockYear(year) {
@@ -197,7 +208,7 @@ export function useRentalTaxes({ initialFilter } = {}) {
   }
 
   return {
-    taxes, setTaxes,
+    taxes, setTaxes, taxesError,
     taxFilter, setTaxFilter,
     yearLocks,
     yearLockSaving,
