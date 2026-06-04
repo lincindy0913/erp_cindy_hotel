@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import Navigation from '@/components/Navigation';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { sortRows, useColumnSort } from '@/components/SortableTh';
 import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import OwnerExpensesPanel from '@/components/owner-expenses/OwnerExpensesPanel';
@@ -67,6 +68,7 @@ function InvoicePageInner() {
   // 業主發票私帳 — 個別登錄
   const [privateInvoices, setPrivateInvoices] = useState([]);
   const [privateLoading, setPrivateLoading] = useState(false);
+  const [privateError, setPrivateError] = useState(null);
   const [showPrivateForm, setShowPrivateForm] = useState(false);
   const [editingPrivateId, setEditingPrivateId] = useState(null);
   const [privateForm, setPrivateForm] = useState({
@@ -118,6 +120,7 @@ function InvoicePageInner() {
   const [statsWarehouse,  setStatsWarehouse]  = useState('');
   const [statsData, setStatsData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(null);
 
   // 篩選條件
   const [filterData, setFilterData] = useState({
@@ -162,8 +165,9 @@ function InvoicePageInner() {
       const p = new URLSearchParams({ startMonth: statsStartMonth, endMonth: statsEndMonth });
       if (statsWarehouse) p.set('warehouse', statsWarehouse);
       const res = await fetch(`/api/sales/monthly-stats?${p}`);
-      if (res.ok) setStatsData(await res.json());
-    } catch {}
+      if (res.ok) { setStatsError(null); setStatsData(await res.json()); }
+      else setStatsError('月度統計載入失敗，請重試。');
+    } catch { setStatsError('月度統計載入失敗，請檢查網路連線。'); }
     setStatsLoading(false);
   }
 
@@ -281,9 +285,12 @@ function InvoicePageInner() {
       const res = await fetch(`/api/sales/with-info?${p}`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
+        setPrivateError(null);
         setPrivateInvoices(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setPrivateError('業主私帳發票載入失敗，請重試。');
       }
-    } catch {}
+    } catch { setPrivateError('業主私帳發票載入失敗，請檢查網路連線。'); }
     setPrivateLoading(false);
   }
 
@@ -1637,6 +1644,8 @@ function InvoicePageInner() {
 
         {/* ══ 報表 ══ */}
         {activeView === 'report' && canSalesView && (
+          <>
+            {privateError && <FetchErrorBanner message={privateError} onRetry={() => fetchPrivateInvoices(reportDateFrom, reportDateTo)} />}
           <ReportView
             invoices={invoices}
             allowances={allowances}
@@ -1672,10 +1681,13 @@ function InvoicePageInner() {
             canOwnerExpense={canOwnerExpense}
             goSalesView={goSalesView}
           />
+          </>
         )}
 
         {/* ══ 月度館別統計 ══ */}
         {activeView === 'monthly' && canSalesView && (
+          <>
+            {statsError && <FetchErrorBanner message={statsError} onRetry={fetchMonthlyStats} />}
           <MonthlyView
             statsStartMonth={statsStartMonth}
             statsEndMonth={statsEndMonth}
@@ -1692,6 +1704,7 @@ function InvoicePageInner() {
             setSearchInvoiceTitle={setSearchInvoiceTitle}
             goSalesView={goSalesView}
           />
+          </>
         )}
 
         {activeView === 'list' && canSalesView && (

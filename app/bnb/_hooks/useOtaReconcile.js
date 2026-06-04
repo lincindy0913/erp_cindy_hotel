@@ -41,7 +41,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       const p = new URLSearchParams({ month, source, warehouse: warehouse || DEFAULT_WAREHOUSE });
       const chk = await fetch(`/api/bnb/ota-commission?${p}`);
       if (chk.ok) setCommExisting(await chk.json());
-    } catch {}
+    } catch (e) { console.warn('[useOtaReconcile] fetch failed:', e.message); }
   }, [DEFAULT_WAREHOUSE]);
 
   // ── OTA 解析預覽 ───────────────────────────────────────────────
@@ -106,7 +106,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
           if (!confirmed) return;
         }
       }
-    } catch {}
+    } catch (e) { console.warn('[useOtaReconcile] fetch failed:', e.message); }
     setReconcileConfirming(true);
     try {
       const res = await fetch('/api/bnb/ota-reconcile-log', {
@@ -168,7 +168,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       if (otaWarehouse) p.set('warehouse', otaWarehouse);
       const res = await fetch(`/api/bnb/ota-reconcile-log?${p}`);
       if (res.ok) { const data = await res.json(); setReconLogs(data.rows || []); }
-    } catch {}
+    } catch (e) { console.warn('[useOtaReconcile] fetch failed:', e.message); }
     finally { setReconLogsLoading(false); }
   }, [otaWarehouse]);
 
@@ -206,7 +206,7 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       if (commSource)   p.set('source', commSource);
       const res = await fetch(`/api/bnb/ota-commission?${p}`);
       if (res.ok) { const data = await res.json(); setCommHistRows(data.rows || []); }
-    } catch {}
+    } catch (e) { console.warn('[useOtaReconcile] fetch failed:', e.message); }
     finally { setCommHistLoading(false); }
   }, [otaWarehouse, commSource]);
 

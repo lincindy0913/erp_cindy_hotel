@@ -486,7 +486,7 @@ export default function CashFlowPage() {
     try {
       const res = await fetch('/api/cashflow/transactions/batch-categorize');
       if (res.ok) setNoCatStats(await res.json());
-    } catch {}
+    } catch (e) { console.warn('[fetchNoCatStats] failed:', e.message); }
   }
 
   async function handleBatchCategorize(e) {

@@ -150,7 +150,8 @@ function RentalsPage() {
       status:     searchParams.get('contractStatus') || '',
       propertyId: searchParams.get('propertyId')     || '',
     },
-    onAfterSave: () => { fetchProperties(); fetchTenants(); },
+    // FE1: 合約建立/更新後刷新收租清單（新合約可能產生應收記錄）
+    onAfterSave: () => { fetchProperties(); fetchTenants(); fetchIncomes(); },
   });
 
   const {

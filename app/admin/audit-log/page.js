@@ -7,6 +7,7 @@ import { useToast } from '@/context/ToastContext';
 import ExportButtons from '@/components/ExportButtons';
 import { EXPORT_CONFIGS } from '@/lib/export-columns';
 import { todayStr, localDateStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const ACTION_LABELS = {
   'payment_order.create': '建立付款單',
@@ -75,6 +76,7 @@ export default function AuditLogPage() {
   const { showToast } = useToast();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [logsError, setLogsError] = useState(null);
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 0 });
   const [expandedId, setExpandedId] = useState(null);
 
@@ -124,9 +126,10 @@ export default function AuditLogPage() {
 
       const res = await fetch(`/api/audit-logs?${params}`);
       const data = await res.json();
+      setLogsError(null);
       setLogs(data.data || []);
       setPagination(data.pagination || { page: 1, total: 0, totalPages: 0 });
-    } catch { setLogs([]); }
+    } catch { setLogsError('稽核日誌載入失敗，請檢查網路後重試。'); }
     setLoading(false);
   }
 
@@ -150,7 +153,7 @@ export default function AuditLogPage() {
         monthFinance: financeData.pagination?.total || 0,
         monthAttempts: attemptData.pagination?.total || 0,
       });
-    } catch {}
+    } catch (e) { console.warn('[audit-log] summary fetch failed:', e.message); }
   }
 
   function handleSearch(e) {
@@ -380,6 +383,8 @@ export default function AuditLogPage() {
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">載入中...</div>
+          ) : logsError ? (
+            <div className="p-4"><FetchErrorBanner message={logsError} onRetry={fetchLogs} /></div>
           ) : logs.length === 0 ? (
             <div className="p-8 text-center text-gray-500">無稳核日誌記錄</div>
           ) : (

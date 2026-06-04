@@ -18,6 +18,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { calcProfitLoss } from '@/lib/year-end/plCalc';
 import { calcAllQtysForWarehouse } from '@/lib/inventory-helpers';
 import { vatPeriodDates } from '@/lib/vat-periods';
+import { checkYearEndBlockers } from '@/lib/year-end/blockerChecks';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,19 +40,9 @@ export async function POST(request) {
 
     const yearStart   = `${year}-01-01`;
     const yearEndDate = `${year}-12-31`;
-    const blockers    = [];
 
-    // ── 1. Check all 12 months closed ───────────────────────────────────
-    const closedMonthRows = await prisma.monthEndStatus.findMany({
-      where: { year, status: { in: ['已結帳', '已鎖定'] } },
-      select: { month: true },
-      distinct: ['month'],
-    });
-    if (closedMonthRows.length < 12) {
-      const closedSet    = new Set(closedMonthRows.map(r => r.month));
-      const unclosed     = Array.from({ length: 12 }, (_, i) => i + 1).filter(m => !closedSet.has(m));
-      blockers.push(`尚未月結的月份：${unclosed.join('、')} 月（共 ${unclosed.length} 個月）`);
-    }
+    // ── 1. Blocker checks（與正式 POST 共用同一函式）────────────────────
+    const blockers = await checkYearEndBlockers(prisma, year);
 
     // ── 2. Cash account preview ─────────────────────────────────────────
     const cashAccounts = await prisma.cashAccount.findMany({
@@ -103,17 +94,12 @@ export async function POST(request) {
     });
     const totalLoanBalance = loans.reduce((s, l) => s + Number(l.currentBalance), 0);
 
-    // ── 6. VAT carry-forward (第6期留抵帶出 → 下一年度開帳) ──────────────
+    // ── 6. VAT carry-forward info（顯示用，blocker 已由 checkYearEndBlockers 處理）
     const period6 = await prisma.vatFilingPeriod.findUnique({
       where: { year_period_warehouse: { year, period: 6, warehouse: null } },
       select: { carryForwardOut: true, status: true },
     });
     const vatCarryForward = Number(period6?.carryForwardOut ?? 0);
-    if (period6 === null) {
-      blockers.push('第 6 期（11–12 月）VAT 申報尚未計算，年結後留抵稅額無法確認');
-    } else if (period6.status === '草稿') {
-      blockers.push(`第 6 期 VAT 申報為草稿狀態（留抵帶出 $${vatCarryForward.toLocaleString()}），建議先確認申報後再結轉`);
-    }
 
     return NextResponse.json({
       year,

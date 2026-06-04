@@ -164,7 +164,7 @@ export default function Dashboard() {
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const res = await fetch(`/api/reports/profit-loss?yearMonth=${ym}`);
       if (res.ok) setPlData(await res.json());
-    } catch {}
+    } catch (e) { console.warn('[homepage] P&L fetch failed:', e.message); }
     setPlLoading(false);
   }
 

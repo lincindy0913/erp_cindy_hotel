@@ -8,6 +8,7 @@ import { runInventoryRollover } from '@/lib/year-end/inventoryRollover';
 import { prepareBalanceRecords } from '@/lib/year-end/balanceRollover';
 import { calcProfitLoss } from '@/lib/year-end/plCalc';
 import { buildFinancialStatements } from '@/lib/year-end/statements';
+import { checkYearEndBlockers } from '@/lib/year-end/blockerChecks';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,18 +93,12 @@ export async function POST(request) {
       }).catch(e => console.error('[AUDIT_FAIL] year-end:', e.message));
     }
 
-    // 1b. Verify all 12 months have been closed or locked
-    const closedMonthRows = await prisma.monthEndStatus.findMany({
-      where: { year, status: { in: ['已結帳', '已鎖定'] } },
-      select: { month: true },
-      distinct: ['month'],
-    });
-    if (closedMonthRows.length < 12) {
-      const closedSet = new Set(closedMonthRows.map(r => r.month));
-      const unclosed = Array.from({ length: 12 }, (_, i) => i + 1).filter(m => !closedSet.has(m));
+    // 1b. Verify all pre-conditions (與 preview 共用同一 blockerChecks，確保一致性)
+    const blockers = await checkYearEndBlockers(prisma, year);
+    if (blockers.length > 0) {
       return createErrorResponse(
-        'MONTH_END_INCOMPLETE',
-        `必須先完成全年 12 個月的月結才能執行年結。尚未結帳的月份：${unclosed.join('、')} 月（共 ${unclosed.length} 個月）`,
+        'YEAR_END_BLOCKED',
+        `年結前置條件未完成：\n${blockers.map((b, i) => `${i + 1}. ${b}`).join('\n')}`,
         422
       );
     }

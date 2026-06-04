@@ -738,7 +738,7 @@ function BnbPage() {
         const res  = await fetch(`/api/bnb/import?importMonth=${importMonth}&warehouse=${encodeURIComponent(importWarehouse)}`);
         const data = await res.json();
         if (data.count > 0) { setImportConfirm({ existingCount: data.count }); return; }
-      } catch {}
+      } catch (e) { console.warn('[bnb import] pre-check failed:', e.message); }
     }
     await doImport();
   }

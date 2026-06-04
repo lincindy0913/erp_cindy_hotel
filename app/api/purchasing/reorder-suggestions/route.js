@@ -26,7 +26,25 @@ export async function GET() {
       orderBy: { currentQty: 'asc' },
     });
 
-    if (lowStockItems.length === 0) return NextResponse.json([]);
+    // PUR1: 回傳 cache 新鮮度 meta，讓前端可提示使用者
+    const lastCalculated = lowStockItems.length > 0
+      ? lowStockItems.reduce((latest, i) =>
+          i.lastCalculated > latest ? i.lastCalculated : latest,
+          lowStockItems[0].lastCalculated)
+      : null;
+    const isStale = lastCalculated
+      ? (Date.now() - new Date(lastCalculated).getTime()) / 3_600_000 > 26
+      : false;
+    const meta = {
+      lastCalculated: lastCalculated ? new Date(lastCalculated).toISOString() : null,
+      isStale,
+      cacheEmpty: lowStockItems.length === 0,
+      formulaNote: 'suggestedQty = threshold×2 − currentQty',
+    };
+
+    if (lowStockItems.length === 0) {
+      return NextResponse.json({ suggestions: [], meta });
+    }
 
     // Fetch last purchase price per product+supplier from PriceHistory
     const productIds = lowStockItems.map(i => i.productId);
@@ -72,7 +90,7 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json(suggestions);
+    return NextResponse.json({ suggestions, meta });
   } catch (error) {
     return handleApiError(error);
   }

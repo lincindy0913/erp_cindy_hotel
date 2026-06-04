@@ -455,6 +455,7 @@ function EngineeringPageInner() {
       if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '更新失敗', 'error'); setTermSaving(false); return; }
       setShowTermModal(false);
       fetchContracts(filterProjectId || undefined);
+      fetchPaymentOrders(); // FE1: 期數更新可能影響付款單狀態
     } catch (e) { showToast('更新失敗', 'error'); }
     finally { setTermSaving(false); }
   }
@@ -1032,7 +1033,7 @@ ${projectRows.map(p => `<tr>
                     if (!res.ok) throw new Error(data.error?.message || '建立失敗');
                     setShowPaymentModal(false);
                     fetchPaymentOrders();
-                    if (activeTab === 'contracts' || activeTab === 'projectMgmt') fetchContracts(filterProjectId || undefined);
+                    fetchContracts(filterProjectId || undefined); // FE1: 付款單建立後合約期數狀態可能改變
                     showToast('付款單已建立，請至出納執行付款（出納付款後自動更新期數狀態）', 'success');
                   }
                 } catch (e) { showToast(e.message || '儲存失敗', 'error'); }
