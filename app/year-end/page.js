@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const MONTH_NAMES = [
   '一月', '二月', '三月', '四月', '五月', '六月',
@@ -30,6 +31,7 @@ export default function YearEndPage() {
   // Historical records
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [recordsError, setRecordsError] = useState(null);
 
   // Expanded detail
   const [expandedId, setExpandedId] = useState(null);
@@ -43,6 +45,10 @@ export default function YearEndPage() {
 
   // Backup readiness
   const [backupReady, setBackupReady] = useState(null);
+
+  // Preview (step 2)
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Execution
   const [step, setStep] = useState(1); // 1=validate, 2=preview, 3=confirm
@@ -71,12 +77,13 @@ export default function YearEndPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/year-end');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data.records) {
-        setRecords(data.records);
-      }
+      setRecordsError(null);
+      if (data.records) setRecords(data.records);
     } catch (error) {
       console.error('載入年度結轉記錄失敗:', error);
+      setRecordsError('年結歷史記錄載入失敗，請重試。');
     }
     setLoading(false);
   }
@@ -123,11 +130,28 @@ export default function YearEndPage() {
       setValidationResult(data);
       if (data.valid) {
         setStep(2);
+        fetchPreview();
       }
     } catch (error) {
       setValidationResult({ valid: false, warnings: [{ type: 'error', message: '驗證失敗: ' + error.message }] });
     }
     setValidating(false);
+  }
+
+  async function fetchPreview() {
+    setPreviewLoading(true);
+    setPreviewData(null);
+    try {
+      const res = await fetch('/api/year-end/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: selectedYear }),
+      });
+      if (res.ok) setPreviewData(await res.json());
+    } catch (e) {
+      console.error('[fetchPreview]', e);
+    }
+    setPreviewLoading(false);
   }
 
   // Execute year-end rollover
@@ -183,6 +207,7 @@ export default function YearEndPage() {
     setStep(1);
     setValidationResult(null);
     setExecutionResult(null);
+    setPreviewData(null);
     setConfirmText('');
     setBackupReady(null);
   }
@@ -585,6 +610,9 @@ export default function YearEndPage() {
             {/* ========================================== */}
             {/* Historical Records Table */}
             {/* ========================================== */}
+            {recordsError && (
+              <FetchErrorBanner message={recordsError} onRetry={fetchRecords} />
+            )}
             {records.length > 0 && (
               <div className="bg-white rounded-xl shadow-sm border border-violet-200">
                 <div className="px-6 py-4 border-b border-violet-100">
@@ -872,6 +900,28 @@ export default function YearEndPage() {
                             </div>
                           )}
 
+                          {/* Blockers — 硬停原因 */}
+                          {!validationResult.alreadyCompleted && validationResult.blockers?.length > 0 && (
+                            <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-3">
+                                <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                                <h4 className="text-sm font-bold text-red-800">
+                                  驗證未通過 — 請先解決以下 {validationResult.blockers.length} 個問題
+                                </h4>
+                              </div>
+                              <ul className="space-y-2">
+                                {validationResult.blockers.map((b, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-sm text-red-700">
+                                    <span className="mt-0.5 shrink-0 font-bold text-red-500">{i + 1}.</span>
+                                    <span>{b}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
                           {/* Month status checklist */}
                           {validationResult.monthStatuses && validationResult.monthStatuses.length > 0 && (
                             <div>
@@ -896,12 +946,19 @@ export default function YearEndPage() {
                                               <svg className="w-5 h-5 text-green-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                               </svg>
+                                            ) : w.isClosed ? (
+                                              <div className="flex flex-col items-center">
+                                                <svg className="w-5 h-5 text-yellow-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <span className="text-yellow-600 text-xs mt-0.5">已結帳</span>
+                                              </div>
                                             ) : (
                                               <div className="flex flex-col items-center">
                                                 <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
-                                                <span className="text-red-500 mt-0.5">{w.status}</span>
+                                                <span className="text-red-500 text-xs mt-0.5">{w.status}</span>
                                               </div>
                                             )}
                                           </td>
@@ -947,9 +1004,11 @@ export default function YearEndPage() {
                             </div>
                           )}
 
-                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-                            <strong>提醒:</strong> 所有月份必須為「已鎖定」狀態才能執行年度結轉。請先完成月結作業。
-                          </div>
+                          {!validationResult.alreadyCompleted && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                              <strong>提醒：</strong>請解決上述所有阻擋事項後重新驗證，才能執行年度結轉。
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -965,11 +1024,18 @@ export default function YearEndPage() {
                         </svg>
                         <div>
                           <p className="text-green-800 font-medium">前置條件驗證通過</p>
-                          <p className="text-green-600 text-sm">所有月份已鎖定，可以進行年度結轉</p>
+                          <p className="text-green-600 text-sm">所有月份已結帳／鎖定，可以進行年度結轉</p>
                         </div>
                       </div>
 
                       {/* Preview cards */}
+                      {previewLoading && (
+                        <div className="flex items-center justify-center py-8 text-gray-500 text-sm gap-2">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-600"></div>
+                          計算預覽數字中…
+                        </div>
+                      )}
+                      {!previewLoading && (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Inventory preview */}
                         <div className="border border-violet-200 rounded-lg p-4">
@@ -983,13 +1049,17 @@ export default function YearEndPage() {
                           </div>
                           <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                              <span className="text-gray-500">館別數</span>
-                              <span className="font-medium">{validationResult.summary?.warehouseCount || 0}</span>
+                              <span className="text-gray-500">在庫商品數</span>
+                              <span className="font-medium">{previewData?.inventory.productCount ?? validationResult.summary?.warehouseCount ?? '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">期末存貨總值</span>
+                              <span className="font-medium text-violet-700">{previewData ? formatCurrency(previewData.inventory.closingValue) : '—'}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-500">負庫存商品</span>
-                              <span className={`font-medium ${validationResult.summary?.negativeInventoryCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                {validationResult.summary?.negativeInventoryCount || 0}
+                              <span className={`font-medium ${(previewData?.inventory.negativeCount ?? validationResult.summary?.negativeInventoryCount ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                {previewData?.inventory.negativeCount ?? validationResult.summary?.negativeInventoryCount ?? 0}
                               </span>
                             </div>
                           </div>
@@ -1008,11 +1078,20 @@ export default function YearEndPage() {
                           </div>
                           <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                              <span className="text-gray-500">結轉方式</span>
-                              <span className="font-medium">期末餘額結轉期初</span>
+                              <span className="text-gray-500">期末現金合計</span>
+                              <span className="font-medium text-emerald-700">{previewData ? formatCurrency(previewData.totalCashBalance) : '—'}</span>
                             </div>
+                            {previewData?.cashAccounts.slice(0, 4).map(a => (
+                              <div key={a.id} className="flex justify-between text-xs text-gray-500">
+                                <span className="truncate max-w-[120px]">{a.name}</span>
+                                <span>{formatCurrency(a.newOpeningBalance)}</span>
+                              </div>
+                            ))}
+                            {(previewData?.cashAccounts.length ?? 0) > 4 && (
+                              <p className="text-xs text-gray-400">…還有 {previewData.cashAccounts.length - 4} 個帳戶</p>
+                            )}
                           </div>
-                          <p className="text-xs text-gray-400 mt-3">所有現金帳戶的 currentBalance 將設為新年度的 openingBalance</p>
+                          <p className="text-xs text-gray-400 mt-3">期末餘額將設為新年度期初餘額</p>
                         </div>
 
                         {/* P&L preview */}
@@ -1027,17 +1106,30 @@ export default function YearEndPage() {
                           </div>
                           <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                              <span className="text-gray-500">未沖銷發票</span>
-                              <span className="font-medium">{validationResult.summary?.uncollectedAP || 0}</span>
+                              <span className="text-gray-500">營業收入</span>
+                              <span className="font-medium">{previewData ? formatCurrency(previewData.pl.grossRevenue) : '—'}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-gray-500">未兌支票</span>
-                              <span className="font-medium">{validationResult.summary?.unclearedChecks || 0}</span>
+                              <span className="text-gray-500">營業費用</span>
+                              <span className="font-medium">{previewData ? formatCurrency(previewData.pl.totalExpenses) : '—'}</span>
                             </div>
+                            <div className="flex justify-between border-t pt-1 mt-1">
+                              <span className="text-gray-700 font-medium">稅前淨利</span>
+                              <span className={`font-bold ${(previewData?.pl.netIncome ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {previewData ? formatCurrency(previewData.pl.netIncome) : '—'}
+                              </span>
+                            </div>
+                            {previewData?.vat.carryForwardOut > 0 && (
+                              <div className="flex justify-between text-xs text-indigo-600 pt-1">
+                                <span>VAT 留抵帶出</span>
+                                <span>{formatCurrency(previewData.vat.carryForwardOut)}</span>
+                              </div>
+                            )}
                           </div>
                           <p className="text-xs text-gray-400 mt-3">將產生損益表、資產負債表及現金流量表</p>
                         </div>
                       </div>
+                      )}
 
                       {/* Warnings (advisory) */}
                       {validationResult.warnings && validationResult.warnings.length > 0 && (

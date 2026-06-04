@@ -3,12 +3,14 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const INPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
 const INPUT_INVOICE_STATUSES = ['已取得', '已對帳', '已入帳'];
 
 export default function InputInvoicesTab({ projects, contracts, onDashStatsChanged }) {
   const [inputInvoices, setInputInvoices] = useState([]);
+  const [inputInvoicesError, setInputInvoicesError] = useState(null);
   const [projectFilter, setProjectFilter] = useState('');
   const [showInputModal, setShowInputModal] = useState(false);
   const [editingInputInv, setEditingInputInv] = useState(null);
@@ -28,10 +30,15 @@ export default function InputInvoicesTab({ projects, contracts, onDashStatsChang
     try {
       const url = pid ? `/api/engineering/input-invoices?projectId=${pid}` : '/api/engineering/input-invoices';
       const res = await fetch(url);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setInputInvoicesError(null);
       setInputInvoices(Array.isArray(data) ? data : []);
-    } catch { setInputInvoices([]); }
+    } catch (e) {
+      console.error('[fetchInputInvoices]', e);
+      setInputInvoicesError('廠商進項發票資料載入失敗，請重試。');
+      setInputInvoices([]);
+    }
   }
 
   async function saveInputInvoice() {
@@ -70,6 +77,7 @@ export default function InputInvoicesTab({ projects, contracts, onDashStatsChang
 
   return (
     <div>
+      {inputInvoicesError && <FetchErrorBanner message={inputInvoicesError} onRetry={() => fetchInputInvoices(projectFilter || undefined)} className="mb-4" />}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <select value={projectFilter} onChange={e => { setProjectFilter(e.target.value); fetchInputInvoices(e.target.value || undefined); }}

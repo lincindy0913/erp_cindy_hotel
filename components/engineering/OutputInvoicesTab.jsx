@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const OUTPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
 const OUTPUT_INVOICE_STATUSES = ['已開立', '已作廢'];
@@ -46,6 +47,7 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
   const today = new Date().toISOString().slice(0, 10);
   const [subTab, setSubTab] = useState('invoices');
   const [outputInvoices, setOutputInvoices] = useState([]);
+  const [outputInvoicesError, setOutputInvoicesError] = useState(null);
   const [projectFilter, setProjectFilter] = useState('');
   const [showOutputModal, setShowOutputModal] = useState(false);
   const [editingOutputInv, setEditingOutputInv] = useState(null);
@@ -69,10 +71,15 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
     try {
       const url = pid ? `/api/engineering/output-invoices?projectId=${pid}` : '/api/engineering/output-invoices';
       const res = await fetch(url);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setOutputInvoicesError(null);
       setOutputInvoices(Array.isArray(data) ? data : []);
-    } catch { setOutputInvoices([]); }
+    } catch (e) {
+      console.error('[fetchOutputInvoices]', e);
+      setOutputInvoicesError('業主銷項發票資料載入失敗，請重試。');
+      setOutputInvoices([]);
+    }
   }
 
   async function fetchAging(pid) {
@@ -144,6 +151,7 @@ export default function OutputInvoicesTab({ projects, progressClaims = [], onDas
 
   return (
     <div>
+      {outputInvoicesError && <FetchErrorBanner message={outputInvoicesError} onRetry={() => fetchOutputInvoices(projectFilter || undefined)} className="mb-4" />}
       {/* 篩選列 */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3 flex-wrap">

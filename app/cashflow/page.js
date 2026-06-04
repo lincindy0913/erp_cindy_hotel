@@ -18,6 +18,7 @@ import CategoryMgmtTab from './_tabs/CategoryMgmtTab';
 import OverviewTab      from './_tabs/OverviewTab';
 import SubjectQueryTab  from './_tabs/SubjectQueryTab';
 import TransactionsTab  from './_tabs/TransactionsTab';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const ACCOUNT_TYPES = ['現金', '銀行存款', '代墊款', '信用卡'];
 const TX_TYPES = ['收入', '支出', '移轉'];
@@ -52,6 +53,8 @@ export default function CashFlowPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState(null);
+  const [transactionsError, setTransactionsError] = useState(null);
 
   // Account form
   const [showAccountForm, setShowAccountForm] = useState(false);
@@ -186,7 +189,7 @@ export default function CashFlowPage() {
       const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const endDate = localDateStr(now);
       const res = await fetch(`/api/cashflow/report?startDate=${startDate}&endDate=${endDate}`);
-      if (!res.ok) { showToast('載入失敗', 'error'); return; }
+      if (!res.ok) { setOverviewCategorySummary(null); return; }
       const data = await res.json();
       setOverviewCategorySummary(data);
     } catch { setOverviewCategorySummary(null); }
@@ -225,7 +228,7 @@ export default function CashFlowPage() {
   async function fetchAccountingSubjects() {
     try {
       const res = await fetch('/api/accounting-subjects');
-      if (!res.ok) { showToast('載入失敗', 'error'); return; }
+      if (!res.ok) { setAccountingSubjects([]); return; }
       const data = await res.json();
       setAccountingSubjects(Array.isArray(data) ? data : []);
     } catch { setAccountingSubjects([]); }
@@ -234,17 +237,24 @@ export default function CashFlowPage() {
   async function fetchAccounts() {
     try {
       const res = await fetch('/api/cashflow/accounts');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setAccountsError(null);
       setAccounts(Array.isArray(data) ? data : []);
-    } catch { setAccounts([]); }
+    } catch (e) {
+      console.error('[fetchAccounts]', e);
+      setAccountsError('帳戶資料載入失敗，請重試。');
+      setAccounts([]);
+    }
   }
 
   async function fetchCategories() {
     try {
       const res = await fetch('/api/cashflow/categories');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCategories(Array.isArray(data) ? data : []);
-    } catch { setCategories([]); }
+    } catch (e) { console.error('[fetchCategories]', e); setCategories([]); }
   }
 
   async function fetchTransactions(page) {
@@ -262,29 +272,36 @@ export default function CashFlowPage() {
       params.append('limit', '50');
 
       const res = await fetch(`/api/cashflow/transactions?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setTransactionsError(null);
       if (data && data.data) {
         setTransactions(Array.isArray(data.data) ? data.data : []);
         setTxPagination(data.pagination || { page: 1, limit: 50, totalCount: 0, totalPages: 1 });
       } else {
-        // Backward compatibility: if API returns array directly
         setTransactions(Array.isArray(data) ? data : []);
         setTxPagination({ page: 1, limit: 50, totalCount: (Array.isArray(data) ? data.length : 0), totalPages: 1 });
       }
-    } catch { setTransactions([]); }
+    } catch (e) {
+      console.error('[fetchTransactions]', e);
+      setTransactionsError('交易紀錄載入失敗，請重試。');
+      setTransactions([]);
+    }
   }
 
   async function fetchSuppliers() {
     try {
       const res = await fetch('/api/suppliers?all=true');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setSuppliers(Array.isArray(data) ? data : []);
-    } catch { setSuppliers([]); }
+    } catch (e) { console.error('[fetchSuppliers]', e); setSuppliers([]); }
   }
 
   async function fetchWarehouses() {
     try {
       const res = await fetch('/api/warehouse-departments');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data && data.list) {
         setWarehouses(data.list.filter(w => w.type === 'building').map(w => w.name));
@@ -293,7 +310,7 @@ export default function CashFlowPage() {
       } else {
         setWarehouses(Object.keys(data || {}));
       }
-    } catch { setWarehouses(['麗格', '麗軒', '民宿']); }
+    } catch (e) { console.error('[fetchWarehouses]', e); setWarehouses([]); }
   }
 
   async function fetchReport() {
@@ -678,6 +695,13 @@ export default function CashFlowPage() {
             </button>
           ))}
         </div>
+
+        {accountsError && (
+          <FetchErrorBanner message={accountsError} onRetry={fetchAccounts} />
+        )}
+        {activeTab === 'transactions' && transactionsError && (
+          <FetchErrorBanner message={transactionsError} onRetry={fetchTransactions} />
+        )}
 
         {/* ==================== Tab 1: Account Overview ==================== */}
         {activeTab === 'overview' && (

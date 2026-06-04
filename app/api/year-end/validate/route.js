@@ -170,32 +170,6 @@ export async function POST(request) {
       });
     }
 
-    // 3-e. 銀行對帳（12 月）未完成
-    const bankAccounts = await prisma.cashAccount.findMany({
-      where: { isActive: true, type: '銀行存款' },
-      select: { id: true, name: true },
-    });
-    if (bankAccounts.length > 0) {
-      const confirmedRecs = await prisma.bankReconciliation.findMany({
-        where: {
-          statementYear: year, statementMonth: 12,
-          status: 'confirmed',
-          accountId: { in: bankAccounts.map(a => a.id) },
-        },
-        select: { accountId: true },
-      });
-      const reconciledSet = new Set(confirmedRecs.map(r => r.accountId));
-      const unreconciled  = bankAccounts.filter(a => !reconciledSet.has(a.id)).map(a => a.name);
-      if (unreconciled.length > 0) {
-        warnings.push({
-          type: 'warning',
-          message: `${unreconciled.length} 個銀行帳戶 12 月份對帳未完成`,
-          details: unreconciled.slice(0, 5),
-          count: unreconciled.length,
-        });
-      }
-    }
-
     // ── 4. valid = blockers 清空（與 POST 完全一致）──────────────────────
     const valid = blockers.length === 0;
 
@@ -206,9 +180,6 @@ export async function POST(request) {
       uncollectedAP,
       unclearedChecks,
       negativeInventoryCount: negativeProducts.length,
-      unreconciledAccountCount: bankAccounts.filter(a =>
-        !new Set((warnings.find(w => w.message.includes('銀行'))?.details || [])).has(a.name)
-      ).length,
       warehouseCount: warehouses.length,
     };
 

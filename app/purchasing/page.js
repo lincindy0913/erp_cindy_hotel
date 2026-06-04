@@ -82,7 +82,7 @@ function PurchasingPageInner() {
   const [recentPurchases, setRecentPurchases] = useState([]);
   const [allProductPurchases, setAllProductPurchases] = useState([]); // 全廠商歷史（比價用）
   // 補貨建議
-  const { reorderSuggestions, showReorderPanel, setShowReorderPanel, fetchReorderSuggestions, handleReorderItem: _handleReorderItem } =
+  const { reorderSuggestions, reorderMeta, showReorderPanel, setShowReorderPanel, fetchReorderSuggestions, recalculateLowStock, recalculating, handleReorderItem: _handleReorderItem } =
     useReorderSuggestions({
       products,
       onApply: ({ supplierId, supplierName, paymentTerms, warehouse, productId, product, suggestedQty, lastUnitPrice }) => {
@@ -656,6 +656,32 @@ function PurchasingPageInner() {
             )}
           </div>
         </div>
+
+        {/* 補貨建議快取過期提示 */}
+        {reorderMeta?.isStale && (
+          <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-300 rounded-lg px-4 py-2.5 mb-4 text-sm text-yellow-800">
+            <svg className="w-4 h-4 shrink-0 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <span className="flex-1">
+              補貨建議資料已超過 26 小時未更新
+              {reorderMeta.lastCalculated && (
+                <span className="text-yellow-600 ml-1">
+                  （上次：{new Date(reorderMeta.lastCalculated).toLocaleString('zh-TW')}）
+                </span>
+              )}
+              ，建議重新計算後再下單。
+            </span>
+            <button
+              type="button"
+              onClick={recalculateLowStock}
+              disabled={recalculating}
+              className="shrink-0 px-3 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700 disabled:opacity-50"
+            >
+              {recalculating ? '計算中…' : '重新計算'}
+            </button>
+          </div>
+        )}
 
         {/* 補貨建議 Panel */}
         {showReorderPanel && (

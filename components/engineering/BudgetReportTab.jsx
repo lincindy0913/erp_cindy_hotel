@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo, Fragment } from 'react';
 import Link from 'next/link';
+import { getActualPaid } from '@/lib/engineering/payment-utils';
 
 function fmt(n) {
   if (n == null || n === '') return '－';
@@ -16,12 +17,6 @@ function pct(n) {
   return `${(n * 100).toFixed(1)}%`;
 }
 
-function getActualPaid(po) {
-  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
-    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
-  }
-  return Number(po.amount || 0);
-}
 
 function marginColor(v) {
   if (v == null || !isFinite(v)) return 'text-gray-400';

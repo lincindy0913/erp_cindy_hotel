@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 function makeCompanyInvPeriods() {
   const today = new Date();
@@ -16,6 +17,7 @@ const COMPANY_INV_PERIODS = makeCompanyInvPeriods();
 
 export default function CompanyInvoicesTab({ projects, onUnassignedCountChange }) {
   const [companyInvoices, setCompanyInvoices] = useState([]);
+  const [companyInvoicesError, setCompanyInvoicesError] = useState(null);
   const [companyInvLoading, setCompanyInvLoading] = useState(false);
   const [projectFilter, setProjectFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState('');
@@ -35,13 +37,17 @@ export default function CompanyInvoicesTab({ projects, onUnassignedCountChange }
       if (pid) params.set('projectId', pid);
       if (period) params.set('period', period);
       const res = await fetch(`/api/company-expenses?${params}`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : [];
+      setCompanyInvoicesError(null);
       setCompanyInvoices(list);
       onUnassignedCountChange?.(list.filter(r => !r.projectId).length);
-    } catch { setCompanyInvoices([]); }
-    finally { setCompanyInvLoading(false); }
+    } catch (e) {
+      console.error('[fetchCompanyInvoices]', e);
+      setCompanyInvoicesError('分業進項發票資料載入失敗，請重試。');
+      setCompanyInvoices([]);
+    } finally { setCompanyInvLoading(false); }
   }
 
   async function updateInvoiceProject(invoiceId, projectId) {
@@ -70,6 +76,7 @@ export default function CompanyInvoicesTab({ projects, onUnassignedCountChange }
 
   return (
     <div>
+      {companyInvoicesError && <FetchErrorBanner message={companyInvoicesError} onRetry={() => fetchCompanyInvoices(projectFilter || undefined, periodFilter || undefined)} className="mb-4" />}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)} className="border rounded px-3 py-1.5 text-sm">
           <option value="">全部案件</option>

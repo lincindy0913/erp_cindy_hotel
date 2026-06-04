@@ -4,6 +4,7 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 function formatNum(n) {
   if (n == null || n === '') return '－';
@@ -16,6 +17,7 @@ function fmtMoney(n) {
 
 export default function MaterialsTab({ projects, contracts }) {
   const [subTab, setSubTab] = useState('issues');
+  const [fetchError, setFetchError] = useState(null);
 
   // ── 領料 state ──
   const [materials, setMaterials] = useState([]);
@@ -58,26 +60,42 @@ export default function MaterialsTab({ projects, contracts }) {
   async function fetchMaterials(pid) {
     try {
       const url = pid ? `/api/engineering/materials?projectId=${pid}` : '/api/engineering/materials';
-      const data = await fetch(url).then(r => r.json());
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setFetchError(null);
       setMaterials(Array.isArray(data) ? data : []);
-    } catch { setMaterials([]); }
+    } catch (e) {
+      console.error('[fetchMaterials]', e);
+      setFetchError('材料資料載入失敗，請重試。');
+      setMaterials([]);
+    }
   }
   async function fetchProducts() {
-    try { const d = await fetch('/api/products?all=true').then(r => r.json()); setProducts(Array.isArray(d) ? d : []); } catch { setProducts([]); }
+    try {
+      const res = await fetch('/api/products?all=true');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      setProducts(Array.isArray(d) ? d : []);
+    } catch (e) { console.error('[fetchProducts]', e); setProducts([]); }
   }
   async function fetchReturns(pid) {
     try {
       const url = pid ? `/api/engineering/material-returns?projectId=${pid}` : '/api/engineering/material-returns';
-      const data = await fetch(url).then(r => r.json());
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setReturns(Array.isArray(data) ? data : []);
-    } catch { setReturns([]); }
+    } catch (e) { console.error('[fetchReturns]', e); setReturns([]); }
   }
   async function fetchCounts(pid) {
     try {
       const url = pid ? `/api/engineering/stock-counts?projectId=${pid}` : '/api/engineering/stock-counts';
-      const data = await fetch(url).then(r => r.json());
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setCounts(Array.isArray(data) ? data : []);
-    } catch { setCounts([]); }
+    } catch (e) { console.error('[fetchCounts]', e); setCounts([]); }
   }
 
   // 已驗收退料量 map（materialId → 總退料量）
@@ -227,6 +245,7 @@ export default function MaterialsTab({ projects, contracts }) {
 
   return (
     <>
+      {fetchError && <FetchErrorBanner message={fetchError} onRetry={() => { fetchMaterials(filterProjectId || undefined); fetchReturns(filterProjectId || undefined); fetchCounts(filterProjectId || undefined); }} className="mb-4" />}
       {/* 篩選列 */}
       <div className="flex gap-3 mb-4 items-center flex-wrap">
         <label className="text-sm text-gray-600">篩選工程案</label>

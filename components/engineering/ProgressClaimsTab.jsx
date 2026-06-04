@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useToast } from '@/context/ToastContext';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 const STATUS_LABELS = { draft: '草稿', submitted: '已提交', certified: '已核定', rejected: '退件' };
 const STATUS_COLORS = {
@@ -20,6 +21,7 @@ function formatNum(n) {
 
 export default function ProgressClaimsTab({ projects }) {
   const [claims, setClaims] = useState([]);
+  const [claimsError, setClaimsError] = useState(null);
   const [filterProjectId, setFilterProjectId] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingClaim, setEditingClaim] = useState(null);
@@ -42,9 +44,15 @@ export default function ProgressClaimsTab({ projects }) {
     try {
       const url = pid ? `/api/engineering/progress-claims?projectId=${pid}` : '/api/engineering/progress-claims';
       const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setClaimsError(null);
       setClaims(Array.isArray(data) ? data : []);
-    } catch { setClaims([]); }
+    } catch (e) {
+      console.error('[fetchClaims]', e);
+      setClaimsError('估驗計價資料載入失敗，請重試。');
+      setClaims([]);
+    }
   }
 
   function openAdd() {
@@ -105,6 +113,7 @@ export default function ProgressClaimsTab({ projects }) {
 
   return (
     <div>
+      {claimsError && <FetchErrorBanner message={claimsError} onRetry={() => fetchClaims(filterProjectId || undefined)} className="mb-4" />}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-3">
           <select value={filterProjectId} onChange={e => setFilterProjectId(e.target.value)}

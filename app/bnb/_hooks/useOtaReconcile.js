@@ -167,10 +167,15 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       const p = new URLSearchParams();
       if (otaWarehouse) p.set('warehouse', otaWarehouse);
       const res = await fetch(`/api/bnb/ota-reconcile-log?${p}`);
-      if (res.ok) { const data = await res.json(); setReconLogs(data.rows || []); }
-    } catch (e) { console.warn('[useOtaReconcile] fetch failed:', e.message); }
-    finally { setReconLogsLoading(false); }
-  }, [otaWarehouse]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setReconLogs(data.rows || []);
+    } catch (e) {
+      console.warn('[useOtaReconcile] fetchReconLogs:', e.message);
+      showToast('比對歷史記錄載入失敗', 'error');
+      setReconLogs([]);
+    } finally { setReconLogsLoading(false); }
+  }, [otaWarehouse, showToast]);
 
   // ── 傭金：建立草稿 ────────────────────────────────────────────
   const submitCommission = useCallback(async () => {
@@ -205,10 +210,15 @@ export function useOtaReconcile({ showToast, confirm, setEditBooking, DEFAULT_WA
       if (otaWarehouse) p.set('warehouse', otaWarehouse);
       if (commSource)   p.set('source', commSource);
       const res = await fetch(`/api/bnb/ota-commission?${p}`);
-      if (res.ok) { const data = await res.json(); setCommHistRows(data.rows || []); }
-    } catch (e) { console.warn('[useOtaReconcile] fetch failed:', e.message); }
-    finally { setCommHistLoading(false); }
-  }, [otaWarehouse, commSource]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCommHistRows(data.rows || []);
+    } catch (e) {
+      console.warn('[useOtaReconcile] fetchCommHistory:', e.message);
+      showToast('傭金歷史記錄載入失敗', 'error');
+      setCommHistRows([]);
+    } finally { setCommHistLoading(false); }
+  }, [otaWarehouse, commSource, showToast]);
 
   // ── 傭金：確認送出出納 ─────────────────────────────────────────
   const confirmCommission = useCallback(async (id) => {

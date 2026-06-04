@@ -3,17 +3,11 @@ import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
+import { getActualPaid } from '@/lib/engineering/payment-utils';
 
 function formatNum(n) {
   if (n == null || n === '') return '－';
   return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function getActualPaid(po) {
-  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
-    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
-  }
-  return Number(po.amount || 0);
 }
 
 function warrantyStatus(endDate, today) {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { todayStr } from '@/lib/localDate';
+import { getActualPaid } from '@/lib/engineering/payment-utils';
 
 const SUB_TABS = [
   { key: 'contracts', label: '合約與期數' },
@@ -18,13 +19,6 @@ const SUB_TABS = [
 function formatNum(n) {
   if (n == null || n === '') return '－';
   return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function getActualPaid(po) {
-  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
-    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
-  }
-  return Number(po.amount || 0);
 }
 
 function StatusBadge({ status }) {

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/context/ToastContext';
 import ConfirmModal, { useConfirmDialog } from '@/components/ConfirmModal';
 import { todayStr } from '@/lib/localDate';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 
 export default function IncomeTab({ projects, progressClaims = [], outputInvoices = [], onDashStatsChanged }) {
   const [incomes, setIncomes] = useState([]);
@@ -14,6 +15,7 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
   const [editingIncome, setEditingIncome] = useState(null);
   const [incomeEditSaving, setIncomeEditSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const [incomesError, setIncomesError] = useState(null);
 
   const { showToast } = useToast();
   const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
@@ -28,9 +30,15 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
       const pid = projectId !== undefined ? projectId : incomeFilterProjectId;
       const url = pid ? `/api/engineering/income?projectId=${pid}` : '/api/engineering/income';
       const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setIncomesError(null);
       setIncomes(Array.isArray(data) ? data : []);
-    } catch { setIncomes([]); }
+    } catch (e) {
+      console.error('[fetchIncomes]', e);
+      setIncomesError('收款資料載入失敗，請重試。');
+      setIncomes([]);
+    }
   }
 
   async function fetchAccounts() {
@@ -125,6 +133,7 @@ export default function IncomeTab({ projects, progressClaims = [], outputInvoice
 
   return (
     <div>
+      {incomesError && <FetchErrorBanner message={incomesError} onRetry={() => fetchIncomes()} className="mb-4" />}
       <div className="flex gap-3 mb-5 items-end">
         <div>
           <label htmlFor="inc-f-1" className="block text-xs text-gray-500 mb-1">篩選工程案</label>

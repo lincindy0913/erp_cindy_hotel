@@ -5,17 +5,11 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirmDialog, default as ConfirmModal } from '@/components/ConfirmModal';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import AttachmentSection from '@/components/AttachmentSection';
+import { getActualPaid } from '@/lib/engineering/payment-utils';
 
 function formatNum(n) {
   if (n == null || n === '') return '－';
   return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function getActualPaid(po) {
-  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
-    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
-  }
-  return Number(po.amount || 0);
 }
 
 export default function ContractsTab({

@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo, Fragment, Suspense } from 'react';
+import { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import NotificationBanner from '@/components/NotificationBanner';
-import AttachmentSection from '@/components/AttachmentSection';
 import EngineeringHeaderInsights from '@/components/engineering/EngineeringHeaderInsights';
 import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -23,18 +22,10 @@ import ProjectMgmtTab from '@/components/engineering/ProjectMgmtTab';
 import PaymentsTab from '@/components/engineering/PaymentsTab';
 import ProgressClaimsTab from '@/components/engineering/ProgressClaimsTab';
 import BudgetReportTab from '@/components/engineering/BudgetReportTab';
-
-function makeCompanyInvPeriods() {
-  const today = new Date();
-  const minRoc = (today.getFullYear() - 1911) - 2;
-  const maxRoc = (today.getFullYear() - 1911) + 1;
-  const result = [];
-  for (let y = minRoc; y <= maxRoc; y++) {
-    result.push(`${y}.1-2`, `${y}.3-4`, `${y}.5-6`, `${y}.7-8`, `${y}.9-10`, `${y}.11-12`);
-  }
-  return result;
-}
-const COMPANY_INV_PERIODS = makeCompanyInvPeriods();
+import PaymentOrderModal from '@/components/engineering/PaymentOrderModal';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
+import { useEngineeringData } from '@/app/engineering/_hooks/useEngineeringData';
+import { getActualPaid } from '@/lib/engineering/payment-utils';
 
 const TABS = [
   { key: 'projects', label: '工程案' },
@@ -50,26 +41,13 @@ const TABS = [
   { key: 'budgetReport', label: '預算報表' },
 ];
 
-const INPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
-const INPUT_INVOICE_STATUSES = ['已取得', '已對帳', '已入帳'];
-const OUTPUT_INVOICE_TYPES = ['電子發票', '紙本發票', '三聯式統一發票', '二聯式統一發票'];
-const OUTPUT_INVOICE_STATUSES = ['已開立', '已作廢'];
+const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
 
 const VALID_TAB_KEYS = new Set(TABS.map((t) => t.key));
-
-const PROJECT_STATUS = ['進行中', '已結案', '暫停'];
 
 function formatNum(n) {
   if (n == null || n === '') return '－';
   return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-// 取得付款單實際已付金額：已執行的用 executions.actualAmount 合計，否則用 po.amount
-function getActualPaid(po) {
-  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
-    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
-  }
-  return Number(po.amount || 0);
 }
 
 function EngineeringPageInner() {
@@ -77,31 +55,46 @@ function EngineeringPageInner() {
   const router = useRouter();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(() => (VALID_TAB_KEYS.has(tabParam) ? tabParam : 'projects'));
-  const [projects, setProjects] = useState([]);
-  const [contracts, setContracts] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showTermModal, setShowTermModal] = useState(false);
-  const [editingProject, setEditingProject] = useState(null);
-  const [editingTerm, setEditingTerm] = useState(null);
-
-  const [projectForm, setProjectForm] = useState({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '', warrantyStartDate: '', warrantyEndDate: '', warrantyMonths: '', warrantyNote: '' });
-  const [warrantyRecords, setWarrantyRecords] = useState([]);
-  const [termForm, setTermForm] = useState({ termName: '', amount: '', dueDate: '', status: 'pending', paidAt: '', paymentOrderId: '', note: '' });
-
-  const [unassignedInvCount, setUnassignedInvCount] = useState(0);
-
   const [filterProjectId, setFilterProjectId] = useState('');
-  const [warehouseDepartments, setWarehouseDepartments] = useState({ list: [], byName: {} });
-  const [paymentOrders, setPaymentOrders] = useState([]);
-  const [progressClaims, setProgressClaims] = useState([]);
-  const [outputInvoicesList, setOutputInvoicesList] = useState([]);
-  /** 儀表板用：全工程案收款累計（不受收款 tab 篩選影響） */
-  const [dashStats, setDashStats] = useState({ totalIncome: 0, totalInputInvoices: 0, totalOutputInvoices: 0, byProject: {} });
 
-  // 搜尋篩選
+  // ── data via hook ────────────────────────────────────────────────────────
+  const {
+    projects, contracts, suppliers, loading,
+    projectsError, contractsError, paymentOrdersError, authError,
+    warehouseDepartments, paymentOrders, progressClaims,
+    outputInvoicesList, dashStats, dashStatsError, warrantyRecords, accounts,
+    paymentMethodOptions, unassignedInvCount, setUnassignedInvCount,
+    fetchProjects, fetchContracts, fetchPaymentOrders,
+    refreshDashStats, fetchWarrantyRecords,
+  } = useEngineeringData({ activeTab, filterProjectId });
+
+  // ── project modal ────────────────────────────────────────────────────────
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectForm, setProjectForm] = useState({
+    code: '', name: '', clientName: '', clientContractAmount: '',
+    startDate: '', endDate: '', budget: '', status: '進行中',
+    warehouseId: '', departmentId: '', location: '', buildingNo: '',
+    permitNo: '', note: '', warrantyStartDate: '', warrantyEndDate: '',
+    warrantyMonths: '', warrantyNote: '',
+  });
+
+  // ── term modal ───────────────────────────────────────────────────────────
+  const [showTermModal, setShowTermModal] = useState(false);
+  const [editingTerm, setEditingTerm] = useState(null);
+  const [termSaving, setTermSaving] = useState(false);
+  const [termForm, setTermForm] = useState({
+    termName: '', amount: '', dueDate: '', status: 'pending',
+    paidAt: '', paymentOrderId: '', note: '',
+  });
+
+  // ── payment modal control ────────────────────────────────────────────────
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [editingPaymentOrder, setEditingPaymentOrder] = useState(null);
+  const [initialPaymentForm, setInitialPaymentForm] = useState({});
+
+  // ── search filters ───────────────────────────────────────────────────────
   const [searchDateFrom, setSearchDateFrom] = useState('');
   const [searchDateTo, setSearchDateTo] = useState('');
   const [searchSupplierId, setSearchSupplierId] = useState('');
@@ -109,10 +102,20 @@ function EngineeringPageInner() {
 
   const { sortKey: engProjKey, sortDir: engProjDir, toggleSort: engProjToggle } = useColumnSort('code', 'asc');
 
-  // 搜尋篩選後的工程案
+  const { data: session } = useSession();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
+  const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
+
+  // ── tab URL sync ─────────────────────────────────────────────────────────
+  function switchEngineeringTab(key) {
+    setActiveTab(key);
+    router.push(`/engineering?tab=${encodeURIComponent(key)}`, { scroll: false });
+  }
+
+  // ── derived data ─────────────────────────────────────────────────────────
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
-      // 日期區間：工程案的起迄日與搜尋區間有交集
       if (searchDateFrom) {
         const pEnd = p.endDate || '9999-12-31';
         if (pEnd < searchDateFrom) return false;
@@ -121,12 +124,10 @@ function EngineeringPageInner() {
         const pStart = p.startDate || '0000-01-01';
         if (pStart > searchDateTo) return false;
       }
-      // 館別
       if (searchWarehouse) {
         const whName = p.warehouseRef?.name || p.warehouse || '';
         if (whName !== searchWarehouse) return false;
       }
-      // 廠商：檢查該工程案是否有合約與此廠商相關
       if (searchSupplierId) {
         const hasSupplier = contracts.some(c => c.projectId === p.id && String(c.supplierId) === searchSupplierId);
         if (!hasSupplier) return false;
@@ -136,40 +137,38 @@ function EngineeringPageInner() {
   }, [projects, contracts, searchDateFrom, searchDateTo, searchWarehouse, searchSupplierId]);
 
   const sortedProjects = useMemo(
-    () =>
-      sortRows(filteredProjects, engProjKey, engProjDir, {
-        code: (p) => p.code || '',
-        name: (p) => p.name || '',
-        clientName: (p) => p.clientName || '',
-        whDept: (p) => `${p.warehouseRef?.name || p.warehouse || ''} ${p.departmentRef?.name || ''}`,
-        location: (p) => [p.location, p.buildingNo, p.permitNo].filter(Boolean).join(' '),
-        startDate: (p) => p.startDate || '',
-        endDate: (p) => p.endDate || '',
-        budget: (p) => Number(p.budget || 0),
-        status: (p) => p.status || '',
-      }),
+    () => sortRows(filteredProjects, engProjKey, engProjDir, {
+      code: (p) => p.code || '',
+      name: (p) => p.name || '',
+      clientName: (p) => p.clientName || '',
+      whDept: (p) => `${p.warehouseRef?.name || p.warehouse || ''} ${p.departmentRef?.name || ''}`,
+      location: (p) => [p.location, p.buildingNo, p.permitNo].filter(Boolean).join(' '),
+      startDate: (p) => p.startDate || '',
+      endDate: (p) => p.endDate || '',
+      budget: (p) => Number(p.budget || 0),
+      status: (p) => p.status || '',
+    }),
     [filteredProjects, engProjKey, engProjDir]
   );
-
 
   const dashboardStats = useMemo(() => {
     const activeProjects = projects.filter((p) => p.status === '進行中').length;
     const sumBudget = projects.reduce((s, p) => s + Number(p.budget || 0), 0);
     const sumClient = projects.reduce((s, p) => s + Number(p.clientContractAmount || 0), 0);
-    // 只計主合約層，避免分包/工班重複加總
-    const sumVendorContracts = contracts.filter(c => (c.contractType || '主合約') === '主合約').reduce((s, c) => s + Number(c.totalAmount || 0), 0);
+    const sumVendorContracts = contracts
+      .filter(c => (c.contractType || '主合約') === '主合約')
+      .reduce((s, c) => s + Number(c.totalAmount || 0), 0);
     let paidExecuted = 0;
     for (const o of paymentOrders) {
       if (o.status === '已執行') paidExecuted += getActualPaid(o);
     }
-    const sumIncome         = dashStats.totalIncome;
-    const sumInputInvoices  = dashStats.totalInputInvoices;
-    const sumOutputInvoices = dashStats.totalOutputInvoices;
+    const sumIncome         = dashStatsError ? null : dashStats.totalIncome;
+    const sumInputInvoices  = dashStatsError ? null : dashStats.totalInputInvoices;
+    const sumOutputInvoices = dashStatsError ? null : dashStats.totalOutputInvoices;
     const today = todayStr();
     const weekLater = new Date();
     weekLater.setDate(weekLater.getDate() + 7);
     const weekEnd = localDateStr(weekLater);
-    // O(N) 預先建 Map，避免巢狀 O(N×M×K) filter
     const poByTermId = new Map();
     for (const po of paymentOrders) {
       if (po.status !== '已執行') continue;
@@ -195,163 +194,22 @@ function EngineeringPageInner() {
       }
     }
     return {
-      activeProjects,
-      sumBudget,
-      sumClient,
-      sumVendorContracts,
-      paidExecuted,
-      sumIncome,
-      sumInputInvoices,
-      sumOutputInvoices,
-      totalMaterialCost: dashStats.totalMaterialCost || 0,
-      overdueTerms,
-      dueThisWeek,
-      projectCount: projects.length,
+      activeProjects, sumBudget, sumClient, sumVendorContracts, paidExecuted,
+      sumIncome, sumInputInvoices, sumOutputInvoices,
+      totalMaterialCost: dashStatsError ? null : (dashStats.totalMaterialCost || 0),
+      overdueTerms, dueThisWeek, projectCount: projects.length,
     };
-  }, [projects, contracts, paymentOrders, dashStats]);
+  }, [projects, contracts, paymentOrders, dashStats, dashStatsError]);
 
-  const [termSaving, setTermSaving] = useState(false);
-  const [paymentSaving, setPaymentSaving] = useState(false);
-  const [projectSaving, setProjectSaving] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [editingPaymentOrder, setEditingPaymentOrder] = useState(null);
-  const [paymentForm, setPaymentForm] = useState({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: todayStr(), summary: '', note: '', materials: [] });
-  const [paymentMethodOptions, setPaymentMethodOptions] = useState(['轉帳', '票據', '現金']);
-  const [accounts, setAccounts] = useState([]);
-
-
-  const { data: session } = useSession();
-  const { showToast } = useToast();
-  const confirm = useConfirm();
-  const { dialog: confirmDlg, confirm: askConfirm, close: closeConfirm } = useConfirmDialog();
-
-  function switchEngineeringTab(key) {
-    setActiveTab(key);
-    router.push(`/engineering?tab=${encodeURIComponent(key)}`, { scroll: false });
-  }
-
-  useEffect(() => {
-    const t = searchParams.get('tab');
-    if (t && VALID_TAB_KEYS.has(t)) setActiveTab(t);
-  }, [searchParams]);
-
-  useEffect(() => {
-    fetchProjects();
-    fetchSuppliers();
-    refreshDashStats();
-    fetch('/api/company-expenses?type=invoice&projectId=null')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => setUnassignedInvCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    const { signal } = ctrl;
-    if (activeTab === 'projects') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); refreshDashStats(signal); fetchWarehouseDepartments(signal); }
-    if (activeTab === 'contracts') fetchContracts(filterProjectId || undefined, signal);
-    if (activeTab === 'materials') fetchContracts(undefined, signal);
-    if (activeTab === 'projectMgmt') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchWarehouseDepartments(signal); fetchWarrantyRecords(signal); }
-    if (activeTab === 'payments') {
-      fetchPaymentOrders(signal);
-      fetchAccounts(signal);
-      fetchContracts(undefined, signal);
-      fetch('/api/settings/payment-methods', { signal }).then(res => res.ok ? res.json() : Promise.reject()).then(d => Array.isArray(d) && d.length > 0 ? setPaymentMethodOptions(d.map(x => x.name || x)) : null).catch(e => { if (e?.name !== 'AbortError') console.error(e); });
-    }
-    if (activeTab === 'progressClaims') fetchProgressClaims(signal);
-    if (activeTab === 'income') { fetchProgressClaims(signal); fetchOutputInvoicesList(signal); }
-    if (activeTab === 'budgetReport') { fetchContracts(undefined, signal); fetchPaymentOrders(signal); fetchProgressClaims(signal); refreshDashStats(signal); }
-    if (activeTab === 'outputInvoices') fetchProgressClaims(signal);
-    return () => ctrl.abort();
-  }, [activeTab, filterProjectId]);
-
-  async function fetchProjects(signal) {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/engineering/projects', signal ? { signal } : undefined);
-      const data = await res.json();
-      setProjects(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') { console.error(e); setProjects([]); } }
-    setLoading(false);
-  }
-
-  async function fetchContracts(projectId, signal) {
-    try {
-      const url = projectId ? `/api/engineering/contracts?projectId=${projectId}` : '/api/engineering/contracts';
-      const res = await fetch(url, signal ? { signal } : undefined);
-      const data = await res.json();
-      setContracts(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') { console.error(e); setContracts([]); } }
-  }
-
-  async function fetchSuppliers() {
-    try {
-      const res = await fetch('/api/suppliers?all=true');
-      const data = await res.json();
-      setSuppliers(Array.isArray(data) ? data : []);
-    } catch { setSuppliers([]); }
-  }
-
-  async function fetchWarehouseDepartments(signal) {
-    try {
-      const res = await fetch('/api/warehouse-departments', signal ? { signal } : undefined);
-      const data = await res.json();
-      setWarehouseDepartments({ list: data.list || [], byName: data.byName || {} });
-    } catch (e) { if (e?.name !== 'AbortError') setWarehouseDepartments({ list: [], byName: {} }); }
-  }
-
-  async function fetchPaymentOrders(signal) {
-    try {
-      const res = await fetch('/api/payment-orders?sourceType=engineering', signal ? { signal } : undefined);
-      const data = await res.json();
-      setPaymentOrders(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') setPaymentOrders([]); }
-  }
-
-  async function refreshDashStats(signal) {
-    try {
-      const res = await fetch('/api/engineering/dashboard-stats', signal ? { signal } : undefined);
-      if (res.ok) setDashStats(await res.json());
-    } catch (e) { if (e?.name === 'AbortError') return; }
-  }
-
-  async function fetchAccounts(signal) {
-    try {
-      const res = await fetch('/api/cashflow/accounts', signal ? { signal } : undefined);
-      const data = await res.json();
-      setAccounts(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') setAccounts([]); }
-  }
-
-  async function fetchProgressClaims(signal) {
-    try {
-      const res = await fetch('/api/engineering/progress-claims', signal ? { signal } : undefined);
-      const data = await res.json();
-      setProgressClaims(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') setProgressClaims([]); }
-  }
-
-  async function fetchOutputInvoicesList(signal) {
-    try {
-      const res = await fetch('/api/engineering/output-invoices', signal ? { signal } : undefined);
-      const data = await res.json();
-      setOutputInvoicesList(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') setOutputInvoicesList([]); }
-  }
-
-  async function fetchWarrantyRecords(signal) {
-    try {
-      const res = await fetch('/api/engineering/warranty-records', signal ? { signal } : undefined);
-      const data = await res.json();
-      setWarrantyRecords(Array.isArray(data) ? data : []);
-    } catch (e) { if (e?.name !== 'AbortError') setWarrantyRecords([]); }
-  }
-
-
-
+  // ── project handlers ─────────────────────────────────────────────────────
   function openAddProject() {
     setEditingProject(null);
-    setProjectForm({ code: '', name: '', clientName: '', clientContractAmount: '', startDate: '', endDate: '', budget: '', status: '進行中', warehouseId: '', departmentId: '', location: '', buildingNo: '', permitNo: '', note: '' });
+    setProjectForm({
+      code: '', name: '', clientName: '', clientContractAmount: '',
+      startDate: '', endDate: '', budget: '', status: '進行中',
+      warehouseId: '', departmentId: '', location: '', buildingNo: '',
+      permitNo: '', note: '',
+    });
     setShowProjectModal(true);
   }
 
@@ -365,9 +223,11 @@ function EngineeringPageInner() {
       status: p.status || '進行中',
       warehouseId: p.warehouseId != null ? String(p.warehouseId) : '',
       departmentId: p.departmentId != null ? String(p.departmentId) : '',
-      location: p.location || '', buildingNo: p.buildingNo || '', permitNo: p.permitNo || '', note: p.note || '',
+      location: p.location || '', buildingNo: p.buildingNo || '',
+      permitNo: p.permitNo || '', note: p.note || '',
       warrantyStartDate: p.warrantyStartDate || '', warrantyEndDate: p.warrantyEndDate || '',
-      warrantyMonths: p.warrantyMonths != null ? String(p.warrantyMonths) : '', warrantyNote: p.warrantyNote || '',
+      warrantyMonths: p.warrantyMonths != null ? String(p.warrantyMonths) : '',
+      warrantyNote: p.warrantyNote || '',
     });
     setShowProjectModal(true);
   }
@@ -400,7 +260,8 @@ function EngineeringPageInner() {
         if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || '新增失敗', 'error'); return; }
         showToast('已新增', 'success');
       }
-      setShowProjectModal(false); fetchProjects();
+      setShowProjectModal(false);
+      fetchProjects();
     } catch (e) { showToast(e.message || '儲存失敗', 'error'); }
     finally { setProjectSaving(false); }
   }
@@ -416,26 +277,37 @@ function EngineeringPageInner() {
     });
   }
 
+  // ── payment modal control ────────────────────────────────────────────────
   function openPaymentModal(formData) {
     const editingId = formData?._editingId || null;
     const { _editingId, ...cleanForm } = formData || {};
     setEditingPaymentOrder(editingId ? { id: editingId } : null);
-    setPaymentForm({ projectId: '', termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', paymentMethod: '轉帳', accountId: '', dueDate: todayStr(), summary: '', note: '', materials: [], ...cleanForm });
+    setInitialPaymentForm(cleanForm);
     setShowPaymentModal(true);
   }
 
+  function closePaymentModal() {
+    setShowPaymentModal(false);
+    setEditingPaymentOrder(null);
+  }
+
+  // ── term handlers ────────────────────────────────────────────────────────
   function openMarkTermPaid(term) {
     setEditingTerm(term);
-    setTermForm({ termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
+    setTermForm({
+      termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
       content: term.content || '', status: 'paid', paidAt: todayStr(),
-      paymentOrderId: term.paymentOrderId ? String(term.paymentOrderId) : '', note: term.note || '' });
+      paymentOrderId: term.paymentOrderId ? String(term.paymentOrderId) : '', note: term.note || '',
+    });
     setShowTermModal(true);
   }
 
   function openUnmarkTermPaid(term) {
     setEditingTerm(term);
-    setTermForm({ termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
-      content: term.content || '', status: 'pending', paidAt: '', paymentOrderId: '', note: term.note || '' });
+    setTermForm({
+      termName: term.termName || '', amount: String(term.amount), dueDate: term.dueDate || '',
+      content: term.content || '', status: 'pending', paidAt: '', paymentOrderId: '', note: term.note || '',
+    });
     setShowTermModal(true);
   }
 
@@ -455,24 +327,20 @@ function EngineeringPageInner() {
       if (!res.ok) { const d = await res.json(); showToast(d.error?.message || '更新失敗', 'error'); setTermSaving(false); return; }
       setShowTermModal(false);
       fetchContracts(filterProjectId || undefined);
-      fetchPaymentOrders(); // FE1: 期數更新可能影響付款單狀態
+      fetchPaymentOrders();
     } catch (e) { showToast('更新失敗', 'error'); }
     finally { setTermSaving(false); }
   }
 
-  // 列印篩選後的工程案
+  // ── print / export ───────────────────────────────────────────────────────
   function handlePrintProjects() {
-    if (sortedProjects.length === 0) {
-      showToast('沒有可列印的資料', 'info');
-      return;
-    }
+    if (sortedProjects.length === 0) { showToast('沒有可列印的資料', 'info'); return; }
     const filterDesc = [
       searchDateFrom || searchDateTo ? `日期：${searchDateFrom || '?'} ~ ${searchDateTo || '?'}` : '',
       searchSupplierId ? `廠商：${suppliers.find(s => String(s.id) === searchSupplierId)?.name || ''}` : '',
       searchWarehouse ? `館別：${searchWarehouse}` : '',
     ].filter(Boolean).join('　');
 
-    // 取得每個工程案的相關合約資訊
     const projectRows = sortedProjects.map(p => {
       const projContracts = contracts.filter(c => c.projectId === p.id && (!searchSupplierId || String(c.supplierId) === searchSupplierId));
       const totalContractAmt = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
@@ -540,31 +408,22 @@ ${projectRows.map(p => `<tr>
       const totalContractAmt = projContracts.reduce((s, c) => s + Number(c.totalAmount || 0), 0);
       const supplierNames = [...new Set(projContracts.map((c) => c.supplier?.name).filter(Boolean))].join('、');
       return [
-        p.code || '',
-        p.name || '',
-        p.clientName || '',
+        p.code || '', p.name || '', p.clientName || '',
         p.warehouseRef?.name || p.warehouse || '',
-        supplierNames,
-        p.startDate || '',
-        p.endDate || '',
-        Number(p.budget || 0),
-        totalContractAmt,
-        p.status || '',
+        supplierNames, p.startDate || '', p.endDate || '',
+        Number(p.budget || 0), totalContractAmt, p.status || '',
       ];
     });
     const csvRows = [header.join(',')];
-    rows.forEach((r) => {
-      csvRows.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
-    });
-    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    rows.forEach((r) => { csvRows.push(r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')); });
+    const blob = new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `工程案列表_${todayStr()}.csv`;
-    a.click();
+    a.href = url; a.download = `工程案列表_${todayStr()}.csv`; a.click();
     URL.revokeObjectURL(url);
   }
 
+  // ── render ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation borderColor="border-amber-600" />
@@ -591,14 +450,26 @@ ${projectRows.map(p => `<tr>
           ))}
         </div>
 
+        {authError && (
+          <FetchErrorBanner message="登入已逾期，請重新整理頁面或重新登入。" />
+        )}
+
         {loading && activeTab === 'projects' && (
           <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-amber-200 border-t-amber-600 rounded-full animate-spin" /></div>
         )}
 
         {/* ===== 工程案 TAB ===== */}
+        {activeTab === 'projects' && !loading && projectsError && (
+          <FetchErrorBanner message={projectsError} onRetry={fetchProjects} />
+        )}
+        {activeTab === 'contracts' && contractsError && (
+          <FetchErrorBanner message={contractsError} onRetry={() => fetchContracts(filterProjectId || undefined)} />
+        )}
+        {activeTab === 'payments' && paymentOrdersError && (
+          <FetchErrorBanner message={paymentOrdersError} onRetry={fetchPaymentOrders} />
+        )}
         {activeTab === 'projects' && !loading && (
           <>
-          {/* 搜尋列 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
             <div className="flex flex-wrap gap-3 items-end">
               <div>
@@ -687,46 +558,33 @@ ${projectRows.map(p => `<tr>
         {/* ===== 合約與期數 TAB ===== */}
         {activeTab === 'contracts' && (
           <ContractsTab
-            projects={projects}
-            suppliers={suppliers}
-            contracts={contracts}
-            paymentOrders={paymentOrders}
-            filterProjectId={filterProjectId}
-            onFilterChange={setFilterProjectId}
-            onMarkTermPaid={openMarkTermPaid}
+            projects={projects} suppliers={suppliers} contracts={contracts}
+            paymentOrders={paymentOrders} filterProjectId={filterProjectId}
+            onFilterChange={setFilterProjectId} onMarkTermPaid={openMarkTermPaid}
             onUnmarkTermPaid={openUnmarkTermPaid}
             onRefresh={() => fetchContracts(filterProjectId || undefined)}
             session={session}
           />
         )}
 
-        {/* ===== 專案管理 TAB (含預算追蹤) ===== */}
+        {/* ===== 專案管理 TAB ===== */}
         {activeTab === 'projectMgmt' && (
           <ProjectMgmtTab
-            projects={projects}
-            contracts={contracts}
-            paymentOrders={paymentOrders}
-            warehouseDepartments={warehouseDepartments}
-            dashStats={dashStats}
+            projects={projects} contracts={contracts} paymentOrders={paymentOrders}
+            warehouseDepartments={warehouseDepartments} dashStats={dashStats}
             warrantyRecords={warrantyRecords}
             onWarrantyRefresh={() => fetchWarrantyRecords()}
-            onMarkTermPaid={openMarkTermPaid}
-            onUnmarkTermPaid={openUnmarkTermPaid}
-            onOpenPaymentModal={openPaymentModal}
-            onSwitchTab={switchEngineeringTab}
+            onMarkTermPaid={openMarkTermPaid} onUnmarkTermPaid={openUnmarkTermPaid}
+            onOpenPaymentModal={openPaymentModal} onSwitchTab={switchEngineeringTab}
           />
         )}
 
         {/* ===== 付款單 TAB ===== */}
         {activeTab === 'payments' && (
           <PaymentsTab
-            paymentOrders={paymentOrders}
-            projects={projects}
-            suppliers={suppliers}
-            warehouseDepartments={warehouseDepartments}
-            contracts={contracts}
-            onOpenPaymentModal={openPaymentModal}
-            onRefresh={fetchPaymentOrders}
+            paymentOrders={paymentOrders} projects={projects} suppliers={suppliers}
+            warehouseDepartments={warehouseDepartments} contracts={contracts}
+            onOpenPaymentModal={openPaymentModal} onRefresh={fetchPaymentOrders}
           />
         )}
 
@@ -737,13 +595,33 @@ ${projectRows.map(p => `<tr>
         {activeTab === 'progressClaims' && <ProgressClaimsTab projects={projects} />}
 
         {/* ===== 收款管理 TAB ===== */}
-        {activeTab === 'income' && <IncomeTab projects={projects} progressClaims={progressClaims} outputInvoices={outputInvoicesList} onDashStatsChanged={refreshDashStats} />}
+        {activeTab === 'income' && (
+          <IncomeTab projects={projects} progressClaims={progressClaims}
+            outputInvoices={outputInvoicesList} onDashStatsChanged={refreshDashStats} />
+        )}
 
-      {/* ===== 廠商進項發票 Tab ===== */}
-      {activeTab === 'inputInvoices' && <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />}
+        {/* ===== 廠商進項發票 TAB ===== */}
+        {activeTab === 'inputInvoices' && (
+          <InputInvoicesTab projects={projects} contracts={contracts} onDashStatsChanged={refreshDashStats} />
+        )}
 
-      {/* ===== 業主銷項發票 Tab ===== */}
-      {activeTab === 'outputInvoices' && <OutputInvoicesTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />}
+        {/* ===== 業主銷項發票 TAB ===== */}
+        {activeTab === 'outputInvoices' && (
+          <OutputInvoicesTab projects={projects} progressClaims={progressClaims} onDashStatsChanged={refreshDashStats} />
+        )}
+
+        {/* ===== 預算報表 TAB ===== */}
+        {activeTab === 'budgetReport' && (
+          <BudgetReportTab
+            projects={projects} contracts={contracts} paymentOrders={paymentOrders}
+            progressClaims={progressClaims} dashStats={dashStats}
+          />
+        )}
+
+        {/* ===== 分業進項 TAB ===== */}
+        {activeTab === 'companyInvoices' && (
+          <CompanyInvoicesTab projects={projects} onUnassignedCountChange={setUnassignedInvCount} />
+        )}
 
       </div>
 
@@ -779,7 +657,6 @@ ${projectRows.map(p => `<tr>
                 <div><label htmlFor="f-51" className="block text-xs text-gray-500 mb-1">使造號碼</label><input id="f-51" value={projectForm.permitNo} onChange={e => setProjectForm(f => ({ ...f, permitNo: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
               </div>
               <div><label htmlFor="f-52" className="block text-xs text-gray-500 mb-1">備註</label><textarea id="f-52" value={projectForm.note} onChange={e => setProjectForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} /></div>
-              {/* 保固期 */}
               <div className="border-t pt-3">
                 <p className="text-xs font-medium text-purple-700 mb-2">保固期設定</p>
                 <div className="grid grid-cols-3 gap-3">
@@ -823,242 +700,23 @@ ${projectRows.map(p => `<tr>
         </div>
       )}
 
-      {/* ===== 建立付款單 Modal ===== */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-4" onClick={() => setShowPaymentModal(false)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editingPaymentOrder ? '編輯付款單' : '建立工程付款單'}</h3>
-            <div className="space-y-3">
-              {!editingPaymentOrder && <div>
-                <label htmlFor="f-10" className="block text-xs text-gray-500 mb-1">連結合約期數（選填）</label>
-                <select id="f-10" value={paymentForm.termId} onChange={e => {
-                  const v = e.target.value;
-                  if (!v) { setPaymentForm(f => ({ ...f, termId: '', contractId: '', supplierId: '', supplierName: '', amount: '', netAmount: '', summary: '' })); return; }
-                  const [tid, cid] = v.split('-').map(Number);
-                  const contract = contracts.find(c => c.id === cid);
-                  const term = contract?.terms?.find(t => t.id === tid);
-                  if (term && contract) {
-                    const proj = projects.find(p => p.id === contract.projectId);
-                    const whName = proj?.warehouseRef?.name || proj?.warehouse || '';
-                    const deptName = proj?.departmentRef?.name || '';
-                    const termPaidAmt = paymentOrders.filter(po => po.sourceRecordId === tid && (po.status === '已執行' || po.status === '待出納')).reduce((s, po) => s + (po.status === '已執行' ? getActualPaid(po) : Number(po.amount || 0)), 0);
-                    const payable = Number(term.amount) - Number(term.retentionAmount || 0);
-                    const remaining = Math.max(0, payable - termPaidAmt);
-                    const fillAmount = remaining > 0 ? String(remaining) : String(payable);
-                    setPaymentForm(f => ({ ...f, termId: tid, contractId: cid, supplierId: String(contract.supplierId),
-                      supplierName: contract.supplier?.name || '', amount: fillAmount, netAmount: fillAmount,
-                      warehouse: whName, department: deptName,
-                      summary: `工程 ${contract.project?.code || ''} ${contract.contractNo} ${term.termName || `第${term.termNo}期`}` }));
-                  }
-                }} className="w-full border rounded-lg px-3 py-2 text-sm">
-                  <option value="">一般工程付款（不連結期數）</option>
-                  {contracts.map(c =>
-                    (c.terms || []).filter(t => {
-                      const paid = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
-                      const payable = Number(t.amount) - Number(t.retentionAmount || 0);
-                      return paid < payable;
-                    }).map(t => {
-                      const paidAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '已執行').reduce((s, po) => s + getActualPaid(po), 0);
-                      const pendingAmt = paymentOrders.filter(po => po.sourceRecordId === t.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
-                      const payable = Number(t.amount) - Number(t.retentionAmount || 0);
-                      const remaining = payable - paidAmt;
-                      const retLabel = t.retentionAmount > 0 ? ` 實付${formatNum(payable)}` : '';
-                      return (
-                        <option key={t.id} value={`${t.id}-${c.id}`}>
-                          {c.project?.code} {c.contractNo} － {t.termName || `第${t.termNo}期`} 請款{formatNum(t.amount)}{retLabel}
-                          {paidAmt > 0 ? ` (已付${formatNum(paidAmt)}, 餘${formatNum(remaining)})` : ''}
-                          {pendingAmt > 0 ? ` [待出納${formatNum(pendingAmt)}]` : ''}
-                        </option>
-                      );
-                    })
-                  ).flat()}
-                </select>
-              </div>}
-              {/* 選擇期數後顯示付款狀態 */}
-              {!editingPaymentOrder && paymentForm.termId && (() => {
-                const selContract = contracts.find(c => c.id === Number(paymentForm.contractId));
-                const selTerm = selContract?.terms?.find(t => t.id === Number(paymentForm.termId));
-                if (!selTerm) return null;
-                const selPaidPOs = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '已執行');
-                const selPaidAmt = selPaidPOs.reduce((s, po) => s + getActualPaid(po), 0);
-                const selPendingAmt = paymentOrders.filter(po => po.sourceRecordId === selTerm.id && po.status === '待出納').reduce((s, po) => s + Number(po.amount || 0), 0);
-                const selRemaining = Number(selTerm.amount) - selPaidAmt;
-                return (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs space-y-1">
-                    <div className="flex justify-between font-medium">
-                      <span>期款金額：{formatNum(selTerm.amount)}</span>
-                      <span className={selRemaining > 0 ? 'text-amber-600' : 'text-green-600'}>剩餘應付：{formatNum(Math.max(0, selRemaining))}</span>
-                    </div>
-                    {selPaidAmt > 0 && <div className="text-green-700">已付款合計：{formatNum(selPaidAmt)}（{selPaidPOs.length} 筆）</div>}
-                    {selPendingAmt > 0 && <div className="text-orange-600">待出納合計：{formatNum(selPendingAmt)}</div>}
-                    {selPaidPOs.map((po, i) => (
-                      <div key={i} className="text-gray-500 pl-2">• {po.paymentNo} {po.dueDate || ''} {formatNum(getActualPaid(po))} {po.paymentMethod || ''}</div>
-                    ))}
-                  </div>
-                );
-              })()}
-              {(paymentForm.warehouse || paymentForm.department) && (
-                <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-600">
-                  館別：{paymentForm.warehouse || '—'} {paymentForm.department ? `／ 部門：${paymentForm.department}` : ''}
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-65" className="block text-xs text-gray-500 mb-1">廠商</label><input id="f-65" value={paymentForm.supplierName} onChange={e => setPaymentForm(f => ({ ...f, supplierName: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-                <div><label htmlFor="f-66" className="block text-xs text-gray-500 mb-1">應付金額</label><input id="f-66" type="number" value={paymentForm.netAmount} onChange={e => setPaymentForm(f => ({ ...f, netAmount: e.target.value, amount: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" step="0.01" /></div>
-              </div>
-              <div><label htmlFor="f-67" className="block text-xs text-gray-500 mb-1">摘要</label><input id="f-67" value={paymentForm.summary} onChange={e => setPaymentForm(f => ({ ...f, summary: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例：工程案 XXX 第N期款" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label htmlFor="f-68" className="block text-xs text-gray-500 mb-1">付款方式</label><select id="f-68" value={paymentForm.paymentMethod} onChange={e => setPaymentForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">{paymentMethodOptions.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-                <div><label htmlFor="f-69" className="block text-xs text-gray-500 mb-1">資金帳戶</label><select id="f-69" value={paymentForm.accountId} onChange={e => setPaymentForm(f => ({ ...f, accountId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="">請選擇</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-              </div>
-              <div><label htmlFor="f-70" className="block text-xs text-gray-500 mb-1">預計付款日</label><input id="f-70" type="date" value={paymentForm.dueDate} onChange={e => setPaymentForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label htmlFor="f-71" className="block text-xs text-gray-500 mb-1">備註</label><input id="f-71" value={paymentForm.note} onChange={e => setPaymentForm(f => ({ ...f, note: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" /></div>
-              {/* 領用材料 — 從合約材料選取 */}
-              {(() => {
-                const selContract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
-                const contractMats = selContract?.materials || [];
-                if (contractMats.length === 0 && paymentForm.materials.length === 0) return null;
-                return (
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs text-gray-500">領用材料</label>
-                  {contractMats.length > 0 && (
-                    <button type="button" onClick={() => setPaymentForm(f => ({ ...f, materials: [...f.materials, { materialId: '', quantity: '', note: '' }] }))} className="text-amber-600 text-xs hover:underline">＋ 新增領用</button>
-                  )}
-                </div>
-                {contractMats.length === 0 && <div className="text-xs text-gray-400 mb-1">此合約尚無材料可領用</div>}
-                {paymentForm.materials.length > 0 && (
-                  <div className="space-y-2">
-                    {paymentForm.materials.map((mat, mi) => {
-                      const selMat = contractMats.find(cm => cm.id === Number(mat.materialId));
-                      return (
-                      <div key={mi} className="border rounded-lg p-2 bg-gray-50">
-                        <div className="grid grid-cols-12 gap-2 mb-1">
-                          <div className="col-span-7">
-                            <select value={mat.materialId} onChange={e => { const ms = [...paymentForm.materials]; const cm = contractMats.find(c => c.id === Number(e.target.value)); ms[mi] = { ...ms[mi], materialId: e.target.value, quantity: cm ? String(cm.quantity) : '' }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs">
-                              <option value="">選擇材料</option>
-                              {contractMats.map(cm => (
-                                <option key={cm.id} value={cm.id}>{cm.description} （數量{cm.quantity}，單價{cm.unitPrice}）</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="col-span-3"><input placeholder="領用數量" type="number" value={mat.quantity} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], quantity: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs" step="any" min="0" max={selMat ? selMat.quantity : undefined} /></div>
-                          <div className="col-span-2 flex items-center justify-end">
-                            <button type="button" onClick={() => { const ms = paymentForm.materials.filter((_, i) => i !== mi); setPaymentForm(f => ({ ...f, materials: ms })); }} className="text-red-500 text-xs hover:underline">移除</button>
-                          </div>
-                        </div>
-                        {selMat && <div className="text-xs text-gray-500">單價 {selMat.unitPrice} × {mat.quantity || 0} = {((parseFloat(mat.quantity) || 0) * selMat.unitPrice).toLocaleString()}</div>}
-                        <input placeholder="備註" value={mat.note || ''} onChange={e => { const ms = [...paymentForm.materials]; ms[mi] = { ...ms[mi], note: e.target.value }; setPaymentForm(f => ({ ...f, materials: ms })); }} className="w-full border rounded px-2 py-1 text-xs mt-1" />
-                      </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-                );
-              })()}
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 border rounded-lg text-sm" disabled={paymentSaving}>取消</button>
-              <button onClick={async () => {
-                if (!paymentForm.netAmount || parseFloat(paymentForm.netAmount) <= 0) { showToast('請填寫應付金額', 'error'); return; }
-                setPaymentSaving(true);
-                try {
-                  if (editingPaymentOrder) {
-                    // Edit existing payment order
-                    const res = await fetch(`/api/payment-orders/${editingPaymentOrder.id}`, {
-                      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        paymentMethod: paymentForm.paymentMethod,
-                        netAmount: parseFloat(paymentForm.netAmount), amount: parseFloat(paymentForm.amount || paymentForm.netAmount),
-                        supplierName: paymentForm.supplierName || null,
-                        dueDate: paymentForm.dueDate || null, accountId: paymentForm.accountId || null,
-                        summary: paymentForm.summary || null, note: paymentForm.note || null,
-                        status: '待出納',
-                      }),
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error?.message || data.message || '更新失敗');
-                    setShowPaymentModal(false); setEditingPaymentOrder(null);
-                    fetchPaymentOrders();
-                    showToast('付款單已更新', 'success');
-                  } else {
-                    // Build material rows from selected contract materials
-                    const selContract = paymentForm.contractId ? contracts.find(c => c.id === Number(paymentForm.contractId)) : null;
-                    const contractMats = selContract?.materials || [];
-                    const matRows = (paymentForm.materials || []).filter(m => m.materialId && parseFloat(m.quantity) > 0);
-                    const projId = selContract?.projectId || (paymentForm.projectId ? parseInt(paymentForm.projectId) : null);
-                    const materialPayload = matRows.map(mat => {
-                      const cm = contractMats.find(c => c.id === Number(mat.materialId));
-                      if (!cm) return null;
-                      return {
-                        projectId: projId, contractId: paymentForm.contractId ? parseInt(paymentForm.contractId) : null,
-                        termId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
-                        description: cm.description, quantity: parseFloat(mat.quantity) || 0,
-                        unit: cm.unit || '式', unitPrice: cm.unitPrice, note: mat.note?.trim() || null,
-                      };
-                    }).filter(Boolean);
+      {/* ===== 付款單 Modal ===== */}
+      <PaymentOrderModal
+        isOpen={showPaymentModal}
+        editingOrder={editingPaymentOrder}
+        initialForm={initialPaymentForm}
+        contracts={contracts}
+        projects={projects}
+        accounts={accounts}
+        paymentOrders={paymentOrders}
+        paymentMethodOptions={paymentMethodOptions}
+        onClose={closePaymentModal}
+        onSaved={({ isNew }) => {
+          fetchPaymentOrders();
+          if (isNew) fetchContracts(filterProjectId || undefined);
+        }}
+      />
 
-                    // Use combined atomic endpoint when materials are present, else plain payment order
-                    const endpoint = materialPayload.length > 0
-                      ? '/api/engineering/payment-orders-with-materials'
-                      : '/api/payment-orders';
-                    const payload = materialPayload.length > 0
-                      ? {
-                          paymentMethod: paymentForm.paymentMethod,
-                          netAmount: parseFloat(paymentForm.netAmount),
-                          supplierId: paymentForm.supplierId || null, supplierName: paymentForm.supplierName || null,
-                          dueDate: paymentForm.dueDate || null, accountId: paymentForm.accountId || null,
-                          summary: paymentForm.summary || null, note: paymentForm.note || null,
-                          sourceRecordId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
-                          warehouse: paymentForm.warehouse || null,
-                          materials: materialPayload,
-                        }
-                      : {
-                          invoiceIds: [], paymentMethod: paymentForm.paymentMethod,
-                          netAmount: parseFloat(paymentForm.netAmount), amount: parseFloat(paymentForm.amount || paymentForm.netAmount),
-                          discount: 0, supplierId: paymentForm.supplierId || null, supplierName: paymentForm.supplierName || null,
-                          dueDate: paymentForm.dueDate || null, accountId: paymentForm.accountId || null,
-                          summary: paymentForm.summary || null, note: paymentForm.note || null,
-                          status: '待出納', sourceType: 'engineering',
-                          sourceRecordId: paymentForm.termId ? parseInt(paymentForm.termId) : null,
-                          warehouse: paymentForm.warehouse || null,
-                        };
-
-                    const res = await fetch(endpoint, {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload),
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error?.message || '建立失敗');
-                    setShowPaymentModal(false);
-                    fetchPaymentOrders();
-                    fetchContracts(filterProjectId || undefined); // FE1: 付款單建立後合約期數狀態可能改變
-                    showToast('付款單已建立，請至出納執行付款（出納付款後自動更新期數狀態）', 'success');
-                  }
-                } catch (e) { showToast(e.message || '儲存失敗', 'error'); }
-                finally { setPaymentSaving(false); }
-              }} disabled={paymentSaving} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm disabled:opacity-50">{paymentSaving ? '儲存中…' : (editingPaymentOrder ? '儲存' : '儲存並送交出納')}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== 預算報表 Tab ===== */}
-      {activeTab === 'budgetReport' && (
-        <BudgetReportTab
-          projects={projects}
-          contracts={contracts}
-          paymentOrders={paymentOrders}
-          progressClaims={progressClaims}
-          dashStats={dashStats}
-        />
-      )}
-
-      {/* ===== 分業進項 Tab ===== */}
-      {activeTab === 'companyInvoices' && <CompanyInvoicesTab projects={projects} onUnassignedCountChange={setUnassignedInvCount} />}
-
-      {/* ── Engineering cashier execute modal ── */}
       <ConfirmModal dialog={confirmDlg} onClose={closeConfirm} />
     </div>
   );

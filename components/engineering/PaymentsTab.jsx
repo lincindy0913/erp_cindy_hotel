@@ -5,19 +5,13 @@ import { useToast } from '@/context/ToastContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { sortRows, useColumnSort, SortableTh } from '@/components/SortableTh';
 import { todayStr } from '@/lib/localDate';
+import { getActualPaid } from '@/lib/engineering/payment-utils';
 
 const PAY_PAGE_SIZE = 40;
 
 function formatNum(n) {
   if (n == null || n === '') return '－';
   return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function getActualPaid(po) {
-  if (po.status === '已執行' && po.executions && po.executions.length > 0) {
-    return po.executions.reduce((s, e) => s + Number(e.actualAmount || 0), 0);
-  }
-  return Number(po.amount || 0);
 }
 
 export default function PaymentsTab({ paymentOrders, projects, suppliers, warehouseDepartments, onOpenPaymentModal, onRefresh }) {

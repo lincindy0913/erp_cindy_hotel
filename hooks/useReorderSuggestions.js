@@ -3,14 +3,32 @@ import { useState } from 'react';
 
 export function useReorderSuggestions({ products, onApply }) {
   const [reorderSuggestions, setReorderSuggestions] = useState([]);
+  const [reorderMeta, setReorderMeta] = useState(null);
   const [showReorderPanel, setShowReorderPanel] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
 
   async function fetchReorderSuggestions() {
     try {
       const res = await fetch('/api/purchasing/reorder-suggestions');
-      if (res.ok) setReorderSuggestions(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setReorderSuggestions(Array.isArray(data) ? data : (data.suggestions || []));
+        setReorderMeta(Array.isArray(data) ? null : (data.meta || null));
+      }
     } catch {
       // non-critical
+    }
+  }
+
+  async function recalculateLowStock() {
+    setRecalculating(true);
+    try {
+      const res = await fetch('/api/inventory/low-stock-cache', { method: 'POST' });
+      if (res.ok) await fetchReorderSuggestions();
+    } catch {
+      // non-critical
+    } finally {
+      setRecalculating(false);
     }
   }
 
@@ -32,8 +50,11 @@ export function useReorderSuggestions({ products, onApply }) {
 
   return {
     reorderSuggestions,
+    reorderMeta,
     showReorderPanel, setShowReorderPanel,
     fetchReorderSuggestions,
+    recalculateLowStock,
+    recalculating,
     handleReorderItem,
   };
 }
