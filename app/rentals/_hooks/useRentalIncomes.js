@@ -16,6 +16,7 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
 
   // ── 收租工作台 ────────────────────────────────────────────────
   const [incomes,          setIncomes]          = useState([]);
+  const [incomesError,     setIncomesError]     = useState(null);
   const [incomesHasMore,   setIncomesHasMore]   = useState(false);
   const [cashierUtilityMap,setCashierUtilityMap]= useState({});
   const { sortKey: rentIncKey, sortDir: rentIncDir, toggleSort: rentIncToggle } = useColumnSort('contractSortOrder', 'asc');
@@ -119,7 +120,9 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
         fetch(`/api/rentals/income?${params}`),
         fetch(`/api/rentals/utility-income?${uParams}`),
       ]);
+      if (!incRes.ok) throw new Error(`HTTP ${incRes.status}`);
       const incData = await incRes.json();
+      setIncomesError(null);
       setIncomes(Array.isArray(incData) ? incData : []);
       setIncomesHasMore(incRes.headers.get('X-Has-More') === 'true');
       if (utiRes.ok) {
@@ -128,7 +131,11 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
         (Array.isArray(utiData) ? utiData : []).forEach(u => { map[u.propertyId] = u; });
         setCashierUtilityMap(map);
       }
-    } catch { setIncomes([]); }
+    } catch (e) {
+      console.error('[fetchIncomes]', e);
+      setIncomesError('收租資料載入失敗，請重試。');
+      setIncomes([]);
+    }
   }
 
   async function fetchPaymentRecords(pageNum = 1) {
@@ -143,10 +150,14 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
       params.set('page',  pageNum);
       params.set('limit', '100');
       const res = await fetch(`/api/rentals/payments?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPaymentRecords(data.data || []);
       setPaymentRecordsPagination(data.pagination || { page: 1, totalCount: 0, totalPages: 1 });
-    } catch { setPaymentRecords([]); }
+    } catch (e) {
+      console.error('[fetchPaymentRecords]', e);
+      setPaymentRecords([]);
+    }
     finally { setPaymentLoading(false); }
   }
 
@@ -434,7 +445,7 @@ export function useRentalIncomes({ initialIncomeFilter, accounts = [], propertie
 
   return {
     // incomes
-    incomes, setIncomes,
+    incomes, setIncomes, incomesError,
     incomesHasMore,
     cashierUtilityMap, setCashierUtilityMap,
     rentIncKey, rentIncDir, rentIncToggle,

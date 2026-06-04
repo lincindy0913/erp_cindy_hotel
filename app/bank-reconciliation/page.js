@@ -54,13 +54,16 @@ export default function BankReconciliationPage() {
 
   useEffect(() => {
     fetch('/api/cashflow/accounts')
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(d => {
         const bankAccts = Array.isArray(d) ? d.filter(a => a.type === '銀行存款' && a.isActive) : [];
         setAccounts(bankAccts);
         if (bankAccts.length) setAccountId(String(bankAccts[0].id));
       })
-      .catch(() => {});
+      .catch(e => {
+        console.error('[bank-reconciliation] failed to load accounts', e);
+        setError('銀行帳戶列表載入失敗，請重新整理頁面。');
+      });
   }, []);
 
   const loadList = useCallback(async () => {

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import FetchErrorBanner from '@/components/FetchErrorBanner';
 import { useToast } from '@/context/ToastContext';
 import { todayStr } from '@/lib/localDate';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -100,7 +101,7 @@ function RentalsPage() {
   } = useRentalSummary();
 
   const {
-    properties, setProperties,
+    properties, setProperties, propertiesError,
     propInlineEdit, setPropInlineEdit, propInlineSaving,
     CONTRACT_INCOME_CATEGORIES, reportCategoryOptions,
     showPropertyModal, setShowPropertyModal,
@@ -132,7 +133,7 @@ function RentalsPage() {
   });
 
   const {
-    contracts, setContracts,
+    contracts, setContracts, contractsError,
     contractFilter, setContractFilter,
     contractSortKey, contractSortDir, contractToggleSort,
     showContractModal, setShowContractModal,
@@ -155,7 +156,7 @@ function RentalsPage() {
   });
 
   const {
-    incomes, setIncomes,
+    incomes, setIncomes, incomesError,
     incomesHasMore, cashierUtilityMap, setCashierUtilityMap,
     rentIncKey, rentIncDir, rentIncToggle,
     incomeFilter, setIncomeFilter, sortedIncomes,
@@ -473,6 +474,9 @@ function RentalsPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 no-print">租屋管理</h2>
+        {propertiesError && <div className="mb-4 no-print"><FetchErrorBanner message={propertiesError} onRetry={fetchProperties} /></div>}
+        {contractsError  && <div className="mb-4 no-print"><FetchErrorBanner message={contractsError}  onRetry={fetchContracts} /></div>}
+        {incomesError    && <div className="mb-4 no-print"><FetchErrorBanner message={incomesError}    onRetry={fetchIncomes} /></div>}
 
         {/* Tab Navigation */}
         <div className="no-print flex gap-1 mb-6 border-b overflow-x-auto">

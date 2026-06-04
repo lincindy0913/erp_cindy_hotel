@@ -9,6 +9,7 @@ export function useRentalProperties({ onInlineEditSaved } = {}) {
   const { showToast } = useToast();
 
   const [properties,        setProperties]        = useState([]);
+  const [propertiesError,   setPropertiesError]   = useState(null);
   const [propInlineEdit,    setPropInlineEdit]    = useState(null); // { propertyId, field, value }
   const [propInlineSaving,  setPropInlineSaving]  = useState(false);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
@@ -40,9 +41,15 @@ export function useRentalProperties({ onInlineEditSaved } = {}) {
   async function fetchProperties() {
     try {
       const res = await fetch('/api/rentals/properties');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setPropertiesError(null);
       setProperties(Array.isArray(data) ? data : []);
-    } catch { setProperties([]); }
+    } catch (e) {
+      console.error('[fetchProperties]', e);
+      setPropertiesError('物件資料載入失敗，請重試。');
+      setProperties([]);
+    }
   }
 
   async function savePropField(propertyId, field, value) {
@@ -108,7 +115,7 @@ export function useRentalProperties({ onInlineEditSaved } = {}) {
   }
 
   return {
-    properties, setProperties,
+    properties, setProperties, propertiesError,
     propInlineEdit, setPropInlineEdit,
     propInlineSaving,
     CONTRACT_INCOME_CATEGORIES,

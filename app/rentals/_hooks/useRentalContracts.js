@@ -12,6 +12,7 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
   const confirm = useConfirm();
 
   const [contracts,            setContracts]            = useState([]);
+  const [contractsError,       setContractsError]       = useState(null);
   const [contractFilter,       setContractFilter]       = useState(initialFilter || { status: '', propertyId: '' });
   const { sortKey: contractSortKey, sortDir: contractSortDir, toggleSort: contractToggleSort } = useColumnSort('sortOrder', 'asc');
   const [showContractModal,    setShowContractModal]    = useState(false);
@@ -58,9 +59,15 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
       if (contractFilter.status) params.set('status', contractFilter.status);
       if (contractFilter.propertyId) params.set('propertyId', contractFilter.propertyId);
       const res = await fetch(`/api/rentals/contracts?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      setContractsError(null);
       setContracts(Array.isArray(data) ? data : []);
-    } catch { setContracts([]); }
+    } catch (e) {
+      console.error('[fetchContracts]', e);
+      setContractsError('合約資料載入失敗，請重試。');
+      setContracts([]);
+    }
   }
 
   function openContractModal(contract = null) {
@@ -238,7 +245,7 @@ export function useRentalContracts({ initialFilter, onAfterSave } = {}) {
   }
 
   return {
-    contracts, setContracts,
+    contracts, setContracts, contractsError,
     contractFilter, setContractFilter,
     contractSortKey, contractSortDir, contractToggleSort,
     showContractModal, setShowContractModal,
