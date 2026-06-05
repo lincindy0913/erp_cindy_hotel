@@ -6,6 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { assertEngineeringProjectOpen } from '@/lib/engineering-lock';
 import { serializeTerm } from '@/lib/engineering-serializers';
 import { snapshotContract } from '@/lib/contract-snapshot';
+import { auditFromSession, AUDIT_ACTIONS } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,21 +52,35 @@ export async function PUT(request, { params }) {
       return createErrorResponse('VALIDATION_FAILED', '已付款的期數不可修改，如需修改請先取消付款狀態', 400);
     }
 
-    // 手動標記 paid 必須有出納執行記錄，或填寫帳外付款說明
+    // 手動標記 paid 必須有出納執行記錄，或由管理員填寫帳外付款說明
+    let isManualOverride = false;
     if (data.status === 'paid' && existing.status !== 'paid') {
       const execCount = await prisma.cashierExecution.count({
         where: { paymentOrder: { sourceType: 'engineering', sourceRecordId: id } },
       });
       if (execCount === 0) {
+        // Step 2: 帳外付款僅限管理員
+        const isAdminOrManager =
+          auth.session?.user?.role === 'admin' ||
+          (auth.session?.user?.permissions || []).includes('*') ||
+          (auth.session?.user?.roles || []).some(r => ['admin', 'manager'].includes(r));
+        if (!isAdminOrManager) {
+          return createErrorResponse(
+            'INSUFFICIENT_PERMISSION',
+            '帳外付款標記需要管理員權限。一般工程帳用戶請透過「付款單→出納執行」流程完成付款，如需緊急帳外標記請聯絡管理員。',
+            403
+          );
+        }
         if (!data.manualNote?.trim()) {
           return createErrorResponse(
             'MANUAL_PAYMENT_BLOCKED',
-            '此期數尚無出納執行記錄。應透過「付款單→出納執行」流程完成付款，系統將自動核銷期數。如確為帳外付款，請填寫帳外付款說明。',
+            '此期數尚無出納執行記錄。確為帳外付款時，管理員請填寫帳外付款說明（此說明將寫入稽核日誌）。',
             400
           );
         }
-        // 帳外付款：將說明寫入 note 供稽核
+        // 帳外付款：note 欄位標記 + 稽核 flag
         data.note = `[帳外付款] ${data.manualNote.trim()}${data.note ? ` | ${data.note}` : ''}`;
+        isManualOverride = true;
       }
     }
 
@@ -107,6 +122,20 @@ export async function PUT(request, { params }) {
       }
       return updated;
     });
+
+    // Step 1: 帳外付款寫入獨立稽核日誌（可查詢，不只埋在 note 欄位）
+    if (isManualOverride) {
+      auditFromSession(prisma, auth.session, {
+        action: AUDIT_ACTIONS.ENGINEERING_TERM_MANUAL_PAID,
+        level: 'finance',
+        targetModule: 'engineering',
+        targetRecordId: id,
+        targetRecordNo: existing.termName || `期數 #${id}`,
+        beforeState: { status: existing.status, amount: Number(existing.amount) },
+        afterState: { status: 'paid', paidAt: data.paidAt || null },
+        note: `帳外付款說明：${data.manualNote?.trim()}`,
+      }).catch(e => console.error('[AUDIT_FAIL] engineering term manual paid:', e.message));
+    }
 
     return NextResponse.json(serializeTerm(term));
   } catch (e) {

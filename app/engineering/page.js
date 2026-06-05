@@ -445,7 +445,7 @@ function EngineeringPageInner() {
                 <p className="text-xs font-semibold text-amber-800 mb-1">⚠ 注意：建議使用出納流程</p>
                 <p className="text-xs text-amber-700">
                   正常流程：建立付款單 → 出納執行 → 期數自動核銷（可建立現金流紀錄）。
-                  手動標記不會建立現金流，帳務可能與實際不符，稽核時需填寫帳外付款說明。
+                  帳外標記需管理員權限，且帳外付款說明將寫入稽核日誌，不可逆、可查詢。
                 </p>
               </div>
             )}
