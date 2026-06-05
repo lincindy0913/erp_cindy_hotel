@@ -3,6 +3,7 @@
 import FetchErrorBanner from '@/components/FetchErrorBanner';
 import ExportButtons from '@/components/ExportButtons';
 import WhQuickBtns from '../_components/WhQuickBtns';
+import { OTA_SOURCES } from '../_constants';
 
 export default function OtaCommissionTab({
   otaWarehouse, setOtaWarehouse,
@@ -74,9 +75,11 @@ export default function OtaCommissionTab({
           <select id="cs" className="border rounded-lg px-3 py-1.5 text-sm"
             value={commSource} onChange={e => setCommSource(e.target.value)}>
             <option value="">全部</option>
-            <option value="Booking">Booking.com</option>
-            <option value="Agoda">Agoda</option>
-            <option value="Expedia">Expedia</option>
+            {OTA_SOURCES.map(s => (
+              <option key={s.value} value={s.value}>
+                {s.label}{!s.supported ? '（尚未支援）' : ''}
+              </option>
+            ))}
           </select>
         </div>
         <div>

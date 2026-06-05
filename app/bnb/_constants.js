@@ -3,6 +3,16 @@ export const btnCls   = 'px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50 
 
 export const BNB_SOURCES = ['電話', 'Booking', 'Agoda', 'Expedia', 'Airbnb', '雲掌櫃', '其他'];
 
+/** 目前支援上傳對帳單做比對的 OTA 來源 */
+export const OTA_RECONCILABLE_SOURCES = ['Booking'];
+
+/** 所有 OTA 來源（含尚未支援比對者） */
+export const OTA_SOURCES = [
+  { value: 'Booking',  label: 'Booking.com',        supported: true },
+  { value: 'Agoda',    label: 'Agoda',               supported: false },
+  { value: 'Expedia',  label: 'Expedia',             supported: false },
+];
+
 export const BNB_SOURCE_COLORS = {
   'Booking':  'bg-indigo-100 text-indigo-700',
   'Agoda':    'bg-red-100 text-red-700',

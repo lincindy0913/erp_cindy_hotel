@@ -3,6 +3,7 @@
 import ExportButtons from '@/components/ExportButtons';
 import WhQuickBtns from '../_components/WhQuickBtns';
 import FetchErrorBanner from '@/components/FetchErrorBanner';
+import { OTA_SOURCES } from '../_constants';
 
 export default function OtaReconTab({
   onGoToCommission,
@@ -53,9 +54,11 @@ export default function OtaReconTab({
           <label htmlFor="ota" className="block text-xs text-gray-500 mb-1">OTA 來源</label>
           <select id="ota" className="border rounded-lg px-3 py-1.5 text-sm"
             value={otaSource} onChange={e => setOtaSource(e.target.value)}>
-            <option value="Booking">Booking.com</option>
-            <option value="Agoda" disabled>Agoda（尚未支援）</option>
-            <option value="Expedia" disabled>Expedia（尚未支援）</option>
+            {OTA_SOURCES.map(s => (
+              <option key={s.value} value={s.value} disabled={!s.supported}>
+                {s.label}{!s.supported ? '（尚未支援）' : ''}
+              </option>
+            ))}
           </select>
         </div>
         <div>
