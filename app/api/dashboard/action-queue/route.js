@@ -58,6 +58,54 @@ export async function GET(request) {
           if (low > 0) items.push({ key: 'low_inventory', category: '採購', label: '庫存偏低品項', count: low, href: '/inventory?lowstock=1', urgency: 'normal' });
         } catch (e) { console.error('[action-queue] 採購:', e.message); }
       })());
+
+      // 已入庫待辦：未建付款單 + 未核銷發票
+      tasks.push((async () => {
+        try {
+          const delivered = await prisma.purchaseMaster.findMany({
+            where: { status: '已入庫' },
+            select: { id: true, details: { select: { id: true } } },
+          });
+          if (delivered.length === 0) return;
+
+          const deliveredIds = delivered.map(p => p.id);
+
+          // 未建付款單：已入庫且沒有任何有效付款單
+          const [withPO, invoicedItems] = await Promise.all([
+            prisma.paymentOrder.findMany({
+              where: { sourceType: 'purchasing', sourceRecordId: { in: deliveredIds }, status: { not: '已作廢' } },
+              select: { sourceRecordId: true },
+              distinct: ['sourceRecordId'],
+            }),
+            prisma.salesDetail.findMany({
+              where: { purchaseId: { in: deliveredIds } },
+              select: { purchaseId: true, purchaseItemId: true },
+            }),
+          ]);
+
+          const withPOSet = new Set(withPO.map(p => p.sourceRecordId));
+          const unpaidCount = deliveredIds.filter(id => !withPOSet.has(id)).length;
+
+          // 未核銷發票：已入庫且至少有一個品項未核銷
+          const invoicedByPurchase = new Map();
+          for (const item of invoicedItems) {
+            if (!invoicedByPurchase.has(item.purchaseId)) invoicedByPurchase.set(item.purchaseId, new Set());
+            invoicedByPurchase.get(item.purchaseId).add(item.purchaseItemId);
+          }
+          const uninvoicedCount = delivered.filter(p => {
+            const inv = invoicedByPurchase.get(p.id) || new Set();
+            if (p.details.length === 0) return !inv.has(`${p.id}-0`);
+            return p.details.some(d => !inv.has(`${p.id}-${d.id}`));
+          }).length;
+
+          if (unpaidCount > 0) {
+            items.push({ key: 'received_no_payment', category: '採購', label: '已入庫待建付款單', count: unpaidCount, href: '/finance', urgency: 'high' });
+          }
+          if (uninvoicedCount > 0) {
+            items.push({ key: 'received_no_invoice', category: '採購', label: '已入庫未核銷發票', count: uninvoicedCount, href: '/purchasing', urgency: 'normal' });
+          }
+        } catch (e) { console.error('[action-queue] 採購已入庫待辦:', e.message); }
+      })());
     }
 
     // ── 財務 ────────────────────────────────────────────────────────
