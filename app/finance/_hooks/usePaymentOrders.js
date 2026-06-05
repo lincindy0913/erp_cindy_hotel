@@ -22,6 +22,10 @@ export function usePaymentOrders() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setHighlightOrderNo(params.get('highlight'));
+    const tabParam = params.get('tab');
+    if (tabParam && ['draft', 'pending', 'executed', 'rejected'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
   }, []);
 
   useEffect(() => {

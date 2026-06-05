@@ -247,6 +247,12 @@ export default function InventoryPage() {
 
   useEffect(() => {
     fetchWarehouses();
+    // 深連結支援：?tab=inbound 等直跳對應 tab
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['query', 'inbound', 'requisition', 'transfer', 'count'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
   }, []);
 
   async function fetchWarehouses() {

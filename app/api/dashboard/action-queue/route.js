@@ -53,7 +53,7 @@ export async function GET(request) {
             prisma.purchaseMaster.count({ where: { status: '待入庫' } }),
             prisma.$queryRaw`SELECT COUNT(*) as cnt FROM inventory_low_stock_caches WHERE current_qty < threshold AND threshold > 0`,
           ]);
-          if (pendingWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: pendingWh, href: '/purchasing', urgency: 'high' });
+          if (pendingWh > 0) items.push({ key: 'pending_warehouse', category: '採購', label: '待入庫進貨', count: pendingWh, href: '/inventory?tab=inbound', urgency: 'high' });
           const low = Number(lowStock[0]?.cnt || 0);
           if (low > 0) items.push({ key: 'low_inventory', category: '採購', label: '庫存偏低品項', count: low, href: '/inventory', urgency: 'normal' });
         } catch (e) { console.error('[action-queue] 採購:', e.message); }
@@ -71,8 +71,8 @@ export async function GET(request) {
             }),
             prisma.paymentOrder.count({ where: { status: '已拒絕' } }),
           ]);
-          if (draftPOs > 0) items.push({ key: 'draft_po', category: '財務', label: '草稿付款單待送出', count: draftPOs, href: '/finance', urgency: 'high' });
-          if (rejectedPOs > 0) items.push({ key: 'rejected_po', category: '財務', label: '被退回付款單', count: rejectedPOs, href: '/finance', urgency: 'urgent' });
+          if (draftPOs > 0) items.push({ key: 'draft_po', category: '財務', label: '草稿付款單待送出', count: draftPOs, href: '/finance?tab=draft', urgency: 'high' });
+          if (rejectedPOs > 0) items.push({ key: 'rejected_po', category: '財務', label: '被退回付款單', count: rejectedPOs, href: '/finance?tab=rejected', urgency: 'urgent' });
           if (monthInvoices > 0) items.push({ key: 'pending_invoices', category: '財務', label: '本月待核銷發票', count: monthInvoices, href: '/sales', urgency: 'normal' });
         } catch (e) { console.error('[action-queue] 財務:', e.message); }
       })());
@@ -127,9 +127,9 @@ export async function GET(request) {
             }),
             prisma.paymentOrder.count({ where: { status: '草稿', sourceType: 'engineering' } }),
           ]);
-          if (overdueTerms > 0) items.push({ key: 'overdue_eng', category: '工程', label: '逾期工程期數', count: overdueTerms, href: '/engineering', urgency: 'urgent' });
-          if (dueTerms > 0) items.push({ key: 'due_eng', category: '工程', label: '本週到期工程期數', count: dueTerms, href: '/engineering', urgency: 'high' });
-          if (draftEngPOs > 0) items.push({ key: 'draft_eng_po', category: '工程', label: '待送出工程付款單', count: draftEngPOs, href: '/engineering', urgency: 'normal' });
+          if (overdueTerms > 0) items.push({ key: 'overdue_eng', category: '工程', label: '逾期工程期數', count: overdueTerms, href: '/engineering?tab=contracts', urgency: 'urgent' });
+          if (dueTerms > 0) items.push({ key: 'due_eng', category: '工程', label: '本週到期工程期數', count: dueTerms, href: '/engineering?tab=contracts', urgency: 'high' });
+          if (draftEngPOs > 0) items.push({ key: 'draft_eng_po', category: '工程', label: '待送出工程付款單', count: draftEngPOs, href: '/engineering?tab=payments', urgency: 'normal' });
         } catch (e) { console.error('[action-queue] 工程:', e.message); }
       })());
     }
