@@ -25,6 +25,7 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
 
   // ── 月固定費用模板 state ──────────────────────────────────────
   const [recurringTemplates,  setRecurringTemplates]  = useState([]);
+  const [recurringError,      setRecurringError]      = useState(null);
   const [showRecurringMgr,    setShowRecurringMgr]    = useState(false);
   const [recurringForm,       setRecurringForm]       = useState({ warehouse: '', category: '', description: '', defaultAmt: '' });
   const [recurringDraftMonth, setRecurringDraftMonth] = useState(thisMonth);
@@ -102,12 +103,15 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
   }
 
   // ── 固定費用模板 ─────────────────────────────────────────────
-  function fetchRecurringTemplates(wh) {
-    const p = new URLSearchParams(wh ? { warehouse: wh } : {});
-    fetch(`/api/bnb/recurring-expenses?${p}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setRecurringTemplates(Array.isArray(data) ? data : []))
-      .catch(() => {});
+  async function fetchRecurringTemplates(wh) {
+    setRecurringError(null);
+    try {
+      const p = new URLSearchParams(wh ? { warehouse: wh } : {});
+      const res = await fetch(`/api/bnb/recurring-expenses?${p}`);
+      if (!res.ok) { setRecurringError('固定費用模板載入失敗，請稍後再試'); return; }
+      const data = await res.json();
+      setRecurringTemplates(Array.isArray(data) ? data : []);
+    } catch { setRecurringError('固定費用模板載入失敗，請稍後再試'); }
   }
 
   async function saveRecurringTemplate() {
@@ -162,7 +166,7 @@ export function useOtherIncome({ showToast, defaultWarehouse = '民宿' }) {
     oiForm, setOiForm, oiSaving,
     openOiModal, saveOtherIncome, deleteOtherIncome,
     // recurring
-    recurringTemplates, showRecurringMgr, setShowRecurringMgr,
+    recurringTemplates, recurringError, showRecurringMgr, setShowRecurringMgr,
     recurringForm, setRecurringForm,
     recurringDraftMonth, setRecurringDraftMonth, recurringDrafting,
     fetchRecurringTemplates, saveRecurringTemplate,

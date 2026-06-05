@@ -31,6 +31,7 @@ export default function OtherIncomeTab({
   openOiModal,
   // 月固定費用模板
   recurringTemplates,
+  recurringError,
   showRecurringMgr,
   setShowRecurringMgr,
   recurringForm,
@@ -126,7 +127,10 @@ export default function OtherIncomeTab({
                 </button>
               </div>
               <div className="space-y-1">
-                {recurringTemplates.length === 0 && (
+                {recurringError && (
+                  <p className="text-xs text-red-500">{recurringError}</p>
+                )}
+                {!recurringError && recurringTemplates.length === 0 && (
                   <p className="text-xs text-indigo-400">尚無模板</p>
                 )}
                 {recurringTemplates.map(t => (

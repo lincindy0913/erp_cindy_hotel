@@ -288,7 +288,7 @@ function BnbPage() {
     oiModalOpen, setOiModalOpen, oiEditRow,
     oiForm, setOiForm, oiSaving,
     openOiModal, saveOtherIncome, deleteOtherIncome,
-    recurringTemplates, showRecurringMgr, setShowRecurringMgr,
+    recurringTemplates, recurringError, showRecurringMgr, setShowRecurringMgr,
     recurringForm, setRecurringForm,
     recurringDraftMonth, setRecurringDraftMonth, recurringDrafting,
     fetchRecurringTemplates, saveRecurringTemplate,
@@ -1166,6 +1166,7 @@ function BnbPage() {
             deleteOtherIncome={deleteOtherIncome}
             openOiModal={openOiModal}
             recurringTemplates={recurringTemplates}
+            recurringError={recurringError}
             showRecurringMgr={showRecurringMgr}
             setShowRecurringMgr={setShowRecurringMgr}
             recurringForm={recurringForm}
