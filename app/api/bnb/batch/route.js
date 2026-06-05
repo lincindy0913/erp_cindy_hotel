@@ -20,6 +20,7 @@ import { requireAnyPermission } from '@/lib/api-auth';
 import { PERMISSIONS } from '@/lib/permissions';
 import { assertBnbMonthOpen } from '@/lib/bnb-lock';
 import { PAY_TYPE_KEYS, bookingToPaymentEntry, syncPaymentEntry } from '@/lib/bnb-pay-types';
+import { syncBnbPaymentTx } from '@/lib/syncBnbPaymentTx';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,6 +131,26 @@ export async function PATCH(request) {
           } else if (finalDest !== '老闆收取') {
             // 如果取消老闆收取，刪除對應記錄
             await prisma.bnbBossWithdraw.deleteMany({ where: { bookingId: id } });
+          }
+
+          // 同步現金流 CashTransaction（與逐筆 PATCH 行為一致）
+          const paymentChanged = ['payDeposit','depositDate','payTransfer','transferDate',
+            'payCash','cashDestination','cashDepositDate','payCard','cardFeeRate','cardSettlementDate']
+            .some(f => f in rec);
+          if (paymentChanged) {
+            try {
+              await syncBnbPaymentTx(id);
+              await prisma.bnbSyncFailure.updateMany({
+                where: { bookingId: id, resolved: false },
+                data: { resolved: true, resolvedAt: new Date() },
+              });
+            } catch (syncErr) {
+              const msg = syncErr?.message || String(syncErr);
+              await prisma.bnbSyncFailure.create({
+                data: { bookingId: id, errorMsg: msg },
+              }).catch(() => {});
+              failures.push({ id, error: `儲存成功但現金流同步失敗：${msg}` });
+            }
           }
 
           saved++;
