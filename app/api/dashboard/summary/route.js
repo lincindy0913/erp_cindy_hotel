@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { getCached, setCached } from '@/lib/server-cache';
 import { createErrorResponse } from '@/lib/error-handler';
 import { localDateStr } from '@/lib/localDate';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,12 +16,22 @@ export async function GET(request) {
   if (!session) return createErrorResponse('UNAUTHORIZED', '請先登入', 401);
   const forceRefresh = new URL(request.url).searchParams.get('refresh') === 'true';
 
+  const userEmail = session.user?.email || 'anon';
+  const userPerms = session.user?.permissions || [];
+  const role      = session.user?.role || '';
+  const isAdminOrManager =
+    role === 'admin' ||
+    userPerms.includes('*') ||
+    (session.user?.roles || []).some(r => ['admin', 'manager'].includes(r));
+  const hasPerm = (p) => isAdminOrManager || userPerms.includes(p);
+
   const now = new Date();
   const currentYear  = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
   const monthPrefix  = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
-  const cacheKey = `dashboard:summary:${monthPrefix}`;
+  // Cache key is per-user — different permission sets yield different subsets
+  const cacheKey = `dashboard:summary:${monthPrefix}:${userEmail}`;
   const cached   = forceRefresh ? null : getCached(cacheKey);
   if (cached) {
     return NextResponse.json({ ...cached.data, cacheStatus: 'cached', cachedAt: cached.cachedAt });
@@ -43,58 +54,67 @@ export async function GET(request) {
       recentPmsIncome,
       utilityBillCount,
     ] = await Promise.all([
-      prisma.purchaseMaster.aggregate({
-        where: { purchaseDate: { startsWith: monthPrefix } },
-        _sum: { totalAmount: true }, _count: true,
-      }),
-      prisma.salesMaster.aggregate({
-        where: { invoiceDate: { startsWith: monthPrefix } },
-        _sum: { totalAmount: true }, _count: true,
-      }),
-      prisma.cashAccount.findMany({
-        where: { isActive: true },
-        select: { name: true, currentBalance: true, warehouse: true },
-      }),
-      prisma.check.count({ where: { status: 'due', dueDate: { lt: todayStr } } }),
-      prisma.loanMaster.count({
-        where: { status: '使用中', endDate: { lte: localDateStr(sixMonthsLater) } },
-      }),
-      prisma.paymentOrder.count({ where: { status: '待出納' } }),
-      prisma.inventoryLowStockCache.count().catch(() => 0),
-      prisma.commonExpenseRecord.aggregate({
-        where: { expenseMonth: monthPrefix, status: '已確認' },
-        _sum: { totalDebit: true },
-      }),
-      prisma.pmsIncomeRecord.aggregate({
-        where: { businessDate: { startsWith: monthPrefix }, entryType: '貸方' },
-        _sum: { amount: true }, _count: true,
-      }),
-      prisma.utilityBillRecord.count(),
+      hasPerm(PERMISSIONS.PURCHASING_VIEW)
+        ? prisma.purchaseMaster.aggregate({ where: { purchaseDate: { startsWith: monthPrefix } }, _sum: { totalAmount: true }, _count: true })
+        : null,
+      hasPerm(PERMISSIONS.SALES_VIEW)
+        ? prisma.salesMaster.aggregate({ where: { invoiceDate: { startsWith: monthPrefix } }, _sum: { totalAmount: true }, _count: true })
+        : null,
+      hasPerm(PERMISSIONS.CASHFLOW_VIEW)
+        ? prisma.cashAccount.findMany({ where: { isActive: true }, select: { name: true, currentBalance: true, warehouse: true } })
+        : null,
+      hasPerm(PERMISSIONS.CHECK_VIEW)
+        ? prisma.check.count({ where: { status: 'due', dueDate: { lt: todayStr } } })
+        : null,
+      hasPerm(PERMISSIONS.LOAN_VIEW)
+        ? prisma.loanMaster.count({ where: { status: '使用中', endDate: { lte: localDateStr(sixMonthsLater) } } })
+        : null,
+      hasPerm(PERMISSIONS.CASHIER_VIEW) || hasPerm(PERMISSIONS.CASHIER_EXECUTE)
+        ? prisma.paymentOrder.count({ where: { status: '待出納' } })
+        : null,
+      hasPerm(PERMISSIONS.INVENTORY_VIEW)
+        ? prisma.inventoryLowStockCache.count().catch(() => 0)
+        : null,
+      hasPerm(PERMISSIONS.EXPENSE_VIEW)
+        ? prisma.commonExpenseRecord.aggregate({ where: { expenseMonth: monthPrefix, status: '已確認' }, _sum: { totalDebit: true } })
+        : null,
+      hasPerm(PERMISSIONS.PMS_VIEW)
+        ? prisma.pmsIncomeRecord.aggregate({ where: { businessDate: { startsWith: monthPrefix }, entryType: '貸方' }, _sum: { amount: true }, _count: true })
+        : null,
+      hasPerm(PERMISSIONS.CASHFLOW_VIEW)
+        ? prisma.utilityBillRecord.count()
+        : null,
     ]);
 
-    const purchaseTotal  = Number(thisMonthPurchases._sum.totalAmount || 0);
-    const salesTotal     = Number(thisMonthSales._sum.totalAmount || 0);
-    const totalCashBalance = cashAccounts.reduce((s, a) => s + Number(a.currentBalance || 0), 0);
-    const expenseTotal   = Number(thisMonthExpenses._sum.totalDebit || 0);
-    const pmsIncomeTotal = Number(recentPmsIncome._sum.amount || 0);
+    const purchaseTotal    = thisMonthPurchases  != null ? Number(thisMonthPurchases._sum.totalAmount  || 0) : null;
+    const salesTotal       = thisMonthSales      != null ? Number(thisMonthSales._sum.totalAmount      || 0) : null;
+    const expenseTotal     = thisMonthExpenses   != null ? Number(thisMonthExpenses._sum.totalDebit    || 0) : null;
+    const pmsIncomeTotal   = recentPmsIncome     != null ? Number(recentPmsIncome._sum.amount          || 0) : null;
+    const totalCashBalance = cashAccounts        != null ? cashAccounts.reduce((s, a) => s + Number(a.currentBalance || 0), 0) : null;
 
     const body = {
       month: `${currentYear}/${String(currentMonth).padStart(2, '0')}`,
       kpis: {
         thisMonthPurchase: purchaseTotal,
-        purchaseCount: thisMonthPurchases._count,
-        thisMonthSales: salesTotal,
-        salesCount: thisMonthSales._count,
-        thisMonthExpense: expenseTotal,
+        purchaseCount:     thisMonthPurchases?._count ?? null,
+        thisMonthSales:    salesTotal,
+        salesCount:        thisMonthSales?._count     ?? null,
+        thisMonthExpense:  expenseTotal,
         totalCashBalance,
-        pmsIncome: pmsIncomeTotal,
-        pmsIncomeCount: recentPmsIncome._count,
+        pmsIncome:         pmsIncomeTotal,
+        pmsIncomeCount:    recentPmsIncome?._count    ?? null,
+        lowInventoryCount: lowInventoryCount ?? null,
       },
-      alerts: { overdueChecks, expiringLoans, pendingPayments, lowInventoryCount },
-      cashAccounts: cashAccounts.map(a => ({
-        name: a.name, warehouse: a.warehouse, balance: Number(a.currentBalance || 0),
-      })),
-      utilityBillCount,
+      alerts: {
+        overdueChecks:     overdueChecks     ?? null,
+        expiringLoans:     expiringLoans     ?? null,
+        pendingPayments:   pendingPayments   ?? null,
+        lowInventoryCount: lowInventoryCount ?? null,
+      },
+      cashAccounts: cashAccounts != null
+        ? cashAccounts.map(a => ({ name: a.name, warehouse: a.warehouse, balance: Number(a.currentBalance || 0) }))
+        : [],
+      utilityBillCount: utilityBillCount ?? null,
     };
 
     const entry = setCached(cacheKey, body, SUMMARY_TTL);
