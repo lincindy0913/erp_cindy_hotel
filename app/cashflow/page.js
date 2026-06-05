@@ -733,8 +733,8 @@ export default function CashFlowPage() {
               desc: '出納執行付款、PMS 收入匯入、民宿匯入後，系統自動產生交易，請勿重複手動補登。只有真正缺少來源的雜項才用「手動」(manual) 補記。',
             },
             {
-              label: '分辨「存簿對帳」vs「銀行對帳」',
-              desc: '「存簿對帳（/bank-reconciliation）」是逐筆核對銀行流水，確認系統帳目與銀行對帳單吻合；「帳戶總覽」的餘額則是系統依交易自動累加。兩者確認後才代表數字可信。',
+              label: '分辨「存簿對帳」vs「存簿核對」',
+              desc: '「存簿對帳（/reconciliation）」是核對信用卡／OTA 流水；「存簿核對（/bank-reconciliation）」是逐筆比對銀行月結對帳單，確認系統餘額與銀行一致。兩者都確認後才代表數字可信。',
             },
             {
               label: '現金帳戶：月底盤點',
