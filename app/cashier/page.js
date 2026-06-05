@@ -84,6 +84,8 @@ export default function CashierPage() {
   const [batchAdvancePaymentMethod, setBatchAdvancePaymentMethod] = useState('現金');
   const [batchExtraAmounts, setBatchExtraAmounts] = useState({}); // orderId -> extraAmount for loan orders
   const [executingOrderId, setExecutingOrderId] = useState(null);
+  // 職責分離警示 modal
+  const [selfExecWarning, setSelfExecWarning] = useState(null); // { executionNo, cashTransactionNo, orderNo }
 
   useEffect(() => {
     fetchAll();
@@ -374,9 +376,13 @@ export default function CashierPage() {
             cashTransactionNo: result.cashTransactionNo,
           }
         }));
-        showToast(`出納確認成功！\n執行單號：${result.executionNo}\n現金交易：${result.cashTransactionNo}`, 'success');
+        showToast(`出納確認成功！執行單號：${result.executionNo}`, 'success');
         if (result.selfExecution) {
-          showToast('提醒：建立人與出納執行人相同，請確認符合公司內控規範。', 'warning');
+          setSelfExecWarning({
+            executionNo: result.executionNo,
+            cashTransactionNo: result.cashTransactionNo,
+            orderNo: order.orderNo,
+          });
         }
         setExpandedOrderId(null);
         fetchOrders();
@@ -1738,6 +1744,41 @@ export default function CashierPage() {
           }
         }
       `}</style>
+
+      {/* ── 職責分離警示 Modal ─────────────────────────────────────── */}
+      {selfExecWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">職責分離提醒</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  付款單 <span className="font-mono font-semibold">{selfExecWarning.orderNo}</span> 由您本人建立並執行，
+                  不符合財務內控規範（雙人核准原則）。
+                </p>
+                <p className="text-sm text-gray-500 mt-1.5">
+                  建議後續應由不同人員擔任建立人與出納執行人，以確保帳務獨立性。
+                </p>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-4 py-3 mb-4 space-y-1 text-xs text-gray-600 font-mono">
+              <div>執行單號：{selfExecWarning.executionNo}</div>
+              <div>現金交易：{selfExecWarning.cashTransactionNo}</div>
+            </div>
+            <button
+              onClick={() => setSelfExecWarning(null)}
+              className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium"
+            >
+              已知悉，繼續
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

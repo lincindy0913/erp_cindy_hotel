@@ -300,6 +300,9 @@ export async function POST(request) {
       level: pendingCashierOrders > 0 ? 'warning' : 'pass',
       link: '/cashier',
       linkText: '前往出納',
+      detail: pendingCashierOrders > 0
+        ? `${pendingCashierOrders} 張付款單已建立送出，但出納尚未點擊「執行」確認。注意：此項只查已建立付款單的出納狀態，不代表所有應付帳款均已建單。`
+        : undefined,
     });
 
     // Check paymentOrder: 草稿（尚未送出出納）

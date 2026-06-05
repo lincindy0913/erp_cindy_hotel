@@ -68,7 +68,9 @@ export async function GET(request) {
       items.push({
         key: 'pending_cashier', step: 3,
         label: '待出納付款單',
-        desc: count > 0 ? `${count} 張付款單等待出納執行` : '所有付款單已執行完畢',
+        desc: count > 0
+          ? `${count} 張付款單已送出待出納確認（注意：此非指所有應付帳款，僅指已建立且尚未執行的付款單）`
+          : '所有已建立付款單均已由出納執行完畢',
         count, done: count === 0,
         status: count > 0 ? 'warning' : 'ok',
         href: '/cashier', linkText: '前往出納',
