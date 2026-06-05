@@ -135,7 +135,8 @@ export async function PATCH(request, { params }) {
       if (refreshed) {
         for (const payType of PAY_TYPE_KEYS) {
           const entryData = bookingToPaymentEntry(refreshed, payType);
-          if (entryData) await syncPaymentEntry(prisma, id, payType, entryData).catch(() => {});
+          if (entryData) await syncPaymentEntry(prisma, id, payType, entryData)
+            .catch(e => console.error('[syncPaymentEntry] bookingId=%d payType=%s:', id, payType, e.message));
         }
       }
     }

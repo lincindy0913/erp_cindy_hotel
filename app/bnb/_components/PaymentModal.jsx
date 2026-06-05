@@ -75,12 +75,16 @@ export default function PaymentModal({ record, onClose, onSaved }) {
           bossWithdrawNote: form.cashDestination === '老闆收取' ? form.bossWithdrawNote : null,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        showToast(err.error || '儲存失敗', 'error');
+        showToast(data.error || '儲存失敗', 'error');
         return;
       }
-      showToast('付款明細已儲存', 'success');
+      if (data.syncWarning) {
+        showToast('付款明細已儲存，但出納現金流同步失敗，請至出納管理手動確認。', 'warning');
+      } else {
+        showToast('付款明細已儲存', 'success');
+      }
       if (form.cashDestination === '老闆收取') showToast('現金已標記為老闆收取，記得到「老闆收取」分頁確認', 'info');
       if (form.cashDestination === '存帳')     showToast('現金已標記為存帳，記得到「老闆收取」分頁確認', 'info');
       onSaved();
